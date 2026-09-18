@@ -1,0 +1,27 @@
+# Python virtual environments and interpreter artifacts
+.venv/
+venv/
+env/
+ENV/
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Test, coverage, and static-analysis outputs
+.pytest_cache/
+.mypy_cache/
+.pyre/
+.ruff_cache/
+.pytype/
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+
+# Local runtime output
+*.log
+
+# Local secrets. Keep the committed template available to operators.
+.env
+.env.*
+!.env.example
