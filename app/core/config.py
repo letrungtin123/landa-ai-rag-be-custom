@@ -26,6 +26,7 @@ class Settings(BaseModel):
     chunk_overlap_chars: int = Field(default_factory=lambda: int(os.getenv("AI_RAG_CHUNK_OVERLAP_CHARS", "350")))
     embedding_batch_size: int = Field(default_factory=lambda: int(os.getenv("AI_RAG_EMBEDDING_BATCH_SIZE", "32")))
     provider_request_timeout_ms: int = Field(default_factory=lambda: int(os.getenv("AI_RAG_PROVIDER_REQUEST_TIMEOUT_MS", "60000")))
+    blueprint_provider_request_timeout_ms: int = Field(default_factory=lambda: int(os.getenv("AI_RAG_BLUEPRINT_PROVIDER_REQUEST_TIMEOUT_MS", "300000")))
     database_command_timeout_seconds: int = Field(default_factory=lambda: int(os.getenv("AI_RAG_DATABASE_COMMAND_TIMEOUT_SECONDS", "600")))
     top_k: int = Field(default_factory=lambda: int(os.getenv("AI_RAG_TOP_K", "8")))
     max_context_chars: int = Field(default_factory=lambda: int(os.getenv("AI_RAG_MAX_CONTEXT_CHARS", "18000")))

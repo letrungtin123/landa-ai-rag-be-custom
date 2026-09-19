@@ -10,9 +10,9 @@ from google import genai
 from google.genai import models, types
 from fastapi import HTTPException
 
+from app.core.config import settings
 from app.lesson_author_blueprint import (
     LESSON_AUTHOR_BLUEPRINT_RESPONSE_SCHEMA,
-    LESSON_AUTHOR_BLUEPRINT_RESPONSE_MODEL,
     LessonAuthorBlueprintResponse,
     LessonAuthorBlueprintValidationError,
     parse_and_validate_lesson_author_blueprint,
@@ -24,6 +24,7 @@ from app.main import (
     RagLessonAuthorBlueprintRequest,
     RagLessonAuthorRequest,
     build_lesson_author_blueprint_prompt,
+    allocate_blueprint_source_fact_ids,
     build_lesson_author_proposal_response_schema,
     build_source_locked_staged_skeleton,
     build_staged_component_plan,
@@ -35,11 +36,13 @@ from app.main import (
     drop_invalid_lesson_author_source_refs,
     embed_text_batch,
     enforce_lesson_author_source_structure,
+    ensure_blueprint_source_granularity,
     generate_content,
     generate_staged_lesson_author_proposal,
     generate_validated_lesson_author_blueprint,
     normalize_lesson_author_proposal_tree,
     prepare_source_locked_expected,
+    restrict_blueprint_draft_source_manifest,
     should_stage_lesson_author_proposal,
     staged_unit_source_material,
     validate_staged_unit_content,
@@ -60,19 +63,40 @@ def valid_blueprint() -> dict[str, object]:
             "Thực hành xử lý một tình huống giả định.",
         ],
         "assessment_strategy": "Đánh giá bằng tình huống thực hành và bài kiểm tra cuối khóa.",
-        "assumptions": ["Cần xác nhận thời lượng học chính thức."],
+        "assumptions": ["Cần xác nhận mức độ đầu vào của người học."],
         "chapters": [
             {
                 "title": "Nền tảng",
                 "objective": "Người học nhận biết được các rủi ro cơ bản.",
-                "duration_minutes": 45,
                 "lessons": [
                     {
                         "title": "Rủi ro thường gặp",
                         "objective": "Người học phân biệt được các rủi ro thường gặp.",
-                        "duration_minutes": 20,
                         "learning_activities": ["Phân tích tình huống ngắn."],
                         "assessment": "Trả lời câu hỏi tình huống.",
+                        "units": [
+                            {
+                                "title": "Nhận diện rủi ro thường gặp",
+                                "media_plan": {
+                                    "type": "static_infographic",
+                                    "title": "Dấu hiệu rủi ro thường gặp",
+                                    "content_outline": "Minh họa các dấu hiệu và nhóm rủi ro nêu trong tài liệu nguồn.",
+                                    "rationale": "Giúp người học so sánh nhanh các dấu hiệu quan trọng.",
+                                },
+                                "component_plan": [
+                                    {
+                                        "type": "html",
+                                        "title": "Kiến thức trọng tâm",
+                                        "rationale": "Giải thích các rủi ro dựa trên tài liệu nguồn.",
+                                    },
+                                    {
+                                        "type": "problem",
+                                        "title": "Kiểm tra nhận diện",
+                                        "rationale": "Kiểm tra khả năng phân biệt rủi ro trong tình huống nguồn.",
+                                    },
+                                ],
+                            },
+                        ],
                     }
                 ],
             }
@@ -142,6 +166,15 @@ def valid_proposal() -> dict[str, object]:
 
 
 class LessonAuthorBlueprintContractTests(unittest.TestCase):
+    def test_blueprint_request_accepts_the_full_provider_output_window(self) -> None:
+        request = blueprint_request()
+        payload = request.model_dump()
+        payload["max_output_tokens"] = 65_536
+
+        full_budget_request = RagLessonAuthorBlueprintRequest(**payload)
+
+        self.assertEqual(full_budget_request.max_output_tokens, 65_536)
+
     def test_staged_skeleton_schema_requires_complete_structure(self) -> None:
         schema = build_lesson_author_skeleton_response_schema()
         self.assertEqual(schema.required, ["chapters"])
@@ -245,6 +278,73 @@ class LessonAuthorBlueprintContractTests(unittest.TestCase):
         self.assertEqual(assigned, [fact["fact_id"] for fact in manifest["facts"]])
         self.assertEqual(len(assigned), len(set(assigned)))
 
+    def test_blueprint_locked_source_skeleton_preserves_units_and_component_types(self) -> None:
+        request = proposal_request(
+            blueprint_architecture={
+                "chapter_title": "Chuẩn bị khu vực làm việc",
+                "source_refs": ["src-001"],
+                "lessons": [{
+                    "title": "Tiêu chuẩn và chuẩn bị",
+                    "source_refs": ["src-001"],
+                    "units": [
+                        {
+                            "title": "Tiêu chuẩn khu vực",
+                            "source_refs": ["src-001"],
+                            "component_plan": [
+                                {"type": "html", "title": "Tiêu chuẩn", "rationale": "Giải thích tiêu chuẩn nguồn."},
+                                {"type": "problem", "title": "Tự kiểm tra", "rationale": "Kiểm tra tiêu chuẩn nguồn."},
+                            ],
+                        },
+                        {
+                            "title": "Trình tự chuẩn bị",
+                            "source_refs": ["src-001"],
+                            "component_plan": [
+                                {"type": "html", "title": "Các bước", "rationale": "Giải thích các bước nguồn."},
+                                {"type": "la_sortable", "title": "Sắp xếp bước", "rationale": "Thực hành trình tự nguồn."},
+                            ],
+                        },
+                    ],
+                }],
+            },
+        )
+        manifest = {
+            "facts": [
+                {"fact_id": "src-001-f1", "source_ref": "src-001", "text": "Khu vực sạch và gọn gàng."},
+                {"fact_id": "src-001-f2", "source_ref": "src-001", "text": "Bước 1 chuẩn bị dụng cụ. Bước 2 kiểm tra hóa chất. Bước 3 mặc bảo hộ."},
+            ],
+        }
+
+        skeleton = build_source_locked_staged_skeleton(request, manifest)
+        lesson = skeleton["chapters"][0]["lessons"][0]
+        self.assertEqual(skeleton["chapters"][0]["title"], "Chuẩn bị khu vực làm việc")
+        self.assertEqual([unit["title"] for unit in lesson["units"]], ["Tiêu chuẩn khu vực", "Trình tự chuẩn bị"])
+        self.assertEqual(
+            [[item["type"] for item in unit["component_plan"]] for unit in lesson["units"]],
+            [["html", "problem"], ["html", "la_sortable"]],
+        )
+        self.assertTrue(all(unit["_blueprint_component_plan_locked"] for unit in lesson["units"]))
+
+    def test_blueprint_draft_manifest_uses_only_persisted_fact_contract(self) -> None:
+        manifest, missing = restrict_blueprint_draft_source_manifest(
+            {
+                "facts": [
+                    {"fact_id": "p1-f1", "text": "Cover page."},
+                    {"fact_id": "p3-f1", "text": "Definition."},
+                    {"fact_id": "p4-f1", "text": "Objectives."},
+                    {"fact_id": "p6-f1", "text": "Continuation slide."},
+                ],
+                "truncated": False,
+            },
+            {"p3-f1", "p4-f1", "p6-f1"},
+        )
+
+        self.assertEqual(missing, [])
+        self.assertEqual(
+            [fact["fact_id"] for fact in manifest["facts"]],
+            ["p3-f1", "p4-f1", "p6-f1"],
+        )
+        self.assertFalse(manifest["truncated"])
+
     def test_staged_generation_recovers_from_two_malformed_skeletons(self) -> None:
         manifest = {
             "facts": [{
@@ -257,7 +357,9 @@ class LessonAuthorBlueprintContractTests(unittest.TestCase):
             "<h3>Nhận diện mối nguy</h3><p>Người học quan sát công việc, thiết bị và môi trường "
             "trước khi thao tác để nhận diện điều kiện có thể gây mất an toàn. Việc rà soát cần được "
             "thực hiện có hệ thống, ghi nhận rõ mối nguy và dùng kết quả làm cơ sở cho bước đánh giá "
-            "rủi ro tiếp theo.</p>"
+            "rủi ro tiếp theo. Khi phát hiện dấu hiệu bất thường, người học cần mô tả vị trí, điều kiện "
+            "và đối tượng bị ảnh hưởng để các biện pháp kiểm soát có thể được lựa chọn phù hợp. Việc trao "
+            "đổi với người phụ trách trước khi tiếp tục công việc giúp tránh bỏ sót những thay đổi tại hiện trường.</p>"
         )
         content = json.dumps({
             "title": "Nhận diện mối nguy",
@@ -388,6 +490,24 @@ class LessonAuthorBlueprintContractTests(unittest.TestCase):
         )
         self.assertEqual([item["type"] for item in taxonomy_plan], ["html"])
 
+    def test_component_plan_does_not_turn_wrapped_source_lines_into_sortable_items(self) -> None:
+        plan = build_staged_component_plan(
+            {
+                "title": "Mô hình triển khai",
+                "source_fact_ids": ["p5-f1", "p5-f2", "p5-f3"],
+                "components": [{"type": "html"}],
+            },
+            {
+                "facts": [
+                    {"fact_id": "p5-f1", "source_page": 5, "text": "Chính sách rõ ràng: Cam kết từ lãnh đạo."},
+                    {"fact_id": "p5-f2", "source_page": 5, "text": "Đào tạo và nhận thức: Hướng dẫn an toàn trước khi làm việc."},
+                    {"fact_id": "p5-f3", "source_page": 5, "text": "Phân tích rủi ro: HIRA và JSA."},
+                ],
+            },
+        )
+
+        self.assertEqual([item["type"] for item in plan], ["html"])
+
     def test_component_plan_does_not_treat_generic_compliance_as_quiz(self) -> None:
         compliance_plan = build_staged_component_plan(
             {
@@ -486,7 +606,7 @@ class LessonAuthorBlueprintContractTests(unittest.TestCase):
             "components": [{
                 "type": "html",
                 "source_fact_ids": ["p3-f1", "p3-f2"],
-                "html": "<p>Phân tích an toàn lao động giúp bảo vệ người lao động và giảm rủi ro trong công việc hằng ngày. Người học cần nhận biết điều kiện nguy hiểm, hiểu mục tiêu phòng ngừa và thực hiện đúng hướng dẫn an toàn trước khi bắt đầu công việc.</p>",
+                "html": "<p>Phân tích an toàn lao động giúp bảo vệ người lao động và giảm rủi ro trong công việc hằng ngày. Người học cần nhận biết điều kiện nguy hiểm, hiểu mục tiêu phòng ngừa và thực hiện đúng hướng dẫn an toàn trước khi bắt đầu công việc. Trước mỗi nhiệm vụ, người học cần quan sát khu vực làm việc, thiết bị, vật liệu và cách thức thao tác để xác định những điều kiện có thể gây hại. Các kết quả phân tích phải được trao đổi với người phụ trách để lựa chọn biện pháp kiểm soát phù hợp, theo dõi việc thực hiện và cập nhật khi điều kiện làm việc thay đổi.</p>",
             }],
         }
         reason = validate_staged_unit_content(unit, expected)
@@ -587,6 +707,35 @@ class LessonAuthorBlueprintContractTests(unittest.TestCase):
         self.assertIn("An toàn lao động là hệ thống", unit["components"][0]["html"])
         self.assertIsNone(validate_staged_unit_content(unit, expected))
 
+    def test_source_locked_html_fallback_preserves_headings_bullets_and_definitions(self) -> None:
+        expected = {
+            "unit_title": "Khái niệm và Mục tiêu ATSKNN",
+            "component_types": ["html"],
+            "source_fact_ids": ["p3-f1", "p3-f2", "p3-f3", "p3-f4", "p4-f1", "p4-f2", "p4-f3", "p4-f4"],
+        }
+        manifest = {
+            "facts": [
+                {"fact_id": "p3-f1", "text": "An toàn lao động: Trạng thái làm việc không xảy ra tai nạn hoặc tổn thương."},
+                {"fact_id": "p3-f2", "text": "Sức khỏe nghề nghiệp: Phòng ngừa và kiểm soát các yếu tố trong môi trường làm việc có thể ảnh hưởng đến thể chất, tinh thần và xã hội của người lao động."},
+                {"fact_id": "p3-f3", "text": "Mục tiêu chung: Bảo vệ người lao động khỏi tai nạn và bệnh nghề nghiệp."},
+                {"fact_id": "p3-f4", "text": "An toàn lao động và Sức khỏe nghề nghiệp"},
+                {"fact_id": "p4-f1", "text": "Phòng ngừa thương tích, tai nạn và bệnh nghề nghiệp."},
+                {"fact_id": "p4-f2", "text": "Bảo vệ sức khỏe thể chất và tinh thần cho công nhân."},
+                {"fact_id": "p4-f3", "text": "Giảm chi phí y tế và gián đoạn sản xuất."},
+                {"fact_id": "p4-f4", "text": "Nâng cao năng suất và sự gắn bó với công việc."},
+            ],
+        }
+
+        unit = build_source_locked_html_unit(expected, manifest)
+        self.assertIsNotNone(unit)
+        html = unit["components"][0]["html"]
+        self.assertIn("<h3>Khái niệm và Mục tiêu ATSKNN</h3>", html)
+        self.assertIn("<strong>An toàn lao động:</strong>", html)
+        self.assertIn("<h4>An toàn lao động và Sức khỏe nghề nghiệp</h4>", html)
+        self.assertIn("<ul><li>Phòng ngừa thương tích", html)
+        self.assertNotIn("<p>Phòng ngừa thương tích", html)
+        self.assertIsNone(validate_staged_unit_content(unit, expected))
+
     def test_source_locked_fallback_rebuilds_grounded_short_text_problem(self) -> None:
         unit = build_source_locked_html_unit(
             {
@@ -665,6 +814,164 @@ class LessonAuthorBlueprintContractTests(unittest.TestCase):
         self.assertEqual(len(unit["components"][2]["items"]), 5)
         self.assertIsNone(validate_staged_unit_content(unit, expected))
 
+    def test_source_locked_fallback_keeps_approved_sortable_when_pdf_markers_are_missing(self) -> None:
+        expected = {
+            "unit_title": "Mô hình triển khai ATSKNN",
+            "component_types": ["html", "la_sortable", "la_faq"],
+            "source_fact_ids": ["p5-f1", "p5-f2", "p5-f3", "p5-f4", "p5-f5"],
+        }
+        manifest = {
+            "facts": [
+                {"fact_id": "p5-f1", "text": "Chính sách rõ ràng: Cam kết từ lãnh đạo và phân bổ nguồn lực cho an toàn lao động."},
+                {"fact_id": "p5-f2", "text": "Đào tạo và nhận thức: Hướng dẫn an toàn trước khi nhân viên bắt đầu công việc."},
+                {"fact_id": "p5-f3", "text": "Phân tích rủi ro bằng phương pháp HIRA và JSA để nhận diện mối nguy."},
+                {"fact_id": "p5-f4", "text": "Biện pháp kiểm soát gồm PPE, thiết bị phù hợp và quy trình làm việc an toàn."},
+                {"fact_id": "p5-f5", "text": "Theo dõi, báo cáo và cải tiến liên tục để duy trì hiệu quả của hệ thống."},
+            ],
+        }
+
+        recovered, dropped = prepare_source_locked_expected(expected, manifest)
+        unit = build_source_locked_html_unit(recovered, manifest)
+
+        self.assertEqual(recovered["component_types"], ["html", "la_sortable", "la_faq"])
+        self.assertEqual(dropped, [])
+        self.assertIsNotNone(unit)
+        self.assertEqual(
+            [component["type"] for component in unit["components"]],
+            ["html", "la_sortable", "la_faq"],
+        )
+        self.assertEqual(len(unit["components"][1]["items"]), 5)
+        self.assertIsNone(validate_staged_unit_content(unit, expected))
+
+    def test_blueprint_expands_one_unit_source_chapter_and_allocates_all_facts(self) -> None:
+        blueprint = {
+            "chapters": [{
+                "title": "An toàn lao động và sức khỏe nghề nghiệp",
+                "source_refs": ["src-001"],
+                "lessons": [{
+                    "title": "Tổng quan ATSKNN",
+                    "objective": "Người học hiểu mô hình ATSKNN.",
+                    "learning_activities": ["Đọc nội dung nguồn."],
+                    "assessment": "Kiểm tra kiến thức.",
+                    "source_refs": ["src-001"],
+                    "units": [{
+                        "title": "Tổng quan ATSKNN",
+                        "source_refs": ["src-001"],
+                        "component_plan": [{"type": "html", "title": "Tổng quan", "rationale": "Giải thích nội dung."}],
+                    }],
+                }],
+            }],
+        }
+        manifest = {
+            "facts": [
+                {"fact_id": f"p{page}-f1", "document_id": "doc-hse", "source_page": page, "text": text}
+                for page, text in enumerate([
+                    "Khái niệm an toàn lao động.",
+                    "Khái niệm sức khỏe nghề nghiệp.",
+                    "Mục tiêu bảo vệ người lao động.",
+                    "Tầm quan trọng của ATSKNN.",
+                    "1. Chính sách. 2. Đào tạo. 3. Phân tích rủi ro.",
+                ], start=1)
+            ],
+        }
+        nodes = [{
+            "document_id": "doc-hse",
+            "source_ref": "src-001",
+            "title": "An toàn lao động và sức khỏe nghề nghiệp (từ slide 1 đến slide 5)",
+        }]
+
+        expanded = ensure_blueprint_source_granularity(blueprint, manifest, nodes, "vi")
+        allocated = allocate_blueprint_source_fact_ids(expanded, manifest, nodes)
+        units = [
+            unit
+            for lesson in allocated["chapters"][0]["lessons"]
+            for unit in lesson["units"]
+        ]
+
+        self.assertEqual(len(allocated["chapters"][0]["lessons"]), 1)
+        self.assertEqual(len(units), 3)
+        self.assertEqual(
+            [plan["type"] for plan in units[-1]["component_plan"]][-1],
+            "la_faq",
+        )
+        self.assertEqual(
+            {fact_id for unit in units for fact_id in unit["source_fact_ids"]},
+            {"p1-f1", "p2-f1", "p3-f1", "p4-f1", "p5-f1"},
+        )
+
+    def test_blueprint_moves_explicit_trailing_page_heading_to_next_chapter(self) -> None:
+        blueprint = {
+            "chapters": [
+                {
+                    "title": "An toàn lao động và Sức khỏe nghề nghiệp",
+                    "source_refs": ["src-001"],
+                    "lessons": [{"units": [{"title": "Khái niệm ATSKNN"}, {"title": "Mô hình triển khai ATSKNN"}]}],
+                },
+                {
+                    "title": "Nhận diện mối nguy và đánh giá rủi ro",
+                    "source_refs": ["src-002"],
+                    "lessons": [{"title": "Phân loại rủi ro tại nơi làm việc", "units": [{"title": "Rủi ro cơ khí"}]}],
+                },
+            ],
+        }
+        manifest = {
+            "facts": [
+                {"fact_id": "p3-f1", "document_id": "doc-hse", "source_page": 3, "source_ref": "src-001", "text": "An toàn lao động là trạng thái làm việc không xảy ra tai nạn."},
+                {"fact_id": "p5-f1", "document_id": "doc-hse", "source_page": 5, "source_ref": "src-001", "text": "1. Chính sách rõ ràng. 2. Đào tạo và nhận thức. 3. Phân tích rủi ro."},
+                {"fact_id": "p6-f1", "document_id": "doc-hse", "source_page": 6, "source_ref": "src-001", "text": "1. Rủi ro cơ khí: máy móc quay và vật sắc nhọn."},
+                {"fact_id": "p6-f2", "document_id": "doc-hse", "source_page": 6, "source_ref": "src-001", "text": "Phân loại rủi ro tại nơi làm việc"},
+                {"fact_id": "p7-f1", "document_id": "doc-hse", "source_page": 7, "source_ref": "src-002", "text": "Rủi ro cơ khí cần được nhận diện trước khi làm việc."},
+            ],
+        }
+        nodes = [
+            {"document_id": "doc-hse", "source_ref": "src-001", "title": "ATSKNN (từ slide 3 đến slide 6)"},
+            {"document_id": "doc-hse", "source_ref": "src-002", "title": "Phân loại rủi ro (từ slide 7 đến slide 12)"},
+        ]
+
+        allocated = allocate_blueprint_source_fact_ids(blueprint, manifest, nodes)
+        first_chapter_ids = [
+            fact_id
+            for lesson in allocated["chapters"][0]["lessons"]
+            for unit in lesson["units"]
+            for fact_id in unit["source_fact_ids"]
+        ]
+        second_chapter_ids = [
+            fact_id
+            for lesson in allocated["chapters"][1]["lessons"]
+            for unit in lesson["units"]
+            for fact_id in unit["source_fact_ids"]
+        ]
+        self.assertEqual(first_chapter_ids, ["p3-f1", "p5-f1"])
+        self.assertEqual(second_chapter_ids, ["p6-f1", "p6-f2", "p7-f1"])
+
+    def test_blueprint_allocates_raw_source_when_chapter_refs_are_unresolved(self) -> None:
+        blueprint = {
+            "chapters": [
+                {"title": "Chuẩn bị", "lessons": [{"units": [{"title": "Tiêu chuẩn"}]}]},
+                {"title": "Thực hiện", "lessons": [{"units": [{"title": "Quy trình"}]}]},
+            ],
+        }
+        manifest = {
+            "facts": [
+                {"fact_id": f"p{index}-f1", "document_id": "raw-doc", "source_page": index, "text": f"Fact nguồn {index}."}
+                for index in range(1, 5)
+            ],
+        }
+
+        allocated = allocate_blueprint_source_fact_ids(blueprint, manifest, [])
+        units = [
+            unit
+            for chapter in allocated["chapters"]
+            for lesson in chapter["lessons"]
+            for unit in lesson["units"]
+        ]
+
+        self.assertTrue(all(unit["source_fact_ids"] for unit in units))
+        self.assertEqual(
+            [fact_id for unit in units for fact_id in unit["source_fact_ids"]],
+            ["p1-f1", "p2-f1", "p3-f1", "p4-f1"],
+        )
+
     def test_source_locked_fallback_extracts_bullet_steps_for_ordered_formats(self) -> None:
         expected = {
             "unit_title": "Cleaning workflow",
@@ -690,7 +997,7 @@ class LessonAuthorBlueprintContractTests(unittest.TestCase):
         self.assertEqual(unit["components"][2]["items"][0], "Prepare the approved cleaning supplies and protect nearby equipment before work begins.")
         self.assertIsNone(validate_staged_unit_content(unit, expected))
 
-    def test_source_locked_recovery_drops_only_unreconstructable_formats(self) -> None:
+    def test_source_locked_recovery_never_mutates_the_approved_component_plan(self) -> None:
         expected, dropped = prepare_source_locked_expected(
             {
                 "unit_title": "Tiêu chuẩn yêu cầu",
@@ -713,19 +1020,12 @@ class LessonAuthorBlueprintContractTests(unittest.TestCase):
             }]},
         )
 
-        self.assertEqual(expected["component_types"], ["html"])
-        self.assertEqual(dropped, ["la_faq", "la_crossword"])
-        unit = build_source_locked_html_unit(expected, {"facts": [{
-            "fact_id": "src-002-f1",
-            "source_ref": "src-002",
-            "text": (
-                "The office area is neat and orderly, with all waste collected and removed. Cleaning staff "
-                "inspect the completed area, protect nearby equipment, record the completion status, and report "
-                "any condition that prevents the required standard from being achieved safely."
-            ),
-        }]})
-        self.assertIsNotNone(unit)
-        self.assertIsNone(validate_staged_unit_content(unit, expected))
+        self.assertEqual(expected["component_types"], ["html", "la_faq", "la_crossword"])
+        self.assertEqual(dropped, [])
+        self.assertEqual(
+            [item["type"] for item in expected["component_plan"]],
+            ["html", "la_faq", "la_crossword"],
+        )
 
     def test_source_locked_skeleton_preserves_blueprint_lesson_titles_for_docx(self) -> None:
         request = proposal_request(
@@ -814,13 +1114,34 @@ class LessonAuthorBlueprintContractTests(unittest.TestCase):
         )
         self.assertIn("responseSchema", payload)
 
-    def test_pydantic_response_model_serializes_with_the_installed_gemini_developer_api_sdk(self) -> None:
+    def test_blueprint_schema_omits_duration_fields(self) -> None:
+        chapter_schema = LESSON_AUTHOR_BLUEPRINT_RESPONSE_SCHEMA.properties["chapters"].items
+        lesson_schema = chapter_schema.properties["lessons"].items
+        self.assertNotIn("duration_minutes", chapter_schema.properties)
+        self.assertNotIn("duration_minutes", chapter_schema.required)
+        self.assertNotIn("duration_minutes", lesson_schema.properties)
+        self.assertNotIn("duration_minutes", lesson_schema.required)
+
+    def test_blueprint_schema_requires_content_architecture_without_payloads(self) -> None:
+        chapter_schema = LESSON_AUTHOR_BLUEPRINT_RESPONSE_SCHEMA.properties["chapters"].items
+        lesson_schema = chapter_schema.properties["lessons"].items
+        unit_schema = lesson_schema.properties["units"].items
+        plan_schema = unit_schema.properties["component_plan"].items
+        self.assertIn("units", lesson_schema.required)
+        self.assertEqual(plan_schema.required, ["type", "title", "rationale"])
+        self.assertNotIn("html", plan_schema.properties)
+        self.assertIn("media_plan", unit_schema.properties)
+        media_schema = unit_schema.properties["media_plan"]
+        self.assertEqual(media_schema.required, ["type", "title", "content_outline", "rationale"])
+        self.assertNotIn("choices", plan_schema.properties)
+
+    def test_response_schema_serializes_with_the_installed_gemini_developer_api_sdk(self) -> None:
         client = genai.Client(api_key="test-key")
         payload = models._GenerateContentConfig_to_mldev(
             client._api_client,
             types.GenerateContentConfig(
                 response_mime_type="application/json",
-                response_schema=LESSON_AUTHOR_BLUEPRINT_RESPONSE_MODEL,
+                response_schema=LESSON_AUTHOR_BLUEPRINT_RESPONSE_SCHEMA,
             ),
         )
         self.assertIn("responseSchema", payload)
@@ -844,7 +1165,7 @@ class LessonAuthorBlueprintContractTests(unittest.TestCase):
                     "SERVER MODE: COURSE_BLUEPRINT.",
                     max_output_tokens=4096,
                     json_mode=True,
-                    response_schema=LESSON_AUTHOR_BLUEPRINT_RESPONSE_MODEL,
+                    response_schema=LESSON_AUTHOR_BLUEPRINT_RESPONSE_SCHEMA,
                 )
             )
 
@@ -868,7 +1189,7 @@ class LessonAuthorBlueprintContractTests(unittest.TestCase):
                     "SERVER MODE: COURSE_BLUEPRINT.",
                     max_output_tokens=8192,
                     json_mode=True,
-                    response_schema=LESSON_AUTHOR_BLUEPRINT_RESPONSE_MODEL,
+                    response_schema=LESSON_AUTHOR_BLUEPRINT_RESPONSE_SCHEMA,
                     thinking_config=types.ThinkingConfig(include_thoughts=False),
                 )
             )
@@ -884,8 +1205,33 @@ class LessonAuthorBlueprintContractTests(unittest.TestCase):
         self.assertEqual(parsed["title"], "Nhập môn an toàn thông tin")
         self.assertEqual(len(parsed["chapters"]), 1)
         self.assertEqual(parsed["chapters"][0]["source_refs"], ["src-001"])
+        self.assertEqual(
+            parsed["chapters"][0]["lessons"][0]["units"][0]["media_plan"]["type"],
+            "static_infographic",
+        )
 
-    def test_blueprint_accepts_twelve_distinct_lessons_in_one_inferred_chapter(self) -> None:
+    def test_blueprint_rejects_an_unsupported_media_plan_type(self) -> None:
+        candidate = valid_blueprint()
+        candidate["chapters"][0]["lessons"][0]["units"][0]["media_plan"]["type"] = "podcast"
+
+        with self.assertRaises(LessonAuthorBlueprintValidationError) as raised:
+            parse_and_validate_lesson_author_blueprint(json.dumps(candidate, ensure_ascii=False))
+
+        self.assertIn("media_plan.type", str(raised.exception))
+
+    def test_blueprint_rejects_unit_plan_without_html_explanation(self) -> None:
+        candidate = valid_blueprint()
+        unit = candidate["chapters"][0]["lessons"][0]["units"][0]
+        unit["component_plan"] = [{
+            "type": "problem",
+            "title": "Kiểm tra nhận diện",
+            "rationale": "Kiểm tra khả năng phân biệt rủi ro trong tình huống nguồn.",
+        }]
+        with self.assertRaises(LessonAuthorBlueprintValidationError) as raised:
+            parse_and_validate_lesson_author_blueprint(json.dumps(candidate, ensure_ascii=False))
+        self.assertIn("html explanation", str(raised.exception))
+
+    def test_blueprint_accepts_six_distinct_lessons_in_one_inferred_chapter(self) -> None:
         candidate = valid_blueprint()
         lesson = candidate["chapters"][0]["lessons"][0]
         candidate["chapters"][0]["lessons"] = [
@@ -895,26 +1241,38 @@ class LessonAuthorBlueprintContractTests(unittest.TestCase):
                 "objective": f"Người học thực hiện đúng quy trình làm sạch {index}.",
                 "source_refs": [f"src-{index:03d}"],
             }
-            for index in range(1, 13)
+            for index in range(1, 7)
         ]
 
         parsed = parse_and_validate_lesson_author_blueprint(json.dumps(candidate, ensure_ascii=False))
 
-        self.assertEqual(len(parsed["chapters"][0]["lessons"]), 12)
-        self.assertEqual(parsed["chapters"][0]["lessons"][11]["source_refs"], ["src-012"])
+        self.assertEqual(len(parsed["chapters"][0]["lessons"]), 6)
+        self.assertEqual(parsed["chapters"][0]["lessons"][5]["source_refs"], ["src-006"])
 
-    def test_blueprint_rejects_more_than_twelve_lessons_in_one_chapter(self) -> None:
+    def test_blueprint_accepts_three_source_backed_units_in_one_lesson(self) -> None:
+        candidate = valid_blueprint()
+        unit = candidate["chapters"][0]["lessons"][0]["units"][0]
+        candidate["chapters"][0]["lessons"][0]["units"] = [
+            {**unit, "title": f"Cụm kiến thức nguồn {index}"}
+            for index in range(1, 4)
+        ]
+
+        parsed = parse_and_validate_lesson_author_blueprint(json.dumps(candidate, ensure_ascii=False))
+
+        self.assertEqual(len(parsed["chapters"][0]["lessons"][0]["units"]), 3)
+
+    def test_blueprint_rejects_more_than_six_lessons_in_one_chapter(self) -> None:
         candidate = valid_blueprint()
         lesson = candidate["chapters"][0]["lessons"][0]
         candidate["chapters"][0]["lessons"] = [
             {**lesson, "title": f"Quy trình {index}"}
-            for index in range(1, 14)
+            for index in range(1, 8)
         ]
 
         with self.assertRaises(LessonAuthorBlueprintValidationError) as raised:
             parse_and_validate_lesson_author_blueprint(json.dumps(candidate, ensure_ascii=False))
 
-        self.assertIn("1 to 12 items", str(raised.exception))
+        self.assertIn("1 to 6 items", str(raised.exception))
 
     def test_provider_shape_drift_is_normalized_without_inventing_content(self) -> None:
         candidate = valid_blueprint()
@@ -925,15 +1283,15 @@ class LessonAuthorBlueprintContractTests(unittest.TestCase):
         parsed = parse_and_validate_lesson_author_blueprint(
             "json\n" + json.dumps(candidate),
         )
-        self.assertEqual(parsed["chapters"][0]["duration_minutes"], 45)
         self.assertEqual(parsed["chapters"][0]["source_refs"], ["src-001"])
-        self.assertEqual(parsed["chapters"][0]["lessons"][0]["duration_minutes"], 20)
+        self.assertNotIn("duration_minutes", parsed["chapters"][0])
+        self.assertNotIn("duration_minutes", parsed["chapters"][0]["lessons"][0])
 
     def test_malformed_provider_json_is_repaired_only_when_structure_is_complete(self) -> None:
         candidate = valid_blueprint()
         candidate["summary"] = "Dòng một\nDòng hai"
         raw = json.dumps(candidate, ensure_ascii=False).replace("\\n", "\n")
-        raw = raw.replace("\"assumptions\": [\"Cần xác nhận thời lượng học chính thức.\"]", "\"assumptions\": [\"Cần xác nhận thời lượng học chính thức.\",]")
+        raw = raw.replace("\"assumptions\": [\"Cần xác nhận mức độ đầu vào của người học.\"]", "\"assumptions\": [\"Cần xác nhận mức độ đầu vào của người học.\",]")
         parsed = parse_and_validate_lesson_author_blueprint(raw)
         self.assertEqual(parsed["summary"], "Dòng một\nDòng hai")
 
@@ -958,6 +1316,7 @@ class LessonAuthorBlueprintContractTests(unittest.TestCase):
         self.assertIn(stored_prompt, prompt)
         self.assertIn("<STORED_SYSTEM_PROMPT>", prompt)
         self.assertIn("<SOURCE_MATERIAL>", prompt)
+        self.assertIn("Không lập kế hoạch hoặc trả về thời lượng", prompt)
 
     def test_blueprint_prompt_explains_toc_and_fallback_rules(self) -> None:
         prompt = build_lesson_author_blueprint_prompt(
@@ -969,7 +1328,7 @@ class LessonAuthorBlueprintContractTests(unittest.TestCase):
         self.assertIn("mục lục/tiêu đề nguồn", prompt)
         self.assertIn("Không tự tạo mã nguồn", prompt)
         self.assertIn("Không đưa hậu tố phạm vi nguồn", prompt)
-        self.assertIn("1 to 12 chapters and 1 to 12 lessons", prompt)
+        self.assertIn("1 to 12 chapters, 1 to 6 lessons", prompt)
         self.assertIn("authorized whole-course operation", prompt)
 
     def test_toc_structure_canonicalizes_chapter_name_and_source_ref(self) -> None:
@@ -1194,17 +1553,17 @@ class LessonAuthorBlueprintRetryTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("<SERVER_VALIDATION_FEEDBACK>", retry_prompt)
         self.assertIn("Blueprint response is not valid JSON.", retry_prompt)
 
-    async def test_retry_receives_structural_feedback_and_accepts_twelve_lessons(self) -> None:
+    async def test_retry_receives_structural_feedback_and_accepts_six_lessons(self) -> None:
         invalid_candidate = valid_blueprint()
         lesson = invalid_candidate["chapters"][0]["lessons"][0]
         invalid_candidate["chapters"][0]["lessons"] = [
             {**lesson, "title": f"Quy trình {index}"}
-            for index in range(1, 14)
+            for index in range(1, 8)
         ]
         repaired_candidate = valid_blueprint()
         repaired_candidate["chapters"][0]["lessons"] = [
             {**lesson, "title": f"Quy trình {index}"}
-            for index in range(1, 13)
+            for index in range(1, 7)
         ]
         usage = AiUsage(inputTokens=10, outputTokens=10, totalTokens=20)
 
@@ -1220,9 +1579,9 @@ class LessonAuthorBlueprintRetryTests(unittest.IsolatedAsyncioTestCase):
                 "SERVER MODE: COURSE_BLUEPRINT.",
             )
 
-        self.assertEqual(len(blueprint["chapters"][0]["lessons"]), 12)
+        self.assertEqual(len(blueprint["chapters"][0]["lessons"]), 6)
         retry_prompt = generate.await_args_list[1].args[2]
-        self.assertIn("chapters[0].lessons must contain 1 to 12 items.", retry_prompt)
+        self.assertIn("chapters[0].lessons must contain 1 to 6 items.", retry_prompt)
 
     async def test_persistent_invalid_candidates_raise_safe_error_with_usage(self) -> None:
         attempt_usage = AiUsage(inputTokens=10, outputTokens=2, totalTokens=12)
@@ -1239,6 +1598,45 @@ class LessonAuthorBlueprintRetryTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(generate.await_count, 2)
         self.assertEqual(raised.exception.code, "BLUEPRINT_INVALID_JSON")
         self.assertEqual(raised.exception.usage.totalTokens, 24)
+
+    async def test_truncated_blueprint_response_uses_source_locked_structure_fallback(self) -> None:
+        request = blueprint_request()
+        request.course_context = "Course: Workplace Safety\nDescription: Source-backed training."
+        source_nodes = [
+            {"source_ref": "src-001", "title": "Hazard identification", "level": 1, "order": 1},
+            {"source_ref": "src-002", "title": "Risk controls", "level": 1, "order": 2},
+        ]
+        attempt_usage = AiUsage(inputTokens=10, outputTokens=2, totalTokens=12)
+
+        with patch(
+            "app.main.generate_content",
+            new=AsyncMock(side_effect=[("{", attempt_usage), ("{", attempt_usage)]),
+        ) as generate:
+            blueprint, usage = await generate_validated_lesson_author_blueprint(
+                request,
+                "SERVER MODE: COURSE_BLUEPRINT.",
+                {"src-001", "src-002"},
+                structure_source="toc",
+                authoritative_source_nodes=source_nodes,
+                source_structure_nodes=source_nodes,
+            )
+
+        self.assertEqual(generate.await_count, 2)
+        self.assertEqual(blueprint["title"], "Workplace Safety")
+        self.assertEqual(
+            [chapter["title"] for chapter in blueprint["chapters"]],
+            ["Hazard identification", "Risk controls"],
+        )
+        unit = blueprint["chapters"][0]["lessons"][0]["units"][0]
+        self.assertEqual([component["type"] for component in unit["component_plan"]], ["html", "la_faq"])
+        self.assertEqual(usage.totalTokens, 24)
+        retry_prompt = generate.await_args_list[1].args[2]
+        self.assertIn("SERVER BLUEPRINT REPAIR", retry_prompt)
+        self.assertNotIn("under 4,000 output tokens", retry_prompt)
+        self.assertEqual(
+            generate.await_args_list[0].kwargs["request_timeout_ms"],
+            settings.blueprint_provider_request_timeout_ms,
+        )
 
 
 if __name__ == "__main__":

@@ -171,6 +171,31 @@ class SourceStructureTests(unittest.TestCase):
         self.assertEqual(manifest["pages"], [1, 3])
         self.assertEqual([fact["fact_id"] for fact in manifest["facts"]], ["p3-f1"])
 
+    def test_paginated_manifest_resolves_toc_source_ref_from_matching_page_range(self) -> None:
+        manifest = build_source_coverage_manifest(
+            [{
+                "document_id": "doc-hse",
+                "source_page": 5,
+                "chunk_no": 3,
+                "content": "Nội dung chính xác thuộc phạm vi Chương một.",
+            }],
+            structure_nodes=[{
+                "document_id": "doc-hse",
+                "source_ref": "src-001",
+                "title": "Chương một (từ trang 4 đến trang 6)",
+            }],
+            target_source_refs={"src-001"},
+            target_scopes=[{
+                "document_id": "doc-hse",
+                "source_ref": "src-001",
+                "start_page": 4,
+                "end_page": 6,
+            }],
+        )
+
+        self.assertFalse(manifest["scope_unresolved"])
+        self.assertEqual(manifest["resolved_source_refs"], ["src-001"])
+
     def test_unpaginated_manifest_scopes_inferred_docx_to_blueprint_refs(self) -> None:
         manifest = build_source_coverage_manifest(
             [{
@@ -236,6 +261,19 @@ class SourceStructureTests(unittest.TestCase):
         self.assertGreater(len(facts), 1)
         self.assertTrue(all(len(fact) <= 420 for fact in facts))
         self.assertEqual("".join(facts), source)
+
+    def test_source_fact_extraction_rejoins_wrapped_pdf_sentences(self) -> None:
+        facts = extract_source_coverage_facts(
+            "An toàn lao động: Trạng thái làm việc không xảy ra tai\n"
+            "nạn hoặc tổn thương.\n"
+            "Sức khỏe nghề nghiệp: Phòng ngừa và kiểm soát\n"
+            "các yếu tố có thể ảnh hưởng đến người lao động."
+        )
+
+        self.assertEqual(facts, [
+            "An toàn lao động: Trạng thái làm việc không xảy ra tai nạn hoặc tổn thương.",
+            "Sức khỏe nghề nghiệp: Phòng ngừa và kiểm soát các yếu tố có thể ảnh hưởng đến người lao động.",
+        ])
 
     def test_source_coverage_requires_every_manifest_fact(self) -> None:
         manifest = build_source_coverage_manifest([
