@@ -166,6 +166,15 @@ def valid_proposal() -> dict[str, object]:
 
 
 class LessonAuthorBlueprintContractTests(unittest.TestCase):
+    def test_proposal_request_accepts_the_full_provider_output_window(self) -> None:
+        request = proposal_request()
+        payload = request.model_dump()
+        payload["max_output_tokens"] = 65_536
+
+        full_budget_request = RagLessonAuthorRequest(**payload)
+
+        self.assertEqual(full_budget_request.max_output_tokens, 65_536)
+
     def test_blueprint_request_accepts_the_full_provider_output_window(self) -> None:
         request = blueprint_request()
         payload = request.model_dump()
@@ -623,6 +632,24 @@ class LessonAuthorBlueprintContractTests(unittest.TestCase):
         })
         reason = validate_staged_unit_content(unit, expected)
         self.assertIn("outside", reason or "")
+
+    def test_staged_unit_rejects_extra_top_level_source_fact_ids(self) -> None:
+        expected = {
+            "component_types": ["html"],
+            "source_fact_ids": ["p3-f1", "p3-f2"],
+        }
+        unit = {
+            "title": "Mục kiểm tra",
+            "source_fact_ids": ["p3-f1", "p3-f2", "p9-f1"],
+            "components": [{
+                "type": "html",
+                "source_fact_ids": ["p3-f1", "p3-f2"],
+                "html": "<p>Người học cần quan sát điều kiện làm việc, nhận diện các yếu tố nguy hiểm và phân tích rủi ro trước khi thực hiện nhiệm vụ. Kết quả phân tích phải được trao đổi với người phụ trách để lựa chọn biện pháp kiểm soát phù hợp, theo dõi việc thực hiện và cập nhật khi điều kiện thay đổi.</p>",
+            }],
+        }
+
+        reason = validate_staged_unit_content(unit, expected)
+        self.assertIn("do not exactly match", reason or "")
 
     def test_staged_unit_context_is_scoped_to_assigned_pages(self) -> None:
         coverage, source_context = staged_unit_source_material(

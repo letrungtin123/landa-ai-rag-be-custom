@@ -180,7 +180,10 @@ class RagChatRequest(BaseModel):
     conversation_id: str
     target: Literal["admin", "learner", "lesson_author"]
     model: str
-    max_output_tokens: int = Field(default=2048, ge=1, le=32768)
+    # The backend's tenant reservation controls capacity. Lesson-author
+    # proposals need the same provider window as Blueprints to avoid cutting
+    # off source-complete staged unit content.
+    max_output_tokens: int = Field(default=2048, ge=1, le=65_536)
     embedding_model: str
     embedding_dimensions: int = 768
     system_prompt: str
@@ -5573,6 +5576,20 @@ def validate_staged_unit_content(
             for fact_id in expected.get("source_fact_ids", [])
             if str(fact_id).strip()
         }
+        unit_fact_ids = {
+            str(fact_id).strip()
+            for fact_id in unit.get("source_fact_ids", [])
+            if str(fact_id).strip()
+        }
+        if unit_fact_ids != expected_fact_ids:
+            missing = expected_fact_ids - unit_fact_ids
+            unexpected = unit_fact_ids - expected_fact_ids
+            details = []
+            if missing:
+                details.append(f"missing {sorted(missing)[:4]}")
+            if unexpected:
+                details.append(f"outside {sorted(unexpected)[:4]}")
+            return "Unit source facts do not exactly match the approved Blueprint assignment: " + "; ".join(details)
         assigned_fact_ids: set[str] = set()
         html_fact_ids: set[str] = set()
         for component in actual_components:
@@ -5907,7 +5924,7 @@ async def generate_staged_lesson_author_proposal(
                 if isinstance(generated, dict)
                 else "Unit content is missing or not an object."
             )
-            if generated is None or expected_fact_ids - generated_fact_ids or generated_validation_reason:
+            if generated is None or generated_fact_ids != expected_fact_ids or generated_validation_reason:
                 logger.warning(
                     "lesson_author_staged_unit_recovery batch=%s title=%s reason=%s",
                     batch_index,
@@ -5971,7 +5988,7 @@ async def generate_staged_lesson_author_proposal(
                     generated = None
                     generated_fact_ids = set()
                     recovery_validation_reason = str(error.detail or error)
-                if generated is None or expected_fact_ids - generated_fact_ids or recovery_validation_reason:
+                if generated is None or generated_fact_ids != expected_fact_ids or recovery_validation_reason:
                     fallback_expected, dropped_types = prepare_source_locked_expected(
                         expected,
                         source_coverage_manifest,
@@ -5994,6 +6011,11 @@ async def generate_staged_lesson_author_proposal(
                             )
                             expected = fallback_expected
                             generated = fallback_unit
+                            expected_fact_ids = {
+                                str(fact_id).strip()
+                                for fact_id in expected.get("source_fact_ids", [])
+                                if str(fact_id).strip()
+                            }
                             generated_fact_ids = set(expected_fact_ids)
                             recovery_validation_reason = None
                         else:
@@ -6001,7 +6023,7 @@ async def generate_staged_lesson_author_proposal(
                                 f"{recovery_validation_reason or 'unit không hợp lệ'}; "
                                 f"source fallback: {fallback_validation_reason}"
                             )
-                if generated is None or expected_fact_ids - generated_fact_ids or recovery_validation_reason:
+                if generated is None or generated_fact_ids != expected_fact_ids or recovery_validation_reason:
                     raise LessonAuthorProposalValidationError(
                         f"Content batch {batch_index} không trả unit hợp lệ cho '{expected['unit_title']}': "
                         f"{recovery_validation_reason or 'thiếu source fact bắt buộc'}.",
@@ -6009,6 +6031,11 @@ async def generate_staged_lesson_author_proposal(
             if not isinstance(generated, dict):
                 raise LessonAuthorProposalValidationError(f"Content batch {batch_index} có unit không hợp lệ.")
             generated["component_plan"] = expected.get("component_plan", [])
+            generated["source_fact_ids"] = [
+                str(fact_id).strip()
+                for fact_id in expected.get("source_fact_ids", [])
+                if str(fact_id).strip()
+            ]
             content_map[expected_title] = generated
 
     assembled = dict(skeleton)
