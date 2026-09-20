@@ -42,6 +42,10 @@ class LessonAuthorBlueprintComponentPlanResponse(BaseModel):
     type: str
     title: str
     rationale: str
+    purpose: str | None = None
+    source_fact_ids: list[str] = Field(default_factory=list)
+    content_requirements: list[str] = Field(default_factory=list)
+    required_artifacts: list[dict[str, Any]] = Field(default_factory=list)
 
 
 class LessonAuthorBlueprintMediaPlanResponse(BaseModel):
@@ -76,6 +80,7 @@ class LessonAuthorBlueprintChapterResponse(BaseModel):
 
 
 class LessonAuthorBlueprintResponse(BaseModel):
+    content_contract_version: int | None = None
     title: str
     summary: str
     target_audience: str
@@ -108,14 +113,26 @@ def _string_array_schema(description: str) -> types.Schema:
 
 
 def build_lesson_author_blueprint_response_schema() -> types.Schema:
+    artifact_schema = types.Schema(
+        type=types.Type.OBJECT,
+        required=["type"],
+        properties={
+            "type": _string_schema("One artifact: ordered_list, checklist, table, warning, requirement, exception, or comparison."),
+            "minimum_items": types.Schema(type=types.Type.INTEGER, description="Minimum source items that must remain visible."),
+        },
+    )
     component_plan_schema = types.Schema(
         type=types.Type.OBJECT,
         description="A planned learning component. This is architecture only, never component payload data.",
-        required=["type", "title", "rationale"],
+        required=["type", "title", "rationale", "purpose", "source_fact_ids", "content_requirements"],
         properties={
             "type": _string_schema("One supported type: html, problem, la_faq, la_sortable, la_crossword, or la_diagram."),
             "title": _string_schema("Short learner-facing component title."),
             "rationale": _string_schema("A concise reason this format fits the lesson objective and source evidence."),
+            "purpose": _string_schema("One instructional purpose: explain, assess, clarify, sequence, relationship, or terminology."),
+            "source_fact_ids": _string_array_schema("Exact unit source fact IDs owned by this component."),
+            "content_requirements": _string_array_schema("Specific source topics, steps, or fidelity requirements this component must convey."),
+            "required_artifacts": types.Schema(type=types.Type.ARRAY, items=artifact_schema),
         },
     )
     media_plan_schema = types.Schema(
@@ -191,6 +208,7 @@ def build_lesson_author_blueprint_response_schema() -> types.Schema:
         type=types.Type.OBJECT,
         description="A review-only enterprise course Blueprint based on supplied source material.",
         required=[
+            "content_contract_version",
             "title",
             "summary",
             "target_audience",
@@ -201,6 +219,7 @@ def build_lesson_author_blueprint_response_schema() -> types.Schema:
             "chapters",
         ],
         properties={
+            "content_contract_version": types.Schema(type=types.Type.INTEGER, description="Must be 1."),
             "title": _string_schema("Course title."),
             "summary": _string_schema("Concise course design summary."),
             "target_audience": _string_schema("Primary intended learners."),
@@ -638,11 +657,44 @@ def validate_lesson_author_blueprint(value: Any) -> dict[str, Any]:
                             "component_plan must not repeat a component type within one unit.",
                         )
                     seen_component_types.add(component_type)
+                    purpose = str(plan.get("purpose") or "").strip().casefold()
+                    if purpose not in {"explain", "assess", "clarify", "sequence", "relationship", "terminology"}:
+                        purpose = ""
+                    content_requirements = _require_text_array(
+                        plan.get("content_requirements") or [],
+                        "component_plan.content_requirements",
+                        min_items=0,
+                        max_items=8,
+                        item_max_length=500,
+                    )
+                    artifacts: list[dict[str, Any]] = []
+                    for artifact_value in plan.get("required_artifacts") or []:
+                        if not isinstance(artifact_value, dict):
+                            continue
+                        artifact_type = str(artifact_value.get("type") or "").strip().casefold()
+                        if artifact_type not in {"ordered_list", "checklist", "table", "warning", "requirement", "exception", "comparison"}:
+                            continue
+                        minimum_value = artifact_value.get("minimum_items")
+                        minimum_items = minimum_value if isinstance(minimum_value, int) and minimum_value > 0 else None
+                        artifacts.append({
+                            "type": artifact_type,
+                            **({"minimum_items": min(minimum_items, 100)} if minimum_items else {}),
+                        })
                     component_plan.append(
                         {
                             "type": component_type,
                             "title": _require_text(plan.get("title"), "component_plan.title", 180),
                             "rationale": _require_text(plan.get("rationale"), "component_plan.rationale", 240),
+                            **({"purpose": purpose} if purpose else {}),
+                            "source_fact_ids": _require_text_array(
+                                plan.get("source_fact_ids") or [],
+                                "component_plan.source_fact_ids",
+                                min_items=0,
+                                max_items=160,
+                                item_max_length=96,
+                            ),
+                            **({"content_requirements": content_requirements} if content_requirements else {}),
+                            **({"required_artifacts": artifacts[:6]} if artifacts else {}),
                         }
                     )
                 if "html" not in seen_component_types:
@@ -753,6 +805,7 @@ def validate_lesson_author_blueprint(value: Any) -> dict[str, Any]:
         )
 
     return {
+        "content_contract_version": 1,
         "title": _require_text(raw.get("title"), "title", 220),
         "summary": _require_text(raw.get("summary"), "summary", 1400),
         "target_audience": _require_text(raw.get("target_audience"), "target_audience", 500),

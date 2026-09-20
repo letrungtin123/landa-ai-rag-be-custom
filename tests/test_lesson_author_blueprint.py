@@ -25,6 +25,7 @@ from app.main import (
     RagLessonAuthorRequest,
     build_lesson_author_blueprint_prompt,
     allocate_blueprint_source_fact_ids,
+    apply_phase_one_blueprint_component_contract,
     build_lesson_author_proposal_response_schema,
     build_source_locked_staged_skeleton,
     build_staged_component_plan,
@@ -193,7 +194,10 @@ class LessonAuthorBlueprintContractTests(unittest.TestCase):
         self.assertEqual(lesson_schema.required, ["title", "units"])
         unit_schema = lesson_schema.properties["units"].items
         self.assertEqual(unit_schema.required, ["title", "component_plan", "source_fact_ids"])
-        self.assertEqual(unit_schema.properties["component_plan"].items.required, ["type", "rationale", "source_fact_ids"])
+        self.assertEqual(
+            unit_schema.properties["component_plan"].items.required,
+            ["type", "rationale", "purpose", "source_fact_ids", "content_requirements"],
+        )
 
     def test_proposal_schema_requires_a_complete_lesson_tree(self) -> None:
         schema = build_lesson_author_proposal_response_schema()
@@ -203,7 +207,10 @@ class LessonAuthorBlueprintContractTests(unittest.TestCase):
         self.assertEqual(lesson_schema.required, ["title", "units"])
         unit_schema = lesson_schema.properties["units"].items
         self.assertEqual(unit_schema.required, ["title", "components"])
-        self.assertEqual(unit_schema.properties["components"].items.required, ["type", "source_fact_ids"])
+        self.assertEqual(
+            unit_schema.properties["components"].items.required,
+            ["type", "source_fact_ids", "covered_source_fact_ids"],
+        )
 
         client = genai.Client(api_key="test-key")
         payload = models._GenerateContentConfig_to_mldev(
@@ -218,7 +225,10 @@ class LessonAuthorBlueprintContractTests(unittest.TestCase):
     def test_staged_unit_schema_is_bounded_and_serializable(self) -> None:
         schema = build_lesson_author_unit_response_schema()
         self.assertEqual(schema.required, ["title", "components", "source_fact_ids"])
-        self.assertEqual(schema.properties["components"].items.required, ["type", "source_fact_ids"])
+        self.assertEqual(
+            schema.properties["components"].items.required,
+            ["type", "source_fact_ids", "covered_source_fact_ids"],
+        )
 
         client = genai.Client(api_key="test-key")
         payload = models._GenerateContentConfig_to_mldev(
@@ -286,6 +296,45 @@ class LessonAuthorBlueprintContractTests(unittest.TestCase):
         self.assertLessEqual(len(units), 4)
         self.assertEqual(assigned, [fact["fact_id"] for fact in manifest["facts"]])
         self.assertEqual(len(assigned), len(set(assigned)))
+
+    def test_phase_one_component_contract_assigns_every_fact_to_html_and_a_supported_component(self) -> None:
+        blueprint = valid_blueprint()
+        unit = blueprint["chapters"][0]["lessons"][0]["units"][0]
+        unit["source_fact_ids"] = ["p1-f1", "p1-f2"]
+
+        completed = apply_phase_one_blueprint_component_contract(blueprint)
+        plan = completed["chapters"][0]["lessons"][0]["units"][0]["component_plan"]
+
+        self.assertEqual(completed["content_contract_version"], 1)
+        self.assertEqual(plan[0]["source_fact_ids"], ["p1-f1", "p1-f2"])
+        self.assertEqual(plan[0]["purpose"], "explain")
+        self.assertEqual(plan[1]["source_fact_ids"], ["p1-f1"])
+        self.assertTrue(plan[0]["content_requirements"])
+
+    def test_phase_one_staged_validator_rejects_missing_declared_component_coverage(self) -> None:
+        expected = {
+            "component_types": ["html"],
+            "source_fact_ids": ["p1-f1"],
+            "component_plan": [{
+                "type": "html",
+                "source_fact_ids": ["p1-f1"],
+                "purpose": "explain",
+                "content_requirements": ["Explain the source fact."],
+            }],
+        }
+        unit = {
+            "title": "Nội dung",
+            "source_fact_ids": ["p1-f1"],
+            "components": [{
+                "type": "html",
+                "title": "Nội dung",
+                "source_fact_ids": ["p1-f1"],
+                "html": "<p>" + ("Nội dung nguồn đầy đủ. " * 20) + "</p>",
+            }],
+        }
+
+        reason = validate_staged_unit_content(unit, expected)
+        self.assertIn("covered_source_fact_ids", reason or "")
 
     def test_blueprint_locked_source_skeleton_preserves_units_and_component_types(self) -> None:
         request = proposal_request(
@@ -378,6 +427,7 @@ class LessonAuthorBlueprintContractTests(unittest.TestCase):
                 "title": "Nhận diện mối nguy",
                 "html": html,
                 "source_fact_ids": ["p10-f1"],
+                "covered_source_fact_ids": ["p10-f1"],
             }],
         }, ensure_ascii=False)
         usage = AiUsage(inputTokens=1, outputTokens=1, totalTokens=2)
@@ -1087,6 +1137,7 @@ class LessonAuthorBlueprintContractTests(unittest.TestCase):
         self.assertEqual(
             LESSON_AUTHOR_BLUEPRINT_RESPONSE_SCHEMA.required,
             [
+                "content_contract_version",
                 "title",
                 "summary",
                 "target_audience",
@@ -1155,7 +1206,10 @@ class LessonAuthorBlueprintContractTests(unittest.TestCase):
         unit_schema = lesson_schema.properties["units"].items
         plan_schema = unit_schema.properties["component_plan"].items
         self.assertIn("units", lesson_schema.required)
-        self.assertEqual(plan_schema.required, ["type", "title", "rationale"])
+        self.assertEqual(
+            plan_schema.required,
+            ["type", "title", "rationale", "purpose", "source_fact_ids", "content_requirements"],
+        )
         self.assertNotIn("html", plan_schema.properties)
         self.assertIn("media_plan", unit_schema.properties)
         media_schema = unit_schema.properties["media_plan"]
