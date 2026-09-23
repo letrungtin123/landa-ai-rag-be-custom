@@ -19,6 +19,7 @@ from app.lesson_author_blueprint import (
 )
 from app.main import (
     AiUsage,
+    CourseArchitectSemanticScopeError,
     LessonAuthorBlueprintGenerationError,
     LessonAuthorProposalValidationError,
     RagLessonAuthorBlueprintRequest,
@@ -50,6 +51,7 @@ from app.main import (
     validate_staged_skeleton_source_facts,
     validate_lesson_author_proposal_shape,
 )
+from app.workflows.contracts import WorkflowValidationResult
 
 
 def valid_blueprint() -> dict[str, object]:
@@ -382,6 +384,108 @@ class LessonAuthorBlueprintContractTests(unittest.TestCase):
         )
         self.assertTrue(all(unit["_blueprint_component_plan_locked"] for unit in lesson["units"]))
 
+    def test_blueprint_locked_source_skeleton_preserves_persisted_fact_ownership(self) -> None:
+        request = proposal_request(
+            blueprint_architecture={
+                "chapter_title": "Thực hành HIRA",
+                "lessons": [{
+                    "title": "Phân tích mối nguy",
+                    "units": [
+                        {
+                            "title": "Nhận diện mối nguy",
+                            "source_fact_ids": ["p12-f1", "p12-f2"],
+                            "component_plan": [
+                                {
+                                    "type": "html",
+                                    "title": "Nội dung",
+                                    "rationale": "Giải thích nguồn.",
+                                    "source_fact_ids": ["p12-f1", "p12-f2"],
+                                },
+                                {
+                                    "type": "la_diagram",
+                                    "title": "Quy trình",
+                                    "rationale": "Minh họa quy trình nguồn.",
+                                    "source_fact_ids": ["p12-f1"],
+                                },
+                            ],
+                        },
+                        {
+                            "title": "Đánh giá rủi ro",
+                            "source_fact_ids": ["p12-f3", "p12-f4"],
+                            "component_plan": [
+                                {
+                                    "type": "html",
+                                    "title": "Nội dung",
+                                    "rationale": "Giải thích nguồn.",
+                                    "source_fact_ids": ["p12-f3", "p12-f4"],
+                                },
+                                {
+                                    "type": "problem",
+                                    "title": "Kiểm tra",
+                                    "rationale": "Kiểm tra nguồn.",
+                                    "source_fact_ids": ["p12-f3"],
+                                },
+                            ],
+                        },
+                    ],
+                }],
+            },
+        )
+        # The manifest order intentionally differs from the Blueprint order.
+        # The fallback must not redistribute facts based on this order.
+        manifest = {
+            "facts": [
+                {"fact_id": "p12-f3", "text": "Mức độ nghiêm trọng được đánh giá trước khi chọn biện pháp kiểm soát."},
+                {"fact_id": "p12-f4", "text": "Xác suất xảy ra được ghi nhận theo điều kiện làm việc thực tế."},
+                {"fact_id": "p12-f1", "text": "Bước 1 quan sát công việc. Bước 2 nhận diện mối nguy. Bước 3 ghi nhận điều kiện."},
+                {"fact_id": "p12-f2", "text": "Mỗi mối nguy cần được mô tả cùng người có thể bị ảnh hưởng."},
+            ],
+        }
+
+        skeleton = build_source_locked_staged_skeleton(request, manifest)
+        units = skeleton["chapters"][0]["lessons"][0]["units"]
+
+        self.assertEqual(units[0]["source_fact_ids"], ["p12-f1", "p12-f2"])
+        self.assertEqual(units[1]["source_fact_ids"], ["p12-f3", "p12-f4"])
+        self.assertEqual(
+            [plan["source_fact_ids"] for plan in units[0]["component_plan"]],
+            [["p12-f1", "p12-f2"], ["p12-f1"]],
+        )
+        self.assertEqual(
+            [plan["source_fact_ids"] for plan in units[1]["component_plan"]],
+            [["p12-f3", "p12-f4"], ["p12-f3"]],
+        )
+        batches = extract_lesson_author_unit_batches(skeleton, manifest)
+        validate_staged_skeleton_source_facts(batches, manifest)
+
+    def test_blueprint_locked_source_skeleton_rejects_missing_persisted_fact(self) -> None:
+        request = proposal_request(
+            blueprint_architecture={
+                "chapter_title": "Thực hành HIRA",
+                "lessons": [{
+                    "title": "Phân tích mối nguy",
+                    "units": [{
+                        "title": "Nhận diện mối nguy",
+                        "source_fact_ids": ["p12-f1"],
+                        "component_plan": [{
+                            "type": "html",
+                            "title": "Nội dung",
+                            "rationale": "Giải thích nguồn.",
+                            "source_fact_ids": ["p12-f1"],
+                        }],
+                    }],
+                }],
+            },
+        )
+
+        with self.assertRaisesRegex(LessonAuthorProposalValidationError, "thiếu source fact đã được duyệt"):
+            build_source_locked_staged_skeleton(request, {
+                "facts": [{
+                    "fact_id": "p12-f2",
+                    "text": "Một fact khác vẫn còn trong manifest.",
+                }],
+            })
+
     def test_blueprint_draft_manifest_uses_only_persisted_fact_contract(self) -> None:
         manifest, missing = restrict_blueprint_draft_source_manifest(
             {
@@ -505,7 +609,7 @@ class LessonAuthorBlueprintContractTests(unittest.TestCase):
             {fact["fact_id"] for fact in manifest["facts"]},
         )
 
-    def test_component_plan_is_evidence_gated_and_not_html_only(self) -> None:
+    def test_legacy_staged_component_plan_does_not_create_decorative_interactions(self) -> None:
         manifest = {
             "facts": [
                 {"fact_id": "p3-f1", "source_page": 3, "text": "Câu hỏi kiểm tra: Định nghĩa an toàn lao động là gì?"},
@@ -526,7 +630,9 @@ class LessonAuthorBlueprintContractTests(unittest.TestCase):
             manifest,
         )
         self.assertEqual([item["type"] for item in theory_plan], ["html", "problem"])
-        self.assertEqual([item["type"] for item in process_plan], ["html", "la_diagram", "la_sortable"])
+        # Phase 2 requires an explicit pedagogical intent before a legacy
+        # procedure becomes a diagram or ordering interaction.
+        self.assertEqual([item["type"] for item in process_plan], ["html"])
         self.assertTrue(all(item["source_fact_ids"] for item in process_plan))
 
     def test_component_plan_does_not_turn_taxonomy_into_ordering_activity(self) -> None:
@@ -1137,12 +1243,14 @@ class LessonAuthorBlueprintContractTests(unittest.TestCase):
         self.assertEqual(
             LESSON_AUTHOR_BLUEPRINT_RESPONSE_SCHEMA.required,
             [
+                "architecture_contract_version",
                 "content_contract_version",
                 "title",
                 "summary",
                 "target_audience",
                 "prerequisites",
                 "learning_outcomes",
+                "course_outcomes",
                 "assessment_strategy",
                 "assumptions",
                 "chapters",
@@ -1204,17 +1312,26 @@ class LessonAuthorBlueprintContractTests(unittest.TestCase):
         chapter_schema = LESSON_AUTHOR_BLUEPRINT_RESPONSE_SCHEMA.properties["chapters"].items
         lesson_schema = chapter_schema.properties["lessons"].items
         unit_schema = lesson_schema.properties["units"].items
-        plan_schema = unit_schema.properties["component_plan"].items
+        block_schema = unit_schema.properties["learning_blocks"].items
         self.assertIn("units", lesson_schema.required)
         self.assertEqual(
-            plan_schema.required,
-            ["type", "title", "rationale", "purpose", "source_fact_ids", "content_requirements"],
+            block_schema.required,
+            [
+                "id", "intent", "importance", "concept_ids", "primary_concept_ids",
+                "primary_evidence_scope_ids", "supporting_evidence_scope_ids", "content",
+            ],
         )
-        self.assertNotIn("html", plan_schema.properties)
+        self.assertNotIn("source_fact_ids", block_schema.properties)
+        self.assertNotIn("source_fact_ids", unit_schema.properties)
+        self.assertIn("concept_ids", block_schema.properties)
+        self.assertIn("source_refs", block_schema.properties)
+        self.assertNotIn("component_plan", unit_schema.properties)
+        self.assertNotIn("html", block_schema.properties)
+        self.assertNotIn("type", block_schema.properties)
         self.assertIn("media_plan", unit_schema.properties)
         media_schema = unit_schema.properties["media_plan"]
         self.assertEqual(media_schema.required, ["type", "title", "content_outline", "rationale"])
-        self.assertNotIn("choices", plan_schema.properties)
+        self.assertNotIn("choices", block_schema.properties)
 
     def test_response_schema_serializes_with_the_installed_gemini_developer_api_sdk(self) -> None:
         client = genai.Client(api_key="test-key")
@@ -1251,6 +1368,40 @@ class LessonAuthorBlueprintContractTests(unittest.TestCase):
             )
 
         self.assertEqual(json.loads(text)["title"], "Nhập môn an toàn thông tin")
+
+    def test_generate_content_emits_provider_usage_without_relabeling_estimates(self) -> None:
+        telemetry: list[dict[str, object]] = []
+        response = SimpleNamespace(
+            text=json.dumps(valid_blueprint(), ensure_ascii=False),
+            parsed=None,
+            usage_metadata=SimpleNamespace(
+                prompt_token_count=321,
+                candidates_token_count=123,
+                total_token_count=444,
+            ),
+            candidates=[SimpleNamespace(finish_reason="MAX_TOKENS")],
+            prompt_feedback=None,
+        )
+        client = MagicMock()
+        client.models.generate_content.return_value = response
+        with patch("app.main.genai.Client", return_value=client):
+            asyncio.run(
+                generate_content(
+                    "test-key",
+                    "gemini-3.5-flash",
+                    "SERVER MODE: COURSE_BLUEPRINT.",
+                    max_output_tokens=4096,
+                    json_mode=True,
+                    response_schema=LESSON_AUTHOR_BLUEPRINT_RESPONSE_SCHEMA,
+                    on_provider_telemetry=telemetry.append,
+                )
+            )
+        provider_event = next(event for event in telemetry if event.get("usage_source") == "provider")
+        self.assertEqual(provider_event["provider_input_tokens"], 321)
+        self.assertEqual(provider_event["provider_output_tokens"], 123)
+        self.assertEqual(provider_event["provider_finish_reason"], "MAX_TOKENS")
+        self.assertNotIn("prompt", provider_event)
+        self.assertNotIn("response_text", provider_event)
 
     def test_generate_content_passes_thinking_config_for_structured_generation(self) -> None:
         response = SimpleNamespace(
@@ -1407,9 +1558,13 @@ class LessonAuthorBlueprintContractTests(unittest.TestCase):
         )
         self.assertIn("<SOURCE_OUTLINE>", prompt)
         self.assertIn("mục lục/tiêu đề nguồn", prompt)
-        self.assertIn("Không tự tạo mã nguồn", prompt)
+        self.assertIn("không tự tạo ID hoặc mã nguồn", prompt)
+        self.assertIn("source_evidence_scope", prompt)
+        self.assertIn("primary_evidence_scope_ids", prompt)
+        self.assertIn("supporting_evidence_scope_ids", prompt)
+        self.assertIn("canonical fact ownership", prompt)
         self.assertIn("Không đưa hậu tố phạm vi nguồn", prompt)
-        self.assertIn("1 to 12 chapters, 1 to 6 lessons", prompt)
+        self.assertIn("1-12 chapters, 1-6 lessons", prompt)
         self.assertIn("authorized whole-course operation", prompt)
 
     def test_toc_structure_canonicalizes_chapter_name_and_source_ref(self) -> None:
@@ -1680,6 +1835,132 @@ class LessonAuthorBlueprintRetryTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(raised.exception.code, "BLUEPRINT_INVALID_JSON")
         self.assertEqual(raised.exception.usage.totalTokens, 24)
 
+    async def test_semantic_scope_failure_regenerates_the_full_architect_before_allocation(self) -> None:
+        usage = AiUsage(inputTokens=10, outputTokens=10, totalTokens=20)
+        events: list[dict[str, object]] = []
+        validation_calls = 0
+        semantic_issue = {
+            "code": "AMBIGUOUS_INSTRUCTIONAL_SCOPE",
+            "severity": "error",
+            "message": "safe static message",
+            "path": "chapter_1.lesson_1.unit_1.block_1",
+            "related_paths": [
+                "chapter_1.lesson_1.unit_1.block_1",
+                "chapter_1.lesson_2.unit_1.block_1",
+            ],
+            "concept_id": "concept_1",
+            "section_id": "src_section_1",
+            "expected_primary_owner_count": 1,
+            "actual_primary_owner_count": 2,
+            "ownership_level": "learning_block",
+            "scope_classification": "concept_primary_ownership",
+            "coverage_state": "ambiguous",
+            "safe_reason": "MULTIPLE_PRIMARY_DESTINATIONS",
+        }
+
+        def semantic_validator(_blueprint: dict[str, object]) -> WorkflowValidationResult:
+            nonlocal validation_calls
+            validation_calls += 1
+            return WorkflowValidationResult([semantic_issue] if validation_calls == 1 else [])
+
+        with patch(
+            "app.main.generate_content",
+            new=AsyncMock(side_effect=[
+                (json.dumps(valid_blueprint(), ensure_ascii=False), usage),
+                (json.dumps(valid_blueprint(), ensure_ascii=False), usage),
+            ]),
+        ) as generate:
+            _blueprint, combined_usage = await generate_validated_lesson_author_blueprint(
+                blueprint_request(),
+                "SERVER MODE: COURSE_BLUEPRINT.",
+                semantic_scope_validator=semantic_validator,
+                emit_diagnostic=events.append,
+            )
+
+        self.assertEqual(generate.await_count, 2)
+        self.assertEqual(combined_usage.totalTokens, 40)
+        retry_prompt = generate.await_args_list[1].args[2]
+        self.assertIn("SERVER ARCHITECT REGENERATION", retry_prompt)
+        self.assertIn("AMBIGUOUS_INSTRUCTIONAL_SCOPE", retry_prompt)
+        self.assertIn("concept_1", retry_prompt)
+        self.assertIn("chapter_1.lesson_1.unit_1.block_1", retry_prompt)
+        self.assertIn("not a scoped repair patch", retry_prompt)
+        semantic_events = [event for event in events if event.get("stage") == "course_architect_semantic_scope_validation"]
+        self.assertEqual([event["event"] for event in semantic_events], ["failed", "passed"])
+        self.assertEqual(semantic_events[0]["findings"][0]["concept_id"], "concept_1")
+
+    async def test_final_semantic_scope_failure_fails_closed_without_source_locked_fallback(self) -> None:
+        usage = AiUsage(inputTokens=10, outputTokens=10, totalTokens=20)
+        semantic_issue = {
+            "code": "ARCHITECTURE_SCOPE_INCOMPLETE",
+            "severity": "error",
+            "message": "safe static message",
+            "path": "chapter_1.lesson_1.unit_1.block_1",
+            "concept_id": "concept_1",
+            "section_id": "src_section_1",
+            "expected_primary_owner_count": 1,
+            "actual_primary_owner_count": 0,
+            "ownership_level": "learning_block",
+            "scope_classification": "concept_primary_ownership",
+            "coverage_state": "missing",
+            "safe_reason": "NO_PRIMARY_DESTINATION",
+        }
+
+        with patch(
+            "app.main.generate_content",
+            new=AsyncMock(side_effect=[
+                (json.dumps(valid_blueprint(), ensure_ascii=False), usage),
+                (json.dumps(valid_blueprint(), ensure_ascii=False), usage),
+            ]),
+        ) as generate:
+            with self.assertRaises(CourseArchitectSemanticScopeError) as raised:
+                await generate_validated_lesson_author_blueprint(
+                    blueprint_request(),
+                    "SERVER MODE: COURSE_BLUEPRINT.",
+                    semantic_scope_validator=lambda _blueprint: WorkflowValidationResult([semantic_issue]),
+                )
+
+        self.assertEqual(generate.await_count, 2)
+        self.assertEqual(raised.exception.code, "ARCHITECTURE_SCOPE_INCOMPLETE")
+        self.assertEqual(raised.exception.usage.totalTokens, 40)
+        self.assertEqual(raised.exception.issues[0]["concept_id"], "concept_1")
+
+    async def test_terminal_schema_failure_is_not_overwritten_by_an_earlier_semantic_failure(self) -> None:
+        usage = AiUsage(inputTokens=10, outputTokens=10, totalTokens=20)
+        semantic_issue = {
+            "code": "ARCHITECTURE_SCOPE_INCOMPLETE", "severity": "error", "message": "safe",
+            "path": "chapter_1.lesson_1.unit_1.block_1",
+        }
+        with patch(
+            "app.main.generate_content",
+            new=AsyncMock(side_effect=[(json.dumps(valid_blueprint()), usage), ("{", usage)]),
+        ):
+            with self.assertRaises(LessonAuthorBlueprintGenerationError) as raised:
+                await generate_validated_lesson_author_blueprint(
+                    blueprint_request(),
+                    "SERVER MODE: COURSE_BLUEPRINT.",
+                    semantic_scope_validator=lambda _candidate: WorkflowValidationResult([semantic_issue]),
+                )
+        self.assertEqual(raised.exception.code, "BLUEPRINT_INVALID_JSON")
+
+    async def test_terminal_semantic_failure_is_not_overwritten_by_an_earlier_schema_failure(self) -> None:
+        usage = AiUsage(inputTokens=10, outputTokens=10, totalTokens=20)
+        semantic_issue = {
+            "code": "ARCHITECTURE_SCOPE_INCOMPLETE", "severity": "error", "message": "safe",
+            "path": "chapter_1.lesson_1.unit_1.block_1",
+        }
+        with patch(
+            "app.main.generate_content",
+            new=AsyncMock(side_effect=[("{", usage), (json.dumps(valid_blueprint()), usage)]),
+        ):
+            with self.assertRaises(CourseArchitectSemanticScopeError) as raised:
+                await generate_validated_lesson_author_blueprint(
+                    blueprint_request(),
+                    "SERVER MODE: COURSE_BLUEPRINT.",
+                    semantic_scope_validator=lambda _candidate: WorkflowValidationResult([semantic_issue]),
+                )
+        self.assertEqual(raised.exception.code, "ARCHITECTURE_SCOPE_INCOMPLETE")
+
     async def test_truncated_blueprint_response_uses_source_locked_structure_fallback(self) -> None:
         request = blueprint_request()
         request.course_context = "Course: Workplace Safety\nDescription: Source-backed training."
@@ -1712,7 +1993,7 @@ class LessonAuthorBlueprintRetryTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual([component["type"] for component in unit["component_plan"]], ["html", "la_faq"])
         self.assertEqual(usage.totalTokens, 24)
         retry_prompt = generate.await_args_list[1].args[2]
-        self.assertIn("SERVER BLUEPRINT REPAIR", retry_prompt)
+        self.assertIn("SERVER ARCHITECT REGENERATION", retry_prompt)
         self.assertNotIn("under 4,000 output tokens", retry_prompt)
         self.assertEqual(
             generate.await_args_list[0].kwargs["request_timeout_ms"],

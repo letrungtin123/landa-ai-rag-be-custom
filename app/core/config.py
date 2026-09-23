@@ -27,6 +27,24 @@ class Settings(BaseModel):
     embedding_batch_size: int = Field(default_factory=lambda: int(os.getenv("AI_RAG_EMBEDDING_BATCH_SIZE", "32")))
     provider_request_timeout_ms: int = Field(default_factory=lambda: int(os.getenv("AI_RAG_PROVIDER_REQUEST_TIMEOUT_MS", "60000")))
     blueprint_provider_request_timeout_ms: int = Field(default_factory=lambda: int(os.getenv("AI_RAG_BLUEPRINT_PROVIDER_REQUEST_TIMEOUT_MS", "300000")))
+    # Stage 2 can legitimately produce a much larger structured lesson unit
+    # than ordinary chat. Keep this isolated from the general provider timeout
+    # and below the dedicated Course Blueprint provider window.
+    staged_lesson_content_provider_timeout_ms: int = Field(
+        default_factory=lambda: int(os.getenv("AI_RAG_STAGED_LESSON_CONTENT_PROVIDER_TIMEOUT_MS", "180000")),
+        gt=60_000,
+        le=300_000,
+    )
+    # The Node -> Python request envelope remains 600 seconds. This deadline
+    # is deliberately lower, so a multi-batch staged lesson fails safely in
+    # Python before Node closes the request.
+    staged_lesson_workflow_timeout_ms: int = Field(
+        default_factory=lambda: int(os.getenv("AI_RAG_STAGED_LESSON_WORKFLOW_TIMEOUT_MS", "480000")),
+        gt=0,
+        le=480_000,
+    )
+    course_workflow_max_repair_attempts: int = Field(default_factory=lambda: int(os.getenv("AI_RAG_COURSE_WORKFLOW_MAX_REPAIR_ATTEMPTS", "2")))
+    lesson_workflow_max_repair_attempts: int = Field(default_factory=lambda: int(os.getenv("AI_RAG_LESSON_WORKFLOW_MAX_REPAIR_ATTEMPTS", "2")))
     database_command_timeout_seconds: int = Field(default_factory=lambda: int(os.getenv("AI_RAG_DATABASE_COMMAND_TIMEOUT_SECONDS", "600")))
     top_k: int = Field(default_factory=lambda: int(os.getenv("AI_RAG_TOP_K", "8")))
     max_context_chars: int = Field(default_factory=lambda: int(os.getenv("AI_RAG_MAX_CONTEXT_CHARS", "18000")))
@@ -37,6 +55,10 @@ class Settings(BaseModel):
     lesson_author_max_context_chars: int = Field(default_factory=lambda: int(os.getenv("AI_RAG_LESSON_AUTHOR_MAX_CONTEXT_CHARS", "32000")))
     lesson_author_max_chunks_per_document: int = Field(default_factory=lambda: int(os.getenv("AI_RAG_LESSON_AUTHOR_MAX_CHUNKS_PER_DOCUMENT", "12")))
     lesson_author_scope_max_chunks: int = Field(default_factory=lambda: int(os.getenv("AI_RAG_LESSON_AUTHOR_SCOPE_MAX_CHUNKS", "48")))
+    # Canonical source-fact provenance has its own bounded memory budget. It
+    # is intentionally independent from the smaller architect prompt budget.
+    source_coverage_canonical_max_chars: int = Field(default_factory=lambda: int(os.getenv("AI_RAG_SOURCE_COVERAGE_CANONICAL_MAX_CHARS", "1000000")))
+    source_map_architect_context_max_chars: int = Field(default_factory=lambda: int(os.getenv("AI_RAG_SOURCE_MAP_ARCHITECT_CONTEXT_MAX_CHARS", "48000")))
     retrieval_candidate_multiplier: int = Field(default_factory=lambda: int(os.getenv("AI_RAG_RETRIEVAL_CANDIDATE_MULTIPLIER", "4")))
     retrieval_min_score: float = Field(default_factory=lambda: float(os.getenv("AI_RAG_RETRIEVAL_MIN_SCORE", "0.25")))
     retrieval_keyword_min_score: float = Field(default_factory=lambda: float(os.getenv("AI_RAG_RETRIEVAL_KEYWORD_MIN_SCORE", "0.50")))

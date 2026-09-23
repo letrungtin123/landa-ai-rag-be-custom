@@ -27,6 +27,15 @@ MAX_BLUEPRINT_TOTAL_UNITS = 24
 MAX_BLUEPRINT_TOTAL_COMPONENTS = 72
 MAX_BLUEPRINT_MEDIA_PLANS = 12
 MAX_SOURCE_REFS_PER_SCOPE = 8
+MAX_CANONICAL_IDENTIFIER_LENGTH = 96
+MAX_LOCAL_LEARNING_OBJECTIVE_REF_LENGTH = 16
+_LOCAL_LEARNING_OBJECTIVE_REF = re.compile(r"^lo_([1-9][0-9]*)$")
+# This is a serialization safety limit for server-owned provenance, not an
+# instructional-design target.  It is deliberately higher than the former
+# 160-item normalizer so one valid, source-grounded scope is never silently
+# truncated before Node can validate the server allocation.  Architecture
+# quality is evaluated separately from this transport boundary.
+MAX_SERVER_OWNED_SOURCE_FACT_IDS_PER_SCOPE = 512
 BLUEPRINT_COMPONENT_TYPES = {
     "html",
     "problem",
@@ -36,6 +45,13 @@ BLUEPRINT_COMPONENT_TYPES = {
     "la_diagram",
 }
 BLUEPRINT_MEDIA_TYPES = {"video", "static_infographic"}
+SEMANTIC_LEARNING_BLOCK_INTENTS = {
+    "introduction", "concept_explanation", "definition", "example", "worked_example",
+    "procedure", "comparison", "warning", "tip", "scenario", "reflection", "practice",
+    "knowledge_check", "terminology_reinforcement", "faq", "relationship_visualization",
+    "summary", "media_reference",
+}
+SEMANTIC_LEARNING_BLOCK_IMPORTANCE = {"supporting", "core", "critical", "assessment"}
 
 
 class LessonAuthorBlueprintComponentPlanResponse(BaseModel):
@@ -57,7 +73,15 @@ class LessonAuthorBlueprintMediaPlanResponse(BaseModel):
 
 class LessonAuthorBlueprintUnitResponse(BaseModel):
     title: str
-    component_plan: list[LessonAuthorBlueprintComponentPlanResponse]
+    purpose: str | None = None
+    concept_ids: list[str] = Field(default_factory=list)
+    primary_concept_ids: list[str] = Field(default_factory=list)
+    primary_evidence_scope_ids: list[str] = Field(default_factory=list)
+    supporting_evidence_scope_ids: list[str] = Field(default_factory=list)
+    learning_objective_refs: list[str] = Field(default_factory=list)
+    learning_blocks: list[dict[str, Any]] = Field(default_factory=list)
+    # Retained solely to parse Blueprints created before Phase 3.
+    component_plan: list[LessonAuthorBlueprintComponentPlanResponse] = Field(default_factory=list)
     source_refs: list[str] = Field(default_factory=list)
     source_fact_ids: list[str] = Field(default_factory=list)
     media_plan: LessonAuthorBlueprintMediaPlanResponse | None = None
@@ -70,6 +94,13 @@ class LessonAuthorBlueprintLessonResponse(BaseModel):
     assessment: str
     units: list[LessonAuthorBlueprintUnitResponse]
     source_refs: list[str] = Field(default_factory=list)
+    learning_objectives: list[str] = Field(default_factory=list)
+    primary_concept_ids: list[str] = Field(default_factory=list)
+    supporting_concept_ids: list[str] = Field(default_factory=list)
+    prerequisite_concept_ids: list[str] = Field(default_factory=list)
+    estimated_minutes: int | None = None
+    assessment_required: bool = False
+    assessment_objective_refs: list[str] = Field(default_factory=list)
 
 
 class LessonAuthorBlueprintChapterResponse(BaseModel):
@@ -77,24 +108,71 @@ class LessonAuthorBlueprintChapterResponse(BaseModel):
     objective: str
     lessons: list[LessonAuthorBlueprintLessonResponse]
     source_refs: list[str] = Field(default_factory=list)
+    learning_objectives: list[str] = Field(default_factory=list)
+    concept_ids: list[str] = Field(default_factory=list)
 
 
 class LessonAuthorBlueprintResponse(BaseModel):
+    architecture_contract_version: int | None = None
     content_contract_version: int | None = None
     title: str
     summary: str
     target_audience: str
     prerequisites: list[str]
     learning_outcomes: list[str]
+    course_outcomes: list[str] = Field(default_factory=list)
     assessment_strategy: str
     assumptions: list[str]
     chapters: list[LessonAuthorBlueprintChapterResponse]
 
 
 class LessonAuthorBlueprintValidationError(ValueError):
-    def __init__(self, code: str, message: str) -> None:
+    """A structural Blueprint failure with content-safe diagnostic metadata."""
+
+    def __init__(
+        self,
+        code: str,
+        message: str,
+        *,
+        path: str = "course",
+        constraint: str = "BLUEPRINT_CONTRACT",
+        expected_type: str = "valid schema value",
+        actual_type: str = "invalid schema value",
+    ) -> None:
         super().__init__(message)
         self.code = code
+        self.path = path
+        self.constraint = constraint
+        self.expected_type = expected_type
+        self.actual_type = actual_type
+
+    def safe_diagnostic(self) -> dict[str, str]:
+        """Only structural metadata; never values, source text, or model output."""
+
+        return {
+            "validator": "lesson_author_blueprint.validate_lesson_author_blueprint",
+            "error_code": self.code,
+            "path": self.path,
+            "constraint": self.constraint,
+            "expected_type": self.expected_type,
+            "actual_type": self.actual_type,
+        }
+
+
+def _safe_json_shape(value: Any) -> str:
+    if isinstance(value, list):
+        return f"array[length={len(value)}]"
+    if value is None:
+        return "null"
+    if isinstance(value, dict):
+        return "object"
+    if isinstance(value, bool):
+        return "boolean"
+    if isinstance(value, (int, float)):
+        return "number"
+    if isinstance(value, str):
+        return "string"
+    return type(value).__name__
 
 
 def _string_schema(description: str) -> types.Schema:
@@ -112,29 +190,54 @@ def _string_array_schema(description: str) -> types.Schema:
     )
 
 
+def _enum_string_schema(description: str, values: set[str]) -> types.Schema:
+    """Express a canonical finite string domain to the structured-output API."""
+
+    return types.Schema(
+        type=types.Type.STRING,
+        description=description,
+        enum=sorted(values),
+    )
+
+
+def _semantic_learning_block_response_schema() -> types.Schema:
+    """One provider-facing representation of the server semantic-block contract.
+
+    The server validator below remains the authority.  Keeping the provider
+    schema derived from the same module-level domains prevents initial
+    Architect and scoped-repair responses from drifting apart.
+    """
+
+    return types.Schema(
+        type=types.Type.OBJECT,
+        description="A source-grounded semantic learning block; never a CMS component or payload.",
+        required=["id", "intent", "importance", "concept_ids", "primary_concept_ids", "primary_evidence_scope_ids", "supporting_evidence_scope_ids", "content"],
+        properties={
+            "id": _string_schema("Stable local learning-block identifier."),
+            "intent": _enum_string_schema(
+                "One supported pedagogical semantic learning-block intent.",
+                SEMANTIC_LEARNING_BLOCK_INTENTS,
+            ),
+            "importance": _enum_string_schema(
+                "One supported semantic learning-block importance value.",
+                SEMANTIC_LEARNING_BLOCK_IMPORTANCE,
+            ),
+            "concept_ids": _string_array_schema("Exact Source Map concept IDs in this block's semantic/source scope."),
+            "primary_concept_ids": _string_array_schema("Exact Source Map concepts emphasized by this block. Concepts may be associated with more than one lesson; evidence scopes, not concepts, have unique primary ownership."),
+            "primary_evidence_scope_ids": _string_array_schema("Exact server-provided evidence scope IDs owned primarily by this block. Every scope has exactly one primary block owner globally."),
+            "supporting_evidence_scope_ids": _string_array_schema("Exact server-provided evidence scope IDs referenced for grounded reinforcement/practice only. These never own canonical source facts."),
+            "source_refs": _string_array_schema("Optional exact Source Map source references that define this block's semantic/source scope."),
+            "learning_objective_refs": _string_array_schema("Optional exact local lesson objective IDs only: lo_1, lo_2, and so on. Never repeat objective prose."),
+            "content": types.Schema(type=types.Type.OBJECT, description="Compact semantic treatment/evidence flags only; no HTML, CSS, URLs, component data, or prose lesson content."),
+        },
+    )
+
+
 def build_lesson_author_blueprint_response_schema() -> types.Schema:
-    artifact_schema = types.Schema(
-        type=types.Type.OBJECT,
-        required=["type"],
-        properties={
-            "type": _string_schema("One artifact: ordered_list, checklist, table, warning, requirement, exception, or comparison."),
-            "minimum_items": types.Schema(type=types.Type.INTEGER, description="Minimum source items that must remain visible."),
-        },
-    )
-    component_plan_schema = types.Schema(
-        type=types.Type.OBJECT,
-        description="A planned learning component. This is architecture only, never component payload data.",
-        required=["type", "title", "rationale", "purpose", "source_fact_ids", "content_requirements"],
-        properties={
-            "type": _string_schema("One supported type: html, problem, la_faq, la_sortable, la_crossword, or la_diagram."),
-            "title": _string_schema("Short learner-facing component title."),
-            "rationale": _string_schema("A concise reason this format fits the lesson objective and source evidence."),
-            "purpose": _string_schema("One instructional purpose: explain, assess, clarify, sequence, relationship, or terminology."),
-            "source_fact_ids": _string_array_schema("Exact unit source fact IDs owned by this component."),
-            "content_requirements": _string_array_schema("Specific source topics, steps, or fidelity requirements this component must convey."),
-            "required_artifacts": types.Schema(type=types.Type.ARRAY, items=artifact_schema),
-        },
-    )
+    # Phase 3 Course Architect outputs learning intent, not CMS component
+    # choices.  The component registry/planner on the Node boundary remains
+    # the only authority that maps these blocks to a CMS component.
+    learning_block_schema = _semantic_learning_block_response_schema()
     media_plan_schema = types.Schema(
         type=types.Type.OBJECT,
         description="An optional proposed visual asset placed before this unit's learning components. It is a recommendation only, never media payload data.",
@@ -148,28 +251,25 @@ def build_lesson_author_blueprint_response_schema() -> types.Schema:
     )
     unit_schema = types.Schema(
         type=types.Type.OBJECT,
-        description="A draftable learning unit inside a lesson.",
-        required=["title", "component_plan"],
+        description="A coherent, draftable learning unit inside a lesson.",
+        required=["title", "purpose", "concept_ids", "primary_concept_ids", "learning_objective_refs", "learning_blocks"],
         properties={
             "title": _string_schema("Semantic unit title without numbering."),
-            "component_plan": types.Schema(
-                type=types.Type.ARRAY,
-                description="One to three planned component types, always including one html explanation.",
-                items=component_plan_schema,
-            ),
+            "purpose": _string_schema("The unit's instructional purpose, not a component choice."),
+            "concept_ids": _string_array_schema("One or more exact Source Map concept IDs owned or reinforced by this unit."),
+            "primary_concept_ids": _string_array_schema("Exact Source Map concepts taught primarily by this unit. Keep empty for a reinforcement/practice unit."),
+            "learning_objective_refs": _string_array_schema("Exact local lesson objective IDs only: lo_1, lo_2, and so on."),
             "source_refs": _string_array_schema(
                 "Optional source outline references supporting this unit.",
             ),
-            "source_fact_ids": _string_array_schema(
-                "Optional internal source fact IDs allocated by the server for complete detailed authoring.",
-            ),
+            "learning_blocks": types.Schema(type=types.Type.ARRAY, items=learning_block_schema),
             "media_plan": media_plan_schema,
         },
     )
     lesson_schema = types.Schema(
         type=types.Type.OBJECT,
         description="A concise lesson inside one course chapter.",
-        required=["title", "objective", "learning_activities", "assessment", "units"],
+        required=["title", "objective", "learning_objectives", "learning_activities", "assessment", "primary_concept_ids", "supporting_concept_ids", "prerequisite_concept_ids", "assessment_required", "assessment_objective_refs", "units"],
         properties={
             "title": _string_schema("Lesson title."),
             "objective": _string_schema("Measurable lesson objective."),
@@ -177,8 +277,20 @@ def build_lesson_author_blueprint_response_schema() -> types.Schema:
                 "One to three learner activities that support the objective.",
             ),
             "assessment": _string_schema("How the lesson objective is checked."),
+            "learning_objectives": _string_array_schema("Observable, source-aligned lesson learning objectives."),
+            "primary_concept_ids": _string_array_schema("Exact Source Map concepts taught primarily by this lesson."),
+            "supporting_concept_ids": _string_array_schema("Exact Source Map concepts reinforced without re-teaching them as primary."),
+            "prerequisite_concept_ids": _string_array_schema("Exact Source Map concepts learners must encounter before this lesson."),
+            "estimated_minutes": types.Schema(type=types.Type.INTEGER, description="Optional estimated learning time in minutes when known."),
+            "assessment_required": types.Schema(type=types.Type.BOOLEAN, description="Whether this lesson needs a knowledge check or another assessment later."),
+            "assessment_objective_refs": _string_array_schema("Exact local lesson objective IDs assessed by this lesson: lo_1, lo_2, and so on."),
             "units": types.Schema(
                 type=types.Type.ARRAY,
+                # The current Gemini Developer API compatibility contract used
+                # by this service rejects array min/max fields in structured
+                # output schemas. The provider receives the explicit 1..3
+                # instruction; this server validator remains authoritative
+                # and routes an over-limit lesson to a local patch repair.
                 description="One to three ordered learning units, each with a reviewable component plan.",
                 items=unit_schema,
             ),
@@ -190,13 +302,15 @@ def build_lesson_author_blueprint_response_schema() -> types.Schema:
     chapter_schema = types.Schema(
         type=types.Type.OBJECT,
         description="A coherent chapter in the course Blueprint.",
-        required=["title", "objective", "lessons"],
+        required=["title", "objective", "learning_objectives", "concept_ids", "lessons"],
         properties={
             "title": _string_schema("Chapter title."),
             "objective": _string_schema("Measurable chapter objective."),
             "source_refs": _string_array_schema(
                 "Optional source outline references supporting this chapter.",
             ),
+            "learning_objectives": _string_array_schema("Observable chapter learning objectives."),
+            "concept_ids": _string_array_schema("Exact Source Map concepts covered by this chapter."),
             "lessons": types.Schema(
                 type=types.Type.ARRAY,
                 description="Lessons ordered from foundation to application.",
@@ -208,17 +322,20 @@ def build_lesson_author_blueprint_response_schema() -> types.Schema:
         type=types.Type.OBJECT,
         description="A review-only enterprise course Blueprint based on supplied source material.",
         required=[
+            "architecture_contract_version",
             "content_contract_version",
             "title",
             "summary",
             "target_audience",
             "prerequisites",
             "learning_outcomes",
+            "course_outcomes",
             "assessment_strategy",
             "assumptions",
             "chapters",
         ],
         properties={
+            "architecture_contract_version": types.Schema(type=types.Type.INTEGER, description="Must be 5 for the server-owned evidence-scope Course Architect contract."),
             "content_contract_version": types.Schema(type=types.Type.INTEGER, description="Must be 1."),
             "title": _string_schema("Course title."),
             "summary": _string_schema("Concise course design summary."),
@@ -229,6 +346,7 @@ def build_lesson_author_blueprint_response_schema() -> types.Schema:
             "learning_outcomes": _string_array_schema(
                 "Three to twelve measurable learning outcomes.",
             ),
+            "course_outcomes": _string_array_schema("Course-level observable outcomes; normally mirrors or refines learning_outcomes."),
             "assessment_strategy": _string_schema("Course-level assessment strategy."),
             "assumptions": _string_array_schema(
                 "Open assumptions requiring administrator confirmation.",
@@ -242,7 +360,286 @@ def build_lesson_author_blueprint_response_schema() -> types.Schema:
     )
 
 
+def build_course_architecture_repair_response_schema() -> types.Schema:
+    """Structured provider contract for bounded Course Architect repairs.
+
+    The target-specific field whitelist and the server-side pre-apply validator
+    remain authoritative. This schema narrows the high-risk nested
+    ``learning_blocks`` value so a repair cannot treat it as an arbitrary JSON
+    object merely because the outer patch envelope is syntactically valid.
+    """
+
+    learning_block_schema = _semantic_learning_block_response_schema()
+    replacement_schema = types.Schema(
+        type=types.Type.OBJECT,
+        description="Only the target-specific fields explicitly allowed in REPAIR TARGETS.",
+        properties={
+            "course_title": _string_schema("Course title only when explicitly authorized."),
+            "course_outcomes": _string_array_schema("Course outcomes only when explicitly authorized."),
+            "chapters": types.Schema(
+                type=types.Type.ARRAY,
+                description="Full chapter replacements only when explicitly authorized.",
+                items=types.Schema(type=types.Type.OBJECT, description="A full chapter object validated by the server before apply."),
+            ),
+            "title": _string_schema("Target title only when explicitly authorized."),
+            "purpose": _string_schema("Target unit purpose only when explicitly authorized."),
+            "learning_objectives": _string_array_schema("Exact target-local learning objective prose only when explicitly authorized."),
+            "assessment_objective_refs": _string_array_schema("Exact local objective IDs such as lo_1 only when explicitly authorized."),
+            "assessment_required": types.Schema(type=types.Type.BOOLEAN, description="Assessment flag only when explicitly authorized."),
+            "estimated_minutes": types.Schema(type=types.Type.INTEGER, description="Estimated minutes only when explicitly authorized."),
+            "concept_ids": _string_array_schema("Exact Source Map concept IDs only when explicitly authorized."),
+            "primary_concept_ids": _string_array_schema("Exact primary concept IDs only when explicitly authorized."),
+            "supporting_concept_ids": _string_array_schema("Exact supporting concept IDs only when explicitly authorized."),
+            "prerequisite_concept_ids": _string_array_schema("Exact prerequisite concept IDs only when explicitly authorized."),
+            "source_refs": _string_array_schema("Exact server-provided source references only when explicitly authorized."),
+            "learning_objective_refs": _string_array_schema("Exact local objective IDs such as lo_1 only when explicitly authorized."),
+            "learning_blocks": types.Schema(
+                type=types.Type.ARRAY,
+                description="A complete replacement list of validated semantic learning blocks.",
+                items=learning_block_schema,
+            ),
+            # Arrays below are intentionally only shape-constrained here. The
+            # target whitelist and full pre-apply Blueprint validator decide
+            # whether the selected path may replace a lesson/chapter subtree.
+            "units": types.Schema(
+                type=types.Type.ARRAY,
+                description="Full unit replacements only when explicitly authorized.",
+                items=types.Schema(type=types.Type.OBJECT, description="A full unit object validated by the server before apply."),
+            ),
+            "lessons": types.Schema(
+                type=types.Type.ARRAY,
+                description="Full lesson replacements only when explicitly authorized.",
+                items=types.Schema(type=types.Type.OBJECT, description="A full lesson object validated by the server before apply."),
+            ),
+        },
+    )
+    patch_schema = types.Schema(
+        type=types.Type.OBJECT,
+        required=["path", "operation"],
+        properties={
+            "path": _string_schema("One exact server-approved repair target path."),
+            "operation": types.Schema(
+                type=types.Type.STRING,
+                enum=["replace", "remove_unit"],
+                description="One server-approved operation for the target.",
+            ),
+            "replacement": replacement_schema,
+        },
+    )
+    return types.Schema(
+        type=types.Type.OBJECT,
+        required=["patches"],
+        properties={
+            "patches": types.Schema(
+                type=types.Type.ARRAY,
+                description="One patch for every server-approved bounded repair target.",
+                items=patch_schema,
+            ),
+        },
+    )
+
+
+V5_SEMANTIC_DELTA_REPAIR_OPERATIONS = frozenset({
+    "align_concepts_to_evidence",
+    "set_block_intent",
+    "repair_knowledge_check",
+    "repair_assessment_alignment",
+    "add_knowledge_check",
+    "select_assessment_teaching_alignment",
+    "add_instructional_support_block",
+})
+
+
+def _v5_semantic_delta_patch_schema(operation: str) -> types.Schema:
+    """Return one narrow, provider-facing V5 coherence-repair operation.
+
+    These schemas deliberately contain no source references, evidence scopes,
+    concept IDs, canonical fact IDs, or full learning-block objects.  Those
+    fields are immutable server-owned provenance and are preserved when a
+    delta is applied to the baseline Blueprint.
+    """
+
+    common = {
+        "path": _string_schema("One exact server-approved repair target path."),
+        "operation": types.Schema(
+            type=types.Type.STRING,
+            enum=[operation],
+            description="One exact server-approved semantic-delta operation.",
+        ),
+    }
+    if operation == "align_concepts_to_evidence":
+        return types.Schema(
+            type=types.Type.OBJECT,
+            required=["path", "operation", "concept_ids", "primary_concept_ids"],
+            properties={
+                **common,
+                "concept_ids": _string_array_schema(
+                    "The exact server-approved concept alignment for this evidence-backed unit."
+                ),
+                "primary_concept_ids": _string_array_schema(
+                    "One exact server-approved primary-concept alignment for this unit."
+                ),
+            },
+        )
+    if operation == "set_block_intent":
+        return types.Schema(
+            type=types.Type.OBJECT,
+            required=["path", "operation", "block_id", "intent"],
+            properties={
+                **common,
+                "block_id": _string_schema("An existing semantic block ID in the target unit."),
+                "intent": _enum_string_schema(
+                    "One canonical semantic learning-block intent.",
+                    SEMANTIC_LEARNING_BLOCK_INTENTS,
+                ),
+            },
+        )
+    if operation == "repair_knowledge_check":
+        return types.Schema(
+            type=types.Type.OBJECT,
+            required=["path", "operation", "block_id", "learning_objective_refs"],
+            properties={
+                **common,
+                "block_id": _string_schema("An existing knowledge_check block ID in the target unit."),
+                "learning_objective_refs": _string_array_schema(
+                    "Exact existing local lesson objective IDs only."
+                ),
+            },
+        )
+    if operation == "repair_assessment_alignment":
+        return types.Schema(
+            type=types.Type.OBJECT,
+            required=[
+                "path", "operation", "knowledge_check_block_id",
+                "teaching_block_id", "learning_objective_refs",
+            ],
+            properties={
+                **common,
+                "knowledge_check_block_id": _string_schema(
+                    "One exact server-approved existing knowledge_check block ID."
+                ),
+                "teaching_block_id": _string_schema(
+                    "One exact server-approved existing evidence-owning teaching block ID."
+                ),
+                "learning_objective_refs": _string_array_schema(
+                    "Exact existing local lesson objective IDs only."
+                ),
+            },
+        )
+    if operation == "add_knowledge_check":
+        return types.Schema(
+            type=types.Type.OBJECT,
+            required=["path", "operation", "after_block_id", "learning_objective_refs"],
+            properties={
+                **common,
+                "after_block_id": _string_schema(
+                    "The exact existing eligible teaching block ID in the target unit."
+                ),
+                "learning_objective_refs": _string_array_schema(
+                    "Exact existing local lesson objective IDs only."
+                ),
+            },
+        )
+    if operation == "select_assessment_teaching_alignment":
+        return types.Schema(
+            type=types.Type.OBJECT,
+            required=["path", "operation", "selections"],
+            properties={
+                **common,
+                "selections": types.Schema(
+                    type=types.Type.ARRAY,
+                    description=(
+                        "One selection for every listed local assessment objective. "
+                        "Return SELECT only when the listed teaching block semantically teaches the objective; "
+                        "otherwise return NO_MATCH without a block path or ID."
+                    ),
+                    items=types.Schema(
+                        type=types.Type.OBJECT,
+                        required=["objective_ref", "decision"],
+                        properties={
+                            "objective_ref": _string_schema("One exact listed local assessment objective ID."),
+                            "decision": types.Schema(
+                                type=types.Type.STRING,
+                                enum=["SELECT", "NO_MATCH"],
+                                description="SELECT an exact approved anchor or fail closed with NO_MATCH.",
+                            ),
+                            "unit_path": _string_schema("The exact server-approved candidate unit path when decision is SELECT."),
+                            "teaching_block_id": _string_schema("The exact server-approved candidate teaching block ID when decision is SELECT."),
+                        },
+                    ),
+                ),
+            },
+        )
+    if operation == "add_instructional_support_block":
+        return types.Schema(
+            type=types.Type.OBJECT,
+            required=[
+                "path", "operation", "unit_path", "after_block_id", "intent",
+                "learning_objective_refs", "content",
+            ],
+            properties={
+                **common,
+                "unit_path": _string_schema(
+                    "One exact server-approved unit path inside the target lesson."
+                ),
+                "after_block_id": _string_schema(
+                    "The exact existing eligible teaching block ID in that unit."
+                ),
+                "intent": _enum_string_schema(
+                    "One canonical semantic intent for an evidence-grounded instructional support block.",
+                    SEMANTIC_LEARNING_BLOCK_INTENTS,
+                ),
+                "learning_objective_refs": _string_array_schema(
+                    "Exact existing local lesson objective IDs only."
+                ),
+                "content": types.Schema(
+                    type=types.Type.OBJECT,
+                    required=["purpose"],
+                    properties={
+                        "purpose": _string_schema(
+                            "Compact instructional purpose; never source text, HTML, CSS, URLs, or component payload data."
+                        ),
+                        "learner_action": _string_schema(
+                            "Optional compact learner action when the selected intent requires one."
+                        ),
+                    },
+                ),
+            },
+        )
+    raise ValueError(f"Unsupported V5 semantic-delta repair operation: {operation}")
+
+
+def build_v5_semantic_delta_repair_response_schema(
+    operations: set[str] | frozenset[str],
+) -> types.Schema:
+    """Build one operation-specific provider schema for one bounded call.
+
+    The installed Google SDK cannot serialize ``any_of`` schemas that omit a
+    top-level JSON type. Rather than weaken this contract into a broad patch
+    object, mixed coherence targets are partitioned into bounded calls by the
+    caller. Each provider call therefore has one exact operation shape.
+    """
+
+    requested = set(operations)
+    unsupported = requested - set(V5_SEMANTIC_DELTA_REPAIR_OPERATIONS)
+    if len(requested) != 1 or unsupported:
+        raise ValueError("V5 semantic-delta repair requires exactly one supported operation per provider call")
+    patch_schema = _v5_semantic_delta_patch_schema(next(iter(requested)))
+    return types.Schema(
+        type=types.Type.OBJECT,
+        required=["patches"],
+        properties={
+            "patches": types.Schema(
+                type=types.Type.ARRAY,
+                description="Exactly one typed semantic delta for every listed repair target.",
+                items=patch_schema,
+            ),
+        },
+    )
+
+
 LESSON_AUTHOR_BLUEPRINT_RESPONSE_SCHEMA = build_lesson_author_blueprint_response_schema()
+COURSE_ARCHITECTURE_REPAIR_RESPONSE_SCHEMA = build_course_architecture_repair_response_schema()
 LESSON_AUTHOR_BLUEPRINT_RESPONSE_MODEL = LessonAuthorBlueprintResponse
 
 
@@ -251,6 +648,10 @@ def _require_object(value: Any, label: str) -> dict[str, Any]:
         raise LessonAuthorBlueprintValidationError(
             "BLUEPRINT_INVALID_SCHEMA",
             f"{label} must be a JSON object.",
+            path=label,
+            constraint="TYPE_OBJECT",
+            expected_type="object",
+            actual_type=_safe_json_shape(value),
         )
     return value
 
@@ -260,12 +661,20 @@ def _require_text(value: Any, label: str, max_length: int) -> str:
         raise LessonAuthorBlueprintValidationError(
             "BLUEPRINT_INVALID_SCHEMA",
             f"{label} must be text.",
+            path=label,
+            constraint="TYPE_STRING",
+            expected_type="string",
+            actual_type=_safe_json_shape(value),
         )
     text = value.strip()
     if not text or len(text) > max_length:
         raise LessonAuthorBlueprintValidationError(
             "BLUEPRINT_INVALID_SCHEMA",
             f"{label} must contain concise text.",
+            path=label,
+            constraint="TEXT_LENGTH",
+            expected_type=f"string[length=1..{max_length}]",
+            actual_type=(f"string[length={len(value.strip())}]" if isinstance(value, str) else _safe_json_shape(value)),
         )
     return text
 
@@ -282,6 +691,10 @@ def _require_text_array(
         raise LessonAuthorBlueprintValidationError(
             "BLUEPRINT_INVALID_SCHEMA",
             f"{label} must contain {min_items} to {max_items} items.",
+            path=label,
+            constraint="ARRAY_LENGTH",
+            expected_type=f"array[length={min_items}..{max_items}]",
+            actual_type=_safe_json_shape(value),
         )
     return [
         _require_text(item, f"{label}[{index}]", item_max_length)
@@ -297,8 +710,36 @@ def _optional_source_refs(value: Any, label: str) -> list[str]:
         label,
         min_items=0,
         max_items=MAX_SOURCE_REFS_PER_SCOPE,
-        item_max_length=32,
+        # Source references are canonical provenance identifiers.  They must
+        # be preserved verbatim across the Python -> Node contract, never
+        # display-truncated.
+        item_max_length=MAX_CANONICAL_IDENTIFIER_LENGTH,
     )
+
+
+def _validate_local_learning_objective_refs(
+    refs: list[str],
+    label: str,
+    objective_count: int,
+) -> None:
+    """Require exact, lesson-local objective IDs for the v4 contract.
+
+    Learning objective prose is deliberately not accepted as an alias.  The
+    provider creates the ordered objective list; references are machine IDs
+    that must resolve inside that one lesson.
+    """
+
+    for index, ref in enumerate(refs):
+        match = _LOCAL_LEARNING_OBJECTIVE_REF.fullmatch(ref)
+        if match is None or int(match.group(1)) > objective_count:
+            raise LessonAuthorBlueprintValidationError(
+                "BLUEPRINT_INVALID_SCHEMA",
+                f"{label}[{index}] must reference an objective in this lesson.",
+                path=f"{label}[{index}]",
+                constraint="LOCAL_LEARNING_OBJECTIVE_REFERENCE",
+                expected_type=f"local lesson objective ID lo_1..lo_{objective_count}",
+                actual_type="unresolved or non-local objective reference",
+            )
 
 
 def _copy_first_alias(record: dict[str, Any], canonical: str, *aliases: str) -> None:
@@ -591,136 +1032,333 @@ def _decode_blueprint_json(text: str) -> list[Any]:
     )
 
 
-def validate_lesson_author_blueprint(value: Any) -> dict[str, Any]:
+def _validate_semantic_learning_blocks(
+    value: Any,
+    label: str,
+    *,
+    require_source_fact_ownership: bool,
+    require_primary_source_fact_ownership: bool = False,
+    include_source_fact_ids: bool = True,
+    require_primary_semantic_ownership: bool = False,
+    require_evidence_scope_ownership: bool = False,
+    include_evidence_scope_ids: bool = False,
+    source_fact_ownership_by_evidence_scope: bool = False,
+) -> list[dict[str, Any]]:
+    if not isinstance(value, list) or not 1 <= len(value) <= 12:
+        raise LessonAuthorBlueprintValidationError(
+            "BLUEPRINT_INVALID_SCHEMA",
+            f"{label} must contain 1 to 12 semantic learning blocks.",
+            path=label,
+            constraint="ARRAY_LENGTH",
+            expected_type="array[length=1..12]",
+            actual_type=_safe_json_shape(value),
+        )
+    blocks: list[dict[str, Any]] = []
+    ids: set[str] = set()
+    for index, raw_block in enumerate(value):
+        block = _require_object(raw_block, f"{label}[{index}]")
+        block_id = _require_text(block.get("id"), f"{label}[{index}].id", 96)
+        if block_id in ids:
+            raise LessonAuthorBlueprintValidationError(
+                "BLUEPRINT_INVALID_SCHEMA",
+                f"{label} must not repeat learning-block IDs.",
+                path=f"{label}[{index}].id",
+                constraint="UNIQUE_LEARNING_BLOCK_ID",
+                expected_type="unique string identifier",
+                actual_type="duplicate string identifier",
+            )
+        ids.add(block_id)
+        intent = _require_text(block.get("intent"), f"{label}[{index}].intent", 64).casefold()
+        if intent not in SEMANTIC_LEARNING_BLOCK_INTENTS:
+            raise LessonAuthorBlueprintValidationError(
+                "BLUEPRINT_INVALID_SCHEMA",
+                f"{label}[{index}].intent is not supported.",
+                path=f"{label}[{index}].intent",
+                constraint="ENUM_SEMANTIC_LEARNING_BLOCK_INTENT",
+                expected_type="supported semantic learning-block intent",
+                actual_type="unsupported enum value",
+            )
+        importance = _require_text(block.get("importance"), f"{label}[{index}].importance", 32).casefold()
+        if importance not in SEMANTIC_LEARNING_BLOCK_IMPORTANCE:
+            raise LessonAuthorBlueprintValidationError(
+                "BLUEPRINT_INVALID_SCHEMA",
+                f"{label}[{index}].importance is not supported.",
+                path=f"{label}[{index}].importance",
+                constraint="ENUM_SEMANTIC_LEARNING_BLOCK_IMPORTANCE",
+                expected_type="supported semantic learning-block importance",
+                actual_type="unsupported enum value",
+            )
+        content = _require_object(block.get("content"), f"{label}[{index}].content")
+        concept_ids = _require_text_array(
+            block.get("concept_ids") if require_primary_semantic_ownership else block.get("concept_ids") or [],
+            f"{label}[{index}].concept_ids",
+            min_items=1 if require_primary_semantic_ownership else 0,
+            max_items=24,
+            item_max_length=96,
+        )
+        primary_concept_ids = _require_text_array(
+            block.get("primary_concept_ids") if require_primary_semantic_ownership else block.get("primary_concept_ids") or [],
+            f"{label}[{index}].primary_concept_ids",
+            min_items=0,
+            max_items=24,
+            item_max_length=96,
+        )
+        primary_evidence_scope_ids = _require_text_array(
+            block.get("primary_evidence_scope_ids") if require_evidence_scope_ownership else block.get("primary_evidence_scope_ids") or [],
+            f"{label}[{index}].primary_evidence_scope_ids",
+            min_items=0,
+            max_items=12,
+            item_max_length=96,
+        )
+        supporting_evidence_scope_ids = _require_text_array(
+            block.get("supporting_evidence_scope_ids") if require_evidence_scope_ownership else block.get("supporting_evidence_scope_ids") or [],
+            f"{label}[{index}].supporting_evidence_scope_ids",
+            min_items=0,
+            max_items=12,
+            item_max_length=96,
+        )
+        if set(primary_evidence_scope_ids) & set(supporting_evidence_scope_ids):
+            raise LessonAuthorBlueprintValidationError(
+                "BLUEPRINT_INVALID_SCHEMA",
+                "A semantic learning block cannot primary-own and supporting-reference the same evidence scope.",
+                path=f"{label}[{index}].supporting_evidence_scope_ids",
+                constraint="DISJOINT_EVIDENCE_SCOPE_OWNERSHIP",
+                expected_type="disjoint primary/supporting evidence-scope arrays",
+                actual_type="overlapping arrays",
+            )
+        if require_evidence_scope_ownership and not primary_evidence_scope_ids and not supporting_evidence_scope_ids:
+            raise LessonAuthorBlueprintValidationError(
+                "BLUEPRINT_INVALID_SCHEMA",
+                "A v5 semantic learning block must declare primary or supporting evidence scope references.",
+                path=f"{label}[{index}].primary_evidence_scope_ids",
+                constraint="EVIDENCE_SCOPE_REFERENCE_REQUIRED",
+                expected_type="at least one server-provided evidence scope ID",
+                actual_type="array[length=0]",
+            )
+        source_fact_ids = _require_text_array(
+            block.get("source_fact_ids") or [],
+            f"{label}[{index}].source_fact_ids",
+            min_items=1 if require_source_fact_ownership else 0,
+            max_items=MAX_SERVER_OWNED_SOURCE_FACT_IDS_PER_SCOPE,
+            item_max_length=96,
+        )
+        primary_fact_owner = (
+            bool(primary_evidence_scope_ids)
+            if source_fact_ownership_by_evidence_scope
+            else bool(primary_concept_ids or primary_evidence_scope_ids)
+        )
+        if require_primary_source_fact_ownership and primary_fact_owner and not source_fact_ids:
+            raise LessonAuthorBlueprintValidationError(
+                "BLUEPRINT_PRIMARY_BLOCK_SOURCE_FACT_OWNERSHIP_REQUIRED",
+                "A primary semantic learning block must own at least one server-allocated Source Fact.",
+                path=f"{label}[{index}].source_fact_ids",
+                constraint="PRIMARY_SEMANTIC_BLOCK_SOURCE_FACT_OWNERSHIP",
+                expected_type="array[minItems=1] of server-allocated canonical fact IDs",
+                actual_type="array[length=0]",
+            )
+        normalized_block = {
+            "id": block_id,
+            "intent": intent,
+            "importance": importance,
+            "concept_ids": concept_ids,
+            "primary_concept_ids": primary_concept_ids,
+            "source_refs": _require_text_array(block.get("source_refs") or [], f"{label}[{index}].source_refs", min_items=0, max_items=8, item_max_length=96),
+            "learning_objective_refs": _require_text_array(
+                block.get("learning_objective_refs") or [],
+                f"{label}[{index}].learning_objective_refs",
+                min_items=0,
+                max_items=24,
+                item_max_length=MAX_CANONICAL_IDENTIFIER_LENGTH,
+            ),
+            "content": content,
+        }
+        if include_evidence_scope_ids:
+            normalized_block["primary_evidence_scope_ids"] = primary_evidence_scope_ids
+            normalized_block["supporting_evidence_scope_ids"] = supporting_evidence_scope_ids
+        if include_source_fact_ids:
+            normalized_block["source_fact_ids"] = source_fact_ids
+        blocks.append(normalized_block)
+    return blocks
+
+
+_PROVIDER_OWNED_FACT_FIELDS = {
+    "source_fact_ids",
+    "covered_source_fact_ids",
+    "source_fact_allocation",
+    "_allocation_declared_source_fact_ids",
+    "source_evidence_scope_allocation",
+}
+
+
+def _assert_no_provider_owned_canonical_facts(value: Any) -> None:
+    """Reject a server-owned Architect response that tries to own canonical facts.
+
+    Canonical IDs identify server evidence.  Ignoring a provider-supplied list
+    would be silent data loss; accepting it would make Gemini an authority.
+    A v4/v5 response must therefore contain neither IDs nor allocation metadata.
+    """
+    if isinstance(value, dict):
+        forbidden = _PROVIDER_OWNED_FACT_FIELDS.intersection(value)
+        if forbidden:
+            raise LessonAuthorBlueprintValidationError(
+                "BLUEPRINT_PROVIDER_FACT_OWNERSHIP_FORBIDDEN",
+                "Course Architect output must not contain canonical source fact IDs or allocation metadata.",
+            )
+        for child in value.values():
+            _assert_no_provider_owned_canonical_facts(child)
+    elif isinstance(value, list):
+        for child in value:
+            _assert_no_provider_owned_canonical_facts(child)
+
+
+def validate_lesson_author_blueprint(
+    value: Any,
+    *,
+    require_source_fact_ownership: bool = True,
+    forbid_provider_fact_ownership: bool = False,
+) -> dict[str, Any]:
     raw = _require_object(value, "Blueprint")
+    architecture_version = raw.get("architecture_contract_version")
+    is_source_map_architecture = architecture_version in {3, 4, 5}
+    is_server_owned_fact_architecture = architecture_version in {4, 5}
+    is_evidence_scope_architecture = architecture_version == 5
+    if architecture_version is not None and not isinstance(architecture_version, int):
+        raise LessonAuthorBlueprintValidationError(
+            "BLUEPRINT_INVALID_SCHEMA",
+            "architecture_contract_version must be an integer.",
+            path="architecture_contract_version",
+            constraint="TYPE_INTEGER",
+            expected_type="integer",
+            actual_type=_safe_json_shape(architecture_version),
+        )
+    if forbid_provider_fact_ownership:
+        if architecture_version not in {4, 5}:
+            raise LessonAuthorBlueprintValidationError(
+                "BLUEPRINT_INVALID_SCHEMA",
+                "Course Architect output must use architecture_contract_version 4 or 5.",
+                path="architecture_contract_version",
+                constraint="ARCHITECTURE_CONTRACT_VERSION",
+                expected_type="integer enum 4 or 5",
+                actual_type=_safe_json_shape(architecture_version),
+            )
+        _assert_no_provider_owned_canonical_facts(raw)
     chapters_raw = raw.get("chapters")
     if not isinstance(chapters_raw, list) or not 1 <= len(chapters_raw) <= MAX_BLUEPRINT_CHAPTERS:
         raise LessonAuthorBlueprintValidationError(
             "BLUEPRINT_INVALID_SCHEMA",
             f"chapters must contain 1 to {MAX_BLUEPRINT_CHAPTERS} items.",
+            path="chapters",
+            constraint="ARRAY_LENGTH",
+            expected_type=f"array[length=1..{MAX_BLUEPRINT_CHAPTERS}]",
+            actual_type=_safe_json_shape(chapters_raw),
         )
 
     chapters: list[dict[str, Any]] = []
-    total_lessons = 0
-    total_units = 0
-    total_components = 0
-    total_media_plans = 0
+    total_lessons = total_units = total_components = total_media_plans = 0
     for chapter_index, chapter_value in enumerate(chapters_raw):
-        chapter = _require_object(chapter_value, f"chapters[{chapter_index}]")
+        chapter_path = f"chapters[{chapter_index}]"
+        chapter = _require_object(chapter_value, chapter_path)
         lessons_raw = chapter.get("lessons")
         if not isinstance(lessons_raw, list) or not 1 <= len(lessons_raw) <= MAX_BLUEPRINT_LESSONS_PER_CHAPTER:
             raise LessonAuthorBlueprintValidationError(
                 "BLUEPRINT_INVALID_SCHEMA",
                 f"chapters[{chapter_index}].lessons must contain 1 to {MAX_BLUEPRINT_LESSONS_PER_CHAPTER} items.",
+                path=f"chapters[{chapter_index}].lessons",
+                constraint="ARRAY_LENGTH",
+                expected_type=f"array[length=1..{MAX_BLUEPRINT_LESSONS_PER_CHAPTER}]",
+                actual_type=_safe_json_shape(lessons_raw),
             )
         lessons: list[dict[str, Any]] = []
         total_lessons += len(lessons_raw)
         for lesson_index, lesson_value in enumerate(lessons_raw):
-            lesson = _require_object(lesson_value, f"chapters[{chapter_index}].lessons[{lesson_index}]")
+            lesson_path = f"{chapter_path}.lessons[{lesson_index}]"
+            lesson = _require_object(lesson_value, lesson_path)
             units_raw = lesson.get("units")
             if not isinstance(units_raw, list) or not 1 <= len(units_raw) <= MAX_BLUEPRINT_UNITS_PER_LESSON:
                 raise LessonAuthorBlueprintValidationError(
                     "BLUEPRINT_INVALID_SCHEMA",
-                    f"lesson.units must contain 1 to {MAX_BLUEPRINT_UNITS_PER_LESSON} items.",
+                    f"{lesson_path}.units must contain 1 to {MAX_BLUEPRINT_UNITS_PER_LESSON} items.",
+                    path=f"{lesson_path}.units",
+                    constraint="ARRAY_LENGTH",
+                    expected_type=f"array[length=1..{MAX_BLUEPRINT_UNITS_PER_LESSON}]",
+                    actual_type=_safe_json_shape(units_raw),
                 )
             units: list[dict[str, Any]] = []
             total_units += len(units_raw)
             for unit_index, unit_value in enumerate(units_raw):
-                unit = _require_object(unit_value, f"lesson.units[{unit_index}]")
+                unit_path = f"{lesson_path}.units[{unit_index}]"
+                unit = _require_object(unit_value, unit_path)
+                unit_label = unit_path if is_source_map_architecture else f"lesson.units[{unit_index}]"
                 component_plan_raw = unit.get("component_plan")
-                if (
-                    not isinstance(component_plan_raw, list)
-                    or not 1 <= len(component_plan_raw) <= MAX_BLUEPRINT_COMPONENTS_PER_UNIT
-                ):
-                    raise LessonAuthorBlueprintValidationError(
-                        "BLUEPRINT_INVALID_SCHEMA",
-                        f"lesson.units[{unit_index}].component_plan must contain 1 to {MAX_BLUEPRINT_COMPONENTS_PER_UNIT} items.",
-                    )
                 component_plan: list[dict[str, Any]] = []
-                total_components += len(component_plan_raw)
-                seen_component_types: set[str] = set()
-                for plan_index, plan_value in enumerate(component_plan_raw):
-                    plan = _require_object(plan_value, f"lesson.units[{unit_index}].component_plan[{plan_index}]")
-                    component_type = _require_text(
-                        plan.get("type"),
-                        "component_plan.type",
-                        40,
-                    ).casefold()
-                    if component_type not in BLUEPRINT_COMPONENT_TYPES:
-                        raise LessonAuthorBlueprintValidationError(
-                            "BLUEPRINT_INVALID_SCHEMA",
-                            f"component_plan.type must be one of: {', '.join(sorted(BLUEPRINT_COMPONENT_TYPES))}.",
-                        )
-                    if component_type in seen_component_types:
-                        raise LessonAuthorBlueprintValidationError(
-                            "BLUEPRINT_INVALID_SCHEMA",
-                            "component_plan must not repeat a component type within one unit.",
-                        )
-                    seen_component_types.add(component_type)
-                    purpose = str(plan.get("purpose") or "").strip().casefold()
-                    if purpose not in {"explain", "assess", "clarify", "sequence", "relationship", "terminology"}:
-                        purpose = ""
-                    content_requirements = _require_text_array(
-                        plan.get("content_requirements") or [],
-                        "component_plan.content_requirements",
-                        min_items=0,
-                        max_items=8,
-                        item_max_length=500,
-                    )
-                    artifacts: list[dict[str, Any]] = []
-                    for artifact_value in plan.get("required_artifacts") or []:
-                        if not isinstance(artifact_value, dict):
-                            continue
-                        artifact_type = str(artifact_value.get("type") or "").strip().casefold()
-                        if artifact_type not in {"ordered_list", "checklist", "table", "warning", "requirement", "exception", "comparison"}:
-                            continue
-                        minimum_value = artifact_value.get("minimum_items")
-                        minimum_items = minimum_value if isinstance(minimum_value, int) and minimum_value > 0 else None
-                        artifacts.append({
-                            "type": artifact_type,
-                            **({"minimum_items": min(minimum_items, 100)} if minimum_items else {}),
-                        })
-                    component_plan.append(
-                        {
+                if not is_source_map_architecture:
+                    if not isinstance(component_plan_raw, list) or not 1 <= len(component_plan_raw) <= MAX_BLUEPRINT_COMPONENTS_PER_UNIT:
+                        raise LessonAuthorBlueprintValidationError("BLUEPRINT_INVALID_SCHEMA", f"lesson.units[{unit_index}].component_plan must contain 1 to {MAX_BLUEPRINT_COMPONENTS_PER_UNIT} items.")
+                    total_components += len(component_plan_raw)
+                    seen_component_types: set[str] = set()
+                    for plan_index, plan_value in enumerate(component_plan_raw):
+                        plan = _require_object(plan_value, f"lesson.units[{unit_index}].component_plan[{plan_index}]")
+                        component_type = _require_text(plan.get("type"), "component_plan.type", 40).casefold()
+                        if component_type not in BLUEPRINT_COMPONENT_TYPES or component_type in seen_component_types:
+                            raise LessonAuthorBlueprintValidationError("BLUEPRINT_INVALID_SCHEMA", "component_plan contains an unsupported or duplicate component type.")
+                        seen_component_types.add(component_type)
+                        purpose = str(plan.get("purpose") or "").strip().casefold()
+                        if purpose not in {"explain", "assess", "clarify", "sequence", "relationship", "terminology"}:
+                            purpose = ""
+                        artifacts: list[dict[str, Any]] = []
+                        for artifact_value in plan.get("required_artifacts") or []:
+                            if not isinstance(artifact_value, dict):
+                                continue
+                            artifact_type = str(artifact_value.get("type") or "").strip().casefold()
+                            if artifact_type not in {"ordered_list", "checklist", "table", "warning", "requirement", "exception", "comparison"}:
+                                continue
+                            minimum = artifact_value.get("minimum_items")
+                            artifacts.append({
+                                "type": artifact_type,
+                                **({"minimum_items": min(minimum, 100)} if isinstance(minimum, int) and minimum > 0 else {}),
+                            })
+                        component_plan.append({
                             "type": component_type,
                             "title": _require_text(plan.get("title"), "component_plan.title", 180),
                             "rationale": _require_text(plan.get("rationale"), "component_plan.rationale", 240),
                             **({"purpose": purpose} if purpose else {}),
-                            "source_fact_ids": _require_text_array(
-                                plan.get("source_fact_ids") or [],
-                                "component_plan.source_fact_ids",
-                                min_items=0,
-                                max_items=160,
-                                item_max_length=96,
-                            ),
-                            **({"content_requirements": content_requirements} if content_requirements else {}),
+                            "source_fact_ids": _require_text_array(plan.get("source_fact_ids") or [], "component_plan.source_fact_ids", min_items=0, max_items=160, item_max_length=96),
+                            "content_requirements": _require_text_array(plan.get("content_requirements") or [], "component_plan.content_requirements", min_items=0, max_items=8, item_max_length=500),
                             **({"required_artifacts": artifacts[:6]} if artifacts else {}),
-                        }
-                    )
-                if "html" not in seen_component_types:
-                    raise LessonAuthorBlueprintValidationError(
-                        "BLUEPRINT_INVALID_SCHEMA",
-                        "lesson.units.component_plan must include one html explanation component.",
-                    )
-                non_faq_component_count = sum(
-                    component_type != "la_faq"
-                    for component_type in seen_component_types
-                )
-                if non_faq_component_count > 2:
-                    raise LessonAuthorBlueprintValidationError(
-                        "BLUEPRINT_INVALID_SCHEMA",
-                        "lesson.units.component_plan may contain html and at most one additional interactive component before FAQ.",
-                    )
+                        })
+                    if "html" not in seen_component_types:
+                        raise LessonAuthorBlueprintValidationError("BLUEPRINT_INVALID_SCHEMA", "lesson.units.component_plan must include one html explanation component.")
+                    if sum(component_type != "la_faq" for component_type in seen_component_types) > 2:
+                        raise LessonAuthorBlueprintValidationError(
+                            "BLUEPRINT_INVALID_SCHEMA",
+                            "lesson.units.component_plan may contain html and at most one additional interactive component before FAQ.",
+                        )
+                learning_blocks = _validate_semantic_learning_blocks(
+                    unit.get("learning_blocks"),
+                    f"{unit_path}.learning_blocks",
+                    # The allocator intentionally assigns canonical facts to
+                    # the one primary block that teaches each concept. A
+                    # supporting/reinforcement block may therefore be factless
+                    # without losing unit-level source ownership.
+                    require_source_fact_ownership=(
+                        require_source_fact_ownership and not is_server_owned_fact_architecture
+                    ),
+                    require_primary_source_fact_ownership=(
+                        require_source_fact_ownership and is_server_owned_fact_architecture
+                    ),
+                    include_source_fact_ids=not (forbid_provider_fact_ownership and is_server_owned_fact_architecture),
+                    require_primary_semantic_ownership=forbid_provider_fact_ownership and is_server_owned_fact_architecture,
+                    require_evidence_scope_ownership=forbid_provider_fact_ownership and is_evidence_scope_architecture,
+                    include_evidence_scope_ids=is_evidence_scope_architecture,
+                    source_fact_ownership_by_evidence_scope=is_evidence_scope_architecture,
+                ) if is_source_map_architecture else []
                 raw_media_plan = unit.get("media_plan")
                 media_plan: dict[str, str] | None = None
                 if raw_media_plan is not None:
                     media_record = _require_object(raw_media_plan, f"lesson.units[{unit_index}].media_plan")
                     media_type = _require_text(media_record.get("type"), "media_plan.type", 40).casefold()
                     if media_type not in BLUEPRINT_MEDIA_TYPES:
-                        raise LessonAuthorBlueprintValidationError(
-                            "BLUEPRINT_INVALID_SCHEMA",
-                            f"media_plan.type must be one of: {', '.join(sorted(BLUEPRINT_MEDIA_TYPES))}.",
-                        )
+                        raise LessonAuthorBlueprintValidationError("BLUEPRINT_INVALID_SCHEMA", f"media_plan.type must be one of: {', '.join(sorted(BLUEPRINT_MEDIA_TYPES))}.")
                     media_plan = {
                         "type": media_type,
                         "title": _require_text(media_record.get("title"), "media_plan.title", 180),
@@ -728,109 +1366,114 @@ def validate_lesson_author_blueprint(value: Any) -> dict[str, Any]:
                         "rationale": _require_text(media_record.get("rationale"), "media_plan.rationale", 240),
                     }
                     total_media_plans += 1
-                units.append(
-                    {
-                        "title": _require_text(
-                            strip_source_range_suffix(str(unit.get("title") or "")),
-                            "unit.title",
-                            180,
-                        ),
-                        "component_plan": component_plan,
-                        "source_refs": _optional_source_refs(unit.get("source_refs"), "unit.source_refs"),
-                        "source_fact_ids": _require_text_array(
-                            unit.get("source_fact_ids") or [],
-                            "unit.source_fact_ids",
-                            min_items=0,
-                            max_items=160,
-                            item_max_length=96,
-                        ),
-                        **({"media_plan": media_plan} if media_plan is not None else {}),
-                    }
+                unit_primary_concept_ids = _require_text_array(
+                    unit.get("primary_concept_ids") if forbid_provider_fact_ownership and is_server_owned_fact_architecture else unit.get("primary_concept_ids") or [],
+                    f"{unit_label}.primary_concept_ids",
+                    min_items=0,
+                    max_items=24,
+                    item_max_length=MAX_CANONICAL_IDENTIFIER_LENGTH,
+                ) if is_source_map_architecture else []
+                unit_has_primary_semantic_scope = (
+                    any(bool(block.get("primary_evidence_scope_ids")) for block in learning_blocks)
+                    if is_evidence_scope_architecture
+                    else bool(unit_primary_concept_ids) or any(bool(block.get("primary_concept_ids")) for block in learning_blocks)
                 )
-            lessons.append(
-                {
-                    "title": _require_text(
-                        strip_source_range_suffix(str(lesson.get("title") or "")),
-                        "lesson.title",
-                        180,
+                unit_source_fact_ids = _require_text_array(
+                    unit.get("source_fact_ids") or [],
+                    f"{unit_label}.source_fact_ids",
+                    min_items=(
+                        1
+                        if is_source_map_architecture
+                        and require_source_fact_ownership
+                        and (not is_server_owned_fact_architecture or unit_has_primary_semantic_scope)
+                        else 0
                     ),
-                    "objective": _require_text(lesson.get("objective"), "lesson.objective", 500),
-                    "learning_activities": _require_text_array(
-                        lesson.get("learning_activities"),
-                        "lesson.learning_activities",
-                        min_items=1,
-                        max_items=MAX_BLUEPRINT_ACTIVITIES_PER_LESSON,
-                        item_max_length=280,
-                    ),
-                    "assessment": _require_text(lesson.get("assessment"), "lesson.assessment", 500),
-                    "units": units,
-                    "source_refs": _optional_source_refs(
-                        lesson.get("source_refs"),
-                        "lesson.source_refs",
-                    ),
-                }
-            )
-        chapters.append(
-            {
-                "title": _require_text(
-                    strip_source_range_suffix(str(chapter.get("title") or "")),
-                    "chapter.title",
-                    220,
-                ),
-                "objective": _require_text(chapter.get("objective"), "chapter.objective", 500),
-                "lessons": lessons,
-                "source_refs": _optional_source_refs(chapter.get("source_refs"), "chapter.source_refs"),
-            }
-        )
+                    max_items=MAX_SERVER_OWNED_SOURCE_FACT_IDS_PER_SCOPE,
+                    item_max_length=MAX_CANONICAL_IDENTIFIER_LENGTH,
+                )
+                if is_source_map_architecture and require_source_fact_ownership:
+                    owned = {fact_id for block in learning_blocks for fact_id in block["source_fact_ids"]}
+                    if not set(unit_source_fact_ids).issubset(owned):
+                        raise LessonAuthorBlueprintValidationError("BLUEPRINT_SOURCE_COVERAGE_INCOMPLETE", "Every unit source fact must be owned by a semantic learning block.")
+                units.append({
+                    "title": _require_text(strip_source_range_suffix(str(unit.get("title") or "")), "unit.title", 180),
+                    **({"purpose": _require_text(unit.get("purpose"), f"{unit_label}.purpose", 300)} if is_source_map_architecture else {}),
+                    **({"concept_ids": _require_text_array(unit.get("concept_ids"), f"{unit_label}.concept_ids", min_items=1, max_items=24, item_max_length=MAX_CANONICAL_IDENTIFIER_LENGTH)} if is_source_map_architecture else {}),
+                    **({"primary_concept_ids": unit_primary_concept_ids} if is_source_map_architecture else {}),
+                    **({"primary_evidence_scope_ids": _require_text_array(unit.get("primary_evidence_scope_ids") or [], f"{unit_label}.primary_evidence_scope_ids", min_items=0, max_items=12, item_max_length=96)} if is_evidence_scope_architecture else {}),
+                    **({"supporting_evidence_scope_ids": _require_text_array(unit.get("supporting_evidence_scope_ids") or [], f"{unit_label}.supporting_evidence_scope_ids", min_items=0, max_items=12, item_max_length=96)} if is_evidence_scope_architecture else {}),
+                    **({"learning_objective_refs": _require_text_array(unit.get("learning_objective_refs"), f"{unit_label}.learning_objective_refs", min_items=1, max_items=24, item_max_length=MAX_CANONICAL_IDENTIFIER_LENGTH)} if is_source_map_architecture else {}),
+                    "component_plan": component_plan,
+                    "source_refs": _optional_source_refs(unit.get("source_refs"), f"{unit_label}.source_refs"),
+                    **({"source_fact_ids": unit_source_fact_ids} if not (forbid_provider_fact_ownership and is_server_owned_fact_architecture) else {}),
+                    **({"learning_blocks": learning_blocks} if learning_blocks else {}),
+                    **({"media_plan": media_plan} if media_plan is not None else {}),
+                })
+            lesson_label = lesson_path if is_source_map_architecture else "lesson"
+            lesson_objectives = _require_text_array(lesson.get("learning_objectives"), f"{lesson_label}.learning_objectives", min_items=1, max_items=8, item_max_length=500) if is_source_map_architecture else []
+            assessment_objective_refs = _require_text_array(
+                lesson.get("assessment_objective_refs") or [],
+                f"{lesson_label}.assessment_objective_refs",
+                min_items=0,
+                max_items=8,
+                item_max_length=MAX_CANONICAL_IDENTIFIER_LENGTH,
+            ) if is_source_map_architecture else []
+            if is_server_owned_fact_architecture:
+                for unit_index, normalized_unit in enumerate(units):
+                    _validate_local_learning_objective_refs(
+                        normalized_unit.get("learning_objective_refs", []),
+                        f"{lesson_label}.units[{unit_index}].learning_objective_refs",
+                        len(lesson_objectives),
+                    )
+                    for block_index, block in enumerate(normalized_unit.get("learning_blocks", [])):
+                        _validate_local_learning_objective_refs(
+                            block.get("learning_objective_refs", []),
+                            f"{lesson_label}.units[{unit_index}].learning_blocks[{block_index}].learning_objective_refs",
+                            len(lesson_objectives),
+                        )
+                _validate_local_learning_objective_refs(
+                    assessment_objective_refs,
+                    f"{lesson_label}.assessment_objective_refs",
+                    len(lesson_objectives),
+                )
+            lessons.append({
+                "title": _require_text(strip_source_range_suffix(str(lesson.get("title") or "")), "lesson.title", 180),
+                "objective": _require_text(lesson.get("objective"), "lesson.objective", 500),
+                "learning_activities": _require_text_array(lesson.get("learning_activities"), "lesson.learning_activities", min_items=1, max_items=MAX_BLUEPRINT_ACTIVITIES_PER_LESSON, item_max_length=280),
+                "assessment": _require_text(lesson.get("assessment"), "lesson.assessment", 500),
+                "units": units,
+                "source_refs": _optional_source_refs(lesson.get("source_refs"), "lesson.source_refs"),
+                **({"learning_objectives": lesson_objectives} if lesson_objectives else {}),
+                **({"primary_concept_ids": _require_text_array(lesson.get("primary_concept_ids"), f"{lesson_label}.primary_concept_ids", min_items=1, max_items=24, item_max_length=96)} if is_source_map_architecture else {}),
+                **({"supporting_concept_ids": _require_text_array(lesson.get("supporting_concept_ids") or [], f"{lesson_label}.supporting_concept_ids", min_items=0, max_items=24, item_max_length=96)} if is_source_map_architecture else {}),
+                **({"prerequisite_concept_ids": _require_text_array(lesson.get("prerequisite_concept_ids") or [], f"{lesson_label}.prerequisite_concept_ids", min_items=0, max_items=24, item_max_length=96)} if is_source_map_architecture else {}),
+                **({"estimated_minutes": lesson.get("estimated_minutes")} if is_source_map_architecture and isinstance(lesson.get("estimated_minutes"), int) and 1 <= lesson.get("estimated_minutes") <= 600 else {}),
+                **({"assessment_required": bool(lesson.get("assessment_required"))} if is_source_map_architecture else {}),
+                **({"assessment_objective_refs": assessment_objective_refs} if is_source_map_architecture else {}),
+            })
+        chapters.append({
+            "title": _require_text(strip_source_range_suffix(str(chapter.get("title") or "")), "chapter.title", 220),
+            "objective": _require_text(chapter.get("objective"), "chapter.objective", 500),
+            "lessons": lessons,
+            "source_refs": _optional_source_refs(chapter.get("source_refs"), "chapter.source_refs"),
+            **({"learning_objectives": _require_text_array(chapter.get("learning_objectives"), f"{chapter_path}.learning_objectives", min_items=1, max_items=12, item_max_length=500)} if is_source_map_architecture else {}),
+            **({"concept_ids": _require_text_array(chapter.get("concept_ids"), f"{chapter_path}.concept_ids", min_items=1, max_items=48, item_max_length=96)} if is_source_map_architecture else {}),
+        })
 
-    if total_lessons > MAX_BLUEPRINT_TOTAL_LESSONS:
-        raise LessonAuthorBlueprintValidationError(
-            "BLUEPRINT_INVALID_SCHEMA",
-            f"Blueprint must contain at most {MAX_BLUEPRINT_TOTAL_LESSONS} lessons in total.",
-        )
-    if total_units > MAX_BLUEPRINT_TOTAL_UNITS:
-        raise LessonAuthorBlueprintValidationError(
-            "BLUEPRINT_INVALID_SCHEMA",
-            f"Blueprint must contain at most {MAX_BLUEPRINT_TOTAL_UNITS} units in total.",
-        )
-    if total_components > MAX_BLUEPRINT_TOTAL_COMPONENTS:
-        raise LessonAuthorBlueprintValidationError(
-            "BLUEPRINT_INVALID_SCHEMA",
-            f"Blueprint must contain at most {MAX_BLUEPRINT_TOTAL_COMPONENTS} component plans in total.",
-        )
-    if total_media_plans > MAX_BLUEPRINT_MEDIA_PLANS:
-        raise LessonAuthorBlueprintValidationError(
-            "BLUEPRINT_INVALID_SCHEMA",
-            f"Blueprint must contain at most {MAX_BLUEPRINT_MEDIA_PLANS} media plans in total.",
-        )
-
+    if total_lessons > MAX_BLUEPRINT_TOTAL_LESSONS or total_units > MAX_BLUEPRINT_TOTAL_UNITS or total_components > MAX_BLUEPRINT_TOTAL_COMPONENTS or total_media_plans > MAX_BLUEPRINT_MEDIA_PLANS:
+        raise LessonAuthorBlueprintValidationError("BLUEPRINT_INVALID_SCHEMA", "Blueprint exceeds configured structural limits.")
+    learning_outcomes = _require_text_array(raw.get("learning_outcomes"), "learning_outcomes", min_items=3, max_items=MAX_BLUEPRINT_LEARNING_OUTCOMES, item_max_length=500)
     return {
+        "architecture_contract_version": architecture_version if is_source_map_architecture else None,
         "content_contract_version": 1,
         "title": _require_text(raw.get("title"), "title", 220),
         "summary": _require_text(raw.get("summary"), "summary", 1400),
         "target_audience": _require_text(raw.get("target_audience"), "target_audience", 500),
-        "prerequisites": _require_text_array(
-            raw.get("prerequisites"),
-            "prerequisites",
-            min_items=0,
-            max_items=MAX_BLUEPRINT_PREREQUISITES,
-            item_max_length=280,
-        ),
-        "learning_outcomes": _require_text_array(
-            raw.get("learning_outcomes"),
-            "learning_outcomes",
-            min_items=3,
-            max_items=MAX_BLUEPRINT_LEARNING_OUTCOMES,
-            item_max_length=500,
-        ),
+        "prerequisites": _require_text_array(raw.get("prerequisites"), "prerequisites", min_items=0, max_items=MAX_BLUEPRINT_PREREQUISITES, item_max_length=280),
+        "learning_outcomes": learning_outcomes,
+        "course_outcomes": _require_text_array(raw.get("course_outcomes"), "course_outcomes", min_items=1, max_items=MAX_BLUEPRINT_LEARNING_OUTCOMES, item_max_length=500) if is_source_map_architecture else learning_outcomes,
         "assessment_strategy": _require_text(raw.get("assessment_strategy"), "assessment_strategy", 900),
-        "assumptions": _require_text_array(
-            raw.get("assumptions"),
-            "assumptions",
-            min_items=0,
-            max_items=MAX_BLUEPRINT_ASSUMPTIONS,
-            item_max_length=400,
-        ),
+        "assumptions": _require_text_array(raw.get("assumptions"), "assumptions", min_items=0, max_items=MAX_BLUEPRINT_ASSUMPTIONS, item_max_length=400),
         "chapters": chapters,
     }
 
@@ -846,6 +1489,12 @@ def ensure_lesson_author_blueprint_faqs(
     explanation and practice components, including when the model originally
     put it on an earlier unit.
     """
+    # Phase 3 Course Architect output intentionally has no component plan.
+    # FAQ selection belongs to the Phase-2 semantic-block planner, so do not
+    # manufacture an FAQ CMS choice for a semantic blueprint.
+    if blueprint.get("architecture_contract_version") in {3, 4, 5}:
+        return blueprint
+
     is_english = locale == "en"
     fallback_faq = {
         "type": "la_faq",
@@ -905,11 +1554,20 @@ def ensure_lesson_author_blueprint_faqs(
     return blueprint
 
 
-def parse_and_validate_lesson_author_blueprint(text: str) -> dict[str, Any]:
+def parse_and_validate_lesson_author_blueprint(
+    text: str,
+    *,
+    require_source_fact_ownership: bool = True,
+    forbid_provider_fact_ownership: bool = False,
+) -> dict[str, Any]:
     last_validation_error: LessonAuthorBlueprintValidationError | None = None
     for parsed in _decode_blueprint_json(text):
         try:
-            return validate_lesson_author_blueprint(normalize_lesson_author_blueprint_candidate(parsed))
+            return validate_lesson_author_blueprint(
+                normalize_lesson_author_blueprint_candidate(parsed),
+                require_source_fact_ownership=require_source_fact_ownership,
+                forbid_provider_fact_ownership=forbid_provider_fact_ownership,
+            )
         except LessonAuthorBlueprintValidationError as error:
             last_validation_error = error
     if last_validation_error is not None:
@@ -917,4 +1575,32 @@ def parse_and_validate_lesson_author_blueprint(text: str) -> dict[str, Any]:
     raise LessonAuthorBlueprintValidationError(
         "BLUEPRINT_INVALID_JSON",
         "Blueprint response is not valid JSON.",
+    )
+
+
+def parse_lesson_author_blueprint_candidate(
+    text: str,
+    *,
+    forbid_provider_fact_ownership: bool = False,
+) -> dict[str, Any]:
+    """Decode a complete provider object without accepting its schema yet.
+
+    The Course Architecture graph uses this narrow helper only when a V5
+    response is valid JSON but has one repairable *local* structural issue.
+    It deliberately preserves the candidate for a bounded patch repair while
+    keeping the provider-fact ownership guard at the first decoding boundary.
+    It never recovers truncated JSON or turns a malformed/global candidate
+    into a repair target.
+    """
+
+    for parsed in _decode_blueprint_json(text):
+        candidate = normalize_lesson_author_blueprint_candidate(parsed)
+        if not isinstance(candidate, dict):
+            continue
+        if forbid_provider_fact_ownership:
+            _assert_no_provider_owned_canonical_facts(candidate)
+        return candidate
+    raise LessonAuthorBlueprintValidationError(
+        "BLUEPRINT_INVALID_JSON",
+        "Blueprint response is not a JSON object.",
     )

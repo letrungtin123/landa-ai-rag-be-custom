@@ -162,6 +162,37 @@ class SourceStructureTests(unittest.TestCase):
         self.assertIn("[p3-f1]", rendered)
         self.assertIn("[p4-f2]", rendered)
 
+    def test_36_chunk_371_fact_regression_keeps_full_canonical_manifest(self) -> None:
+        rows = []
+        fact_number = 1
+        for page in range(1, 37):
+            page_fact_count = 11 if page <= 11 else 10
+            lines = []
+            for _ in range(page_fact_count):
+                lines.append(f"• HSE source rule {fact_number}: a distinct source-grounded requirement.")
+                fact_number += 1
+            rows.append({
+                "document_id": "doc-hse",
+                "source_page": page,
+                "chunk_no": page - 1,
+                "content": "\n".join(lines),
+            })
+
+        manifest = build_source_coverage_manifest(rows, canonical_max_chars=1_000_000)
+
+        self.assertEqual(fact_number - 1, 371)
+        self.assertEqual(manifest["total_fact_count"], 371)
+        self.assertEqual(manifest["represented_fact_count"], 371)
+        self.assertTrue(manifest["fact_scope_complete"])
+        self.assertFalse(manifest["truncated"])
+        self.assertEqual(len({fact["fact_id"] for fact in manifest["facts"]}), 371)
+
+        incomplete = build_source_coverage_manifest(rows, canonical_max_chars=1_000)
+        self.assertEqual(incomplete["total_fact_count"], 371)
+        self.assertLess(incomplete["represented_fact_count"], 371)
+        self.assertFalse(incomplete["fact_scope_complete"])
+        self.assertEqual(incomplete["incomplete_reason"], "SOURCE_FACT_EXTRACTION_CAPACITY_EXCEEDED")
+
     def test_source_coverage_manifest_skips_branded_cover_page(self) -> None:
         manifest = build_source_coverage_manifest([
             {"source_page": 1, "chunk_no": 0, "content": "HSE training www.example.com"},
