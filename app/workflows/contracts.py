@@ -80,6 +80,11 @@ class RepairTarget(TypedDict, total=False):
     semantic_operations: list[str]
     allowed_block_ids: list[str]
     allowed_objective_ids: list[str]
+    # V5 action-objective repair choices are server-derived per existing
+    # block. The provider selects one of these compact semantic labels only;
+    # it never expands the architecture's general intent enum.
+    allowed_intents_by_block_id: dict[str, list[str]]
+    assessment_dependency_objective_count: int
     # A post-allocation depth target is lesson-scoped. The provider may select
     # only one of these server-approved unit paths and an allowed anchor block
     # inside it; it never chooses evidence or fact ownership.

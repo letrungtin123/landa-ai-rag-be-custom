@@ -51,6 +51,12 @@ SEMANTIC_LEARNING_BLOCK_INTENTS = {
     "knowledge_check", "terminology_reinforcement", "faq", "relationship_visualization",
     "summary", "media_reference",
 }
+# A bounded action-objective repair may change an existing generic teaching
+# block only to one of these evidence-compatible treatments.  The wider
+# semantic enum remains valid for Architect output and other repair
+# operations, but would let a scoped intent repair turn an assessment anchor
+# into a non-teaching block.
+ACTION_OBJECTIVE_REPAIR_INTENTS = frozenset({"procedure", "worked_example"})
 SEMANTIC_LEARNING_BLOCK_IMPORTANCE = {"supporting", "core", "critical", "assessment"}
 
 
@@ -489,8 +495,8 @@ def _v5_semantic_delta_patch_schema(operation: str) -> types.Schema:
                 **common,
                 "block_id": _string_schema("An existing semantic block ID in the target unit."),
                 "intent": _enum_string_schema(
-                    "One canonical semantic learning-block intent.",
-                    SEMANTIC_LEARNING_BLOCK_INTENTS,
+                    "One server-approved procedural or worked-example intent for an action-oriented unit.",
+                    ACTION_OBJECTIVE_REPAIR_INTENTS,
                 ),
             },
         )

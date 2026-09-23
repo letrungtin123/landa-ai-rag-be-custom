@@ -99,6 +99,24 @@ def _component_fact_ids(component: dict[str, Any]) -> list[str]:
     )
 
 
+def _component_supporting_evidence_fact_ids(component: dict[str, Any]) -> list[str]:
+    metadata = _record(component.get("metadata"))
+    return _text_list(
+        component.get("supporting_evidence_fact_ids")
+        or metadata.get("supporting_evidence_fact_ids")
+        or _record(component.get("data")).get("supporting_evidence_fact_ids"),
+        max_length=96,
+    )
+
+
+def _component_evidence_fact_ids(component: dict[str, Any]) -> list[str]:
+    """Return declared canonical and read-only evidence without merging ownership."""
+    return list(dict.fromkeys([
+        *_component_fact_ids(component),
+        *_component_supporting_evidence_fact_ids(component),
+    ]))
+
+
 def _nested_component_data(component: dict[str, Any], key: str) -> dict[str, Any]:
     metadata = _record(component.get("metadata"))
     data = _record(component.get("data"))
@@ -130,10 +148,39 @@ def _problem_choices(component: dict[str, Any]) -> list[str]:
     ]
 
 
+def _semantic_learning_text(value: Any) -> str:
+    """Extract only text Node's deterministic semantic renderer can display."""
+    content = _record(value)
+    values: list[str] = []
+    heading = content.get("heading")
+    if isinstance(heading, str) and heading.strip():
+        values.append(heading.strip())
+    for field, alias in [
+        ("paragraphs", None),
+        ("bullet_points", "bullets"),
+        ("ordered_steps", "steps"),
+        ("warnings", "warning"),
+    ]:
+        raw_items = content.get(field, content.get(alias) if alias else None)
+        if isinstance(raw_items, list):
+            values.extend(item.strip() for item in raw_items if isinstance(item, str) and item.strip())
+    rows = content.get("comparison_rows", content.get("table_rows"))
+    if isinstance(rows, list):
+        for row_value in rows:
+            row = _record(row_value)
+            values.extend(
+                text.strip()
+                for text in [row.get("label"), row.get("value")]
+                if isinstance(text, str) and text.strip()
+            )
+    return " ".join(values)
+
+
 def _component_text(component: dict[str, Any]) -> str:
     component_type = _component_type(component)
     if component_type == "html":
-        return _plain_text(component.get("html") or component.get("data") or component.get("content"))
+        semantic_text = _semantic_learning_text(component.get("semantic_content"))
+        return semantic_text or _plain_text(component.get("html") or component.get("data") or component.get("content"))
     if component_type == "problem":
         return _problem_question(component)
     if component_type == "la_faq":
@@ -159,6 +206,39 @@ def _component_text(component: dict[str, Any]) -> str:
         items = sortable.get("items") if isinstance(sortable.get("items"), list) else component.get("items")
         return " ".join(str(_record(item).get("text") or item or "") for item in items or [])
     return ""
+
+
+def _html_artifact_item_count(component: dict[str, Any], artifact_type: str) -> int:
+    """Count only presentation structures that Node can preserve deterministically.
+
+    This deliberately does not infer whether arbitrary prose implies a
+    warning, requirement, or comparison.  The quality gate can fail a missing
+    requested structure, but never claims that a structural match proves the
+    source statement itself is entailed.
+    """
+    semantic = _record(component.get("semantic_content"))
+    html_value = str(component.get("html") or component.get("data") or component.get("content") or "")
+    if artifact_type == "ordered_list":
+        semantic_items = semantic.get("ordered_steps", semantic.get("steps"))
+        if isinstance(semantic_items, list):
+            return len([item for item in semantic_items if isinstance(item, str) and item.strip()])
+        return len(re.findall(r"<li\b[^>]*>", re.sub(r"(?is)^.*?<ol\b[^>]*>", "", html_value))) if re.search(r"<ol\b", html_value, re.IGNORECASE) else 0
+    if artifact_type == "checklist":
+        semantic_items = semantic.get("bullet_points", semantic.get("bullets"))
+        if isinstance(semantic_items, list):
+            return len([item for item in semantic_items if isinstance(item, str) and item.strip()])
+        return len(re.findall(r"<li\b[^>]*>", re.sub(r"(?is)^.*?<ul\b[^>]*>", "", html_value))) if re.search(r"<ul\b", html_value, re.IGNORECASE) else 0
+    if artifact_type in {"table", "comparison"}:
+        rows = semantic.get("comparison_rows", semantic.get("table_rows"))
+        if isinstance(rows, list):
+            return len([row for row in rows if isinstance(row, dict)])
+        return len(re.findall(r"<tr\b[^>]*>", html_value, re.IGNORECASE)) - 1 if re.search(r"<table\b", html_value, re.IGNORECASE) else 0
+    if artifact_type in {"warning", "requirement", "exception"}:
+        warnings = semantic.get("warnings", semantic.get("warning"))
+        if isinstance(warnings, list):
+            return len([item for item in warnings if isinstance(item, str) and item.strip()])
+        return len(re.findall(r"<blockquote\b[^>]*>", html_value, re.IGNORECASE))
+    return 0
 
 
 def _issue(
@@ -220,6 +300,8 @@ def _proposal_components(proposal: dict[str, Any]) -> list[dict[str, Any]]:
                 "component": component,
                 "type": _component_type(component),
                 "fact_ids": _component_fact_ids(component),
+                "supporting_evidence_fact_ids": _component_supporting_evidence_fact_ids(component),
+                "evidence_fact_ids": _component_evidence_fact_ids(component),
                 "text": _component_text(component),
             })
     return result
@@ -313,6 +395,7 @@ def validate_lesson_pedagogical_quality(
     assessment_total = assessment_covered = 0
     depth_total = depth_covered = 0
     purpose_total = purpose_covered = 0
+    artifact_total = artifact_covered = 0
 
     expected_chapter = _record(blueprint_architecture)
     expected_lessons = expected_chapter.get("lessons") if isinstance(expected_chapter.get("lessons"), list) else []
@@ -329,8 +412,35 @@ def validate_lesson_pedagogical_quality(
                 index for index, unit_value in enumerate(units, start=1)
                 if objective_ref in _text_list(_record(unit_value).get("learning_objective_refs"), max_items=12, max_length=16)
             ]
+            teaching_block_facts: set[str] = set()
+            teaching_block_ids: set[str] = set()
+            for unit_index in mapped_units:
+                for block_value in _record(units[unit_index - 1]).get("learning_blocks") or []:
+                    block = _record(block_value)
+                    if objective_ref not in _text_list(block.get("learning_objective_refs"), max_items=12, max_length=16):
+                        continue
+                    if str(block.get("intent") or "").strip() == "knowledge_check":
+                        continue
+                    block_id = str(block.get("id") or "").strip()
+                    if block_id:
+                        teaching_block_ids.add(block_id)
+                    teaching_block_facts.update(_text_list(block.get("source_fact_ids"), max_length=96))
+            expected_html_plan_blocks = {
+                block_id
+                for unit_index in mapped_units
+                for plan_value in (_record(units[unit_index - 1]).get("component_plan") or [])
+                for plan in [_record(plan_value)]
+                if str(plan.get("type") or "").strip() == "html"
+                for block_id in _text_list(plan.get("learning_block_ids"), max_items=12, max_length=80)
+            }
             taught = any(
-                item["unit_index"] in mapped_units and item["type"] == "html" and len(_tokens(item["text"])) >= 12
+                item["unit_index"] in mapped_units
+                and item["type"] == "html"
+                # A plan may omit block IDs on an old Blueprint. For a new V5
+                # plan, an explicit mapping must point at a teaching block.
+                and (not expected_html_plan_blocks or bool(expected_html_plan_blocks & teaching_block_ids))
+                and len(_tokens(item["text"])) >= 18
+                and (not teaching_block_facts or bool(set(item["evidence_fact_ids"]) & teaching_block_facts))
                 for item in lesson_components
             )
             if taught:
@@ -399,6 +509,35 @@ def validate_lesson_pedagogical_quality(
                         learning_block_ids=_text_list(plan.get("learning_block_ids"), max_items=12, max_length=80),
                     ))
 
+                for artifact_value in plan.get("required_artifacts") or []:
+                    artifact = _record(artifact_value)
+                    artifact_type = str(artifact.get("type") or "").strip().casefold()
+                    if artifact_type not in {
+                        "ordered_list", "checklist", "table", "warning",
+                        "requirement", "exception", "comparison",
+                    }:
+                        continue
+                    artifact_total += 1
+                    minimum_items = artifact.get("minimum_items")
+                    required_count = minimum_items if isinstance(minimum_items, int) and minimum_items > 0 else 1
+                    rendered_count = max(
+                        (
+                            _html_artifact_item_count(item["component"], artifact_type)
+                            for item in actual_components
+                            if item["type"] == component_type
+                        ),
+                        default=0,
+                    )
+                    if rendered_count >= required_count:
+                        artifact_covered += 1
+                    else:
+                        findings.append(_issue(
+                            "REQUIRED_ARTIFACT_NOT_PRESERVED",
+                            f"The approved {artifact_type} treatment is absent or incomplete in generated content.",
+                            path=unit_path,
+                            learning_block_ids=_text_list(plan.get("learning_block_ids"), max_items=12, max_length=80),
+                        ))
+
             complexity = len(expected_facts) + len(_text_list(expected_unit.get("concept_ids"), max_items=12, max_length=96)) + len(_text_list(expected_unit.get("learning_objective_refs"), max_items=12, max_length=16))
             if complexity >= 3:
                 depth_total += 1
@@ -418,9 +557,28 @@ def validate_lesson_pedagogical_quality(
         if expected_lesson.get("assessment_required") is True:
             assessment_total += 1
             explained_facts = {
-                fact_id for item in lesson_components if item["type"] == "html" for fact_id in item["fact_ids"]
+                fact_id for item in lesson_components if item["type"] == "html" for fact_id in item["evidence_fact_ids"]
             }
-            aligned = any(item["type"] == "problem" and bool(set(item["fact_ids"]) & explained_facts) for item in lesson_components)
+            assessment_objectives = set(_text_list(expected_lesson.get("assessment_objective_refs"), max_items=12, max_length=80))
+            taught_objectives = {
+                objective_ref
+                for objective_ref in assessment_objectives
+                if any(
+                    item["type"] == "html"
+                    and len(_tokens(item["text"])) >= 18
+                    and item["unit_index"] == unit_index
+                    for unit_index, unit_value in enumerate(units, start=1)
+                    if objective_ref in _text_list(_record(unit_value).get("learning_objective_refs"), max_items=12, max_length=16)
+                    for item in lesson_components
+                    if item["type"] == "html"
+                    and len(_tokens(item["text"])) >= 18
+                )
+            }
+            aligned = bool(assessment_objectives & taught_objectives) and any(
+                item["type"] == "problem"
+                and bool(set(item["evidence_fact_ids"]) & explained_facts)
+                for item in lesson_components
+            )
             if aligned:
                 assessment_covered += 1
             else:
@@ -451,12 +609,16 @@ def validate_lesson_pedagogical_quality(
         findings=findings,
         metrics={
             "objective_coverage": ratio(objective_covered, objective_total),
+            "objective_treatment_coverage": ratio(objective_covered, objective_total),
             "source_fact_coverage": ratio(source_covered, source_total),
+            "declared_source_coverage": ratio(source_covered, source_total),
+            "artifact_coverage": ratio(artifact_covered, artifact_total),
             "assessment_alignment": ratio(assessment_covered, assessment_total),
             "instructional_depth": ratio(depth_covered, depth_total),
             "component_purpose": ratio(purpose_covered, purpose_total),
             "duplicate_count": len(duplicates),
             "pedagogical_warning_count": len(warnings),
+            "factual_entailment_not_automatically_verified": True,
             "component_counts": {
                 component_type: sum(1 for item in components if item["type"] == component_type)
                 for component_type in sorted({item["type"] for item in components if item["type"]})

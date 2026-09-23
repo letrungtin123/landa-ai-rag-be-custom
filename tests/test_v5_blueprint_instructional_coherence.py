@@ -7,6 +7,7 @@ from app.main import (
     allocate_blueprint_source_fact_ids,
     allocate_source_map_architecture_facts,
     format_approved_lesson_quality_contract,
+    validate_v5_instructional_coherence,
     validate_course_architecture_workflow,
 )
 from app.source_map import build_source_map
@@ -112,6 +113,41 @@ class V5BlueprintInstructionalCoherenceTests(unittest.TestCase):
         lesson["objective"] = "Perform the source-grounded procedure."
         lesson["units"][0]["purpose"] = "Perform the required procedure safely."
         self.assertIn("ACTION_OBJECTIVE_INSTRUCTION_MISMATCH", self._validation_codes(blueprint, source_map, manifest))
+
+    def test_action_requirement_stays_with_the_unit_objective_scope(self) -> None:
+        blueprint, _source_map, _manifest_value = self._finalized()
+        lesson = blueprint["chapters"][0]["lessons"][0]  # type: ignore[index]
+        informational = lesson["units"][0]
+        informational["purpose"] = "Identify the documented safety control."
+        informational["learning_objective_refs"] = ["lo_1"]
+        informational["learning_blocks"][0]["learning_objective_refs"] = ["lo_1"]
+        action = {
+            **informational,
+            "title": "Perform the documented procedure",
+            "purpose": "Perform the documented procedure safely.",
+            "learning_objective_refs": ["lo_2"],
+            "learning_blocks": [
+                {
+                    **informational["learning_blocks"][0],
+                    "id": "lb_action",
+                    "learning_objective_refs": ["lo_2"],
+                },
+            ],
+        }
+        lesson["objective"] = "Perform the full documented procedure."
+        lesson["learning_objectives"] = [
+            "Identify the documented safety control.",
+            "Perform the documented procedure safely.",
+        ]
+        lesson["units"].append(action)
+
+        issues = validate_v5_instructional_coherence(blueprint).errors
+        action_paths = [
+            issue["path"]
+            for issue in issues
+            if issue["code"] == "ACTION_OBJECTIVE_INSTRUCTION_MISMATCH"
+        ]
+        self.assertEqual(action_paths, ["chapter_1.lesson_1.unit_2"])
 
     def test_v5_approved_draft_contract_preserves_scope_semantics_for_staged_generation(self) -> None:
         architecture = RagLessonAuthorDraftArchitecture.model_validate({

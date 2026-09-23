@@ -1,0 +1,29 @@
+{
+  "fixture_version": 1,
+  "description": "Synthetic V5 chapter-content contract fixture. It contains no customer source text.",
+  "chapter": {
+    "lesson_count": 9,
+    "unit_count": 9,
+    "dense_unit": {
+      "path": "chapter_1.lesson_3.unit_2",
+      "fact_count": 90,
+      "semantic_block_count": 5,
+      "required_artifacts": ["ordered_list", "warning", "comparison"]
+    },
+    "supporting_only_assessment": {
+      "path": "chapter_1.lesson_3.unit_4",
+      "owned_fact_count": 0,
+      "supporting_scope_ids": ["scope-07"],
+      "assessment_objective_refs": ["lo_1"]
+    }
+  },
+  "evidence": {
+    "scope_count": 17,
+    "canonical_fact_count": 371,
+    "fact_id_prefix": "fixture-fact-"
+  },
+  "scale": {
+    "canonical_fact_count": 1001,
+    "fact_id_prefix": "scale-fact-"
+  }
+}

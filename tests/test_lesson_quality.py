@@ -126,6 +126,34 @@ class LessonQualityFixturesTests(unittest.TestCase):
         report = validate_lesson_pedagogical_quality(candidate, blueprint(concepts=["concept-ppe", "concept-risk"]))
         self.assertIn("INSUFFICIENT_INSTRUCTIONAL_DEPTH", [issue["code"] for issue in report.findings])
 
+    def test_required_ordered_artifact_is_measured_from_semantic_content(self):
+        contract = blueprint(plan=[{
+            "type": "html",
+            "reason_code": "PROCEDURE_EXPLANATION",
+            "required_artifacts": [{"type": "ordered_list", "minimum_items": 2}],
+        }], assessment=False)
+        semantic_html = {
+            "type": "html",
+            "semantic_content": {
+                "paragraphs": [LONG_EXPLANATION],
+                "ordered_steps": ["Chuẩn bị đúng thiết bị bảo hộ.", "Kiểm tra điều kiện an toàn trước khi thao tác."],
+            },
+            "source_fact_ids": ["fact-1", "fact-2"],
+            "covered_source_fact_ids": ["fact-1", "fact-2"],
+        }
+        report = validate_lesson_pedagogical_quality(proposal([unit([semantic_html])]), contract)
+        self.assertEqual(report.metrics["artifact_coverage"], 1.0)
+        self.assertTrue(report.metrics["factual_entailment_not_automatically_verified"])
+
+    def test_required_artifact_cannot_be_hidden_in_generic_prose(self):
+        contract = blueprint(plan=[{
+            "type": "html",
+            "reason_code": "PROCEDURE_EXPLANATION",
+            "required_artifacts": [{"type": "ordered_list", "minimum_items": 2}],
+        }], assessment=False)
+        report = validate_lesson_pedagogical_quality(proposal([unit([html(["fact-1", "fact-2"])])]), contract)
+        self.assertIn("REQUIRED_ARTIFACT_NOT_PRESERVED", [issue["code"] for issue in report.findings])
+
     def test_unsupported_source_gap_fixture_is_rejected(self):
         candidate = proposal([unit([html(["fact-1"]), problem(["fact-3"])])])
         result = pedagogical_validation_result(candidate, blueprint())

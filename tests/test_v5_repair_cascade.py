@@ -11,6 +11,7 @@ from google import genai
 from google.genai import models, types
 
 from app.lesson_author_blueprint import (
+    ACTION_OBJECTIVE_REPAIR_INTENTS,
     COURSE_ARCHITECTURE_REPAIR_RESPONSE_SCHEMA,
     LessonAuthorBlueprintValidationError,
     build_v5_semantic_delta_repair_response_schema,
@@ -25,12 +26,14 @@ from app.main import (
     _v5_deterministic_assessment_alignment_payload,
     _v5_prepare_evidence_alignment_targets,
     _v5_prepare_assessment_alignment_targets,
+    _v5_prepare_semantic_repair_targets,
     allocate_blueprint_source_fact_ids,
     allocate_source_map_architecture_facts,
     apply_course_architecture_repair_patches,
     assert_v5_immutable_source_context,
     assert_v5_scoped_repair_target_bound,
     build_course_architect_prompt,
+    build_course_architecture_repair_prompt,
     build_v5_scoped_repair_source_context,
     create_v5_immutable_source_context,
     generate_validated_lesson_author_blueprint,
@@ -859,6 +862,95 @@ class V5RepairCascadeTests(unittest.IsolatedAsyncioTestCase):
         allocated_fact_ids = [item["fact_id"] for item in allocation["allocations"]]
         self.assertEqual(len(allocated_fact_ids), len(set(allocated_fact_ids)))
 
+    def _action_assessment_anchor_fixture(self) -> tuple[dict[str, object], dict[str, object], dict[str, object]]:
+        """One action unit teaches before a later, already-grounded check."""
+
+        _context, source_map, manifest = self._context(371, 6, evidence_scope_count=17)
+        candidate = _v5_blueprint(source_map)
+        lesson = candidate["chapters"][0]["lessons"][0]  # type: ignore[index]
+        teaching_unit = lesson["units"][0]
+        teaching = teaching_unit["learning_blocks"][0]
+        lesson["objective"] = "Perform the source-grounded procedure."
+        lesson["learning_objectives"] = ["Perform the source-grounded procedure safely."]
+        teaching_unit["purpose"] = "Perform the required procedure safely."
+        teaching_unit["learning_objective_refs"] = ["lo_1"]
+        teaching["learning_objective_refs"] = ["lo_1"]
+
+        check_unit = copy.deepcopy(teaching_unit)
+        check_unit["title"] = "Check the documented procedure"
+        check_unit["purpose"] = "Check the learner's understanding of the documented procedure."
+        check = check_unit["learning_blocks"][0]
+        check.update({
+            "id": "lb_action_assessment_check",
+            "intent": "knowledge_check",
+            "importance": "assessment",
+            "primary_concept_ids": [],
+            "primary_evidence_scope_ids": [],
+            "supporting_evidence_scope_ids": list(teaching["primary_evidence_scope_ids"]),
+            "learning_objective_refs": ["lo_1"],
+            "content": {},
+        })
+        lesson["units"].append(check_unit)
+        lesson["assessment_required"] = True
+        lesson["assessment_objective_refs"] = ["lo_1"]
+        return candidate, source_map, manifest
+
+    def test_action_intent_repair_cannot_break_an_existing_assessment_anchor(self) -> None:
+        candidate, source_map, manifest = self._action_assessment_anchor_fixture()
+        initial = validate_v5_instructional_coherence(candidate).errors
+        self.assertEqual(
+            [(issue["code"], issue["path"]) for issue in initial],
+            [("ACTION_OBJECTIVE_INSTRUCTION_MISMATCH", "chapter_1.lesson_1.unit_1")],
+        )
+        targets = _v5_prepare_semantic_repair_targets(
+            candidate,
+            classify_course_repair_targets(initial, repair_layer="PRE_ALLOCATION_COHERENCE"),
+            source_map,
+        )
+        target = targets[0]
+        block_id = target["allowed_block_ids"][0]
+        self.assertEqual(target["allowed_intents_by_block_id"], {
+            block_id: sorted(ACTION_OBJECTIVE_REPAIR_INTENTS),
+        })
+        self.assertEqual(target["assessment_dependency_objective_count"], 1)
+        prompt = build_course_architecture_repair_prompt(
+            blueprint=candidate,
+            targets=targets,
+            source_map_context="bounded source descriptor",
+            locale="en",
+        )
+        self.assertIn("allowed_intents_by_block_id", prompt)
+        self.assertIn("worked_example", prompt)
+
+        baseline = copy.deepcopy(candidate)
+        with self.assertRaises(WorkflowFailure) as rejected:
+            apply_course_architecture_repair_patches(candidate, targets, {"patches": [{
+                "path": target["path"],
+                "operation": "set_block_intent",
+                "block_id": block_id,
+                "intent": "scenario",
+            }]})
+        self.assertEqual(rejected.exception.internal_code, "ARCH_REPAIR_INVALID_SEMANTIC_INTENT")
+        self.assertEqual(rejected.exception.diagnostics["guard_reason"], "INTENT_NOT_ALLOWED_FOR_ACTION_REPAIR")
+        self.assertEqual(candidate, baseline)
+
+        repaired = apply_course_architecture_repair_patches(candidate, targets, {"patches": [{
+            "path": target["path"],
+            "operation": "set_block_intent",
+            "block_id": block_id,
+            "intent": "worked_example",
+        }]})
+        self.assertFalse(validate_course_architecture_evidence_scope(repaired, source_map).errors)
+        self.assertFalse(validate_v5_instructional_coherence(repaired).errors)
+        allocated = allocate_blueprint_source_fact_ids(
+            allocate_source_map_architecture_facts(repaired, source_map, manifest),
+            manifest,
+            _nodes(6),
+        )
+        allocation = allocated["source_fact_allocation"]  # type: ignore[index]
+        self.assertEqual(allocation["allocated_count"], 371)
+        self.assertEqual(allocation["unallocated"], [])
+
     def _cross_unit_assessment_alignment_fixture(self) -> tuple[dict[str, object], dict[str, object], dict[str, object]]:
         """One earlier base-eligible teaching anchor and one later check unit."""
 
@@ -1217,6 +1309,10 @@ class V5RepairCascadeTests(unittest.IsolatedAsyncioTestCase):
         schema = build_v5_semantic_delta_repair_response_schema({"set_block_intent"})
         patches = schema.properties["patches"]
         variant = patches.items
+        self.assertEqual(
+            set(variant.properties["intent"].enum),
+            set(ACTION_OBJECTIVE_REPAIR_INTENTS),
+        )
         self.assertNotIn("replacement", variant.properties)
         self.assertNotIn("learning_blocks", variant.properties)
         self.assertNotIn("source_refs", variant.properties)
