@@ -227,6 +227,48 @@ class SourceStructureTests(unittest.TestCase):
         self.assertFalse(manifest["scope_unresolved"])
         self.assertEqual(manifest["resolved_source_refs"], ["src-001"])
 
+    def test_paginated_manifest_resolves_heading_ref_from_canonical_page_metadata(self) -> None:
+        manifest = build_source_coverage_manifest(
+            [{
+                "document_id": "doc-hse",
+                "source_page": 2,
+                "chunk_no": 1,
+                "content": "Nội dung thuộc tiêu đề đã được parser định vị ở trang hai.",
+            }],
+            structure_nodes=[{
+                "document_id": "doc-hse",
+                "source_ref": "src-010",
+                "title": "Chuẩn bị dụng cụ và hóa chất",
+                "page": 2,
+                "structure_source": "heading_inferred",
+            }],
+            target_source_refs={"src-010"},
+        )
+
+        self.assertFalse(manifest["scope_unresolved"])
+        self.assertEqual(manifest["resolved_source_refs"], ["src-010"])
+
+    def test_paginated_manifest_does_not_resolve_heading_without_matching_page_chunk(self) -> None:
+        manifest = build_source_coverage_manifest(
+            [{
+                "document_id": "doc-hse",
+                "source_page": 3,
+                "chunk_no": 1,
+                "content": "Nội dung trang khác.",
+            }],
+            structure_nodes=[{
+                "document_id": "doc-hse",
+                "source_ref": "src-010",
+                "title": "Chuẩn bị dụng cụ và hóa chất",
+                "page": 2,
+                "structure_source": "heading_inferred",
+            }],
+            target_source_refs={"src-010"},
+        )
+
+        self.assertTrue(manifest["scope_unresolved"])
+        self.assertEqual(manifest["resolved_source_refs"], [])
+
     def test_unpaginated_manifest_scopes_inferred_docx_to_blueprint_refs(self) -> None:
         manifest = build_source_coverage_manifest(
             [{

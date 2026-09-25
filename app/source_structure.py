@@ -367,7 +367,7 @@ def analyze_source_structure(sections: Iterable[Any]) -> dict[str, Any]:
             toc_page_indexes.add(section_index)
 
     toc_candidates: list[dict[str, Any]] = []
-    for section_index in toc_page_indexes:
+    for section_index in sorted(toc_page_indexes):
         section = material[section_index]
         page = getattr(section, "page", None)
         toc_candidates.extend(
@@ -381,6 +381,7 @@ def analyze_source_structure(sections: Iterable[Any]) -> dict[str, Any]:
     if len(toc_candidates) >= 2:
         nodes = _build_nodes(toc_candidates, 0.95)
         structure_source = "toc"
+        candidate_count = len(toc_candidates)
     else:
         heading_candidates: list[dict[str, Any]] = []
         for line, page in page_lines:
@@ -402,6 +403,36 @@ def analyze_source_structure(sections: Iterable[Any]) -> dict[str, Any]:
                 )
         nodes = _build_nodes(heading_candidates, 0.76 if heading_candidates else 0.35)
         structure_source = "heading_inferred" if nodes else "semantic_inferred"
+        candidate_count = len(heading_candidates)
+
+    # Additive authority evidence, not a new source-ref namespace. Existing
+    # source-map/fact ownership and persisted node identities remain unchanged.
+    if candidate_count >= MAX_NODES:
+        warnings.append("SOURCE_STRUCTURE_CAPACITY_REACHED")
+    heading_authority_refs: list[str] = []
+    if structure_source == "heading_inferred":
+        roots = [node for node in nodes if node.level == 1]
+        explicit_chapter_titles = {
+            _normalise(parsed[0])
+            for line, page in page_lines
+            if CHAPTER_HEADING_RE.match(line)
+            and (parsed := _parse_explicit_heading(line, page))
+        }
+        # Numbered body lists alone are not a chapter tree. Require descendants
+        # for every numbered root, or explicit Chapter/Part labels. Repeated
+        # headers and unnumbered slide titles must not acquire authority here.
+        numbered_tree = len(roots) >= 2 and all(
+            root.number_label == str(index + 1)
+            and any(node.parent_source_ref == root.source_ref and node.number_label
+                    and node.number_label.startswith(f"{root.number_label}.") for node in nodes)
+            for index, root in enumerate(roots)
+        )
+        explicit_chapters = bool(roots) and all(
+            _normalise(root.title) in explicit_chapter_titles for root in roots
+        )
+        unique_roots = len({_normalise(root.title) for root in roots}) == len(roots)
+        if unique_roots and (numbered_tree or explicit_chapters):
+            heading_authority_refs = [root.source_ref for root in roots]
 
     if not nodes:
         first_line = next((line for line, _ in page_lines if len(line) >= 3), "Tài liệu nguồn")
@@ -420,6 +451,12 @@ def analyze_source_structure(sections: Iterable[Any]) -> dict[str, Any]:
         "structure_source": structure_source,
         "confidence": round(min(1.0, max(0.0, max((node.confidence for node in nodes), default=0.0))), 4),
         "warnings": list(dict.fromkeys(warnings)),
+        "chapter_authority": {
+            "version": 1,
+            "complete": candidate_count < MAX_NODES,
+            "heading_refs": heading_authority_refs,
+            "basis": "EXPLICIT_CHAPTER_OR_NUMBERED_TREE" if heading_authority_refs else "NONE",
+        },
         "nodes": [node.to_dict() for node in nodes],
     }
 
@@ -466,6 +503,7 @@ def compact_structure(structure: dict[str, Any]) -> dict[str, Any]:
         "structure_source": str(structure.get("structure_source") or "semantic_inferred"),
         "confidence": float(structure.get("confidence") or 0),
         "warnings": [str(item)[:120] for item in structure.get("warnings", []) if str(item).strip()][:8],
+        **({"chapter_authority": structure["chapter_authority"]} if "chapter_authority" in structure else {}),
         "nodes": [
             {
                 key: node.get(key)

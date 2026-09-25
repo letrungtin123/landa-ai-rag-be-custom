@@ -136,6 +136,7 @@ V5_SEMANTIC_DELTA_OPERATIONS_BY_CODE = {
     "ACTION_OBJECTIVE_INSTRUCTION_MISMATCH": "set_block_intent",
     "ASSESSMENT_OBJECTIVE_NOT_COVERED": "repair_knowledge_check",
     "ASSESSMENT_EVIDENCE_NOT_GROUNDED": "repair_knowledge_check",
+    "ASSESSMENT_EXISTING_CHECK_ALIGNMENT_REQUIRED": "repair_knowledge_check",
     "ASSESSMENT_BLOCK_REQUIRED": "add_knowledge_check",
     # The assessment-plan compiler has already proved source-safe candidate
     # anchors. Gemini may resolve only the remaining semantic ambiguity; it
@@ -216,6 +217,7 @@ def _allowed_fields_for_issue(
     if scope == "unit" and code in {
         "ASSESSMENT_OBJECTIVE_NOT_COVERED",
         "ASSESSMENT_EVIDENCE_NOT_GROUNDED",
+        "ASSESSMENT_EXISTING_CHECK_ALIGNMENT_REQUIRED",
     }:
         # The coherence validator locates the exact unit containing the
         # knowledge check. Assessment repair may alter only that unit's
@@ -301,6 +303,7 @@ def _repair_layer_for_issue(issue: WorkflowIssue) -> RepairLayer | None:
         "ASSESSMENT_SEMANTIC_SELECTION_REQUIRED",
         "ASSESSMENT_OBJECTIVE_NOT_COVERED",
         "ASSESSMENT_EVIDENCE_NOT_GROUNDED",
+        "ASSESSMENT_EXISTING_CHECK_ALIGNMENT_REQUIRED",
     }:
         return "PRE_ALLOCATION_COHERENCE"
     if code == "INSTRUCTIONAL_DEPTH_INSUFFICIENT":
@@ -838,10 +841,11 @@ def build_course_architecture_graph(callbacks: CourseArchitectureWorkflowCallbac
             for target in targets:
                 target["repair_layer"] = repair_layer
                 target["layer_attempt_number"] = int(layer_attempts.get(repair_layer) or 0) + 1
-                # Carry the post-batch total into the callback so every
-                # provider event and terminal failure can report a monotonic,
-                # authoritative counter even when a later patch guard fails.
-                target["total_repair_provider_calls"] = provider_calls + planned_provider_calls
+                # This counter represents actual dispatched provider calls.
+                # Preflight and deterministic repairs consume none; planned
+                # calls are emitted separately for diagnosis and budgeting.
+                target["total_repair_provider_calls"] = provider_calls
+                target["planned_provider_repair_calls"] = planned_provider_calls
         if not targets:
             errors.append({"code": "ARCHITECTURE_VALIDATION_FAILED", "severity": "error", "message": "No safe scoped repair target was available."})
         emit(
@@ -852,7 +856,7 @@ def build_course_architecture_graph(callbacks: CourseArchitectureWorkflowCallbac
             repair_target_count=len(targets),
             **_v5_scheduler_telemetry(
                 state,
-                provider_call_delta=planned_provider_calls if is_v5 and repair_layer is not None else 0,
+                provider_call_delta=0,
             ),
             **({"planned_provider_repair_calls": planned_provider_calls} if is_v5 and repair_layer is not None else {}),
             repair_targets=[
@@ -864,7 +868,10 @@ def build_course_architecture_graph(callbacks: CourseArchitectureWorkflowCallbac
                     "allowed_operations": list(target.get("allowed_operations", ["replace"])),
                     **({"repair_layer": target["repair_layer"]} if target.get("repair_layer") else {}),
                     **({"layer_attempt_number": target["layer_attempt_number"]} if target.get("layer_attempt_number") else {}),
-                    **({"total_repair_provider_calls": target["total_repair_provider_calls"]} if target.get("total_repair_provider_calls") else {}),
+                    **({
+                        "total_repair_provider_calls": int(target.get("total_repair_provider_calls") or 0),
+                        "planned_provider_repair_calls": int(target.get("planned_provider_repair_calls") or 0),
+                    } if is_v5 and repair_layer is not None else {}),
                     **({"allowed_evidence_scope_ids": list(target.get("allowed_evidence_scope_ids", []))}
                        if target.get("allowed_evidence_scope_ids") else {}),
                     "finding_codes": sorted(set(target["codes"])),

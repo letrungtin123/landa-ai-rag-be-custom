@@ -1567,9 +1567,11 @@ class LessonAuthorBlueprintContractTests(unittest.TestCase):
         self.assertIn("1-12 chapters, 1-6 lessons", prompt)
         self.assertIn("authorized whole-course operation", prompt)
 
-    def test_toc_structure_canonicalizes_chapter_name_and_source_ref(self) -> None:
+    def test_toc_structure_accepts_exact_chapter_identity_without_rewriting_it(self) -> None:
         candidate = valid_blueprint()
-        canonical = enforce_lesson_author_source_structure(
+        candidate["chapters"][0]["title"] = "1. Tên chương nguyên văn"
+        candidate["chapters"][0]["source_refs"] = ["src-001"]
+        validated = enforce_lesson_author_source_structure(
             candidate,
             structure_source="toc",
             authoritative_source_nodes=[{
@@ -1579,11 +1581,23 @@ class LessonAuthorBlueprintContractTests(unittest.TestCase):
             }],
         )
 
-        self.assertEqual(
-            canonical["chapters"][0]["title"],
-            "1. Tên chương nguyên văn",
-        )
-        self.assertEqual(canonical["chapters"][0]["source_refs"], ["src-001"])
+        self.assertIs(validated, candidate)
+
+    def test_toc_structure_rejects_positional_relabel_or_wrong_source_ref(self) -> None:
+        candidate = valid_blueprint()
+        candidate["chapters"][0]["source_refs"] = ["src-999"]
+        with self.assertRaises(LessonAuthorBlueprintValidationError) as raised:
+            enforce_lesson_author_source_structure(
+                candidate,
+                structure_source="toc",
+                authoritative_source_nodes=[{
+                    "source_ref": "src-001",
+                    "title": "Tên chương nguyên văn",
+                    "level": 1,
+                }],
+            )
+        self.assertEqual(raised.exception.code, "BLUEPRINT_SOURCE_STRUCTURE_MISMATCH")
+        self.assertEqual(raised.exception.path, "chapters[0]")
 
     def test_blueprint_validation_removes_source_ranges_from_chapter_and_lesson_titles(self) -> None:
         candidate = valid_blueprint()

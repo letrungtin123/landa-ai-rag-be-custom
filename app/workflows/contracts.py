@@ -58,6 +58,7 @@ class WorkflowIssue(TypedDict, total=False):
     # V5 assessment-plan compiler diagnostics are count/ID metadata only.
     # Candidate details are kept request-scoped and are never emitted to logs.
     assessment_candidate_count: int
+    assessment_candidate_rejection_counts: dict[str, int]
     assessment_plan_fingerprint: str
 
 
@@ -199,6 +200,13 @@ _SAFE_REASON_CODES = {
     "SELECTION_OUTSIDE_SERVER_CANDIDATE_SET",
     "MULTIPLE_ASSESSMENT_INTERACTIONS_IN_ONE_UNIT",
     "AMBIGUOUS_OR_SEMANTIC_TEACHING_ANCHOR",
+    "NO_SAFE_TEACHING_ANCHOR_FOR_EXISTING_CHECK",
+    "EXISTING_CHECK_REQUIRES_OBJECTIVE_OR_GROUNDING_RECONCILIATION",
+}
+_SAFE_ASSESSMENT_REJECTIONS = {
+    "OBJECTIVE_NOT_LOCAL", "NOT_PRECEDING", "INTENT_NOT_TEACHING",
+    "NO_PRIMARY_EVIDENCE", "AMBIGUOUS_BLOCK_ADDRESS",
+    "OBJECTIVE_OUTSIDE_UNIT_SCOPE", "CONCEPT_MISMATCH", "SOURCE_REF_MISMATCH",
 }
 
 
@@ -262,8 +270,25 @@ def safe_workflow_issue_summary(issue: WorkflowIssue, *, repairable: bool) -> di
         if isinstance(value, int) and 0 <= value <= 1_000:
             summary[key] = value
     candidate_count = issue.get("assessment_candidate_count")
+    for key in ("anchor_group_count", "existing_check_count", "proposed_assessment_count", "assessment_capacity"):
+        value = issue.get(key)
+        if isinstance(value, int) and not isinstance(value, bool) and 0 <= value <= 1000:
+            summary[key] = value
     if isinstance(candidate_count, int) and 0 <= candidate_count <= 1_000:
         summary["assessment_candidate_count"] = candidate_count
+    objective_ids = issue.get("objective_ids")
+    if isinstance(objective_ids, list):
+        safe_ids = [v for v in objective_ids if isinstance(v, str) and re.fullmatch(r"lo_[1-9][0-9]{0,3}", v)]
+        if safe_ids:
+            summary["objective_ids"] = safe_ids[:12]
+            summary["omitted_objective_id_count"] = max(0, len(safe_ids) - 12)
+    rejection_counts = issue.get("assessment_candidate_rejection_counts")
+    if isinstance(rejection_counts, dict):
+        summary["assessment_candidate_rejection_counts"] = {
+            key: value for key, value in rejection_counts.items()
+            if key in _SAFE_ASSESSMENT_REJECTIONS
+            and isinstance(value, int) and not isinstance(value, bool) and 0 <= value <= 10_000
+        }
     ownership_level = issue.get("ownership_level")
     if isinstance(ownership_level, str) and ownership_level in _SAFE_OWNERSHIP_LEVELS:
         summary["ownership_level"] = ownership_level

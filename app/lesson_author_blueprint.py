@@ -57,6 +57,15 @@ SEMANTIC_LEARNING_BLOCK_INTENTS = {
 # operations, but would let a scoped intent repair turn an assessment anchor
 # into a non-teaching block.
 ACTION_OBJECTIVE_REPAIR_INTENTS = frozenset({"procedure", "worked_example"})
+# One operation contract for provider schema, prompt and server acceptance.
+# The broader Architect vocabulary is NOT the permission set of a depth repair.
+INSTRUCTIONAL_SUPPORT_REPAIR_INTENTS = frozenset({
+    "concept_explanation", "definition", "example", "worked_example",
+    "procedure", "comparison", "warning", "tip", "practice",
+    "relationship_visualization",
+})
+SEMANTIC_REPAIR_CONTRACT_VERSION = "v5-semantic-repair-2"
+INSTRUCTIONAL_SUPPORT_TEXT_MAX_CHARS = 480
 SEMANTIC_LEARNING_BLOCK_IMPORTANCE = {"supporting", "core", "critical", "assessment"}
 
 
@@ -214,6 +223,24 @@ def _semantic_learning_block_response_schema() -> types.Schema:
     Architect and scoped-repair responses from drifting apart.
     """
 
+    treatment_descriptor_schema = types.Schema(
+        type=types.Type.OBJECT,
+        description=(
+            "Compact server-validated instructional-treatment descriptors only. "
+            "Set a descriptor only when the selected evidence scope actually supports it; never include lesson prose or CMS payloads."
+        ),
+        properties={
+            "anticipated_questions": types.Schema(type=types.Type.BOOLEAN, description="True only for genuine anticipated learner questions supported by the scope."),
+            "question_count": types.Schema(type=types.Type.INTEGER, description="Count of distinct supported FAQ questions; use only with faq intent."),
+            "relationship_evidence": types.Schema(type=types.Type.BOOLEAN, description="True only when the scope contains an explicit relationship, flow, hierarchy, system, or conceptual connection."),
+            "relationship_count": types.Schema(type=types.Type.INTEGER, description="Count of explicit supported relationships; use only with relationship_visualization intent."),
+            "requires_ordering_practice": types.Schema(type=types.Type.BOOLEAN, description="True only when the learner must practise reconstructing an evidence-backed order."),
+            "ordered_sequence": types.Schema(type=types.Type.BOOLEAN, description="True only when the source scope contains an explicit ordered sequence."),
+            "sequence_item_count": types.Schema(type=types.Type.INTEGER, description="Count of explicit sequence items; use only for ordering practice."),
+            "definitions_supported": types.Schema(type=types.Type.BOOLEAN, description="True only when the scope provides clear source-grounded terminology definitions."),
+            "terminology_count": types.Schema(type=types.Type.INTEGER, description="Count of distinct supported terms and definitions; use only for terminology reinforcement."),
+        },
+    )
     return types.Schema(
         type=types.Type.OBJECT,
         description="A source-grounded semantic learning block; never a CMS component or payload.",
@@ -234,17 +261,13 @@ def _semantic_learning_block_response_schema() -> types.Schema:
             "supporting_evidence_scope_ids": _string_array_schema("Exact server-provided evidence scope IDs referenced for grounded reinforcement/practice only. These never own canonical source facts."),
             "source_refs": _string_array_schema("Optional exact Source Map source references that define this block's semantic/source scope."),
             "learning_objective_refs": _string_array_schema("Optional exact local lesson objective IDs only: lo_1, lo_2, and so on. Never repeat objective prose."),
-            "content": types.Schema(type=types.Type.OBJECT, description="Compact semantic treatment/evidence flags only; no HTML, CSS, URLs, component data, or prose lesson content."),
+            "content": treatment_descriptor_schema,
         },
     )
 
 
-def build_lesson_author_blueprint_response_schema() -> types.Schema:
-    # Phase 3 Course Architect outputs learning intent, not CMS component
-    # choices.  The component registry/planner on the Node boundary remains
-    # the only authority that maps these blocks to a CMS component.
-    learning_block_schema = _semantic_learning_block_response_schema()
-    media_plan_schema = types.Schema(
+def _lesson_author_media_plan_response_schema() -> types.Schema:
+    return types.Schema(
         type=types.Type.OBJECT,
         description="An optional proposed visual asset placed before this unit's learning components. It is a recommendation only, never media payload data.",
         required=["type", "title", "content_outline", "rationale"],
@@ -255,7 +278,8 @@ def build_lesson_author_blueprint_response_schema() -> types.Schema:
             "rationale": _string_schema("Why the visual asset improves comprehension for this unit."),
         },
     )
-    unit_schema = types.Schema(
+def _lesson_author_unit_response_schema(learning_block_schema: types.Schema) -> types.Schema:
+    return types.Schema(
         type=types.Type.OBJECT,
         description="A coherent, draftable learning unit inside a lesson.",
         required=["title", "purpose", "concept_ids", "primary_concept_ids", "learning_objective_refs", "learning_blocks"],
@@ -269,10 +293,13 @@ def build_lesson_author_blueprint_response_schema() -> types.Schema:
                 "Optional source outline references supporting this unit.",
             ),
             "learning_blocks": types.Schema(type=types.Type.ARRAY, items=learning_block_schema),
-            "media_plan": media_plan_schema,
+            "media_plan": _lesson_author_media_plan_response_schema(),
         },
     )
-    lesson_schema = types.Schema(
+
+
+def _lesson_author_lesson_response_schema(unit_schema: types.Schema) -> types.Schema:
+    return types.Schema(
         type=types.Type.OBJECT,
         description="A concise lesson inside one course chapter.",
         required=["title", "objective", "learning_objectives", "learning_activities", "assessment", "primary_concept_ids", "supporting_concept_ids", "prerequisite_concept_ids", "assessment_required", "assessment_objective_refs", "units"],
@@ -305,7 +332,10 @@ def build_lesson_author_blueprint_response_schema() -> types.Schema:
             ),
         },
     )
-    chapter_schema = types.Schema(
+
+
+def _lesson_author_chapter_response_schema(lesson_schema: types.Schema) -> types.Schema:
+    return types.Schema(
         type=types.Type.OBJECT,
         description="A coherent chapter in the course Blueprint.",
         required=["title", "objective", "learning_objectives", "concept_ids", "lessons"],
@@ -324,6 +354,16 @@ def build_lesson_author_blueprint_response_schema() -> types.Schema:
             ),
         },
     )
+
+
+def build_lesson_author_blueprint_response_schema() -> types.Schema:
+    # Phase 3 Course Architect outputs learning intent, not CMS component
+    # choices.  The component registry/planner on the Node boundary remains
+    # the only authority that maps these blocks to a CMS component.
+    learning_block_schema = _semantic_learning_block_response_schema()
+    unit_schema = _lesson_author_unit_response_schema(learning_block_schema)
+    lesson_schema = _lesson_author_lesson_response_schema(unit_schema)
+    chapter_schema = _lesson_author_chapter_response_schema(lesson_schema)
     return types.Schema(
         type=types.Type.OBJECT,
         description="A review-only enterprise course Blueprint based on supplied source material.",
@@ -366,7 +406,9 @@ def build_lesson_author_blueprint_response_schema() -> types.Schema:
     )
 
 
-def build_course_architecture_repair_response_schema() -> types.Schema:
+def build_course_architecture_repair_response_schema(
+    allowed_fields: set[str] | None = None,
+) -> types.Schema:
     """Structured provider contract for bounded Course Architect repairs.
 
     The target-specific field whitelist and the server-side pre-apply validator
@@ -376,48 +418,54 @@ def build_course_architecture_repair_response_schema() -> types.Schema:
     """
 
     learning_block_schema = _semantic_learning_block_response_schema()
+    unit_schema = _lesson_author_unit_response_schema(learning_block_schema)
+    lesson_schema = _lesson_author_lesson_response_schema(unit_schema)
+    chapter_schema = _lesson_author_chapter_response_schema(lesson_schema)
+    all_properties: dict[str, types.Schema] = {
+        "course_title": _string_schema("Course title only when explicitly authorized."),
+        "course_outcomes": _string_array_schema("Course outcomes only when explicitly authorized."),
+        "chapters": types.Schema(
+            type=types.Type.ARRAY,
+            description="Full chapter replacements only when explicitly authorized.",
+            items=chapter_schema,
+        ),
+        "title": _string_schema("Target title only when explicitly authorized."),
+        "purpose": _string_schema("Target unit purpose only when explicitly authorized."),
+        "learning_objectives": _string_array_schema("Exact target-local learning objective prose only when explicitly authorized."),
+        "assessment_objective_refs": _string_array_schema("Exact local objective IDs such as lo_1 only when explicitly authorized."),
+        "assessment_required": types.Schema(type=types.Type.BOOLEAN, description="Assessment flag only when explicitly authorized."),
+        "estimated_minutes": types.Schema(type=types.Type.INTEGER, description="Estimated minutes only when explicitly authorized."),
+        "concept_ids": _string_array_schema("Exact Source Map concept IDs only when explicitly authorized."),
+        "primary_concept_ids": _string_array_schema("Exact primary concept IDs only when explicitly authorized."),
+        "supporting_concept_ids": _string_array_schema("Exact supporting concept IDs only when explicitly authorized."),
+        "prerequisite_concept_ids": _string_array_schema("Exact prerequisite concept IDs only when explicitly authorized."),
+        "source_refs": _string_array_schema("Exact server-provided source references only when explicitly authorized."),
+        "learning_objective_refs": _string_array_schema("Exact local objective IDs such as lo_1 only when explicitly authorized."),
+        "learning_blocks": types.Schema(
+            type=types.Type.ARRAY,
+            description="A complete replacement list of validated semantic learning blocks.",
+            items=learning_block_schema,
+        ),
+        "units": types.Schema(
+            type=types.Type.ARRAY,
+            description="Full unit replacements only when explicitly authorized. Return one to three complete units.",
+            items=unit_schema,
+        ),
+        "lessons": types.Schema(
+            type=types.Type.ARRAY,
+            description="Full lesson replacements only when explicitly authorized.",
+            items=lesson_schema,
+        ),
+    }
+    properties = (
+        {field: schema for field, schema in all_properties.items() if field in allowed_fields}
+        if allowed_fields is not None
+        else all_properties
+    )
     replacement_schema = types.Schema(
         type=types.Type.OBJECT,
         description="Only the target-specific fields explicitly allowed in REPAIR TARGETS.",
-        properties={
-            "course_title": _string_schema("Course title only when explicitly authorized."),
-            "course_outcomes": _string_array_schema("Course outcomes only when explicitly authorized."),
-            "chapters": types.Schema(
-                type=types.Type.ARRAY,
-                description="Full chapter replacements only when explicitly authorized.",
-                items=types.Schema(type=types.Type.OBJECT, description="A full chapter object validated by the server before apply."),
-            ),
-            "title": _string_schema("Target title only when explicitly authorized."),
-            "purpose": _string_schema("Target unit purpose only when explicitly authorized."),
-            "learning_objectives": _string_array_schema("Exact target-local learning objective prose only when explicitly authorized."),
-            "assessment_objective_refs": _string_array_schema("Exact local objective IDs such as lo_1 only when explicitly authorized."),
-            "assessment_required": types.Schema(type=types.Type.BOOLEAN, description="Assessment flag only when explicitly authorized."),
-            "estimated_minutes": types.Schema(type=types.Type.INTEGER, description="Estimated minutes only when explicitly authorized."),
-            "concept_ids": _string_array_schema("Exact Source Map concept IDs only when explicitly authorized."),
-            "primary_concept_ids": _string_array_schema("Exact primary concept IDs only when explicitly authorized."),
-            "supporting_concept_ids": _string_array_schema("Exact supporting concept IDs only when explicitly authorized."),
-            "prerequisite_concept_ids": _string_array_schema("Exact prerequisite concept IDs only when explicitly authorized."),
-            "source_refs": _string_array_schema("Exact server-provided source references only when explicitly authorized."),
-            "learning_objective_refs": _string_array_schema("Exact local objective IDs such as lo_1 only when explicitly authorized."),
-            "learning_blocks": types.Schema(
-                type=types.Type.ARRAY,
-                description="A complete replacement list of validated semantic learning blocks.",
-                items=learning_block_schema,
-            ),
-            # Arrays below are intentionally only shape-constrained here. The
-            # target whitelist and full pre-apply Blueprint validator decide
-            # whether the selected path may replace a lesson/chapter subtree.
-            "units": types.Schema(
-                type=types.Type.ARRAY,
-                description="Full unit replacements only when explicitly authorized.",
-                items=types.Schema(type=types.Type.OBJECT, description="A full unit object validated by the server before apply."),
-            ),
-            "lessons": types.Schema(
-                type=types.Type.ARRAY,
-                description="Full lesson replacements only when explicitly authorized.",
-                items=types.Schema(type=types.Type.OBJECT, description="A full lesson object validated by the server before apply."),
-            ),
-        },
+        properties=properties,
     )
     patch_schema = types.Schema(
         type=types.Type.OBJECT,
@@ -516,19 +564,31 @@ def _v5_semantic_delta_patch_schema(operation: str) -> types.Schema:
         return types.Schema(
             type=types.Type.OBJECT,
             required=[
-                "path", "operation", "knowledge_check_block_id",
-                "teaching_block_id", "learning_objective_refs",
+                "path", "operation", "knowledge_check_block_id", "teaching_selections",
             ],
             properties={
                 **common,
                 "knowledge_check_block_id": _string_schema(
                     "One exact server-approved existing knowledge_check block ID."
                 ),
-                "teaching_block_id": _string_schema(
-                    "One exact server-approved existing evidence-owning teaching block ID."
-                ),
-                "learning_objective_refs": _string_array_schema(
-                    "Exact existing local lesson objective IDs only."
+                "teaching_selections": types.Schema(
+                    type=types.Type.ARRAY,
+                    description=(
+                        "One exact server-approved teaching selection for every listed local assessment objective. "
+                        "The server owns all evidence, provenance and block paths."
+                    ),
+                    items=types.Schema(
+                        type=types.Type.OBJECT,
+                        required=["teaching_block_id", "learning_objective_refs"],
+                        properties={
+                            "teaching_block_id": _string_schema(
+                                "One exact server-approved existing evidence-owning teaching block ID."
+                            ),
+                            "learning_objective_refs": _string_array_schema(
+                                "One or more exact existing local lesson objective IDs assigned to this teaching block."
+                            ),
+                        },
+                    ),
                 ),
             },
         )
@@ -593,7 +653,7 @@ def _v5_semantic_delta_patch_schema(operation: str) -> types.Schema:
                 ),
                 "intent": _enum_string_schema(
                     "One canonical semantic intent for an evidence-grounded instructional support block.",
-                    SEMANTIC_LEARNING_BLOCK_INTENTS,
+                    INSTRUCTIONAL_SUPPORT_REPAIR_INTENTS,
                 ),
                 "learning_objective_refs": _string_array_schema(
                     "Exact existing local lesson objective IDs only."
@@ -602,17 +662,24 @@ def _v5_semantic_delta_patch_schema(operation: str) -> types.Schema:
                     type=types.Type.OBJECT,
                     required=["purpose"],
                     properties={
-                        "purpose": _string_schema(
-                            "Compact instructional purpose; never source text, HTML, CSS, URLs, or component payload data."
+                        "purpose": types.Schema(
+                            type=types.Type.STRING, min_length=1, max_length=INSTRUCTIONAL_SUPPORT_TEXT_MAX_CHARS,
+                            description="Non-empty compact instructional purpose; never source text, HTML, CSS, URLs, or component payload data.",
                         ),
-                        "learner_action": _string_schema(
-                            "Optional compact learner action when the selected intent requires one."
+                        "learner_action": types.Schema(
+                            type=types.Type.STRING, min_length=1, max_length=INSTRUCTIONAL_SUPPORT_TEXT_MAX_CHARS,
+                            description="Optional non-empty compact learner action when the selected intent requires one; omit if absent.",
                         ),
                     },
                 ),
             },
         )
     raise ValueError(f"Unsupported V5 semantic-delta repair operation: {operation}")
+
+
+def semantic_delta_required_fields(operation: str) -> frozenset[str]:
+    """The server mutation guard consumes the same typed outer-field contract."""
+    return frozenset(_v5_semantic_delta_patch_schema(operation).required or [])
 
 
 def build_v5_semantic_delta_repair_response_schema(

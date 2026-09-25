@@ -14,6 +14,7 @@ from app.lesson_author_blueprint import (
     ACTION_OBJECTIVE_REPAIR_INTENTS,
     COURSE_ARCHITECTURE_REPAIR_RESPONSE_SCHEMA,
     LessonAuthorBlueprintValidationError,
+    build_course_architecture_repair_response_schema,
     build_v5_semantic_delta_repair_response_schema,
     parse_lesson_author_blueprint_candidate,
     validate_lesson_author_blueprint,
@@ -21,6 +22,7 @@ from app.lesson_author_blueprint import (
 from app.main import (
     AiUsage,
     LessonAuthorBlueprintGenerationError,
+    _repair_patch_domain_diagnostics,
     _workflow_issue_from_blueprint_validation_error,
     _v5_deterministic_evidence_alignment_candidate,
     _v5_deterministic_assessment_alignment_payload,
@@ -1015,15 +1017,45 @@ class V5RepairCascadeTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(allocation["unallocated"], [])
         self.assertEqual(len({item["fact_id"] for item in allocation["allocations"]}), 371)
 
-    def test_fully_aligned_anchor_retains_existing_knowledge_check_operation(self) -> None:
+    def test_existing_check_repairs_distributed_objectives_with_exact_cross_unit_authority(self) -> None:
+        candidate, _source_map, _manifest_value = self._cross_unit_assessment_alignment_fixture()
+        lesson = candidate["chapters"][0]["lessons"][0]  # type: ignore[index]
+        first_teaching = lesson["units"][0]
+        first_teaching["learning_objective_refs"] = ["lo_1"]
+        first_teaching["learning_blocks"][0]["learning_objective_refs"] = []
+        second_teaching = copy.deepcopy(first_teaching)
+        second_teaching["title"] = "Teach the second objective"
+        second_teaching["learning_objective_refs"] = ["lo_2"]
+        second_teaching["learning_blocks"][0]["id"] = "lb_teach_objective_two"
+        second_teaching["learning_blocks"][0]["learning_objective_refs"] = []
+        lesson["learning_objectives"] = ["Identify the first control.", "Explain the second control."]
+        lesson["assessment_objective_refs"] = ["lo_1", "lo_2"]
+        lesson["units"].insert(1, second_teaching)
+        check_unit = lesson["units"][-1]
+        check = check_unit["learning_blocks"][0]
+        check["learning_objective_refs"] = ["lo_1", "lo_2"]
+
+        issues = validate_v5_instructional_coherence(candidate).errors
+        target = classify_course_repair_targets(issues, repair_layer="PRE_ALLOCATION_COHERENCE")[0]
+        prepared = _v5_prepare_assessment_alignment_targets(candidate, [target])
+        self.assertTrue(prepared[0]["deterministic_semantic_delta"])
+        self.assertEqual(prepared[0]["assessment_alignment_candidate_counts"], {"lo_1": 1, "lo_2": 1})
+        payload = _v5_deterministic_assessment_alignment_payload(prepared)
+        self.assertIsNotNone(payload)
+        repaired = apply_course_architecture_repair_patches(candidate, prepared, payload or {"patches": []})
+        repaired_check = repaired["chapters"][0]["lessons"][0]["units"][-1]["learning_blocks"][0]  # type: ignore[index]
+        self.assertEqual(repaired_check["learning_objective_refs"], ["lo_1", "lo_2"])
+        self.assertFalse(validate_v5_instructional_coherence(repaired).errors)
+
+    def test_cross_unit_fully_aligned_anchor_uses_explicit_alignment_authority(self) -> None:
         candidate, _source_map, _manifest = self._cross_unit_assessment_alignment_fixture()
         teaching = candidate["chapters"][0]["lessons"][0]["units"][0]["learning_blocks"][0]  # type: ignore[index]
         teaching["learning_objective_refs"] = ["lo_1"]
         issues = validate_v5_instructional_coherence(candidate).errors
         target = classify_course_repair_targets(issues, repair_layer="PRE_ALLOCATION_COHERENCE")[0]
         prepared = _v5_prepare_assessment_alignment_targets(candidate, [target])
-        self.assertEqual(prepared[0]["semantic_operations"], ["repair_knowledge_check"])
-        self.assertNotIn("deterministic_semantic_delta", prepared[0])
+        self.assertEqual(prepared[0]["semantic_operations"], ["repair_assessment_alignment"])
+        self.assertTrue(prepared[0]["deterministic_semantic_delta"])
 
     def test_assessment_alignment_rejects_unapproved_cross_unit_teaching_id_and_extra_provenance(self) -> None:
         candidate, _source_map, _manifest = self._cross_unit_assessment_alignment_fixture()
@@ -1033,9 +1065,10 @@ class V5RepairCascadeTests(unittest.IsolatedAsyncioTestCase):
         )[0]
         prepared = _v5_prepare_assessment_alignment_targets(candidate, [target])
         base = _v5_deterministic_assessment_alignment_payload(prepared)["patches"][0]  # type: ignore[index]
+        selection = base["teaching_selections"][0]
         for patch, reason in (
-            ({**base, "teaching_block_id": "lb_unapproved"}, "TARGET_BOUNDARY_MUTATION"),
-            ({**base, "learning_objective_refs": ["lo_999"]}, "INVALID_OBJECTIVE_REF"),
+            ({**base, "teaching_selections": [{**selection, "teaching_block_id": "lb_unapproved"}]}, "TARGET_BOUNDARY_MUTATION"),
+            ({**base, "teaching_selections": [{**selection, "learning_objective_refs": ["lo_999"]}]}, "INVALID_OBJECTIVE_REF"),
             ({**base, "source_refs": []}, "DISALLOWED_OUTER_FIELD"),
             ({**base, "primary_evidence_scope_ids": ["scope_fake"]}, "DISALLOWED_OUTER_FIELD"),
             ({**base, "source_fact_ids": ["fact_fake"]}, "DISALLOWED_OUTER_FIELD"),
@@ -1083,7 +1116,7 @@ class V5RepairCascadeTests(unittest.IsolatedAsyncioTestCase):
         schema = build_v5_semantic_delta_repair_response_schema({"repair_assessment_alignment"})
         patch = schema.properties["patches"].items
         self.assertEqual(set(patch.required), {
-            "path", "operation", "knowledge_check_block_id", "teaching_block_id", "learning_objective_refs",
+            "path", "operation", "knowledge_check_block_id", "teaching_selections",
         })
         self.assertFalse({"source_refs", "source_fact_ids", "primary_evidence_scope_ids", "concept_ids"}.intersection(patch.properties))
         selected = prepared[0]["assessment_alignment_candidates"][1]
@@ -1091,8 +1124,10 @@ class V5RepairCascadeTests(unittest.IsolatedAsyncioTestCase):
             "path": prepared[0]["path"],
             "operation": "repair_assessment_alignment",
             "knowledge_check_block_id": selected["knowledge_check_block_id"],
-            "teaching_block_id": selected["teaching_block_id"],
-            "learning_objective_refs": selected["learning_objective_refs"],
+            "teaching_selections": [{
+                "teaching_block_id": selected["teaching_block_id"],
+                "learning_objective_refs": selected["learning_objective_refs"],
+            }],
         }]})
         self.assertFalse(validate_v5_instructional_coherence(repaired).errors)
 
@@ -1115,6 +1150,7 @@ class V5RepairCascadeTests(unittest.IsolatedAsyncioTestCase):
     async def test_deterministic_assessment_preflight_uses_zero_provider_calls(self) -> None:
         candidate, source_map, manifest = self._cross_unit_assessment_alignment_fixture()
         provider_called = False
+        events: list[dict[str, object]] = []
 
         def validate(blueprint: dict[str, object], _source_map: dict[str, object]) -> WorkflowValidationResult:
             coherence = validate_v5_instructional_coherence(blueprint)
@@ -1162,12 +1198,16 @@ class V5RepairCascadeTests(unittest.IsolatedAsyncioTestCase):
                     blueprint, targets,
                 ),
                 deterministic_repair=deterministic_repair,
+                emit_diagnostic=events.append,
             ),
             request_context={},
             max_repair_attempts=2,
         )
         self.assertFalse(provider_called)
         self.assertEqual(diagnostics["repair_provider_calls"], 0)
+        target_event = next(event for event in events if event.get("stage") == "repair_target_generation")
+        self.assertEqual(target_event["total_repair_provider_calls"], 0)
+        self.assertEqual(target_event["planned_provider_repair_calls"], 0)
         allocation = blueprint["source_fact_allocation"]
         self.assertEqual(allocation["allocated_count"], 371)
         self.assertEqual(allocation["unallocated"], [])
@@ -1344,6 +1384,56 @@ class V5RepairCascadeTests(unittest.IsolatedAsyncioTestCase):
             ),
         )
         self.assertIn("responseSchema", payload)
+
+    def test_target_specific_unit_repair_schema_reuses_complete_unit_contract(self) -> None:
+        schema = build_course_architecture_repair_response_schema({"units"})
+        replacement = schema.properties["patches"].items.properties["replacement"]
+        self.assertEqual(set(replacement.properties), {"units"})
+        unit = replacement.properties["units"].items
+        self.assertEqual(
+            set(unit.required),
+            {"title", "purpose", "concept_ids", "primary_concept_ids", "learning_objective_refs", "learning_blocks"},
+        )
+        self.assertIn("learning_blocks", unit.properties)
+        self.assertIn("primary_evidence_scope_ids", unit.properties["learning_blocks"].items.properties)
+        self.assertNotIn("source_fact_ids", unit.properties)
+
+        client = genai.Client(api_key="test-key")
+        payload = models._GenerateContentConfig_to_mldev(
+            client._api_client,
+            types.GenerateContentConfig(
+                response_mime_type="application/json",
+                response_schema=schema,
+            ),
+        )
+        wire_replacement = payload["responseSchema"]["properties"]["patches"].items.properties["replacement"]
+        self.assertEqual(set(wire_replacement.properties), {"units"})
+        self.assertIsNotNone(wire_replacement.properties["units"].items)
+
+    def test_patch_domain_diagnostics_report_cardinality_without_provider_content(self) -> None:
+        baseline = {"chapters": [{}, {}, {"lessons": [{"units": [{}, {}, {}, {}]}]}]}
+        candidate = {"chapters": [{}, {}, {"lessons": [{"units": []}]}]}
+        diagnostics = _repair_patch_domain_diagnostics(
+            LessonAuthorBlueprintValidationError(
+                "BLUEPRINT_INVALID_SCHEMA",
+                "private provider content must not appear",
+                path="chapters[2].lessons[0].units",
+                constraint="ARRAY_LENGTH",
+                expected_type="array[length=1..3]",
+                actual_type="array[length=0]",
+            ),
+            {"chapter_3.lesson_1"},
+            {"chapter_3.lesson_1": {"units"}},
+            patch_count=1,
+            baseline=baseline,
+            candidate=candidate,
+        )
+        self.assertEqual(diagnostics["safe_json_path"], "chapters[2].lessons[0].units")
+        self.assertEqual(diagnostics["baseline_count"], 4)
+        self.assertEqual(diagnostics["actual_count"], 0)
+        self.assertEqual(diagnostics["expected_min_items"], 1)
+        self.assertEqual(diagnostics["expected_max_items"], 3)
+        self.assertNotIn("private provider content", json.dumps(diagnostics))
 
     def test_semantic_delta_schema_serializes_with_the_installed_gemini_sdk(self) -> None:
         client = genai.Client(api_key="test-key")
