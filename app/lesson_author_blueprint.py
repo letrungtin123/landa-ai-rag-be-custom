@@ -57,6 +57,10 @@ SEMANTIC_LEARNING_BLOCK_INTENTS = {
 # operations, but would let a scoped intent repair turn an assessment anchor
 # into a non-teaching block.
 ACTION_OBJECTIVE_REPAIR_INTENTS = frozenset({"procedure", "worked_example"})
+ASSESSMENT_TEACHING_REPAIR_INTENTS = frozenset({
+    "concept_explanation", "definition", "example", "worked_example",
+    "procedure", "comparison", "warning", "tip",
+})
 # One operation contract for provider schema, prompt and server acceptance.
 # The broader Architect vocabulary is NOT the permission set of a depth repair.
 INSTRUCTIONAL_SUPPORT_REPAIR_INTENTS = frozenset({
@@ -586,6 +590,10 @@ def _v5_semantic_delta_patch_schema(operation: str) -> types.Schema:
                             ),
                             "learning_objective_refs": _string_array_schema(
                                 "One or more exact existing local lesson objective IDs assigned to this teaching block."
+                            ),
+                            "intent": _enum_string_schema(
+                                "Only for a candidate with allowed_intents: choose its source-compatible teaching treatment. Otherwise omit. Never change evidence ownership.",
+                                ASSESSMENT_TEACHING_REPAIR_INTENTS,
                             ),
                         },
                     ),

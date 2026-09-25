@@ -18,14 +18,12 @@ import hashlib
 import json
 from typing import Any, Literal
 from app.component_capabilities import component_capabilities
+from app.lesson_author_blueprint import ASSESSMENT_TEACHING_REPAIR_INTENTS, SEMANTIC_LEARNING_BLOCK_INTENTS
 
 
 AssessmentPlanStatus = Literal["READY", "NEEDS_SEMANTIC_RESOLUTION", "TERMINAL_GAP"]
 
-TEACHING_INTENTS = frozenset({
-    "concept_explanation", "definition", "example", "worked_example",
-    "procedure", "comparison", "warning", "tip",
-})
+TEACHING_INTENTS = ASSESSMENT_TEACHING_REPAIR_INTENTS
 
 
 def _text_ids(value: Any) -> set[str]:
@@ -51,7 +49,7 @@ def _local_objective_ids(lesson: dict[str, Any]) -> set[str]:
     }
 
 
-def _candidate_semantic_descriptor(block: dict[str, Any]) -> dict[str, str]:
+def assessment_teaching_semantic_descriptor(block: dict[str, Any]) -> dict[str, str]:
     """Return only bounded provider-facing semantic metadata, never evidence."""
 
     content = block.get("content")
@@ -284,6 +282,7 @@ def _record_anchor_diagnostic(
         diagnostic["candidates"].append({
             "block_path": f"{unit_path}.block_{block_index + 1}",
             "block_id_hash": hashlib.sha256(str(block.get("id") or "").encode()).hexdigest()[:16],
+            "intent": block.get("intent") if block.get("intent") in SEMANTIC_LEARNING_BLOCK_INTENTS else "UNKNOWN",
             "base_eligible": eligibility.base_eligible,
             "fully_aligned": eligibility.fully_aligned,
             "reasons": list(eligibility.reasons),
@@ -339,6 +338,31 @@ def evaluate_assessment_teaching_anchor(
     return AssessmentTeachingEligibility(base_eligible, fully_aligned, tuple(reasons))
 
 
+def assessment_intent_repair_options(
+    *, teaching_block: dict[str, Any], knowledge_check_block: dict[str, Any],
+    objective_refs: set[str], unit_objective_refs: set[str], precedes_check: bool,
+    same_unit: bool,
+) -> tuple[str, ...]:
+    """Potential semantic repair, NOT evidence that this is already teaching.
+
+    Only a known non-assessment/non-media role rejected solely by intent is
+    eligible. Scope/order/source gates are evaluated unchanged. Caller must
+    bind exact block identity, ask the provider to select a treatment, and
+    fully revalidate; never automatically relabel it as an explanation.
+    """
+    intent = str(teaching_block.get("intent") or "")
+    if not same_unit or intent not in SEMANTIC_LEARNING_BLOCK_INTENTS or intent in {"knowledge_check", "media_reference"}:
+        return ()
+    eligibility = evaluate_assessment_teaching_anchor(
+        teaching_block=teaching_block, knowledge_check_block=knowledge_check_block,
+        objective_refs=objective_refs, unit_objective_refs=unit_objective_refs,
+        precedes_check=precedes_check,
+    )
+    if eligibility.reasons != ("INTENT_NOT_TEACHING",):
+        return ()
+    return tuple(sorted(TEACHING_INTENTS))
+
+
 def _candidate_from_block(
     *,
     lesson_path: str,
@@ -377,7 +401,7 @@ def _candidate_from_block(
         source_refs=tuple(sorted(_text_ids(block.get("source_refs")))),
         concept_ids=tuple(sorted(_text_ids(block.get("concept_ids")))),
         primary_evidence_scope_ids=primary_scope_ids,
-        semantic_descriptor=_candidate_semantic_descriptor(block),
+        semantic_descriptor=assessment_teaching_semantic_descriptor(block),
         alignment=alignment,
     )
 
@@ -515,6 +539,7 @@ def compile_v5_assessment_plan(
                     for objective_ref in sorted(check_refs):
                         fully: list[AssessmentTeachingCandidate] = []
                         semantic: list[AssessmentTeachingCandidate] = []
+                        intent_candidates = 0
                         rejection_counts: dict[str, int] = {}
                         diagnostic = begin_diagnostic(
                             lesson_path, objective_ref,
@@ -540,6 +565,13 @@ def compile_v5_assessment_plan(
                                 diagnostic, unit_path=unit_path, block_index=block_index,
                                 block=block, eligibility=eligibility,
                             )
+                            if assessment_intent_repair_options(
+                                teaching_block=block, knowledge_check_block=check_block,
+                                objective_refs={objective_ref}, unit_objective_refs=unit_refs,
+                                precedes_check=teaching_position < check_position,
+                                same_unit=unit_path == check_unit_path,
+                            ):
+                                intent_candidates += 1
                             if not eligibility.base_eligible:
                                 for reason in eligibility.reasons:
                                     # OBJECTIVE_LINK_MISSING is explanatory for
@@ -566,15 +598,16 @@ def compile_v5_assessment_plan(
                             set(item.primary_evidence_scope_ids) for item in fully
                         )))) if fully else False
                         diagnostic["grounded"] = grounded
+                        diagnostic["intent_repair_candidate_count"] = intent_candidates
                         if fully and grounded:
                             continue
-                        if fully or semantic:
+                        if fully or semantic or intent_candidates:
                             issues.append(AssessmentPlanIssue(
                                 "ASSESSMENT_EXISTING_CHECK_ALIGNMENT_REQUIRED",
                                 lesson_path,
                                 objective_ref,
-                                "EXISTING_CHECK_REQUIRES_OBJECTIVE_OR_GROUNDING_RECONCILIATION",
-                                len(fully) + len(semantic),
+                                "EXISTING_CHECK_REQUIRES_TEACHING_INTENT_RECONCILIATION" if not (fully or semantic) else "EXISTING_CHECK_REQUIRES_OBJECTIVE_OR_GROUNDING_RECONCILIATION",
+                                len(fully) + len(semantic) + intent_candidates,
                                 target_path=check_unit_path,
                                 knowledge_check_block_id=check_id or None,
                             ))

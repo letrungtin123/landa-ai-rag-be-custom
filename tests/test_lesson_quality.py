@@ -67,6 +67,25 @@ def blueprint(*, plan: list[dict] | None = None, assessment: bool = True, concep
 
 
 class LessonQualityFixturesTests(unittest.TestCase):
+    def test_source_limitations_are_local_review_warnings_not_whole_lesson_failure(self):
+        component = html(["fact-1", "fact-2"])
+        component["html"] = "<p>Thực hành xác định mối nguy trong ảnh. Thông tin liên hệ. THANK YOU. Rủi ro: 1-6 thấp, 6-15 vừa.</p>"
+        component.pop("semantic_content", None)
+        report = validate_lesson_pedagogical_quality(proposal([unit([component])]))
+        self.assertEqual(report.status, "PASS_WITH_WARNINGS")
+        self.assertEqual({x["code"] for x in report.findings}, {
+            "VISUAL_EXERCISE_CONTEXT_MISSING", "NON_INSTRUCTIONAL_SOURCE_RESIDUE", "SOURCE_RANGE_REVIEW_REQUIRED"})
+        self.assertTrue(all(x["severity"] == "warning" for x in report.findings))
+        self.assertNotIn("THANK YOU", str(report.findings))
+
+    def test_readiness_warning_does_not_invent_a_missing_visual_or_drop_source_facts(self):
+        component = html(["fact-1", "fact-2"])
+        component["html"] = '<p>Identify the hazard in the image below.</p><img src="approved-existing-asset" />'
+        component.pop("semantic_content", None)
+        report = validate_lesson_pedagogical_quality(proposal([unit([component])]))
+        self.assertNotIn("VISUAL_EXERCISE_CONTEXT_MISSING", [x["code"] for x in report.findings])
+        self.assertEqual(component["source_fact_ids"], ["fact-1", "fact-2"])
+
     def test_terminology_fixture_supports_crossword_when_contract_requires_it(self):
         crossword = {
             "type": "la_crossword", "source_fact_ids": ["fact-1"],

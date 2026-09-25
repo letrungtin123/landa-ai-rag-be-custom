@@ -59,11 +59,13 @@ from app.source_structure import (
     structure_outline,
 )
 from app.source_map import build_course_architect_context, build_source_map
-from app.lesson_prompt_policy import bounded_architect_policy, lesson_output_language_policy
+from app.lesson_prompt_policy import bounded_architect_policy, lesson_output_language_policy, lesson_instructional_quality_policy
 from app.source_chapter_policy import resolve_source_chapter_policy, bind_source_chapters
 from app.component_capabilities import ComponentCapabilities, validate_instance_plan
 from app.instructional_opportunities import compile_evidence_treatments, VERSION as EVIDENCE_TREATMENT_VERSION
 from app.assessment_planner import (
+    assessment_intent_repair_options,
+    assessment_teaching_semantic_descriptor,
     assessment_plan_fingerprint,
     compile_v5_assessment_plan,
     evaluate_assessment_teaching_anchor,
@@ -7202,14 +7204,14 @@ def staged_component_contract_prompt(component_types: list[str]) -> str:
         "la_crossword": 'la_crossword: words=[{"answer":"TERM","clue":"source-backed definition","hint":"optional"}], 3-10 distinct terms. Normalized spelling 2-24 letters/digits. Preserve meaning across EN/VI. Do not generate coordinates or invent terminology.',
         "la_diagram": 'la_diagram: name, nodes=[{"label":"source concept","shape":"rounded","tooltip":"optional"}], edges=[{"source":0,"target":1,"label":"source-supported relation"}]. 2-20 nodes; 1-40 edges; indices reference existing nodes; every node participates in a relationship. Shapes: rectangle/rounded/ellipse. Server supplies IDs and layout. Do not invent causal edges.',
     }
-    return "COMPONENT CONTRACT " + STAGED_COMPONENT_CONTRACT_VERSION + "\nOnly populate fields for the current component type. In the SDK's combined selected-types envelope, use null/empty arrays for inapplicable required fields.\n" + "\n".join(
+    return lesson_instructional_quality_policy() + "\nCOMPONENT CONTRACT " + STAGED_COMPONENT_CONTRACT_VERSION + "\nOnly populate fields for the current component type. In the SDK's combined selected-types envelope, use null/empty arrays for inapplicable required fields.\n" + "\n".join(
         contracts[t] for t in dict.fromkeys(component_types) if t in contracts
     )
 
 
 def build_staged_lesson_content_response_model(
     component_types: list[str] | None = None,
-    *, payload_only: bool = False,
+    *, payload_only: bool = False, expected_unit_title: str | None = None,
 ) -> type[BaseModel]:
     """Build the Stage-2 typed response model for exactly the selected types.
 
@@ -7282,8 +7284,10 @@ def build_staged_lesson_content_response_model(
     if "la_diagram" in selected_types:
         component_fields.update({
             "name": (str | None, ...),
-            "nodes": optional_array(StagedDiagramNode),
-            "edges": optional_array(StagedDiagramEdge),
+            # Mixed-type envelopes must allow empty arrays on other types.
+            # A diagram-only repair can express its full cardinality contract.
+            "nodes": (list[StagedDiagramNode], Field(min_length=2, max_length=20)) if selected_types == {"la_diagram"} else optional_array(StagedDiagramNode),
+            "edges": (list[StagedDiagramEdge], Field(min_length=1, max_length=40)) if selected_types == {"la_diagram"} else optional_array(StagedDiagramEdge),
         })
 
     if {"la_faq", "la_sortable"}.issubset(selected_types):
@@ -7304,7 +7308,7 @@ def build_staged_lesson_content_response_model(
         return create_model("StagedComponentRepairDelta", components=(list[component_model], ...))
     return create_model(
         "StagedLessonUnit_" + "_".join(sorted(selected_types)),
-        title=(str, ...),
+        title=(Enum("StagedUnitTitle", {"APPROVED": expected_unit_title}, type=str) if expected_unit_title else str, ...),
         source_fact_ids=(list[str], ...),
         supporting_evidence_fact_ids=(list[str], ...),
         components=(list[component_model], ...),
@@ -7452,6 +7456,31 @@ def lesson_author_title_key(value: Any) -> str:
     raw = strip_source_range_suffix(str(value or "")).casefold()
     raw = re.sub(r"^(?:chương|chuong|chapter|bài|bai|lesson|unit|mục|muc|section)\s+[0-9ivxlcdm.:-]+", "", raw)
     return re.sub(r"[^0-9a-zà-ỹ]+", " ", raw, flags=re.UNICODE).strip()
+
+
+def staged_unit_candidates(value: Any) -> list[Any]:
+    """Share the supported unit envelopes between initial and recovery parsing."""
+    if isinstance(value, dict) and "units" in value:
+        # Never accept an ambiguous unit plus batch envelope.
+        if "title" in value or "components" in value:
+            return []
+        return value["units"] if isinstance(value["units"], list) else []
+    if isinstance(value, dict):
+        return [value]
+    return value if isinstance(value, list) else []
+
+
+def staged_unit_match_diagnostics(generated_units: list[Any], expected_title: str) -> dict[str, Any]:
+    """Identity-only diagnostics: never emit provider labels or content."""
+    title = expected_title.strip()
+    key = lesson_author_title_key(title)
+    matches = [u for u in generated_units if isinstance(u, dict) and isinstance(u.get("title"), str)
+               and title and (lesson_author_title_key(u["title"]) == key if key else u["title"].strip() == title)]
+    reason = ("INVALID_EXPECTED_TITLE" if not title else
+              "NO_UNIT_CANDIDATES" if not generated_units else
+              "UNIT_TITLE_NOT_MATCHED" if not matches else
+              "AMBIGUOUS_UNIT_TITLE" if len(matches) != 1 else "MATCHED")
+    return {"reason": reason, "candidate_count": len(generated_units), "matching_count": len(matches)}
 
 
 def match_staged_unit_by_title(generated_units: list[Any], expected_title: str) -> dict[str, Any] | None:
@@ -8729,7 +8758,7 @@ def staged_component_repair_targets(unit: Any, expected: dict[str, Any]) -> list
     if not isinstance(unit, dict):
         return []
     for key in ("source_fact_ids", "supporting_evidence_fact_ids"):
-        if unit.get(key, []) != expected.get(key, []):
+        if not staged_fact_membership_equal(unit.get(key, []), expected.get(key, [])):
             return []
     components = unit.get("components")
     plans = expected.get("component_plan", [])
@@ -8741,8 +8770,14 @@ def staged_component_repair_targets(unit: Any, expected: dict[str, Any]) -> list
         if p.get("component_plan_id") and c.get("component_plan_id") != p["component_plan_id"]:
             return []
         for key in ("source_fact_ids", "supporting_evidence_fact_ids"):
-            if c.get(key, []) != p.get(key, []):
+            if not staged_fact_membership_equal(c.get(key, []), p.get(key, [])):
                 return []
+        covered = c.get("covered_source_fact_ids", [])
+        if (not staged_fact_membership_equal(covered, covered)
+                or not set(c.get("source_fact_ids", [])).issubset(covered)
+                or not set(covered).issubset(expected.get("source_fact_ids", []))
+                or (p.get("component_plan_id") and not p.get("source_fact_ids") and covered)):
+            return []
     return [i for i, c in enumerate(components) if staged_component_payload_code(c)]
 
 
@@ -8815,6 +8850,40 @@ def merge_staged_component_repair(baseline: dict[str, Any], replacement: Any, ta
     return result
 
 
+def staged_fact_membership_equal(actual: Any, approved: Any) -> bool:
+    """Exact IDs/ownership, independent of serialization order; no ID repair."""
+    def valid(value: Any) -> bool:
+        return (isinstance(value, list) and all(isinstance(x, str) and bool(x.strip()) for x in value)
+                and len(value) == len(set(value)))
+    return valid(actual) and valid(approved) and set(actual) == set(approved)
+
+
+def staged_diagram_shape_diagnostics(component: dict[str, Any]) -> list[dict[str, Any]]:
+    """Bounded, validator-owned paths/codes only; exclude values and messages."""
+    findings: list[dict[str, Any]] = []
+    for field, model, minimum, maximum in (("nodes", StagedDiagramNode, 2, 20), ("edges", StagedDiagramEdge, 1, 40)):
+        values = component.get(field)
+        if not isinstance(values, list):
+            findings.append({"path": field, "reason": "ARRAY_REQUIRED"})
+        elif not minimum <= len(values) <= maximum:
+            findings.append({"path": field, "reason": "CARDINALITY", "actual_count": len(values), "minimum": minimum, "maximum": maximum})
+        else:
+            for index, value in enumerate(values):
+                try:
+                    model.model_validate(value)
+                except ValidationError as error:
+                    for detail in error.errors(include_url=False, include_context=False, include_input=False):
+                        loc = detail["loc"]
+                        leaf = loc[0] if loc and loc[0] in model.model_fields else None
+                        reasons = {"missing": "FIELD_REQUIRED", "literal_error": "INVALID_ENUM", "string_too_long": "TEXT_TOO_LONG",
+                                   "string_too_short": "TEXT_TOO_SHORT", "greater_than_equal": "NEGATIVE_INDEX"}
+                        findings.append({"path": f"{field}[{index}]" + (f".{leaf}" if leaf else ""),
+                                         "reason": reasons.get(detail["type"], "FIELD_TYPE_INVALID")})
+                        if len(findings) >= 8:
+                            return findings
+    return findings[:8]
+
+
 def staged_payload_diagnostics(unit: Any) -> list[dict[str, Any]]:
     if not isinstance(unit, dict) or not isinstance(unit.get("components"), list):
         return []
@@ -8834,6 +8903,8 @@ def staged_payload_diagnostics(unit: Any) -> list[dict[str, Any]]:
                 # Validator-owned text describes shape/limits only, never values.
                 **({"semantic_shape_reason": semantic_learning_visible_text(component.get("semantic_content"))[1]}
                    if code == "HTML_SEMANTIC_INVALID" else {}),
+                **({"shape_findings": staged_diagram_shape_diagnostics(component)}
+                   if component.get("type") == "la_diagram" and code == "COMPONENT_PAYLOAD_SCHEMA_INVALID" else {}),
             })
     return result
 
@@ -8868,6 +8939,16 @@ def validate_staged_unit_content(
     *, strict_payload: bool = False,
 ) -> str | None:
     """Validate one generated unit before it can poison the full proposal."""
+    if isinstance(unit, dict):
+        evidence_nodes = [("unit", unit)]
+        components = unit.get("components", [])
+        if isinstance(components, list):
+            evidence_nodes += [(f"components[{i}]", c) for i, c in enumerate(components) if isinstance(c, dict)]
+        for path, node in evidence_nodes:
+            for field in ("source_fact_ids", "supporting_evidence_fact_ids", "covered_source_fact_ids"):
+                ids = node.get(field, [])
+                if not staged_fact_membership_equal(ids, ids):
+                    return f"{path}.{field}: INVALID_FACT_ID_ARRAY"
     if strict_payload:
         for finding in staged_payload_diagnostics(unit):
             return f"components[{finding['component_index']}]: {finding['code']}"
@@ -9514,7 +9595,7 @@ async def generate_staged_lesson_author_proposal(
                 component_type
                 for expected in batch
                 for component_type in expected.get("component_types", [])
-            ]),
+            ], expected_unit_title=batch[0]["unit_title"] if len(batch) == 1 else None),
         )
         total_usage = combine_usage(total_usage, content_usage)
         try:
@@ -9526,11 +9607,7 @@ async def generate_staged_lesson_author_proposal(
                 len(content_text),
             )
             parsed = []
-        generated_units = parsed.get("units") if isinstance(parsed, dict) and isinstance(parsed.get("units"), list) else parsed
-        if isinstance(generated_units, dict):
-            generated_units = [generated_units]
-        if not isinstance(generated_units, list):
-            generated_units = []
+        generated_units = staged_unit_candidates(parsed)
         for expected in batch:
             generated = match_staged_unit_by_title(generated_units, expected["unit_title"])
             expected_fact_ids = set(expected.get("source_fact_ids", []))
@@ -9559,6 +9636,7 @@ async def generate_staged_lesson_author_proposal(
                     "evidence_scope_findings": staged_evidence_scope_diagnostics(generated, expected),
                     "repair_scope": "components" if repair_targets else "unit",
                     "repair_component_indices": repair_targets,
+                    "unit_match": staged_unit_match_diagnostics(generated_units, expected["unit_title"]),
                 }))
                 recovery_types = [generated["components"][i]["type"] for i in repair_targets] if repair_targets else expected.get("component_types", [])
                 expected_line = (
@@ -9611,6 +9689,7 @@ async def generate_staged_lesson_author_proposal(
                 recovery_validation_reason: str | None = None
                 recovery_evidence_findings: list[dict[str, Any]] = []
                 recovery_payload_findings: list[dict[str, Any]] = []
+                recovery_unit_match: dict[str, Any] | None = None
                 try:
                     recovery_text, recovery_usage = await generate_stage_two_content(
                         generation_stage="staged_lesson_content_recovery",
@@ -9621,6 +9700,7 @@ async def generate_staged_lesson_author_proposal(
                         response_schema=build_staged_lesson_content_response_model(
                             recovery_types,
                             payload_only=bool(repair_targets),
+                            expected_unit_title=expected["unit_title"],
                         ),
                     )
                     total_usage = combine_usage(total_usage, recovery_usage)
@@ -9645,7 +9725,8 @@ async def generate_staged_lesson_author_proposal(
                             finding["component_index"] = projected_indices[finding["component_index"]]
                         generated = merge_staged_component_payload_delta(repair_baseline, recovery_value, repair_targets)
                     else:
-                        recovery_candidates = recovery_value if isinstance(recovery_value, list) else [recovery_value]
+                        recovery_candidates = staged_unit_candidates(recovery_value)
+                        recovery_unit_match = staged_unit_match_diagnostics(recovery_candidates, expected["unit_title"])
                         generated = match_staged_unit_by_title(recovery_candidates, expected["unit_title"])
                     recovery_evidence_findings = staged_evidence_scope_diagnostics(generated, expected)
                     recovery_payload_findings = staged_payload_diagnostics(generated)
@@ -9654,7 +9735,7 @@ async def generate_staged_lesson_author_proposal(
                     recovery_validation_reason = (
                         validate_staged_unit_content(generated, expected, strict_payload=any(p.get("component_plan_id") for p in expected.get("component_plan", [])))
                         if isinstance(generated, dict)
-                        else "Unit content is missing or not an object."
+                        else recovery_unit_match["reason"] if recovery_unit_match else "MISSING_OR_INVALID_UNIT"
                     )
                 except (HTTPException, LessonAuthorProposalValidationError) as error:
                     generated = None
@@ -9672,6 +9753,7 @@ async def generate_staged_lesson_author_proposal(
                     "repair_contract_version": STAGED_COMPONENT_REPAIR_CONTRACT_VERSION if repair_targets else "legacy-unit-recovery",
                     "findings": recovery_payload_findings,
                     "evidence_scope_findings": recovery_evidence_findings,
+                    "unit_match": recovery_unit_match,
                     "failure_code": recovery_validation_reason if recovery_validation_reason and re.fullmatch(r"[A-Z_]+", recovery_validation_reason) else ("UNIT_REVALIDATION_FAILED" if recovery_validation_reason else None),
                 }))
                 if (
@@ -11541,9 +11623,8 @@ def _semantic_delta_target_snapshot(
             int(target.get("assessment_dependency_objective_count") or 0),
         )
     if "repair_assessment_alignment" in set(target.get("semantic_operations") or []):
-        # Only opaque existing block IDs and local objective IDs cross the
-        # provider boundary. Python retains the exact same-lesson paths that
-        # make a cross-unit anchor legal for this one typed delta.
+        # Python retains exact mutation paths. Intent repair additionally
+        # receives bounded instructional descriptors, never evidence bodies.
         snapshot["assessment_alignment_candidates"] = [
             {
                 "knowledge_check_block_id": str(candidate.get("knowledge_check_block_id") or ""),
@@ -11553,6 +11634,11 @@ def _semantic_delta_target_snapshot(
                     for value in candidate.get("learning_objective_refs", [])
                     if isinstance(value, str) and value.strip()
                 ],
+                **({
+                    "allowed_intents": list(candidate["allowed_intents"]),
+                    "semantic_descriptor": candidate["semantic_descriptor"],
+                    "objective_text": candidate["objective_text"],
+                } if candidate.get("allowed_intents") else {}),
             }
             for candidate in target.get("assessment_alignment_candidates", [])
             if isinstance(candidate, dict)
@@ -11683,7 +11769,7 @@ def build_course_architecture_repair_prompt(
             )
         if "repair_assessment_alignment" in semantic_delta_operations:
             instructions.append(
-                "repair_assessment_alignment may select one listed existing knowledge_check_block_id and one approved teaching_selections entry for every listed local objective. Each selection may use only its listed teaching_block_id and exact local objective IDs. The server owns the exact approved block paths and derives supporting evidence. Never return source refs, evidence scopes, concepts, facts, allocation data, content, hierarchy, or any other block field."
+                "repair_assessment_alignment may select one listed existing knowledge_check_block_id and one approved teaching_selections entry for every listed local objective. Each selection may use only its listed teaching_block_id and exact local objective IDs. Only a candidate listing allowed_intents requires an intent choice: choose the teaching treatment justified by its current instructional purpose and the selected objectives; use the same intent for all selections of that block. Omit intent for all other candidates. Do not relabel a block just to pass if its semantics cannot teach those objectives from existing evidence. The server owns the exact approved block paths and derives supporting evidence. Never return source refs, evidence scopes, concepts, facts, allocation data, content, hierarchy, or any other block field."
             )
         if "add_knowledge_check" in semantic_delta_operations:
             instructions.append(
@@ -12912,6 +12998,20 @@ def _v5_prepare_assessment_alignment_targets(
                 knowledge_check=check,
                 objective_refs={objective_ref},
             )
+            # Only when ordinary anchors are absent, expose potential intent
+            # repairs. This does not make them valid teaching anchors yet.
+            intent_options: dict[str, tuple[str, ...]] = {}
+            if not base_candidates:
+                for record in records:
+                    options = assessment_intent_repair_options(
+                        teaching_block=record["block"], knowledge_check_block=check["block"],
+                        objective_refs={objective_ref}, unit_objective_refs=set(record["unit_objective_refs"]),
+                        precedes_check=record["position"] < check["position"],
+                        same_unit=record["unit_path"] == path,
+                    )
+                    if options:
+                        base_candidates.append(record)
+                        intent_options[record["block_id"]] = options
             candidate_counts[objective_ref] = len(base_candidates)
             if not base_candidates:
                 raise _semantic_delta_failure(
@@ -12929,6 +13029,12 @@ def _v5_prepare_assessment_alignment_targets(
                 "teaching_block_path": str(candidate["unit_path"]),
                 "teaching_block_id": str(candidate["block_id"]),
                 "learning_objective_refs": [objective_ref],
+                **({
+                    "allowed_intents": list(intent_options[candidate["block_id"]]),
+                    "semantic_descriptor": assessment_teaching_semantic_descriptor(candidate["block"]),
+                    "objective_text": str(lesson["learning_objectives"][int(objective_ref[3:]) - 1])[:480],
+                }
+                   if candidate["block_id"] in intent_options else {}),
             } for candidate in base_candidates)
         # Exact duplicate candidate records would make provider selection
         # non-deterministic; reject rather than silently choosing a path.
@@ -12954,7 +13060,7 @@ def _v5_prepare_assessment_alignment_targets(
         target["allowed_objective_ids"] = sorted(requested_refs)
         target["assessment_alignment_candidates"] = candidates
         target["assessment_alignment_candidate_counts"] = candidate_counts
-        if all(count == 1 for count in candidate_counts.values()):
+        if all(count == 1 for count in candidate_counts.values()) and not any(c.get("allowed_intents") for c in candidates):
             target["deterministic_semantic_delta"] = True
         prepared.append(target)
     return prepared
@@ -14105,10 +14211,13 @@ def _apply_v5_semantic_delta_repair_patches(
                 and str(candidate.get("knowledge_check_path") or "") == path
                 and str(candidate.get("knowledge_check_block_id") or "") == knowledge_check_block_id
             ]
-            selections: list[tuple[dict[str, Any], set[str]]] = []
+            selections: list[tuple[dict[str, Any], set[str], str | None]] = []
+            selected_intents: dict[str, str] = {}
             selected_refs: set[str] = set()
             for selection in raw_selections:
-                if not isinstance(selection, dict) or set(selection) != {"teaching_block_id", "learning_objective_refs"}:
+                if (not isinstance(selection, dict)
+                        or not {"teaching_block_id", "learning_objective_refs"}.issubset(selection)
+                        or set(selection) - {"teaching_block_id", "learning_objective_refs", "intent"}):
                     raise _semantic_delta_failure(
                         "Assessment alignment contains a typed selection outside its approved contract.",
                         path=path,
@@ -14153,7 +14262,20 @@ def _apply_v5_semantic_delta_repair_patches(
                         semantic_operation=operation,
                         block_id=knowledge_check_block_id,
                     )
-                selections.append((matching[0], refs))
+                authorized = matching[0]
+                intent = selection.get("intent")
+                allowed_intents = authorized.get("allowed_intents", [])
+                if (allowed_intents and (not isinstance(intent, str) or intent not in allowed_intents)
+                        or not allowed_intents and "intent" in selection
+                        or teaching_block_id in selected_intents and selected_intents[teaching_block_id] != intent):
+                    raise _semantic_delta_failure(
+                        "Assessment alignment attempted an unauthorized or inconsistent teaching intent.",
+                        path=path, patch_count=len(patches), internal_code="ARCH_REPAIR_INVALID_SEMANTIC_INTENT",
+                        guard_reason="INVALID_SEMANTIC_INTENT", semantic_operation=operation, block_id=teaching_block_id,
+                    )
+                if intent is not None:
+                    selected_intents[teaching_block_id] = intent
+                selections.append((authorized, refs, intent))
                 selected_refs.update(refs)
             if selected_refs != expected_refs:
                 raise _semantic_delta_failure(
@@ -14167,7 +14289,11 @@ def _apply_v5_semantic_delta_repair_patches(
                 )
 
             selected_primary_scopes: set[str] = set()
-            for candidate, refs in selections:
+            # Resolve all changes against the immutable pre-apply lesson;
+            # one selection must not make a later unauthorized one eligible.
+            baseline_records = _v5_lesson_block_records(deepcopy(lesson), lesson_path)
+            baseline_check = next(record for record in baseline_records if record["unit_path"] == path and record["block_id"] == knowledge_check_block_id)
+            for candidate, refs, intent in selections:
                 teaching_path = str(candidate.get("teaching_block_path") or "")
                 teaching_block_id = str(candidate.get("teaching_block_id") or "").strip()
                 if _repair_parent_lesson_path(teaching_path) != _repair_parent_lesson_path(path):
@@ -14196,10 +14322,21 @@ def _apply_v5_semantic_delta_repair_patches(
                         semantic_operation=operation,
                         block_id=teaching_block_id or None,
                     )
-                base_candidates = _v5_base_teaching_anchor_candidates(
-                    lesson, records, knowledge_check=check_record, objective_refs=refs,
-                )
-                if not any(record["block"] is teaching for record in base_candidates):
+                baseline_teaching = next(record for record in baseline_records if record["unit_path"] == teaching_path and record["block_id"] == teaching_block_id)
+                if intent is not None:
+                    options = assessment_intent_repair_options(
+                        teaching_block=baseline_teaching["block"], knowledge_check_block=baseline_check["block"],
+                        objective_refs=refs, unit_objective_refs=set(baseline_teaching["unit_objective_refs"]),
+                        precedes_check=baseline_teaching["position"] < baseline_check["position"],
+                        same_unit=teaching_path == path,
+                    )
+                    eligible = intent in options
+                else:
+                    eligible = any(
+                        record["unit_path"] == teaching_path and record["block_id"] == teaching_block_id
+                        for record in _v5_base_teaching_anchor_candidates(lesson, baseline_records, knowledge_check=baseline_check, objective_refs=refs)
+                    )
+                if not eligible:
                     raise _semantic_delta_failure(
                         "Assessment alignment teaching block is no longer a base-eligible source-grounded anchor.",
                         path=path,
@@ -14209,6 +14346,8 @@ def _apply_v5_semantic_delta_repair_patches(
                         semantic_operation=operation,
                         block_id=teaching_block_id,
                     )
+                if intent is not None:
+                    teaching["intent"] = intent
                 teaching["learning_objective_refs"] = sorted(
                     _v5_text_ids(teaching.get("learning_objective_refs")) | refs
                 )
@@ -15919,6 +16058,10 @@ async def lesson_author_blueprint(
             ),
             "provider_assessment_choice_count": sum(
                 target.get("deterministic_semantic_delta") is not True
+                for target in assessment_targets
+            ),
+            "assessment_intent_repair_target_count": sum(
+                any(candidate.get("allowed_intents") for candidate in target.get("assessment_alignment_candidates", []))
                 for target in assessment_targets
             ),
             "action_intent_repair_target_count": len(action_intent_targets),

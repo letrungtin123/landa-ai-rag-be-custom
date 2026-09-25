@@ -5,7 +5,7 @@ import json
 import unittest
 from unittest.mock import AsyncMock, patch
 
-from app.lesson_prompt_policy import bounded_architect_policy, lesson_output_language_policy
+from app.lesson_prompt_policy import bounded_architect_policy, lesson_output_language_policy, lesson_instructional_quality_policy
 from app.main import (
     AiUsage, build_course_architect_prompt, build_lesson_generation_repair_prompt,
     generate_staged_lesson_author_proposal, generate_validated_lesson_author_blueprint,
@@ -58,6 +58,13 @@ def request_and_unit(component_type: str, locale: str):
 
 
 class LessonPromptPolicyTests(unittest.TestCase):
+    def test_teaching_policy_allows_synthesis_not_new_facts_or_asset_claims(self):
+        policy = lesson_instructional_quality_policy()
+        for phrase in ("synthesize questions", "Never create canonical IDs",
+                       "Put FAQ last", "absent image", "specific uncertainty", "non-instructional source note",
+                       "component instances", "not always place the correct option first"):
+            self.assertIn(phrase, policy)
+
     def test_architect_never_silently_cuts_mandatory_policy(self):
         exact = "x" * 12000
         self.assertEqual(bounded_architect_policy(exact), exact)
@@ -127,6 +134,7 @@ class LessonPromptPolicyTests(unittest.TestCase):
         self.assertEqual(provider.await_count, 2)
         for call in provider.await_args_list:
             self.assertTrue(call.args[2].startswith(lesson_output_language_policy("en")))
+            self.assertIn(lesson_instructional_quality_policy(), call.args[2])
         self.assertIn("SERVER STAGE 2 RECOVERY", provider.await_args_list[1].args[2])
         self.assertEqual(proposal["chapters"][0]["title"], "Locked source chapter")
 

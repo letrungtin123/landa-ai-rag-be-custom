@@ -5,6 +5,23 @@ from app.workflows.contracts import WorkflowFailure
 
 ARCHITECT_POLICY_MAX_CHARS = 12_000
 LESSON_LANGUAGE_POLICY_VERSION = "lesson-language-1"
+LESSON_INSTRUCTIONAL_POLICY_VERSION = "evidence-teaching-2"
+
+
+def lesson_instructional_quality_policy() -> str:
+    """Pedagogical synthesis is allowed; domain claims and ownership are not."""
+    return "\n".join([
+        f"EVIDENCE-BOUNDED TEACHING POLICY: {LESSON_INSTRUCTIONAL_POLICY_VERSION}.",
+        "Turn available knowledge into useful learning, not a longer transcription. Explain concept, meaning, application conditions and learner takeaway where the evidence supports them. Scale depth to the available knowledge; do not pad with repeated paragraphs or invent missing detail.",
+        "You may synthesize questions, comparisons, practice instructions and explanations from the approved evidence even if the source contains no FAQ or exercise. Every answer, ordering relationship, definition and diagram edge must be supported by that evidence. A pedagogical inference is not a new source fact. Never create canonical IDs or broaden evidence ownership.",
+        "For each selected FAQ, create 2-3 useful, distinct clarification questions about distinctions, conditions, decisions or cautions taught here. No verbatim paragraph copies or generic filler. Put FAQ last. Do not force unsupported exceptions or explanations of why when the source states only what.",
+        "A problem must address its mapped objectives, not just an easy neighbouring definition. For procedural/application objectives use a source-supported decision or clearly labelled instructional calculation using the source rule. Do not present a hypothetical example as an observed source event. Use plausible distinct distractors, avoid absurd giveaways and do not always place the correct option first.",
+        "Sortable uses only explicit source order. Diagram distinguishes membership/hierarchy from temporal/causal edges; co-occurrence alone does not establish causation. Crossword uses only source-defined terms with accurate clues; spelling normalization must not change the term's meaning.",
+        "Do not ask learners to inspect an absent image, video or unspecified Scenario 1-4. Use the available textual scenario instead where sufficient; otherwise state the local missing evidence briefly without inventing its contents. Missing optional illustrative material must not turn usable teaching into an empty lesson.",
+        "Source contradictions must not become unambiguous quiz answers: label the specific uncertainty for review and teach the undisputed material. Never silently choose a disputed threshold or invent a resolution.",
+        "Do not teach document footers, promotional contacts, THANK YOU slides or page furniture as learning objectives or assessment content. Preserve mandated evidence ownership/coverage; when such source material is assigned, distinguish it as a brief non-instructional source note, not a lesson or activity. Never silently delete assigned fact IDs.",
+        "Keep the approved component instances and all payload/security constraints unchanged. Only generate types selected by the server. This policy does not authorize skipping mandatory content, returning invalid payloads or fabricating assets.",
+    ])
 
 
 def bounded_architect_policy(policy: str) -> str:

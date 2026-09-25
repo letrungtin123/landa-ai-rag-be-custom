@@ -64,7 +64,7 @@ class InstructionalOpportunityTests(unittest.TestCase):
             bp, sm, mf = fixture(texts)
             bp["chapters"][0]["lessons"][0]["learning_objectives"] = ["Thực hiện đúng quy trình và giải thích các điều kiện."]
             enriched, _ = compile_evidence_treatments(bp, sm, mf)
-            self.assertEqual(blocks(enriched)[-1]["intent"], intent)
+            self.assertIn(intent, [b["intent"] for b in blocks(enriched)])
         for texts in (["1. Red", "2. Green", "3. Blue"], ["Some plain explanation."], ["If it fails, stop."] * 2,
                       ["Step 1: Inspect.", "Step 3: Complete.", "Step 4: Exit."]):
             bp, sm, mf = fixture(texts)
@@ -100,6 +100,77 @@ class InstructionalOpportunityTests(unittest.TestCase):
         manifest = deepcopy(mf)
         manifest["facts"][0]["text"] = "x" * 64001
         self.assertIn("EVIDENCE_SCAN_BOUND", compile_evidence_treatments(original, sm, manifest)[1][0]["reason_codes"])
+
+    def test_source_defined_counted_process_survives_stripped_list_numbers(self):
+        for header in ("Quy trình 4 bước", "Procedure 4 steps"):
+            texts = [header, "Identify the documented hazard before starting work.",
+                     "Evaluate the severity and the likelihood of the hazard.",
+                     "Determine the risk level and the handling priority.",
+                     "Propose appropriate controls for the identified risk."]
+            bp, sm, mf = fixture(texts)
+            enriched, diagnostics = compile_evidence_treatments(bp, sm, mf)
+            self.assertIn("practice", [b["intent"] for b in blocks(enriched)])
+            self.assertEqual(blocks(enriched)[-1]["intent"], "faq")
+            self.assertEqual(diagnostics[0]["faq_status"], "PRESENT")
+            self.assertEqual(compile_evidence_treatments(enriched, sm, mf)[0], enriched)
+
+    def test_numbered_procedure_not_arbitrary_list_and_no_cross_page_assembly(self):
+        texts = ["Approved procedure", "1. Inspect the initial working conditions.",
+                 "2. Perform the approved operation carefully.", "3. Verify the final completed result."]
+        bp, sm, mf = fixture(texts)
+        self.assertIn("practice", [b["intent"] for b in blocks(compile_evidence_treatments(bp, sm, mf)[0])])
+        for no_header in (texts[1:], ["Quy trình 4 bước", *texts[1:]]):
+            bp, sm, mf = fixture(no_header)
+            self.assertNotIn("practice", [b["intent"] for b in blocks(compile_evidence_treatments(bp, sm, mf)[0])])
+        bp, sm, mf = fixture(self.CASES["practice"])
+        mf["facts"][-1]["source_page"] = 2
+        sm["facts"][-1]["page"] = 2
+        self.assertNotIn("practice", [b["intent"] for b in blocks(compile_evidence_treatments(bp, sm, mf)[0])])
+
+    def test_faq_synthesis_without_questions_but_not_empty_footer_or_repetition(self):
+        statements = ["Workers inspect their protective equipment before using it at work.",
+                      "Workers clean and store their protective equipment after using it."]
+        bp, sm, mf = fixture(statements)
+        enriched, _ = compile_evidence_treatments(bp, sm, mf)
+        self.assertEqual(blocks(enriched)[-1]["intent"], "faq")
+        self.assertEqual(blocks(enriched)[-1]["primary_evidence_scope_ids"], [])
+        for bad in ([statements[0]] * 3, [f"Evidence fact {i}: source-backed procedure or definition." for i in range(4)], ["THANK YOU for your participation in our training course.",
+                    "Contact our team for more information at support@example.test."]):
+            bp, sm, mf = fixture(bad)
+            self.assertEqual(compile_evidence_treatments(bp, sm, mf)[0], bp)
+
+    def test_model_membership_and_glossary_tables_without_causal_invention(self):
+        # A literal source model heading, not an inferred title supplied by AI.
+        texts = ["Model of implementation", "Leadership policy and commitment",
+                 "Worker training and awareness", "Monitoring reporting and improvement"]
+        bp, sm, mf = fixture(texts)
+        self.assertIn("relationship_visualization", [b["intent"] for b in blocks(compile_evidence_treatments(bp, sm, mf)[0])])
+        terms = ["Hazard: A potential source of harm at the workplace.",
+                 "Risk: The combination of likelihood and severity of harm.",
+                 "Control: An approved measure reducing an identified workplace risk."]
+        bp, sm, mf = fixture(terms)
+        enriched, _ = compile_evidence_treatments(bp, sm, mf)
+        self.assertIn("terminology_reinforcement", [b["intent"] for b in blocks(enriched)])
+        self.assertEqual(blocks(enriched)[-1]["intent"], "faq")
+
+    def test_faq_and_best_activity_fit_capacity_without_forcing_all_types(self):
+        texts = self.CASES["terminology_reinforcement"] + self.CASES["faq"] + self.CASES["practice"]
+        bp, sm, mf = fixture(texts)
+        blocks(bp).append({**deepcopy(blocks(bp)[0]), "id": "check", "intent": "knowledge_check"})
+        enriched, diag = compile_evidence_treatments(bp, sm, mf)
+        intents = [b["intent"] for b in blocks(enriched)]
+        self.assertEqual(intents, ["concept_explanation", "knowledge_check", "practice", "faq"])
+        self.assertIn("terminology_reinforcement", diag[0]["omitted_intents"])
+        self.assertIn("CAPACITY_BOUND", diag[0]["reason_codes"])
+
+    def test_action_mnemonic_is_ordered_but_glossary_and_scenario_labels_are_not_terms(self):
+        texts = ["Quy tắc PASS dùng bình chữa cháy:",
+                 "P – Pull: Rút chốt an toàn; A – Aim: Nhắm vòi vào gốc lửa;",
+                 "S – Squeeze: Bóp cò để xịt; S – Sweep: Quét vòi qua lại để dập tắt lửa"]
+        bp, sm, mf = fixture(texts)
+        self.assertIn("practice", [b["intent"] for b in blocks(compile_evidence_treatments(bp, sm, mf)[0])])
+        bp, sm, mf = fixture([f"Scenario {i}: A worker performs an approved documented operation." for i in range(1, 4)])
+        self.assertNotIn("terminology_reinforcement", [b["intent"] for b in blocks(compile_evidence_treatments(bp, sm, mf)[0])])
 
     def test_paginated_manifest_uses_exact_document_page_not_invented_section(self):
         bp, sm, mf = fixture(self.CASES["terminology_reinforcement"])

@@ -381,6 +381,41 @@ def _payload_quality_findings(components: list[dict[str, Any]]) -> list[Workflow
     return findings
 
 
+def _learner_readiness_warnings(components: list[dict[str, Any]]) -> list[WorkflowIssue]:
+    """Local review hints, not invented facts or new blockers for useful teaching."""
+    findings: list[WorkflowIssue] = []
+    for item in components[:72]:
+        if item["type"] != "html":
+            continue
+        text = _normalized_text(item["text"])[:32_000]
+        unit_components = item["unit"].get("components") or item["unit"].get("blocks") or []
+        has_visual = any(_component_type(_record(c)) in {"video", "la_diagram", "la_image_choice_quiz", "la_media_quiz"}
+                         or re.search(r"<img\b", str(_record(c).get("html") or _record(c).get("data") or ""), re.I)
+                         for c in unit_components)
+        if not has_visual and re.search(
+            r"\b(?:quan sat|thuc hanh|xac dinh|inspect|identify|observe|see)\b.{0,100}\b(?:trong anh|hinh ben duoi|anh ben duoi|in the image|image below|figure below)\b", text
+        ):
+            findings.append(_issue("VISUAL_EXERCISE_CONTEXT_MISSING",
+                                   "A learner action refers to a visual not present in this unit; review the local exercise context.",
+                                   path=item["component_path"], severity="warning"))
+        if re.search(r"\b(?:thank you|thong tin lien he|contact information)\b", text) and not re.search(
+            r"\b(?:non instructional source note|ghi chu nguon)\b", text
+        ):
+            findings.append(_issue("NON_INSTRUCTIONAL_SOURCE_RESIDUE",
+                                   "Source closing/contact material appears in teaching prose; distinguish it from instructional content.",
+                                   path=item["component_path"], severity="warning"))
+        # Preserve source ambiguity rather than choosing a threshold. Only a
+        # review warning: touching intervals can be legitimate with open bounds.
+        if re.search(r"\b(?:rui ro|risk)\b", text):
+            ranges = [(int(a), int(b)) for a, b in re.findall(r"\b(\d{1,3})\s*[-–]\s*(\d{1,3})\b", item["text"][:32_000])]
+            ordered = sorted(set((a, b) for a, b in ranges if a < b))
+            if any(a2 == b1 for (_a1, b1), (a2, _b2) in zip(ordered, ordered[1:])):
+                findings.append(_issue("SOURCE_RANGE_REVIEW_REQUIRED",
+                                       "Risk bands share a boundary value; confirm source interval semantics before using that boundary as a quiz answer.",
+                                       path=item["component_path"], severity="warning"))
+    return findings
+
+
 def validate_lesson_pedagogical_quality(
     proposal: dict[str, Any],
     blueprint_architecture: dict[str, Any] | None = None,
@@ -390,6 +425,7 @@ def validate_lesson_pedagogical_quality(
     """Evaluate final generated content against the approved lesson contract."""
     findings = _payload_quality_findings(_proposal_components(proposal))
     components = _proposal_components(proposal)
+    findings.extend(_learner_readiness_warnings(components))
     objective_total = objective_covered = 0
     source_total = source_covered = 0
     assessment_total = assessment_covered = 0
