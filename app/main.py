@@ -15,7 +15,7 @@ from datetime import datetime, timezone
 from enum import Enum
 from pathlib import Path
 from time import perf_counter
-from typing import Any, Callable, Literal
+from typing import Annotated, Any, Callable, Literal
 from uuid import UUID
 
 import asyncpg
@@ -62,6 +62,7 @@ from app.source_map import build_course_architect_context, build_source_map
 from app.lesson_prompt_policy import bounded_architect_policy, lesson_output_language_policy
 from app.source_chapter_policy import resolve_source_chapter_policy, bind_source_chapters
 from app.component_capabilities import ComponentCapabilities, validate_instance_plan
+from app.instructional_opportunities import compile_evidence_treatments, VERSION as EVIDENCE_TREATMENT_VERSION
 from app.assessment_planner import (
     assessment_plan_fingerprint,
     compile_v5_assessment_plan,
@@ -6026,7 +6027,9 @@ def semantic_learning_visible_text(value: Any) -> tuple[str, str | None]:
         if len(raw_items) > max_items:
             return "", f"Semantic {field} exceeds the {max_items}-item renderer limit."
         for raw_item in raw_items:
-            if not isinstance(raw_item, str) or not raw_item.strip():
+            if not isinstance(raw_item, str):
+                return "", f"Semantic {field} contains a non-string item."
+            if not raw_item.strip():
                 return "", f"Semantic {field} contains an empty text value."
             item = raw_item.strip()
             if len(item) > max_characters:
@@ -7034,6 +7037,7 @@ def build_lesson_author_unit_response_schema(
 
 
 STAGED_COMPONENT_CONTRACT_VERSION = "component-payload-2"
+STAGED_COMPONENT_REPAIR_CONTRACT_VERSION = "component-payload-delta-1"
 STAGED_COMPONENT_PAYLOAD_FIELDS = {
     "html": {"semantic_content", "html"},
     "problem": {"problem_type", "question", "choices", "options", "answer", "tolerance", "explanation"},
@@ -7047,6 +7051,25 @@ STAGED_COMPONENT_PAYLOAD_FIELDS = {
 class StagedChoice(BaseModel):
     text: str = Field(min_length=1, max_length=500)
     correct: bool = Field(strict=True)
+
+
+class StagedSemanticComparisonRow(BaseModel):
+    label: str = Field(min_length=1, max_length=500)
+    value: str = Field(min_length=1, max_length=1000)
+
+
+class StagedSemanticContent(BaseModel):
+    """Concrete SDK wire vocabulary; the existing renderer validator is authoritative.
+
+    This object is optional on non-HTML components, not a nullable model $ref
+    (unsupported by google-genai 1.0.0). Its arrays always retain typed items.
+    """
+    heading: str | None = Field(default=None, max_length=240)
+    paragraphs: list[Annotated[str, Field(min_length=1, max_length=2000)]] = Field(min_length=1, max_length=12)
+    bullet_points: list[Annotated[str, Field(min_length=1, max_length=800)]] = Field(default_factory=list, max_length=20)
+    ordered_steps: list[Annotated[str, Field(min_length=1, max_length=1000)]] = Field(default_factory=list, max_length=20)
+    warnings: list[Annotated[str, Field(min_length=1, max_length=1000)]] = Field(default_factory=list, max_length=8)
+    comparison_rows: list[StagedSemanticComparisonRow] = Field(default_factory=list, max_length=30)
 
 
 class StagedFaqItem(BaseModel):
@@ -7172,7 +7195,7 @@ def staged_component_payload_code(component: dict[str, Any]) -> str | None:
 def staged_component_contract_prompt(component_types: list[str]) -> str:
     """Only selected contracts; storage/XML/layout/IDs remain server-owned."""
     contracts = {
-        "html": "html: semantic_content contains heading, paragraphs, bullet_points, ordered_steps, warnings, comparison_rows[{label,value}]. Explain approved evidence completely. No CSS/classes/scripts/assets. Server renders HTML.",
+        "html": "html: semantic_content is an object with at least one substantive explanatory paragraph; heading is optional nonempty text; paragraphs, bullet_points, ordered_steps and warnings are arrays of nonempty strings (never objects); comparison_rows is an array of {label: nonempty string,value: nonempty string}. Omit unused fields, never emit semantic_content={} or null for HTML. Other component types omit semantic_content entirely. Bounds: heading 240 chars; paragraphs 12 items/2000 chars each; bullet_points 20/800; ordered_steps 20/1000; warnings 8/1000; comparison_rows 30 rows, label 500/value 1000 chars. Explain approved evidence completely within these limits; do not silently omit facts to fit. No CSS/classes/scripts/assets. Server renders HTML.",
         "problem": 'problem: explicit problem_type and question. multiple_choice/multiple_select: choices=[{"text":"answer text","correct":true},{"text":"distinct distractor","correct":false}], 2-6 distinct nonempty choices. multiple_choice has EXACTLY one correct; multiple_select at least one. dropdown: options=["answer","other"], 2-8 distinct strings, answer must exactly equal one option. short_text: nonempty answer. numerical: finite numeric answer as string. Include explanation grounded in taught evidence. Never omit correct or assume first choice is correct.',
         "la_faq": 'la_faq: items=[{"question":"anticipated question","answer":"source-grounded clarification"}], 2-8 distinct Q&A. Clarify conditions/exceptions/misconceptions, not repeat paragraphs. Place FAQ last in the unit.',
         "la_sortable": 'la_sortable: question_text plus items=[{"text":"first step"},{"text":"second step"},{"text":"third step"}], 3-10 distinct items in SOURCE-CORRECT order. Only approved ordering practice. Do not fabricate dependencies or turn an unordered list into a sequence.',
@@ -7186,6 +7209,7 @@ def staged_component_contract_prompt(component_types: list[str]) -> str:
 
 def build_staged_lesson_content_response_model(
     component_types: list[str] | None = None,
+    *, payload_only: bool = False,
 ) -> type[BaseModel]:
     """Build the Stage-2 typed response model for exactly the selected types.
 
@@ -7219,11 +7243,11 @@ def build_staged_lesson_content_response_model(
     }
     if "html" in selected_types:
         component_fields.update({
-            # Keep this as a nullable JSON object rather than a nested
-            # Pydantic model: the installed SDK's schema transformer cannot
-            # resolve a nullable $ref in response schemas. Python validates
-            # the semantic shape deterministically in the next stage.
-            "semantic_content": (dict[str, Any] | None, ...),
+            # Omission is permitted for other selected component types. A
+            # non-nullable model reference survives SDK 1.0.0 serialization;
+            # dict[str, Any] previously became an unconstrained OBJECT and
+            # encouraged empty HTML in both generation and repair.
+            "semantic_content": (StagedSemanticContent, ... if selected_types == {"html"} else None),
             "html": (str | None, ...),
         })
     # google-genai 1.0.0 drops ``items`` when it lowers a nullable array
@@ -7268,8 +7292,16 @@ def build_staged_lesson_content_response_model(
         item_model = create_model("StagedFaqOrSortableItem", question=(str | None, ...), answer=(str | None, ...), text=(str | None, ...))
         component_fields["items"] = optional_array(item_model)
 
-    component_name = "StagedLessonComponent_" + "_".join(sorted(selected_types))
+    if payload_only:
+        # A repair selects an already-authorized array address, not provenance.
+        # Never ask Gemini to echo canonical fact IDs, type or unit metadata.
+        for key in ("type", "component_plan_id", "source_fact_ids", "covered_source_fact_ids", "supporting_evidence_fact_ids"):
+            component_fields.pop(key, None)
+        component_fields["component_index"] = (int, ...)
+    component_name = ("StagedRepairPayload_" if payload_only else "StagedLessonComponent_") + "_".join(sorted(selected_types))
     component_model = create_model(component_name, **component_fields)
+    if payload_only:
+        return create_model("StagedComponentRepairDelta", components=(list[component_model], ...))
     return create_model(
         "StagedLessonUnit_" + "_".join(sorted(selected_types)),
         title=(str, ...),
@@ -8714,6 +8746,41 @@ def staged_component_repair_targets(unit: Any, expected: dict[str, Any]) -> list
     return [i for i, c in enumerate(components) if staged_component_payload_code(c)]
 
 
+def merge_staged_component_payload_delta(baseline: dict[str, Any], delta: Any, targets: list[int]) -> dict[str, Any]:
+    """Accept only addressed payload edits; derive the full envelope on server.
+
+    Validate every edit before returning a new unit. The old full-envelope
+    merger remains strict for legacy callers; this is a narrower wire contract.
+    """
+    if not isinstance(delta, dict) or set(delta) != {"components"}:
+        raise LessonAuthorProposalValidationError("COMPONENT_REPAIR_ENVELOPE_FORBIDDEN")
+    changes = delta["components"]
+    originals = baseline.get("components", [])
+    if (not targets or len(set(targets)) != len(targets)
+            or any(type(i) is not int or not 0 <= i < len(originals) for i in targets)
+            or not isinstance(changes, list) or len(changes) != len(targets)):
+        raise LessonAuthorProposalValidationError("COMPONENT_REPAIR_TARGET_COUNT_INVALID")
+    indexed: dict[int, dict[str, Any]] = {}
+    wire_fields = set().union(*STAGED_COMPONENT_PAYLOAD_FIELDS.values()) | {"title", "selection_rationale"}
+    protected = {"type", "component_plan_id", "source_fact_ids", "covered_source_fact_ids", "supporting_evidence_fact_ids"}
+    for change in changes:
+        if not isinstance(change, dict):
+            raise LessonAuthorProposalValidationError("COMPONENT_REPAIR_NOT_OBJECT")
+        index = change.get("component_index")
+        if type(index) is not int or index not in targets or index in indexed:
+            raise LessonAuthorProposalValidationError("COMPONENT_REPAIR_TARGET_INVALID")
+        if protected.intersection(change):
+            raise LessonAuthorProposalValidationError("COMPONENT_REPAIR_PROTECTED_FIELD_EMITTED")
+        if set(change) - wire_fields - {"component_index"}:
+            raise LessonAuthorProposalValidationError("COMPONENT_REPAIR_FIELD_NOT_ALLOWED")
+        indexed[index] = {k: v for k, v in change.items() if k != "component_index"}
+    # Only the server reconstitutes immutable title/ownership/instance identity.
+    envelope = {k: deepcopy(baseline.get(k, [])) for k in ("source_fact_ids", "supporting_evidence_fact_ids")}
+    envelope["title"] = baseline.get("title")
+    envelope["components"] = [indexed[index] for index in targets]
+    return merge_staged_component_repair(baseline, envelope, targets)
+
+
 def merge_staged_component_repair(baseline: dict[str, Any], replacement: Any, targets: list[int]) -> dict[str, Any]:
     """Atomic exact-scope merge. Good components and provenance never change."""
     if not isinstance(replacement, dict):
@@ -8733,7 +8800,7 @@ def merge_staged_component_repair(baseline: dict[str, Any], replacement: Any, ta
         protected = ("type", "component_plan_id", "source_fact_ids", "covered_source_fact_ids", "supporting_evidence_fact_ids")
         if any(change.get(k, original.get(k)) != original.get(k) for k in protected):
             raise LessonAuthorProposalValidationError("COMPONENT_REPAIR_AUTHORITY_CHANGED")
-        code = staged_component_payload_code(change)
+        code = staged_component_payload_code({**original, **change})
         if code:
             raise LessonAuthorProposalValidationError(code)
         editable = STAGED_COMPONENT_PAYLOAD_FIELDS[original["type"]] | {"title", "selection_rationale"}
@@ -8764,8 +8831,35 @@ def staged_payload_diagnostics(unit: Any) -> list[dict[str, Any]]:
                 "code": code,
                 "choice_count": len(choices) if isinstance(choices, list) else 0,
                 "correct_choice_count": sum(isinstance(c, dict) and c.get("correct") is True for c in choices) if isinstance(choices, list) else 0,
+                # Validator-owned text describes shape/limits only, never values.
+                **({"semantic_shape_reason": semantic_learning_visible_text(component.get("semantic_content"))[1]}
+                   if code == "HTML_SEMANTIC_INVALID" else {}),
             })
     return result
+
+
+def staged_evidence_scope_diagnostics(unit: Any, expected: dict[str, Any]) -> list[dict[str, Any]]:
+    """Bounded mismatch metadata, including order-only differences; no IDs/text."""
+    if not isinstance(unit, dict):
+        return [{"path": "unit", "reason": "MISSING_OR_INVALID_UNIT"}]
+    pairs = [("unit", unit, expected)]
+    components = unit.get("components", [])
+    if isinstance(components, list):
+        pairs += [(f"components[{i}]", c, p) for i, (c, p) in enumerate(zip(components, expected.get("component_plan", [])))
+                  if isinstance(c, dict) and isinstance(p, dict)]
+    findings = []
+    for path, actual, approved in pairs:
+        for field in ("source_fact_ids", "supporting_evidence_fact_ids"):
+            value, required = actual.get(field, []), approved.get(field, [])
+            if not isinstance(value, list) or any(not isinstance(x, str) for x in value):
+                findings.append({"path": f"{path}.{field}", "reason": "INVALID_ID_ARRAY"})
+            elif value != required:
+                got, want = set(value), set(required)
+                findings.append({"path": f"{path}.{field}", "reason": "ORDER_ONLY" if got == want and len(value) == len(required) else "MEMBERSHIP_MISMATCH",
+                                 "expected_count": len(required), "actual_count": len(value),
+                                 "missing_count": len(want - got), "unexpected_count": len(got - want),
+                                 "duplicate_count": len(value) - len(got)})
+    return findings[:16]
 
 
 def validate_staged_unit_content(
@@ -9462,6 +9556,7 @@ async def generate_staged_lesson_author_proposal(
                     "batch_index": batch_index,
                     "stage": "staged_content_validation",
                     "findings": staged_payload_diagnostics(generated),
+                    "evidence_scope_findings": staged_evidence_scope_diagnostics(generated, expected),
                     "repair_scope": "components" if repair_targets else "unit",
                     "repair_component_indices": repair_targets,
                 }))
@@ -9494,7 +9589,28 @@ async def generate_staged_lesson_author_proposal(
                         "Do not invent facts outside the source material. Do not include markdown or prose outside the JSON object.",
                     ]
                 )
+                if repair_targets:
+                    recovery_prompt = "\n\n".join([
+                        "SCOPED COMPONENT REPAIR: " + STAGED_COMPONENT_REPAIR_CONTRACT_VERSION,
+                        'Return exactly {"components":[{"component_index":0,...payload fields...}]}. '
+                        "Use the exact listed component_index once each, no other addresses. Return only payload fields for each target's fixed type. "
+                        "Do NOT return a unit title/envelope, type, component_plan_id, source_fact_ids, covered_source_fact_ids, "
+                        "supporting_evidence_fact_ids, learning blocks, metadata or source references. The server preserves them and all good components unchanged.",
+                        staged_component_contract_prompt(recovery_types),
+                        "Authorized targets (read-only baseline; not the response shape):\n" + json.dumps([
+                            {"component_index": i, "baseline": repair_baseline["components"][i]}
+                            for i in repair_targets
+                        ], ensure_ascii=False),
+                        "Deterministic payload findings:\n" + json.dumps(staged_payload_diagnostics(repair_baseline)),
+                        f"Approved instructional contract (read-only):\n{instructional_contract}",
+                        f"Mandatory evidence:\n{unit_coverage}",
+                        f"Relevant source material:\n{unit_context or context[:STAGED_LESSON_AUTHOR_UNIT_CONTEXT_CHARS]}",
+                        "Repair the invalid payload shape while retaining instructional completeness and teaching/check alignment. "
+                        "No new source claims or media assets. Do not emit markdown or text outside the JSON object.",
+                    ])
                 recovery_validation_reason: str | None = None
+                recovery_evidence_findings: list[dict[str, Any]] = []
+                recovery_payload_findings: list[dict[str, Any]] = []
                 try:
                     recovery_text, recovery_usage = await generate_stage_two_content(
                         generation_stage="staged_lesson_content_recovery",
@@ -9504,6 +9620,7 @@ async def generate_staged_lesson_author_proposal(
                         prompt=recovery_prompt,
                         response_schema=build_staged_lesson_content_response_model(
                             recovery_types,
+                            payload_only=bool(repair_targets),
                         ),
                     )
                     total_usage = combine_usage(total_usage, recovery_usage)
@@ -9511,10 +9628,27 @@ async def generate_staged_lesson_author_proposal(
                         recovery_text,
                         f"content unit recovery {batch_index}",
                     )
-                    recovery_candidates = recovery_value if isinstance(recovery_value, list) else [recovery_value]
-                    generated = match_staged_unit_by_title(recovery_candidates, expected["unit_title"])
                     if repair_targets:
-                        generated = merge_staged_component_repair(repair_baseline, generated, repair_targets)
+                        # Capture safe shape diagnostics before atomic merge
+                        # can reject the delta. Never log replacement content.
+                        delta_components = recovery_value.get("components", []) if isinstance(recovery_value, dict) else []
+                        projected = {"components": []}
+                        projected_indices: list[int] = []
+                        for change in delta_components if isinstance(delta_components, list) else []:
+                            index = change.get("component_index") if isinstance(change, dict) else None
+                            if type(index) is int and index in repair_targets:
+                                baseline_component = repair_baseline["components"][index]
+                                projected["components"].append({**baseline_component, **change, "type": baseline_component["type"]})
+                                projected_indices.append(index)
+                        recovery_payload_findings = staged_payload_diagnostics(projected)
+                        for finding in recovery_payload_findings:
+                            finding["component_index"] = projected_indices[finding["component_index"]]
+                        generated = merge_staged_component_payload_delta(repair_baseline, recovery_value, repair_targets)
+                    else:
+                        recovery_candidates = recovery_value if isinstance(recovery_value, list) else [recovery_value]
+                        generated = match_staged_unit_by_title(recovery_candidates, expected["unit_title"])
+                    recovery_evidence_findings = staged_evidence_scope_diagnostics(generated, expected)
+                    recovery_payload_findings = staged_payload_diagnostics(generated)
                     generated_fact_ids = set(generated.get("source_fact_ids", [])) if isinstance(generated, dict) else set()
                     generated_supporting_evidence_fact_ids = set(generated.get("supporting_evidence_fact_ids", [])) if isinstance(generated, dict) else set()
                     recovery_validation_reason = (
@@ -9535,7 +9669,9 @@ async def generate_staged_lesson_author_proposal(
                     "status": "FAIL" if recovery_validation_reason else "PASS",
                     "repair_scope": "components" if repair_targets else "unit",
                     "repair_component_indices": repair_targets,
-                    "findings": staged_payload_diagnostics(generated),
+                    "repair_contract_version": STAGED_COMPONENT_REPAIR_CONTRACT_VERSION if repair_targets else "legacy-unit-recovery",
+                    "findings": recovery_payload_findings,
+                    "evidence_scope_findings": recovery_evidence_findings,
                     "failure_code": recovery_validation_reason if recovery_validation_reason and re.fullmatch(r"[A-Z_]+", recovery_validation_reason) else ("UNIT_REVALIDATION_FAILED" if recovery_validation_reason else None),
                 }))
                 if (
@@ -15299,6 +15435,27 @@ async def lesson_author_blueprint(
             )
             emit_layer("assessment_plan_semantic_resolution_required", result.issues)
             return mark_repair_layer(result, "PRE_ALLOCATION_COHERENCE")
+
+        treatment_candidate, treatment_diagnostics = compile_evidence_treatments(
+            candidate, v5_source_context.source_map_copy(), v5_source_context.manifest_copy(),
+        )
+        # Both the existing evidence and coherence validators still decide
+        # acceptance. Treatment discovery cannot grant ownership or bypass them.
+        treatment_semantic = validate_course_architecture_evidence_scope(
+            treatment_candidate, v5_source_context.source_map_copy(),
+        )
+        if treatment_semantic.errors:
+            emit_layer("semantic_scope_failed", treatment_semantic.issues)
+            return mark_repair_layer(treatment_semantic, "EVIDENCE_SEMANTIC")
+        candidate.clear()
+        candidate.update(treatment_candidate)
+        emit_blueprint_diagnostic({
+            "stage": "evidence_treatment_discovery", "event": "completed",
+            "version": EVIDENCE_TREATMENT_VERSION,
+            "repair_pass_number": int(runtime.get("repair_provider_pass") or 0),
+            "units": treatment_diagnostics[:24],
+            "omitted_unit_count": max(0, len(treatment_diagnostics) - 24),
+        })
 
         coherence = validate_v5_instructional_coherence(candidate)
         if coherence.errors:

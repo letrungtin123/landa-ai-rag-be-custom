@@ -9,7 +9,7 @@ from unittest.mock import AsyncMock, patch
 
 from google import genai
 from google.genai import models, types
-from pydantic import create_model
+from pydantic import create_model, ValidationError
 
 from app.main import (
     AiUsage,
@@ -23,6 +23,8 @@ from app.main import (
     staged_component_contract_prompt,
     staged_component_repair_targets,
     merge_staged_component_repair,
+    merge_staged_component_payload_delta,
+    staged_evidence_scope_diagnostics,
     staged_payload_diagnostics,
     ARCHITECT_COMPONENT_OPPORTUNITY_POLICY,
     LessonAuthorProposalValidationError,
@@ -50,6 +52,57 @@ def staged_request() -> RagLessonAuthorRequest:
 
 
 class StagedLessonProviderBoundaryTests(unittest.TestCase):
+    def test_semantic_html_wire_fields_survive_sdk_in_generation_and_delta(self):
+        client = genai.Client(api_key="test-key")
+        for repair in (False, True):
+            for selected in (["html"], ["html", "problem", "la_faq"]):
+                model = build_staged_lesson_content_response_model(selected, payload_only=repair)
+                wire = models._GenerateContentConfig_to_mldev(client._api_client, types.GenerateContentConfig(response_schema=model))["responseSchema"]
+                component = wire["properties"]["components"].items
+                semantic = component.properties["semantic_content"]
+                self.assertEqual(set(semantic.properties), {"heading", "paragraphs", "bullet_points", "ordered_steps", "warnings", "comparison_rows"})
+                self.assertIn("paragraphs", semantic.required)
+                self.assertEqual(semantic.properties["paragraphs"].min_items, 1)
+                for key in ("paragraphs", "bullet_points", "ordered_steps", "warnings"):
+                    self.assertEqual(semantic.properties[key].items.type, types.Type.STRING)
+                self.assertEqual(set(semantic.properties["comparison_rows"].items.required), {"label", "value"})
+                if selected == ["html"]:
+                    self.assertIn("semantic_content", component.required)
+                self.assertTrue(staged_response_schema_diagnostics(model)["schema_valid"])
+        delta = build_staged_lesson_content_response_model(["html"], payload_only=True)
+        for semantic in ({}, None, {"paragraphs": []}, {"paragraphs": [{}]}):
+            with self.assertRaises(ValidationError):
+                delta.model_validate({"components": [{"component_index": 0, "title": None, "selection_rationale": None, "html": None, "semantic_content": semantic}]})
+
+    def test_uat_empty_semantic_html_delta_repaired_and_failure_reason_retained(self):
+        from tests.test_component_instance_contract import PROFILE
+        from tests.test_lesson_prompt_policy import request_and_unit
+        request, generated = request_and_unit("problem", "vi")
+        architecture = request.blueprint_architecture.model_dump()
+        architecture["component_capabilities"] = PROFILE
+        expected = architecture["lessons"][0]["units"][0]
+        for i, (plan, component) in enumerate(zip(expected["component_plan"], generated["components"])):
+            plan["component_plan_id"] = component["component_plan_id"] = "cp2_" + str(i + 1) * 32
+        request = request.model_copy(update={"blueprint_architecture": type(request.blueprint_architecture).model_validate(architecture)})
+        broken = deepcopy(generated)
+        broken["components"][0]["semantic_content"] = {}
+        manifest = {"facts": [{"fact_id": f, "text": "Source-supported synthetic instruction."} for f in expected["source_fact_ids"]]}
+        for repaired in (True, False):
+            delta = {"components": [{"component_index": 0, "semantic_content": generated["components"][0]["semantic_content"] if repaired else {}}]}
+            provider = AsyncMock(side_effect=[(json.dumps(broken), AiUsage()), (json.dumps(delta), AiUsage())])
+            with patch("app.main.generate_content", provider), self.assertLogs("app.main", level="INFO") as logs:
+                if repaired:
+                    result, _ = asyncio.run(generate_staged_lesson_author_proposal(request, "Synthetic", "", "", source_rows=[], source_coverage_manifest=manifest))
+                    self.assertEqual(result["chapters"][0]["lessons"][0]["units"][0]["components"], generated["components"])
+                else:
+                    with self.assertRaises(LessonAuthorProposalValidationError):
+                        asyncio.run(generate_staged_lesson_author_proposal(request, "Synthetic", "", "", source_rows=[], source_coverage_manifest=manifest))
+            self.assertEqual(provider.await_count, 2)
+            if not repaired:
+                event = next(line for line in logs.output if '"stage": "staged_repair_revalidation"' in line)
+                self.assertIn("semantic_shape_reason", event)
+                self.assertIn("non-empty object", event)
+
     @staticmethod
     def payloads() -> list[dict]:
         return [
@@ -146,7 +199,8 @@ class StagedLessonProviderBoundaryTests(unittest.TestCase):
         broken = deepcopy(unit)
         broken["components"][1].update(problem_type="multiple_choice", choices=[])
         correct = {**broken["components"][1], **self.payloads()[1]}
-        repair = {**deepcopy(unit), "components": [correct]}
+        repair = {"components": [{"component_index": 1, **{k: v for k, v in correct.items()
+                   if k not in {"type", "component_plan_id", "source_fact_ids", "covered_source_fact_ids", "supporting_evidence_fact_ids"}}}]}
         manifest = {"facts": [{"fact_id": "fact-1", "source_page": 1, "text": "Check the conditions before acting."}]}
         provider = AsyncMock(side_effect=[(json.dumps(broken), AiUsage()), (json.dumps(repair), AiUsage())])
         with patch("app.main.generate_content", new=provider):
@@ -156,11 +210,116 @@ class StagedLessonProviderBoundaryTests(unittest.TestCase):
         self.assertEqual(produced[0], unit["components"][0])
         self.assertEqual(produced[1]["choices"], correct["choices"])
         self.assertIn("SCOPED COMPONENT REPAIR", provider.call_args_list[1].args[2])
-        failed = AsyncMock(side_effect=[(json.dumps(broken), AiUsage()), (json.dumps({**repair, "components": [broken["components"][1]]}), AiUsage())])
+        model = provider.call_args_list[1].kwargs["response_schema"].model_json_schema()
+        self.assertEqual(set(model["properties"]), {"components"})
+        failed_delta = deepcopy(repair)
+        failed_delta["components"][0]["choices"] = []
+        failed = AsyncMock(side_effect=[(json.dumps(broken), AiUsage()), (json.dumps(failed_delta), AiUsage())])
         with patch("app.main.generate_content", new=failed):
             with self.assertRaises(LessonAuthorProposalValidationError):
                 asyncio.run(generate_staged_lesson_author_proposal(request, "Synthetic", "", "", source_rows=[], source_coverage_manifest=manifest))
         self.assertEqual(failed.await_count, 2)
+
+    def test_delta_wire_contract_excludes_all_provider_provenance(self):
+        for types_ in (["html"], ["problem"], ["la_faq", "la_sortable"], ["la_crossword", "la_diagram"]):
+            model = build_staged_lesson_content_response_model(types_, payload_only=True)
+            client = genai.Client(api_key="test-key")
+            wire = models._GenerateContentConfig_to_mldev(client._api_client, types.GenerateContentConfig(response_schema=model))["responseSchema"]
+            self.assertEqual(set(wire["properties"]), {"components"})
+            fields = wire["properties"]["components"].items.properties
+            self.assertIn("component_index", fields)
+            for key in ("type", "component_plan_id", "source_fact_ids", "covered_source_fact_ids", "supporting_evidence_fact_ids"):
+                self.assertNotIn(key, fields)
+            self.assertTrue(staged_response_schema_diagnostics(model)["schema_valid"])
+
+    def test_three_batch_chapter_repairs_last_html_without_reemitting_evidence(self):
+        from tests.test_component_instance_contract import PROFILE
+        from tests.test_lesson_prompt_policy import request_and_unit
+        request, template = request_and_unit("problem", "vi")
+        architecture = request.blueprint_architecture.model_dump()
+        architecture["component_capabilities"] = PROFILE
+        template_scope = deepcopy(architecture["lessons"][0]["units"][0])
+        scopes, generated, manifest = [], [], {"facts": []}
+        for index, count in enumerate((25, 10, 74)):
+            scope, unit = deepcopy(template_scope), deepcopy(template)
+            facts = [f"p{index + 1}-f{n + 1}" for n in range(count)]
+            scope["title"] = unit["title"] = f"Synthetic unit {index + 1}"
+            scope["source_fact_ids"] = unit["source_fact_ids"] = facts
+            scope["supporting_evidence_fact_ids"] = unit["supporting_evidence_fact_ids"] = facts
+            for component_index, (plan, component) in enumerate(zip(scope["component_plan"], unit["components"])):
+                plan["component_plan_id"] = component["component_plan_id"] = "cp2_" + str(index * 2 + component_index + 1) * 32
+                owned = facts if component_index == 0 else []
+                support = [] if component_index == 0 else facts
+                plan["source_fact_ids"] = component["source_fact_ids"] = component["covered_source_fact_ids"] = owned
+                plan["supporting_evidence_fact_ids"] = component["supporting_evidence_fact_ids"] = support
+            manifest["facts"].extend({"fact_id": f, "source_page": index + 1, "text": "Check conditions before acting."} for f in facts)
+            scopes.append(scope)
+            generated.append(unit)
+        architecture["lessons"][0]["units"] = scopes
+        manifest["supporting_evidence_facts"] = deepcopy(manifest["facts"])
+        request = request.model_copy(update={"blueprint_architecture": type(request.blueprint_architecture).model_validate(architecture)})
+        broken = deepcopy(generated[2])
+        broken["components"][0]["semantic_content"] = {"paragraphs": [{"text": "Invalid string-array item"}]}
+        delta = {"components": [{"component_index": 0, "semantic_content": generated[2]["components"][0]["semantic_content"]}]}
+        provider = AsyncMock(side_effect=[(json.dumps(value), AiUsage()) for value in [generated[0], generated[1], broken, delta]])
+        with patch("app.main.generate_content", provider):
+            result, _ = asyncio.run(generate_staged_lesson_author_proposal(request, "Synthetic", "", "", source_rows=[], source_coverage_manifest=manifest))
+        self.assertEqual(provider.await_count, 4)
+        units = result["chapters"][0]["lessons"][0]["units"]
+        for actual, original in zip(units, generated):
+            self.assertEqual(actual["components"], original["components"])
+            self.assertEqual(actual["source_fact_ids"], original["source_fact_ids"])
+            self.assertEqual(actual["supporting_evidence_fact_ids"], original["supporting_evidence_fact_ids"])
+
+    def test_payload_delta_preserves_large_server_owned_scope_and_good_components(self):
+        for count in (74, 126, 371, 1001):
+            facts = [f"f{i}" for i in range(count)]
+            html, problem = deepcopy(self.payloads()[:2])
+            html.update(source_fact_ids=facts, covered_source_fact_ids=facts, supporting_evidence_fact_ids=list(reversed(facts)), component_plan_id="cp2_" + "a" * 32)
+            baseline = {"title": "Unit", "source_fact_ids": facts, "supporting_evidence_fact_ids": list(reversed(facts)),
+                        "learning_blocks": [{"id": "server-owned"}], "components": [{**html, "semantic_content": {"paragraphs": [{}]}}, problem]}
+            before = deepcopy(baseline)
+            delta = {"components": [{"component_index": 0, "semantic_content": html["semantic_content"]}]}
+            result = merge_staged_component_payload_delta(baseline, delta, [0])
+            self.assertEqual(baseline, before)
+            self.assertEqual(result["components"][1], problem)
+            self.assertEqual(result["components"][0], html)
+            for field in ("title", "source_fact_ids", "supporting_evidence_fact_ids", "learning_blocks"):
+                self.assertEqual(result[field], baseline[field])
+
+    def test_delta_rejects_provenance_injection_addresses_and_forbidden_fields(self):
+        baseline = {"title": "Unit", "source_fact_ids": ["f1"], "supporting_evidence_fact_ids": ["f2"], "components": deepcopy(self.payloads()[:2])}
+        good = {"component_index": 0, "semantic_content": self.payloads()[0]["semantic_content"]}
+        for forbidden in ("source_fact_ids", "covered_source_fact_ids", "supporting_evidence_fact_ids", "component_plan_id", "type", "primary_evidence_scope_ids", "metadata"):
+            with self.subTest(field=forbidden), self.assertRaises(LessonAuthorProposalValidationError):
+                merge_staged_component_payload_delta(baseline, {"components": [{**good, forbidden: ["outside"]}]}, [0])
+        for index in (-1, 1, 999, "0", True, None):
+            with self.subTest(index=index), self.assertRaisesRegex(LessonAuthorProposalValidationError, "TARGET_INVALID"):
+                merge_staged_component_payload_delta(baseline, {"components": [{**good, "component_index": index}]}, [0])
+        for outer in ("source_fact_ids", "supporting_evidence_fact_ids", "title", "metadata"):
+            with self.assertRaisesRegex(LessonAuthorProposalValidationError, "ENVELOPE_FORBIDDEN"):
+                merge_staged_component_payload_delta(baseline, {"components": [good], outer: []}, [0])
+        before = deepcopy(baseline)
+        with self.assertRaises(LessonAuthorProposalValidationError):
+            merge_staged_component_payload_delta(baseline, {"components": [good, {"component_index": 1, "choices": []}]}, [0, 1])
+        self.assertEqual(baseline, before)
+        with self.assertRaisesRegex(LessonAuthorProposalValidationError, "TARGET_INVALID"):
+            merge_staged_component_payload_delta(baseline, {"components": [good, good]}, [0, 1])
+
+    def test_scope_and_semantic_diagnostics_are_specific_without_private_values(self):
+        expected = {"source_fact_ids": ["a", "b"], "supporting_evidence_fact_ids": ["secret_fact_1"]}
+        actual = {"source_fact_ids": ["b", "a"], "supporting_evidence_fact_ids": ["PRIVATE_SOURCE_MARKER"]}
+        findings = staged_evidence_scope_diagnostics(actual, expected)
+        self.assertEqual(findings[0]["reason"], "ORDER_ONLY")
+        self.assertEqual(findings[1]["path"], "unit.supporting_evidence_fact_ids")
+        self.assertEqual(findings[1]["missing_count"], 1)
+        self.assertEqual(findings[1]["unexpected_count"], 1)
+        semantic = staged_payload_diagnostics({"components": [{"type": "html", "semantic_content": {"paragraphs": [{"text": "PRIVATE_SOURCE_MARKER"}]}}]})
+        self.assertEqual(semantic[0]["code"], "HTML_SEMANTIC_INVALID")
+        self.assertIn("paragraphs", semantic[0]["semantic_shape_reason"])
+        self.assertIn("non-string item", semantic[0]["semantic_shape_reason"])
+        self.assertNotIn("PRIVATE_SOURCE_MARKER", json.dumps(findings + semantic))
+        self.assertNotIn("secret_fact_1", json.dumps(findings + semantic))
 
     def test_selected_prompts_and_diagnostics_do_not_expose_content(self):
         prompt = staged_component_contract_prompt(["problem"])
