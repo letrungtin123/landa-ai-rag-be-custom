@@ -20,9 +20,12 @@ from uuid import UUID
 
 import asyncpg
 from fastapi import Depends, FastAPI, HTTPException, Request
+from fastapi.exceptions import RequestValidationError
+from fastapi.exception_handlers import request_validation_exception_handler
+from fastapi.responses import JSONResponse
 from google import genai
-from google.genai import types
-from pydantic import BaseModel, Field, ValidationError, create_model, field_validator
+from google.genai import errors as genai_errors, types
+from pydantic import BaseModel, Field, ValidationError, create_model, field_validator, model_validator
 from supabase import create_client
 
 from app.core.config import settings
@@ -74,6 +77,11 @@ from app.lesson_quality import (
     duplicate_validation_result,
     pedagogical_validation_result,
 )
+from app.lesson_author_checkpoint import (
+    ChapterCheckpointUnit, assemble_checkpoint_chapter,
+    checkpoint_expected_units, select_checkpoint_unit,
+)
+from app.lesson_author_provider_schema import staged_provider_response_model
 from app.workflows.contracts import (
     RepairTarget,
     WorkflowFailure,
@@ -95,6 +103,17 @@ from app.workflows.lesson_generation import (
 )
 
 app = FastAPI(title="Internal AI RAG Service", version="0.1.0")
+
+
+@app.exception_handler(RequestValidationError)
+async def safe_checkpoint_request_validation(request: Request, error: RequestValidationError):
+    if request.url.path == "/v1/lesson-author/chapter-checkpoint":
+        # Pydantic's model-level errors otherwise echo the whole input, including
+        # the Node-supplied provider key and private checkpoint content.
+        return JSONResponse(status_code=422, content={"detail": {
+            "code": "CHAPTER_CHECKPOINT_CONTRACT_INVALID", "message": "Invalid chapter checkpoint request.",
+        }})
+    return await request_validation_exception_handler(request, error)
 
 
 def configure_application_logger() -> logging.Logger:
@@ -571,6 +590,33 @@ class RagLessonAuthorRequest(RagChatRequest):
     generation_mode: Literal["auto", "staged", "single"] = "auto"
     max_attempts: int = Field(default=2, ge=1, le=2)
     blueprint_architecture: RagLessonAuthorDraftArchitecture | None = None
+
+
+class RagLessonAuthorCheckpointRequest(RagLessonAuthorRequest):
+    """Internal-token-only path. Regular chat cannot opt into it via extra fields."""
+    model_config = {"extra": "forbid"}
+    checkpoint_version: Literal[1] = 1
+    checkpoint_action: Literal["generate_unit", "validate_chapter"]
+    checkpoint_unit_index: int | None = Field(default=None, ge=0, lt=512, strict=True)
+    checkpoint_units: list[ChapterCheckpointUnit] = Field(default_factory=list, max_length=512)
+    remaining_workflow_budget_ms: int = Field(ge=1, le=480_000, strict=True)
+
+    @model_validator(mode="after")
+    def validate_checkpoint_contract(self) -> "RagLessonAuthorCheckpointRequest":
+        if (self.target != "lesson_author" or self.operation != "create" or self.target_type != "chapter"
+                or self.generation_mode != "staged" or not self.correlation_id or not self.source_documents
+                or self.blueprint_architecture is None
+                or self.blueprint_architecture.architecture_contract_version != 5):
+            raise ValueError("CHAPTER_CHECKPOINT_CONTRACT_INVALID")
+        total = sum(len(lesson.units) for lesson in self.blueprint_architecture.lessons)
+        if not 1 <= total <= 512:
+            raise ValueError("CHAPTER_CHECKPOINT_INVENTORY_INVALID")
+        if self.checkpoint_action == "generate_unit":
+            if self.checkpoint_unit_index is None or self.checkpoint_unit_index >= total or self.checkpoint_units:
+                raise ValueError("CHAPTER_CHECKPOINT_UNIT_OUT_OF_SCOPE")
+        elif self.checkpoint_unit_index is not None or sorted(unit.unit_index for unit in self.checkpoint_units) != list(range(total)):
+            raise ValueError("CHAPTER_CHECKPOINT_INCOMPLETE")
+        return self
 
 
 class RagLessonAuthorBlueprintRequest(RagChatRequest):
@@ -1072,6 +1118,75 @@ def embedding_batch_size(model: str) -> int:
     return max(1, min(settings.embedding_batch_size, 100))
 
 
+def provider_http_error_status(error: Exception) -> int | None:
+    """SDK 1.0 APIError uses .code, not the HTTP wrapper's .status_code."""
+    status = error.code if isinstance(error, genai_errors.APIError) else getattr(error, "status_code", None)
+    return status if type(status) is int and 400 <= status <= 599 else None
+
+
+def safe_provider_error_diagnostics(error: Exception) -> dict[str, Any]:
+    """Classify locally; never emit exception messages, bodies, URLs or headers."""
+    status = None if isinstance(error, HTTPException) else provider_http_error_status(error)
+    details = getattr(error, "details", None)
+    envelope = details if isinstance(details, dict) else {}
+    error_body = envelope.get("error", envelope)
+    error_body = error_body if isinstance(error_body, dict) else {}
+    message_value = error_body.get("message")
+    structured_details = error_body.get("details", [])
+    generic_message = isinstance(message_value, str) and message_value.strip().casefold() in {
+        "request contains an invalid argument.", "request contains an invalid argument", "invalid argument."
+    }
+    message = str(error).casefold()
+    # Gemini may say "JSON schema"/"controlled generation" without naming
+    # response_schema. Match diagnostic categories, never log the message.
+    schema_error = status == 400 and any(key in message for key in ("schema", "controlled generation", "constrained decoding"))
+    compact_message = re.sub(r"[\s_]", "", message)
+    markers = [code for code, needles in (
+        ("MAX_ITEMS", ("maxitems", "maximumitems")), ("MIN_ITEMS", ("minitems", "minimumitems")),
+        ("COMPLEXITY", ("toocomplex", "toomanystates", "nesting", "complexity")),
+        ("UNSUPPORTED", ("unsupported", "notsupported", "unknownname")),
+        ("POSITIVE_BOUND", ("greaterthan0", "greaterthanzero", "positiveinteger", "mustbepositive")),
+        ("NULLABLE", ("nullable",)), ("ANY_OF", ("anyof",)), ("ONE_OF", ("oneof",)),
+        ("MIN_LENGTH", ("minlength",)), ("MAX_LENGTH", ("maxlength",)),
+        ("TOKEN_LIMIT", ("tokenlimit", "maxtokens", "maxoutputtokens")),
+        ("THINKING_CONFIG", ("thinkingconfig", "includethoughts", "thinkingbudget")),
+        ("ENUM", ("enum",)), ("PROPERTY_ORDERING", ("propertyordering",)),
+        ("MODEL_UNSUPPORTED", ("modeldoesnotsupport", "modelisnotsupported")),
+    ) if any(needle in compact_message for needle in needles)]
+    constraint = "UNAVAILABLE"
+    if schema_error:
+        for code, constraint_markers in (
+            ("MAX_ITEMS", ("max_items", "maxitems", "max items")),
+            ("MIN_ITEMS", ("min_items", "minitems", "min items")),
+            ("ARRAY_ITEMS", ("items",)),
+            ("SCHEMA_COMPLEXITY", ("too complex", "too many states", "nesting")),
+            ("UNSUPPORTED_FIELD", ("unknown name", "unsupported", "not supported")),
+        ):
+            if any(marker in message for marker in constraint_markers):
+                constraint = code
+                break
+    provider_status = getattr(error, "status", None)
+    known_statuses = {"INVALID_ARGUMENT", "RESOURCE_EXHAUSTED", "UNAVAILABLE", "INTERNAL", "DEADLINE_EXCEEDED",
+                      "PERMISSION_DENIED", "UNAUTHENTICATED", "NOT_FOUND", "FAILED_PRECONDITION"}
+    # Type names are operational metadata, but never trust a dynamically created
+    # exception type to be free of customer-controlled content.
+    error_type = type(error).__name__
+    known_types = {"ClientError", "ServerError", "APIError", "TimeoutError", "Timeout", "ReadTimeout", "ConnectTimeout",
+                   "ConnectionError", "ConnectError", "RemoteProtocolError", "SSLError", "TypeError", "ValueError",
+                   "ValidationError", "RuntimeError", "HTTPException", "AttributeError", "KeyError"}
+    return {
+        "provider_http_status": status,
+        "provider_error_type": error_type if error_type in known_types else "OtherException",
+        "provider_status": provider_status if isinstance(provider_status, str) and provider_status in known_statuses else "unavailable",
+        "provider_error_category": "RESPONSE_SCHEMA_INVALID" if schema_error else "HTTP_ERROR" if status else "SDK_OR_TRANSPORT_ERROR",
+        "provider_schema_constraint": constraint,
+        "provider_error_markers": markers,
+        "provider_message_class": "GENERIC_INVALID_ARGUMENT" if generic_message else "REDACTED_OTHER",
+        "provider_error_detail_count": len(structured_details) if isinstance(structured_details, list) else 0,
+        "usage_source": "unavailable",
+    }
+
+
 async def call_provider_with_timeout(
     run: Any,
     model: str,
@@ -1118,7 +1233,7 @@ async def call_provider_with_timeout(
                 },
             ) from error
         except Exception as error:
-            status_code = getattr(error, "status_code", None)
+            status_code = provider_http_error_status(error)
             provider_error = str(error)
             if status_code == 429 or "RESOURCE_EXHAUSTED" in provider_error:
                 if on_provider_diagnostic is not None:
@@ -1185,6 +1300,11 @@ async def call_provider_with_timeout(
                         "message": "AI provider hiện không khả dụng. Vui lòng thử lại sau.",
                     },
                 ) from error
+            emit_safe_provider_telemetry(on_provider_diagnostic, {
+                "event": "provider_request_failed",
+                "model": model,
+                **safe_provider_error_diagnostics(error),
+            })
             raise
 
 
@@ -1328,6 +1448,15 @@ async def generate_content(
         request_timeout_ms=provider_timeout_ms,
         on_provider_diagnostic=on_provider_diagnostic if on_provider_telemetry is not None else None,
     )
+    # Capture real provider metadata before SDK response access/parsing can fail.
+    # An HTTP success is not a validated lesson, nor permission to persist it.
+    received = provider_response_telemetry(response, model=model, max_output_tokens=max_output_tokens,
+                                          prompt=prompt, response_text="", duration_ms=round((perf_counter() - provider_started) * 1000))
+    emit_safe_provider_telemetry(on_provider_telemetry, {
+        **{key: value for key, value in received.items() if key.startswith("provider_") or key in {"model", "duration_ms", "configured_max_output_tokens"}},
+        "usage_source": "provider" if received["usage_source"] == "provider" else "unavailable",
+        "event": "provider_response_received",
+    })
     text = getattr(response, "text", "") or ""
     parsed = getattr(response, "parsed", None)
     if parsed is not None:
@@ -5970,6 +6099,9 @@ def normalize_lesson_author_proposal_tree(proposal: dict[str, Any]) -> dict[str,
 
 class LessonAuthorProposalValidationError(ValueError):
     """Raised when a detailed lesson proposal cannot be applied safely."""
+    def __init__(self, message: str, *, code: str = "UNIT_SHAPE_INVALID", path: str = "unit", repairable: bool = False):
+        super().__init__(message)
+        self.code, self.path, self.repairable = code, path, repairable
 
 
 NON_RETRYABLE_PROVIDER_ERROR_CODES = frozenset({
@@ -6138,7 +6270,7 @@ def validate_lesson_author_proposal_shape(proposal: dict[str, Any]) -> None:
                         raise LessonAuthorProposalValidationError(
                             f"Unit {unit_index} trong bài học {lesson_index} có component không hợp lệ.",
                         )
-                    for component in components:
+                    for component_index, component in enumerate(components):
                         normalized_component = _merged_lesson_author_component(component)
                         nested_content = component.get("content") if isinstance(component.get("content"), dict) else {}
                         component_type = str(
@@ -6158,6 +6290,7 @@ def validate_lesson_author_proposal_shape(proposal: dict[str, Any]) -> None:
                             if len(sortable_items) < 3:
                                 raise LessonAuthorProposalValidationError(
                                     "Sortable component requires at least 3 ordered items.",
+                                    code="SORTABLE_ITEM_COUNT_INVALID", path=f"components[{component_index}].items", repairable=True,
                                 )
                         elif component_type in {"la_faq", "faq"}:
                             faq_items = _non_empty_component_items(
@@ -6167,6 +6300,7 @@ def validate_lesson_author_proposal_shape(proposal: dict[str, Any]) -> None:
                             if len(faq_items) < 2:
                                 raise LessonAuthorProposalValidationError(
                                     "FAQ component requires at least 2 Q&A items.",
+                                    code="FAQ_ITEM_COUNT_INVALID", path=f"components[{component_index}].items", repairable=True,
                                 )
                         elif component_type in {
                             "problem",
@@ -6213,6 +6347,7 @@ def validate_lesson_author_proposal_shape(proposal: dict[str, Any]) -> None:
                                 if not str(answer or "").strip():
                                     raise LessonAuthorProposalValidationError(
                                         "Problem component requires an answer.",
+                                        code="PROBLEM_ANSWER_REQUIRED", path=f"components[{component_index}].answer", repairable=True,
                                     )
                             else:
                                 option_key = "options" if problem_type == "dropdown" else "choices"
@@ -6220,13 +6355,14 @@ def validate_lesson_author_proposal_shape(proposal: dict[str, Any]) -> None:
                                 if not isinstance(options, list) or len(_non_empty_component_items(options, kind="choice")) < 2:
                                     raise LessonAuthorProposalValidationError(
                                         "Problem component requires at least 2 answer choices.",
+                                        code="PROBLEM_CHOICES_INVALID", path=f"components[{component_index}].choices", repairable=True,
                                     )
                         if component_type in {"html", "text", "content"}:
                             semantic_content = normalized_component.get("semantic_content")
                             if semantic_content is not None:
                                 visible_text, semantic_failure = semantic_learning_visible_text(semantic_content)
                                 if semantic_failure:
-                                    raise LessonAuthorProposalValidationError(semantic_failure)
+                                    raise LessonAuthorProposalValidationError(semantic_failure, code="HTML_SEMANTIC_INVALID", path=f"components[{component_index}].semantic_content", repairable=True)
                             else:
                                 html_value = (
                                     component.get("html")
@@ -6245,6 +6381,7 @@ def validate_lesson_author_proposal_shape(proposal: dict[str, Any]) -> None:
                             if len(visible_text) < minimum_html_chars:
                                 raise LessonAuthorProposalValidationError(
                                     f"HTML component trong Unit {unit_index} phải có ít nhất {minimum_html_chars} ký tự nội dung hiển thị.",
+                                    code="HTML_INSUFFICIENT_DEPTH", path=f"components[{component_index}].semantic_content", repairable=True,
                                 )
                     continue
                 if isinstance(unit_value.get("html"), str) and unit_value["html"].strip():
@@ -6299,12 +6436,14 @@ class StagedLessonWorkflowDeadline:
     envelope for routing, retrieval, response handling, and safe failure.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, remaining_budget_ms: int | None = None) -> None:
         self.started_at = perf_counter()
         self.timeout_ms = min(
             max(1, settings.staged_lesson_workflow_timeout_ms),
             STAGED_LESSON_WORKFLOW_TIMEOUT_MAX_MS,
         )
+        if remaining_budget_ms is not None:
+            self.timeout_ms = min(self.timeout_ms, max(0, remaining_budget_ms))
 
     def remaining_ms(self) -> int:
         elapsed_ms = max(0, round((perf_counter() - self.started_at) * 1000))
@@ -7040,6 +7179,8 @@ def build_lesson_author_unit_response_schema(
 
 STAGED_COMPONENT_CONTRACT_VERSION = "component-payload-2"
 STAGED_COMPONENT_REPAIR_CONTRACT_VERSION = "component-payload-delta-1"
+STAGED_COMPONENT_COVERAGE_REPAIR_CONTRACT_VERSION = "component-content-coverage-delta-1"
+STAGED_INSTANCE_OUTPUT_CONTRACT_VERSION = "component-instance-payload-1"
 STAGED_COMPONENT_PAYLOAD_FIELDS = {
     "html": {"semantic_content", "html"},
     "problem": {"problem_type", "question", "choices", "options", "answer", "tolerance", "explanation"},
@@ -7212,6 +7353,7 @@ def staged_component_contract_prompt(component_types: list[str]) -> str:
 def build_staged_lesson_content_response_model(
     component_types: list[str] | None = None,
     *, payload_only: bool = False, expected_unit_title: str | None = None,
+    coverage_repair: bool = False,
 ) -> type[BaseModel]:
     """Build the Stage-2 typed response model for exactly the selected types.
 
@@ -7302,6 +7444,10 @@ def build_staged_lesson_content_response_model(
         for key in ("type", "component_plan_id", "source_fact_ids", "covered_source_fact_ids", "supporting_evidence_fact_ids"):
             component_fields.pop(key, None)
         component_fields["component_index"] = (int, ...)
+        if coverage_repair:
+            # A checked content claim, never canonical ownership. Only explicitly
+            # authorized coverage targets may emit this optional field.
+            component_fields["covered_source_fact_ids"] = (list[str], Field(default_factory=list))
     component_name = ("StagedRepairPayload_" if payload_only else "StagedLessonComponent_") + "_".join(sorted(selected_types))
     component_model = create_model(component_name, **component_fields)
     if payload_only:
@@ -7313,6 +7459,64 @@ def build_staged_lesson_content_response_model(
         supporting_evidence_fact_ids=(list[str], ...),
         components=(list[component_model], ...),
     )
+
+
+def build_staged_instance_response_model(plans: list[dict[str, Any]]) -> type[BaseModel]:
+    """Each server-addressed slot has one concrete payload schema, never a union.
+
+    Ownership/identity stay server-owned. Coverage remains a provider claim and
+    is NOT filled by the server; normal evidence/quality acceptance still runs.
+    """
+    validate_instance_plan(plans)
+    slots = {}
+    for index, plan in enumerate(plans):
+        kind = plan["type"]
+        envelope = build_staged_lesson_content_response_model([kind])
+        component = envelope.model_fields["components"].annotation.__args__[0]
+        allowed = STAGED_COMPONENT_PAYLOAD_FIELDS[kind] | {"title", "selection_rationale", "covered_source_fact_ids"}
+        fields = {key: (field.annotation, deepcopy(field)) for key, field in component.model_fields.items() if key in allowed}
+        if kind == "la_faq":
+            fields["items"] = (list[StagedFaqItem], Field(min_length=2, max_length=8))
+        elif kind == "la_sortable":
+            fields["items"] = (list[StagedSortableItem], Field(min_length=3, max_length=10))
+            fields["question_text"] = (str, Field(min_length=1))
+        elif kind == "la_crossword":
+            fields["words"] = (list[StagedCrosswordWord], Field(min_length=3, max_length=10))
+        elif kind == "problem":
+            fields["question"] = (str, Field(min_length=1))
+            fields["problem_type"] = (Literal["multiple_choice", "multiple_select", "dropdown", "numerical", "short_text"], ...)
+        if not plan.get("source_fact_ids"):
+            fields["covered_source_fact_ids"] = (list[str], Field(max_length=0))
+        slots[f"c{index}"] = (create_model(f"StagedInstance{index}_{kind}", **fields), ...)
+    return create_model("StagedInstancePayloadUnit", components=(create_model("StagedInstanceSlots", **slots), ...))
+
+
+def bind_staged_instance_payload(value: Any, expected: dict[str, Any]) -> dict[str, Any]:
+    """Bind exact slots to the approved plan, without repairing content or claims."""
+    def reject(reason: str, path: str) -> None:
+        raise WorkflowFailure("LESSON_VALIDATION_FAILED", "Invalid component instance response.",
+                              internal_code="CHAPTER_UNIT_CONTRACT_REJECTED", failure_stage="chapter_component_binding",
+                              diagnostics={"validation_finding": {"code": reason, "path": path, "repairable": False}})
+    if not isinstance(value, dict) or set(value) != {"components"}:
+        reject("INSTANCE_ENVELOPE_INVALID", "unit")
+    slots = value["components"]
+    plans = expected["component_plan"]
+    if not isinstance(slots, dict) or set(slots) != {f"c{i}" for i in range(len(plans))}:
+        reject("INSTANCE_SLOT_INVENTORY_INVALID", "unit.components")
+    components = []
+    for index, plan in enumerate(plans):
+        payload = slots[f"c{index}"]
+        path = f"components[{index}]"
+        if not isinstance(payload, dict):
+            reject("INSTANCE_PAYLOAD_NOT_OBJECT", path)
+        allowed = STAGED_COMPONENT_PAYLOAD_FIELDS[plan["type"]] | {"title", "selection_rationale", "covered_source_fact_ids"}
+        if set(payload) - allowed:
+            reject("INSTANCE_FIELD_NOT_ALLOWED", path)
+        components.append({**deepcopy(payload), "type": plan["type"], "component_plan_id": plan["component_plan_id"],
+                           "source_fact_ids": list(plan.get("source_fact_ids", [])),
+                           "supporting_evidence_fact_ids": list(plan.get("supporting_evidence_fact_ids", []))})
+    return {"title": expected["unit_title"], "source_fact_ids": list(expected.get("source_fact_ids", [])),
+            "supporting_evidence_fact_ids": list(expected.get("supporting_evidence_fact_ids", [])), "components": components}
 
 
 def staged_response_schema_diagnostics(response_schema: types.Schema | type[BaseModel]) -> dict[str, Any]:
@@ -7386,7 +7590,7 @@ def staged_response_schema_diagnostics(response_schema: types.Schema | type[Base
 def is_stage_two_provider_schema_error(error: Exception) -> bool:
     """Recognize a provider-side response-schema rejection without logging it."""
 
-    return getattr(error, "status_code", None) == 400 and "response_schema" in str(error).casefold()
+    return safe_provider_error_diagnostics(error)["provider_error_category"] == "RESPONSE_SCHEMA_INVALID"
 
 
 def parse_lesson_author_json_value(text: str, label: str) -> Any:
@@ -8753,35 +8957,139 @@ def build_source_locked_unit(
 build_source_locked_html_unit = build_source_locked_unit
 
 
-def staged_component_repair_targets(unit: Any, expected: dict[str, Any]) -> list[int]:
-    """Authorize payload-only repair when unit/instance boundaries are intact."""
+class StagedUnitFinding(str):
+    """Legacy string feedback plus metadata assigned at the rejection boundary.
+
+    Only diagnostic() is loggable; the legacy message may contain private IDs.
+    """
+    def __new__(cls, message: str, code: str, path: str = "unit", repairable: bool = False):
+        value = super().__new__(cls, message)
+        value.code, value.path, value.repairable = code, path, repairable
+        return value
+
+    def diagnostic(self) -> dict[str, Any]:
+        limits = {
+            "HTML_INSUFFICIENT_DEPTH": {"minimum_visible_chars": MIN_STAGED_LESSON_AUTHOR_HTML_TEXT_CHARS},
+            "SORTABLE_STEP_INCOMPLETE": {"minimum_items": 3, "minimum_step_chars": 14},
+            "FAQ_CLARIFICATION_INCOMPLETE": {"minimum_question_chars": 14, "minimum_answer_chars": 40},
+        }
+        return {"code": self.code, "path": self.path, "repairable": self.repairable, **limits.get(self.code, {})}
+
+
+def staged_instructional_finding(component: dict[str, Any], index: int) -> StagedUnitFinding | None:
+    """Same content-quality requirements used by acceptance and scoped repair."""
+    kind = normalize_staged_component_type(component.get("type"))
+    path = f"components[{index}]"
+    def fail(code: str, field: str, message: str) -> StagedUnitFinding:
+        return StagedUnitFinding(message, code, f"{path}.{field}", True)
+    if kind == "html" and component.get("source_locked_fallback") is not True:
+        semantic = component.get("semantic_content")
+        if semantic is not None:
+            text, reason = semantic_learning_visible_text(semantic)
+            if reason:
+                return fail("HTML_SEMANTIC_INVALID", "semantic_content", reason)
+        else:
+            html = str(component.get("html") or component.get("data") or component.get("content") or "")
+            text = re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", html)).strip()
+        if len(text) < MIN_STAGED_LESSON_AUTHOR_HTML_TEXT_CHARS:
+            return fail("HTML_INSUFFICIENT_DEPTH", "semantic_content",
+                        f"Generated HTML explanation is too thin: minimum {MIN_STAGED_LESSON_AUTHOR_HTML_TEXT_CHARS} visible characters required.")
+    elif kind == "la_sortable":
+        items = component.get("items") if isinstance(component.get("items"), list) else []
+        # Current typed payload uses {text}; legacy source fallback uses strings.
+        texts = [re.sub(r"\s+", " ", str((x.get("text") if isinstance(x, dict) else x) or "")).strip() for x in items]
+        if len(texts) < 3 or any(len(x) < 14 for x in texts):
+            return fail("SORTABLE_STEP_INCOMPLETE", "items", "Sortable items must be at least three complete, meaningful ordered steps.")
+        if len({x.casefold() for x in texts}) != len(texts):
+            return fail("SORTABLE_DUPLICATE_STEP", "items", "Sortable items must not repeat a source fragment.")
+        if any(x[:1].islower() for x in texts):
+            return fail("SORTABLE_STEP_FRAGMENT", "items", "Sortable items contain a sentence fragment rather than a complete step.")
+    elif kind == "la_faq":
+        items = component.get("items") if isinstance(component.get("items"), list) else []
+        if len(items) < 2:
+            return fail("FAQ_ITEM_COUNT_INVALID", "items", "FAQ requires at least two complete source-grounded question-and-answer items.")
+        for i, item in enumerate(items):
+            if not isinstance(item, dict):
+                return fail("FAQ_ITEM_INVALID", f"items[{i}]", "FAQ items must be question-and-answer objects.")
+            question = re.sub(r"\s+", " ", str(item.get("question") or "")).strip()
+            answer = re.sub(r"\s+", " ", str(item.get("answer") or "")).strip()
+            if len(question) < 14 or len(answer) < 40 or answer[:1].islower():
+                return fail("FAQ_CLARIFICATION_INCOMPLETE", f"items[{i}]", "FAQ contains a partial source line rather than a complete answer.")
+    return None
+
+
+def staged_component_repair_guard(unit: Any, expected: dict[str, Any], *, allow_partial_coverage: bool = False) -> dict[str, Any] | None:
+    """First exact authority rejection, safe to log; no provider values."""
+    def fail(code: str, path: str, **counts: int) -> dict[str, Any]:
+        return {"code": code, "path": path, "repairable": False, **counts}
     if not isinstance(unit, dict):
-        return []
+        return fail("UNIT_NOT_OBJECT", "unit")
     for key in ("source_fact_ids", "supporting_evidence_fact_ids"):
         if not staged_fact_membership_equal(unit.get(key, []), expected.get(key, [])):
-            return []
+            return fail("UNIT_EVIDENCE_MEMBERSHIP_INVALID", f"unit.{key}")
     components = unit.get("components")
     plans = expected.get("component_plan", [])
     if not isinstance(components, list) or len(components) != len(plans):
-        return []
-    for c, p in zip(components, plans):
+        return fail("COMPONENT_COUNT_MISMATCH", "unit.components", expected_count=len(plans), actual_count=len(components) if isinstance(components, list) else 0)
+    for index, (c, p) in enumerate(zip(components, plans)):
+        path = f"components[{index}]"
         if not isinstance(c, dict) or c.get("type") != p.get("type"):
-            return []
+            return fail("COMPONENT_TYPE_PLAN_MISMATCH", path)
         if p.get("component_plan_id") and c.get("component_plan_id") != p["component_plan_id"]:
-            return []
+            return fail("COMPONENT_PLAN_INSTANCE_MISMATCH", f"{path}.component_plan_id")
         for key in ("source_fact_ids", "supporting_evidence_fact_ids"):
             if not staged_fact_membership_equal(c.get(key, []), p.get(key, [])):
-                return []
+                return fail("COMPONENT_EVIDENCE_MEMBERSHIP_INVALID", f"{path}.{key}")
         covered = c.get("covered_source_fact_ids", [])
-        if (not staged_fact_membership_equal(covered, covered)
-                or not set(c.get("source_fact_ids", [])).issubset(covered)
-                or not set(covered).issubset(expected.get("source_fact_ids", []))
-                or (p.get("component_plan_id") and not p.get("source_fact_ids") and covered)):
-            return []
-    return [i for i, c in enumerate(components) if staged_component_payload_code(c)]
+        if not staged_fact_membership_equal(covered, covered):
+            return fail("INVALID_COVERAGE_ID_ARRAY", f"{path}.covered_source_fact_ids")
+        if not set(c.get("source_fact_ids", [])).issubset(covered) and not (allow_partial_coverage and covered):
+            return fail("COMPONENT_COVERAGE_INCOMPLETE", f"{path}.covered_source_fact_ids", missing_count=len(set(c.get("source_fact_ids", [])) - set(covered)))
+        if not set(covered).issubset(expected.get("source_fact_ids", [])):
+            return fail("COMPONENT_COVERAGE_OUT_OF_SCOPE", f"{path}.covered_source_fact_ids")
+        if p.get("component_plan_id") and not p.get("source_fact_ids") and covered:
+            return fail("SUPPORTING_COMPONENT_CLAIMS_OWNERSHIP", f"{path}.covered_source_fact_ids")
+    return None
 
 
-def merge_staged_component_payload_delta(baseline: dict[str, Any], delta: Any, targets: list[int]) -> dict[str, Any]:
+def staged_component_repair_targets(unit: Any, expected: dict[str, Any]) -> list[int]:
+    """Authorize content repair only when unit/instance ownership is intact."""
+    if staged_component_repair_guard(unit, expected, allow_partial_coverage=True):
+        return []
+    components = unit["components"]
+    return [i for i, c in enumerate(components) if staged_component_payload_code(c) or staged_instructional_finding(c, i)
+            or set(c.get("source_fact_ids", [])) - set(c.get("covered_source_fact_ids", []))]
+
+
+def staged_coverage_repair_diagnostics(unit: Any, targets: list[int]) -> list[dict[str, Any]]:
+    """Counts only; called after the exact ownership guard has authorized targets."""
+    findings = []
+    for index in targets:
+        component = unit["components"][index]
+        owned = set(component.get("source_fact_ids", []))
+        covered = set(component.get("covered_source_fact_ids", []))
+        if owned - covered:
+            findings.append({"code": "COMPONENT_COVERAGE_INCOMPLETE", "component_index": index,
+                             "component_type": component["type"], "owned_count": len(owned),
+                             "covered_owned_count": len(owned & covered), "missing_count": len(owned - covered)})
+    return findings
+
+
+def staged_instructional_diagnostics(unit: Any) -> list[dict[str, Any]]:
+    components = unit.get("components") if isinstance(unit, dict) else None
+    if not isinstance(components, list):
+        return []
+    findings = []
+    for i, component in enumerate(components):
+        if isinstance(component, dict) and (finding := staged_instructional_finding(component, i)):
+            findings.append(finding.diagnostic())
+            if len(findings) == 16:
+                break
+    return findings
+
+
+def merge_staged_component_payload_delta(baseline: dict[str, Any], delta: Any, targets: list[int],
+                                         *, coverage_targets: list[int] | None = None) -> dict[str, Any]:
     """Accept only addressed payload edits; derive the full envelope on server.
 
     Validate every edit before returning a new unit. The old full-envelope
@@ -8796,6 +9104,11 @@ def merge_staged_component_payload_delta(baseline: dict[str, Any], delta: Any, t
             or not isinstance(changes, list) or len(changes) != len(targets)):
         raise LessonAuthorProposalValidationError("COMPONENT_REPAIR_TARGET_COUNT_INVALID")
     indexed: dict[int, dict[str, Any]] = {}
+    coverage_targets = coverage_targets or []
+    if (len(set(coverage_targets)) != len(coverage_targets)
+            or any(type(i) is not int or i not in targets for i in coverage_targets)):
+        raise LessonAuthorProposalValidationError("COMPONENT_REPAIR_COVERAGE_TARGET_INVALID")
+    coverage_updates: dict[int, list[str]] = {}
     wire_fields = set().union(*STAGED_COMPONENT_PAYLOAD_FIELDS.values()) | {"title", "selection_rationale"}
     protected = {"type", "component_plan_id", "source_fact_ids", "covered_source_fact_ids", "supporting_evidence_fact_ids"}
     for change in changes:
@@ -8804,6 +9117,25 @@ def merge_staged_component_payload_delta(baseline: dict[str, Any], delta: Any, t
         index = change.get("component_index")
         if type(index) is not int or index not in targets or index in indexed:
             raise LessonAuthorProposalValidationError("COMPONENT_REPAIR_TARGET_INVALID")
+        if index in coverage_targets:
+            original = originals[index]
+            owned = original.get("source_fact_ids", [])
+            old_claim = original.get("covered_source_fact_ids", [])
+            if (not staged_fact_membership_equal(owned, owned) or not owned
+                    or not staged_fact_membership_equal(old_claim, old_claim) or not old_claim
+                    or not set(owned) - set(old_claim)):
+                raise LessonAuthorProposalValidationError("COMPONENT_REPAIR_COVERAGE_TARGET_INVALID")
+            claim = change.get("covered_source_fact_ids")
+            if not staged_fact_membership_equal(claim, owned):
+                raise LessonAuthorProposalValidationError("COMPONENT_REPAIR_COVERAGE_CLAIM_INVALID")
+            # Filling IDs alone cannot repair missing instruction. Require a
+            # substantive selected-type payload edit, then run all validators.
+            payload_fields = STAGED_COMPONENT_PAYLOAD_FIELDS[original["type"]]
+            if not any(k in change and change[k] not in (None, [], "", {}) and change[k] != original.get(k)
+                       for k in payload_fields):
+                raise LessonAuthorProposalValidationError("COMPONENT_REPAIR_COVERAGE_WITHOUT_CONTENT")
+            coverage_updates[index] = list(claim)
+            change = {k: v for k, v in change.items() if k != "covered_source_fact_ids"}
         if protected.intersection(change):
             raise LessonAuthorProposalValidationError("COMPONENT_REPAIR_PROTECTED_FIELD_EMITTED")
         if set(change) - wire_fields - {"component_index"}:
@@ -8813,7 +9145,10 @@ def merge_staged_component_payload_delta(baseline: dict[str, Any], delta: Any, t
     envelope = {k: deepcopy(baseline.get(k, [])) for k in ("source_fact_ids", "supporting_evidence_fact_ids")}
     envelope["title"] = baseline.get("title")
     envelope["components"] = [indexed[index] for index in targets]
-    return merge_staged_component_repair(baseline, envelope, targets)
+    result = merge_staged_component_repair(baseline, envelope, targets)
+    for index, claim in coverage_updates.items():
+        result["components"][index]["covered_source_fact_ids"] = claim
+    return result
 
 
 def merge_staged_component_repair(baseline: dict[str, Any], replacement: Any, targets: list[int]) -> dict[str, Any]:
@@ -8905,8 +9240,31 @@ def staged_payload_diagnostics(unit: Any) -> list[dict[str, Any]]:
                    if code == "HTML_SEMANTIC_INVALID" else {}),
                 **({"shape_findings": staged_diagram_shape_diagnostics(component)}
                    if component.get("type") == "la_diagram" and code == "COMPONENT_PAYLOAD_SCHEMA_INVALID" else {}),
+                **({"shape_findings": staged_sortable_shape_diagnostics(component)}
+                   if component.get("type") == "la_sortable" and code == "COMPONENT_PAYLOAD_SCHEMA_INVALID" else {}),
             })
     return result
+
+
+def staged_sortable_shape_diagnostics(component: dict[str, Any]) -> list[dict[str, Any]]:
+    """Safe field/cardinality diagnostics; never include Pydantic input values."""
+    items = component.get("items")
+    if not isinstance(items, list):
+        return [{"path": "items", "reason": "ARRAY_REQUIRED"}]
+    if not 3 <= len(items) <= 10:
+        return [{"path": "items", "reason": "CARDINALITY", "actual_count": len(items), "minimum": 3, "maximum": 10}]
+    findings = []
+    for i, item in enumerate(items):
+        try:
+            StagedSortableItem.model_validate(item)
+        except ValidationError as error:
+            for detail in error.errors(include_url=False, include_context=False, include_input=False):
+                field = ".text" if detail["loc"] and detail["loc"][0] == "text" else ""
+                reason = {"missing": "FIELD_REQUIRED", "string_too_long": "TEXT_TOO_LONG", "string_too_short": "TEXT_TOO_SHORT"}.get(detail["type"], "FIELD_TYPE_INVALID")
+                findings.append({"path": f"items[{i}]{field}", "reason": reason})
+                if len(findings) == 8:
+                    return findings
+    return findings
 
 
 def staged_evidence_scope_diagnostics(unit: Any, expected: dict[str, Any]) -> list[dict[str, Any]]:
@@ -8937,7 +9295,7 @@ def validate_staged_unit_content(
     unit: dict[str, Any],
     expected: dict[str, Any] | None = None,
     *, strict_payload: bool = False,
-) -> str | None:
+) -> StagedUnitFinding | None:
     """Validate one generated unit before it can poison the full proposal."""
     if isinstance(unit, dict):
         evidence_nodes = [("unit", unit)]
@@ -8948,10 +9306,10 @@ def validate_staged_unit_content(
             for field in ("source_fact_ids", "supporting_evidence_fact_ids", "covered_source_fact_ids"):
                 ids = node.get(field, [])
                 if not staged_fact_membership_equal(ids, ids):
-                    return f"{path}.{field}: INVALID_FACT_ID_ARRAY"
+                    return StagedUnitFinding(f"{path}.{field}: INVALID_FACT_ID_ARRAY", "INVALID_FACT_ID_ARRAY", f"{path}.{field}")
     if strict_payload:
         for finding in staged_payload_diagnostics(unit):
-            return f"components[{finding['component_index']}]: {finding['code']}"
+            return StagedUnitFinding(f"components[{finding['component_index']}]: {finding['code']}", finding["code"], f"components[{finding['component_index']}]", True)
     candidate = {
         "chapters": [{
             "title": "staged",
@@ -8961,7 +9319,7 @@ def validate_staged_unit_content(
     try:
         validate_lesson_author_proposal_shape(candidate)
     except LessonAuthorProposalValidationError as error:
-        return re.sub(r"\s+", " ", str(error)).strip()[:240]
+        return StagedUnitFinding(re.sub(r"\s+", " ", str(error)).strip()[:240], error.code, error.path, error.repairable)
 
     if expected:
         expected_types = [
@@ -8980,13 +9338,13 @@ def validate_staged_unit_content(
             try:
                 validate_instance_plan(instance_plans)
             except ValueError as error:
-                return str(error)
+                return StagedUnitFinding(str(error), "APPROVED_COMPONENT_PLAN_INVALID", "unit.component_plan")
             if [p.get("component_plan_id") for p in instance_plans] != [c.get("component_plan_id") for c in actual_components]:
-                return "COMPONENT_PLAN_INSTANCE_MISMATCH"
+                return StagedUnitFinding("COMPONENT_PLAN_INSTANCE_MISMATCH", "COMPONENT_PLAN_INSTANCE_MISMATCH", "unit.components")
         if [value for value in actual_types if value] != [value for value in expected_types if value]:
-            return (
+            return StagedUnitFinding(
                 "Component formats do not match the approved source-based plan: "
-                f"expected {expected_types}, received {actual_types}."
+                f"expected {expected_types}, received {actual_types}.", "COMPONENT_TYPE_PLAN_MISMATCH", "unit.components"
             )
 
         expected_fact_ids = {
@@ -9012,14 +9370,14 @@ def validate_staged_unit_content(
                 details.append(f"missing {sorted(missing)[:4]}")
             if unexpected:
                 details.append(f"outside {sorted(unexpected)[:4]}")
-            return "Unit source facts do not exactly match the approved Blueprint assignment: " + "; ".join(details)
+            return StagedUnitFinding("Unit source facts do not exactly match the approved Blueprint assignment: " + "; ".join(details), "UNIT_FACT_OWNERSHIP_MISMATCH", "unit.source_fact_ids")
         unit_supporting_evidence_fact_ids = {
             str(fact_id).strip()
             for fact_id in unit.get("supporting_evidence_fact_ids", [])
             if str(fact_id).strip()
         }
         if unit_supporting_evidence_fact_ids != expected_supporting_evidence_fact_ids:
-            return "Unit supporting evidence does not exactly match the approved V5 evidence contract."
+            return StagedUnitFinding("Unit supporting evidence does not exactly match the approved V5 evidence contract.", "UNIT_SUPPORTING_EVIDENCE_MISMATCH", "unit.supporting_evidence_fact_ids")
         assigned_fact_ids: set[str] = set()
         html_fact_ids: set[str] = set()
         plan_fact_ids_by_type = {
@@ -9045,43 +9403,9 @@ def validate_staged_unit_content(
             if not isinstance(component, dict):
                 continue
             component_type = normalize_staged_component_type(component.get("type"))
-            if (
-                component_type == "html"
-                and component.get("source_locked_fallback") is not True
-            ):
-                semantic_content = component.get("semantic_content")
-                if semantic_content is not None:
-                    visible_html_text, semantic_failure = semantic_learning_visible_text(semantic_content)
-                    if semantic_failure:
-                        return semantic_failure
-                else:
-                    html_value = str(component.get("html") or component.get("data") or component.get("content") or "")
-                    visible_html_text = re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", html_value)).strip()
-                if len(visible_html_text) < MIN_STAGED_LESSON_AUTHOR_HTML_TEXT_CHARS:
-                    return (
-                        "Generated HTML explanation is too thin: "
-                        f"minimum {MIN_STAGED_LESSON_AUTHOR_HTML_TEXT_CHARS} visible characters required."
-                    )
-            if component_type == "la_sortable":
-                items = component.get("items") if isinstance(component.get("items"), list) else []
-                normalized_items = [re.sub(r"\s+", " ", str(item or "")).strip() for item in items]
-                if len(normalized_items) < 3 or any(len(item) < 14 for item in normalized_items):
-                    return "Sortable items must be at least three complete, meaningful ordered steps."
-                if len({item.casefold() for item in normalized_items}) != len(normalized_items):
-                    return "Sortable items must not repeat a source fragment."
-                if any(item[:1].islower() for item in normalized_items):
-                    return "Sortable items contain a sentence fragment rather than a complete step."
-            if component_type == "la_faq":
-                items = component.get("items") if isinstance(component.get("items"), list) else []
-                if len(items) < 2:
-                    return "FAQ requires at least two complete source-grounded question-and-answer items."
-                for item in items:
-                    if not isinstance(item, dict):
-                        return "FAQ items must be question-and-answer objects."
-                    question = re.sub(r"\s+", " ", str(item.get("question") or "")).strip()
-                    answer = re.sub(r"\s+", " ", str(item.get("answer") or "")).strip()
-                    if len(question) < 14 or len(answer) < 40 or answer[:1].islower():
-                        return "FAQ contains a partial source line rather than a complete answer."
+            instructional_failure = staged_instructional_finding(component, component_index)
+            if instructional_failure:
+                return instructional_failure
             component_fact_ids = {
                 str(fact_id).strip()
                 for fact_id in component.get("source_fact_ids", [])
@@ -9089,17 +9413,17 @@ def validate_staged_unit_content(
             }
             expected_instance = instance_plans[component_index] if instance_contract else None
             if expected_fact_ids and not component_fact_ids and not (expected_instance and expected_instance.get("supporting_evidence_fact_ids")):
-                return "Every component must declare the source_fact_ids supporting it."
+                return StagedUnitFinding("Every component must declare the source_fact_ids supporting it.", "COMPONENT_FACTS_MISSING", f"components[{component_index}].source_fact_ids")
             invalid = component_fact_ids - expected_fact_ids
             if invalid:
-                return f"Component declared source facts outside its unit: {sorted(invalid)[:4]}."
+                return StagedUnitFinding(f"Component declared source facts outside its unit: {sorted(invalid)[:4]}.", "COMPONENT_FACT_OUT_OF_SCOPE", f"components[{component_index}].source_fact_ids")
             expected_component_fact_ids = plan_fact_ids_by_type.get(component_type, set())
             if expected_instance is not None:
                 expected_component_fact_ids = set(expected_instance.get("source_fact_ids", []))
                 if component_fact_ids != expected_component_fact_ids:
-                    return "Component instance changed canonical ownership."
+                    return StagedUnitFinding("Component instance changed canonical ownership.", "COMPONENT_FACT_OWNERSHIP_MISMATCH", f"components[{component_index}].source_fact_ids")
             if expected_component_fact_ids and component_fact_ids != expected_component_fact_ids:
-                return "Component source facts do not match its approved Blueprint ownership contract."
+                return StagedUnitFinding("Component source facts do not match its approved Blueprint ownership contract.", "COMPONENT_FACT_OWNERSHIP_MISMATCH", f"components[{component_index}].source_fact_ids")
             expected_component_supporting_fact_ids = plan_supporting_fact_ids_by_type.get(component_type, set())
             if expected_instance is not None:
                 expected_component_supporting_fact_ids = set(expected_instance.get("supporting_evidence_fact_ids", []))
@@ -9109,31 +9433,31 @@ def validate_staged_unit_content(
                 if str(fact_id).strip()
             }
             if component_supporting_fact_ids != expected_component_supporting_fact_ids:
-                return "Component supporting evidence does not match its approved V5 evidence contract."
+                return StagedUnitFinding("Component supporting evidence does not match its approved V5 evidence contract.", "COMPONENT_SUPPORTING_EVIDENCE_MISMATCH", f"components[{component_index}].supporting_evidence_fact_ids")
             if not expected_fact_ids and not component_supporting_fact_ids:
-                return "Supporting-only component requires resolved read-only evidence."
+                return StagedUnitFinding("Supporting-only component requires resolved read-only evidence.", "COMPONENT_SUPPORTING_EVIDENCE_MISSING", f"components[{component_index}].supporting_evidence_fact_ids")
             covered_fact_ids = {
                 str(fact_id).strip()
                 for fact_id in component.get("covered_source_fact_ids", [])
                 if str(fact_id).strip()
             }
             if expected_instance is not None and not expected_component_fact_ids and covered_fact_ids:
-                return "Supporting assessment instance must not claim canonical coverage."
+                return StagedUnitFinding("Supporting assessment instance must not claim canonical coverage.", "SUPPORTING_COMPONENT_CLAIMS_OWNERSHIP", f"components[{component_index}].covered_source_fact_ids")
             if enforce_component_ownership and expected_fact_ids and not covered_fact_ids and not (expected_instance and not expected_component_fact_ids):
-                return "Every component must declare covered_source_fact_ids."
+                return StagedUnitFinding("Every component must declare covered_source_fact_ids.", "COMPONENT_COVERAGE_MISSING", f"components[{component_index}].covered_source_fact_ids")
             if enforce_component_ownership and not component_fact_ids.issubset(covered_fact_ids):
-                return "Component covered_source_fact_ids must include every source_fact_id it owns."
+                return StagedUnitFinding("Component covered_source_fact_ids must include every source_fact_id it owns.", "COMPONENT_COVERAGE_INCOMPLETE", f"components[{component_index}].covered_source_fact_ids", repairable=True)
             if enforce_component_ownership and covered_fact_ids - expected_fact_ids:
-                return "Component covered_source_fact_ids contain facts outside its unit."
+                return StagedUnitFinding("Component covered_source_fact_ids contain facts outside its unit.", "COMPONENT_COVERAGE_OUT_OF_SCOPE", f"components[{component_index}].covered_source_fact_ids")
             assigned_fact_ids.update(component_fact_ids)
             if normalize_staged_component_type(component.get("type")) == "html":
                 html_fact_ids.update(component_fact_ids)
         missing = expected_fact_ids - assigned_fact_ids
         if missing:
-            return f"Components do not collectively cover source facts: {sorted(missing)[:6]}."
+            return StagedUnitFinding(f"Components do not collectively cover source facts: {sorted(missing)[:6]}.", "UNIT_COVERAGE_INCOMPLETE")
         missing_from_html = expected_fact_ids - html_fact_ids
         if missing_from_html:
-            return f"HTML explanation does not cover assigned source facts: {sorted(missing_from_html)[:6]}."
+            return StagedUnitFinding(f"HTML explanation does not cover assigned source facts: {sorted(missing_from_html)[:6]}.", "HTML_FACT_COVERAGE_INCOMPLETE")
     return None
 
 
@@ -9186,9 +9510,13 @@ async def generate_staged_lesson_author_proposal(
     source_coverage: str = "",
     source_rows: list[dict[str, Any]] | None = None,
     source_coverage_manifest: dict[str, Any] | None = None,
+    *,
+    checkpoint_unit_index: int | None = None,
+    remaining_workflow_budget_ms: int | None = None,
 ) -> tuple[dict[str, Any], AiUsage]:
     """Generate a large chapter as a validated skeleton plus bounded unit batches."""
-    workflow_deadline = StagedLessonWorkflowDeadline()
+    workflow_deadline = StagedLessonWorkflowDeadline(remaining_workflow_budget_ms)
+    checkpoint_provider_usage_complete = True
     # A V5 Blueprint is already an approved, server-validated topology with
     # canonical fact ownership. Calling the provider to recreate that tree
     # permits silent drift before Stage 2 begins, so derive the skeleton
@@ -9197,6 +9525,8 @@ async def generate_staged_lesson_author_proposal(
         request.blueprint_architecture is not None
         and request.blueprint_architecture.architecture_contract_version == 5
     )
+    if checkpoint_unit_index is not None and not use_direct_v5_skeleton:
+        raise ValueError("CHAPTER_CHECKPOINT_REQUIRES_V5")
     skeleton_prompt = "\n\n".join(
         [
             "SERVER STAGE 1: Build only the compact structure for exactly one chapter.",
@@ -9244,9 +9574,18 @@ async def generate_staged_lesson_author_proposal(
         response_schema: types.Schema | type[BaseModel],
     ) -> tuple[str, AiUsage]:
         """Generate one detailed batch under the dedicated Stage-2 budget."""
+        nonlocal checkpoint_provider_usage_complete
         # One boundary covers normal content and the existing recovery call.
         # It adds no provider attempt and changes none of the timing/token limits.
         prompt = lesson_output_language_policy(request.locale) + "\n\n" + prompt
+        # Stage-2 generation and its existing payload repair share a wire-only
+        # projection. Do not alter the authoritative models or other workflows.
+        if isinstance(response_schema, type) and issubclass(response_schema, BaseModel):
+            response_schema, projection = staged_provider_response_model(response_schema)
+            logger.info("lesson_author_staged_schema_projection %s", json.dumps({
+                "correlation_id": request.correlation_id, "conversation_id": request.conversation_id,
+                "generation_stage": generation_stage, "batch_index": batch_index, **projection,
+            }, sort_keys=True))
         schema_diagnostics = staged_response_schema_diagnostics(response_schema)
         logger.info(
             "lesson_author_staged_provider_schema generation_stage=%s batch_index=%s batch_count=%s unit_count=%s schema_adapter=%s schema_valid=%s array_field_count=%s array_missing_items_count=%s nullable_array_count=%s provider_schema_fingerprint=%s correlation_id=%s",
@@ -9289,15 +9628,36 @@ async def generate_staged_lesson_author_proposal(
             raise
         provider_finish_reason: str | None = None
         provider_event = "completed"
+        response_usage_complete = False
+        uncertain_provider_attempt = False
+        provider_diagnostics: dict[str, Any] = {}
 
         def capture_provider_telemetry(metadata: dict[str, Any]) -> None:
-            nonlocal provider_event, provider_finish_reason
+            nonlocal provider_event, provider_finish_reason, response_usage_complete, uncertain_provider_attempt
             event = metadata.get("event")
             if isinstance(event, str) and event.strip():
                 provider_event = event.strip()[:96]
             finish_reason = metadata.get("provider_finish_reason")
             if isinstance(finish_reason, str) and finish_reason.strip():
                 provider_finish_reason = finish_reason.strip()[:96]
+            if metadata.get("event") in {"provider_transient_retry", "provider_retry", "provider_unavailable"}:
+                uncertain_provider_attempt = True
+            if metadata.get("provider_http_status") == 200 and "provider_total_tokens" in metadata:
+                counts = [metadata.get(key) for key in ("provider_input_tokens", "provider_output_tokens", "provider_total_tokens")]
+                response_usage_complete = metadata.get("usage_source") == "provider" and all(type(v) is int and v >= 0 for v in counts)
+                response_usage_complete = response_usage_complete and counts[2] >= counts[0] + counts[1]
+            safe_keys = {"provider_http_status", "provider_error_type", "provider_status", "provider_error_category",
+                         "provider_message_class", "provider_error_detail_count",
+                         "provider_schema_constraint", "provider_error_markers", "usage_source", "provider_input_tokens", "provider_output_tokens",
+                         "provider_total_tokens", "provider_finish_reason"}
+            provider_diagnostics.update({key: value for key, value in metadata.items() if key in safe_keys})
+            logger.info("lesson_author_staged_provider_diagnostic %s", json.dumps({
+                "correlation_id": request.correlation_id, "conversation_id": request.conversation_id,
+                "generation_stage": generation_stage, "batch_index": batch_index, "batch_count": batch_count,
+                "event": event or "provider_response_completed", "duration_ms": round((perf_counter() - started_at) * 1000),
+                "provider_schema_fingerprint": schema_diagnostics["provider_schema_fingerprint"],
+                **provider_diagnostics,
+            }, sort_keys=True))
 
         started_at = perf_counter()
         try:
@@ -9312,10 +9672,15 @@ async def generate_staged_lesson_author_proposal(
                 request_timeout_ms=provider_timeout_ms,
                 on_provider_telemetry=capture_provider_telemetry,
             )
+            checkpoint_provider_usage_complete = checkpoint_provider_usage_complete and response_usage_complete and not uncertain_provider_attempt
         except Exception as error:
             # `types.Schema` in the installed SDK can throw before a response
             # object exists. Never classify it as a successful empty result
             # and never leak the raw SDK exception through the HTTP boundary.
+            error_diagnostics = safe_provider_error_diagnostics(error)
+            # Retain actual response usage/status if the SDK returned a response
+            # before later parsing failed. Local exceptions aren't HTTP statuses.
+            error_diagnostics.update(provider_diagnostics)
             if is_stage_two_provider_schema_error(error):
                 provider_event = "provider_request_schema_rejected"
                 failure: Exception = WorkflowFailure(
@@ -9325,8 +9690,7 @@ async def generate_staged_lesson_author_proposal(
                     failure_stage="staged_lesson_provider_schema_request",
                     diagnostics={
                         **schema_diagnostics,
-                        "provider_http_status": 400,
-                        "usage_source": "unavailable",
+                        **error_diagnostics,
                     },
                 )
             elif isinstance(error, TypeError):
@@ -9345,12 +9709,30 @@ async def generate_staged_lesson_author_proposal(
                     failure_stage="staged_lesson_provider_response",
                     diagnostics={
                         "provider_event": provider_event,
-                        "provider_error_type": type(error).__name__,
-                        "usage_source": "unavailable",
+                        **error_diagnostics,
                     },
                 )
-            else:
+            elif isinstance(error, (HTTPException, WorkflowFailure)):
                 failure = error
+            else:
+                provider_event = "provider_request_failed"
+                failure = WorkflowFailure(
+                    "PROVIDER_ERROR", "The staged lesson provider call could not complete safely.",
+                    internal_code="LESSON_PROVIDER_REQUEST_FAILED",
+                    failure_stage="staged_lesson_provider_request",
+                    diagnostics=error_diagnostics,
+                )
+            logger.info("lesson_author_staged_provider_failure %s", json.dumps({
+                "correlation_id": request.correlation_id, "conversation_id": request.conversation_id,
+                "generation_stage": generation_stage, "batch_index": batch_index, "batch_count": batch_count,
+                "event": "final_failure", "provider_event": provider_event,
+                "duration_ms": round((perf_counter() - started_at) * 1000),
+                "internal_failure_code": getattr(failure, "internal_code", None),
+                "failure_stage": getattr(failure, "failure_stage", "staged_lesson_provider_request"),
+                "external_failure_code": "PROVIDER_ERROR",
+                "provider_schema_fingerprint": schema_diagnostics["provider_schema_fingerprint"],
+                **error_diagnostics,
+            }, sort_keys=True))
             logger.info(
                 "lesson_author_staged_content_batch generation_stage=%s batch_index=%s batch_count=%s unit_count=%s content_output_tokens=%s provider_timeout_ms=%s remaining_workflow_budget_ms=%s duration_ms=%s provider_event=%s provider_finish_reason=%s status=failed provider_schema_fingerprint=%s correlation_id=%s",
                 generation_stage,
@@ -9511,6 +9893,10 @@ async def generate_staged_lesson_author_proposal(
     # compress it to a fixed 4K ceiling: dense source pages and HTML plus an
     # interaction routinely need more room. The configured request ceiling is
     # still authoritative, with a fact-density floor that avoids truncation.
+    all_batches = batches
+    content_batch_count = len(checkpoint_expected_units(all_batches)) if checkpoint_unit_index is not None else len(batches)
+    if checkpoint_unit_index is not None:
+        batches = [[select_checkpoint_unit(all_batches, checkpoint_unit_index)]]
     max_facts_per_unit = max(
         (len(unit.get("source_fact_ids", [])) for batch in batches for unit in batch),
         default=1,
@@ -9522,16 +9908,17 @@ async def generate_staged_lesson_author_proposal(
     logger.info(
         "lesson_author_staged_plan skeleton_tokens=%s batches=%s units=%s content_tokens_per_batch=%s",
         min(STAGED_LESSON_AUTHOR_SKELETON_TOKENS, request.max_output_tokens),
-        len(batches),
+        content_batch_count,
         sum(len(batch) for batch in batches),
         content_output_tokens,
     )
     content_map: dict[str, dict[str, Any]] = {}
-    for batch_index, batch in enumerate(batches, start=1):
+    for selected_batch_index, batch in enumerate(batches, start=1):
+        batch_index = checkpoint_unit_index + 1 if checkpoint_unit_index is not None else selected_batch_index
         logger.info(
             "lesson_author_staged_content_batch_start batch=%s total_batches=%s units=%s output_tokens=%s",
             batch_index,
-            len(batches),
+            content_batch_count,
             len(batch),
             content_output_tokens,
         )
@@ -9543,6 +9930,9 @@ async def generate_staged_lesson_author_proposal(
             for index, item in enumerate(batch)
         )
         expected = batch[0]
+        instance_output = checkpoint_unit_index is not None and bool(expected.get("component_plan")) and all(
+            p.get("component_plan_id") for p in expected["component_plan"]
+        )
         unit_coverage, unit_context = staged_unit_source_material(
             expected,
             source_rows or [],
@@ -9575,23 +9965,36 @@ async def generate_staged_lesson_author_proposal(
                 f"Mandatory facts for this unit:\n{unit_coverage}",
                 f"Relevant source material:\n{unit_context or context[:STAGED_LESSON_AUTHOR_UNIT_CONTEXT_CHARS]}",
                 f"APPROVED INSTRUCTIONAL CONTRACT (hard scope; do not redesign):\n{instructional_contract}",
-                "Return exactly one JSON object for the requested unit, not an array. Use the exact unit title provided.",
-                'The object must be {"title":"exact unit title","source_fact_ids":["<exact assigned fact_id>"],"supporting_evidence_fact_ids":[],"components":[...]} with real content. Copy only exact canonical source_fact_ids into ownership/coverage fields. If read-only supporting evidence is supplied, return its exact IDs only in supporting_evidence_fact_ids; never copy them into source_fact_ids or covered_source_fact_ids. Components must match the approved component plan exactly. Every component must return source_fact_ids equal to its canonical contract ownership and covered_source_fact_ids that include each owned fact. The HTML component must declare every assigned canonical fact_id and fully explain its facts, key points, conditions, steps, examples, and source tables; do not summarize away source details.',
+                (
+                    'OUTPUT CONTRACT component-instance-payload-1: Return {"components":{"c0":{...payload...},"c1":{...payload...}}}. '
+                    'Each exact cN key is bound to approved component plan index N, NOT a choice of type or evidence owner. '
+                    'Return every slot exactly once with only its selected payload fields plus covered_source_fact_ids. '
+                    'Never emit unit title/envelope, type, component_plan_id, source_fact_ids, supporting_evidence_fact_ids or any other provenance. '
+                    'The server preserves those fields from the approved contract. covered_source_fact_ids is a claim about facts actually taught: '
+                    'fully teach every assigned owned fact and declare only those exact IDs; supporting-only slots return an empty coverage array. '
+                    'Do not merely list IDs without teaching their content. The HTML must explain the facts, conditions, steps and source details. '
+                    'Slot mapping: ' + json.dumps({f"c{i}": {"type": p["type"], "component_plan_id": p["component_plan_id"]} for i, p in enumerate(expected["component_plan"])})
+                    if instance_output else
+                    'Return exactly one JSON object for the requested unit, not an array. Use the exact unit title provided.\n\n'
+                    'The object must be {"title":"exact unit title","source_fact_ids":["<exact assigned fact_id>"],"supporting_evidence_fact_ids":[],"components":[...]} with real content. Copy only exact canonical source_fact_ids into ownership/coverage fields. If read-only supporting evidence is supplied, return its exact IDs only in supporting_evidence_fact_ids; never copy them into source_fact_ids or covered_source_fact_ids. Components must match the approved component plan exactly. Every component must return source_fact_ids equal to its canonical contract ownership and covered_source_fact_ids that include each owned fact. The HTML component must declare every assigned canonical fact_id and fully explain its facts, key points, conditions, steps, examples, and source tables; do not summarize away source details.'
+                ),
                 'Use only the selected component contracts above. Never populate content for other component types. Never generate media assets, URLs, storage paths or presentation styles.',
                 'Quality rules: teach every mapped objective with substantive explanation before any related check. If assessment_required is true, the problem must assess a fact taught by this unit HTML. Do not repeat an explanation, FAQ answer, or question already present in this unit. Do not use an interaction merely for variety. Keep procedures explanatory unless the approved plan explicitly calls for ordering practice. Do not fabricate factual examples; source material is the only source of domain claims.',
-                f"Every listed source_fact_id is mandatory for this unit: {', '.join(expected.get('source_fact_ids', [])) or 'none'}. Include all of them in the response.",
-                f"Read-only supporting evidence for this unit: {', '.join(expected.get('supporting_evidence_fact_ids', [])) or 'none'}. Keep it separate from canonical ownership.",
-                "Preserve each approved component_plan_id on its matching generated component, including repeated types. Never merge or drop instances. Supporting-only components keep canonical source_fact_ids and covered_source_fact_ids empty.",
+                (f"Every listed source fact must be taught: {', '.join(expected.get('source_fact_ids', [])) or 'none'}." if instance_output else
+                 f"Every listed source_fact_id is mandatory for this unit: {', '.join(expected.get('source_fact_ids', [])) or 'none'}. Include all of them in the response."),
+                (f"Read-only supporting evidence for grounding, never canonical coverage: {', '.join(expected.get('supporting_evidence_fact_ids', [])) or 'none'}." if instance_output else
+                 f"Read-only supporting evidence for this unit: {', '.join(expected.get('supporting_evidence_fact_ids', [])) or 'none'}. Keep it separate from canonical ownership.\n\n"
+                 "Preserve each approved component_plan_id on its matching generated component, including repeated types. Never merge or drop instances. Supporting-only components keep canonical source_fact_ids and covered_source_fact_ids empty."),
                 "Do not invent facts outside the relevant source material. Do not include markdown or prose outside the JSON object.",
             ]
         )
         content_text, content_usage = await generate_stage_two_content(
             generation_stage="staged_lesson_content",
             batch_index=batch_index,
-            batch_count=len(batches),
+            batch_count=content_batch_count,
             unit_count=len(batch),
             prompt=content_prompt,
-            response_schema=build_staged_lesson_content_response_model([
+            response_schema=build_staged_instance_response_model(expected["component_plan"]) if instance_output else build_staged_lesson_content_response_model([
                 component_type
                 for expected in batch
                 for component_type in expected.get("component_types", [])
@@ -9607,6 +10010,11 @@ async def generate_staged_lesson_author_proposal(
                 len(content_text),
             )
             parsed = []
+        if instance_output:
+            parsed = bind_staged_instance_payload(parsed, expected)
+            logger.info("lesson_author_component_binding %s", json.dumps({"correlation_id": request.correlation_id,
+                        "contract_version": STAGED_INSTANCE_OUTPUT_CONTRACT_VERSION, "batch_index": batch_index,
+                        "component_count": len(expected["component_plan"]), "status": "PASS", "ownership_source": "server"}))
         generated_units = staged_unit_candidates(parsed)
         for expected in batch:
             generated = match_staged_unit_by_title(generated_units, expected["unit_title"])
@@ -9617,7 +10025,7 @@ async def generate_staged_lesson_author_proposal(
             generated_validation_reason = (
                 validate_staged_unit_content(generated, expected, strict_payload=any(p.get("component_plan_id") for p in expected.get("component_plan", [])))
                 if isinstance(generated, dict)
-                else "Unit content is missing or not an object."
+                else StagedUnitFinding("Unit content is missing or not an object.", "UNIT_OUTPUT_UNRESOLVED")
             )
             if (
                 generated is None
@@ -9626,18 +10034,37 @@ async def generate_staged_lesson_author_proposal(
                 or generated_validation_reason
             ):
                 repair_baseline = deepcopy(generated)
+                repair_guard_finding = staged_component_repair_guard(generated, expected, allow_partial_coverage=True)
                 repair_targets = staged_component_repair_targets(generated, expected)
+                coverage_findings = staged_coverage_repair_diagnostics(generated, repair_targets)
+                coverage_targets = [f["component_index"] for f in coverage_findings]
+                repair_contract_version = (STAGED_COMPONENT_COVERAGE_REPAIR_CONTRACT_VERSION if coverage_targets
+                                           else STAGED_COMPONENT_REPAIR_CONTRACT_VERSION)
                 logger.warning("lesson_author_component_validation %s", json.dumps({
                     "correlation_id": request.correlation_id,
                     "contract_version": STAGED_COMPONENT_CONTRACT_VERSION,
                     "batch_index": batch_index,
                     "stage": "staged_content_validation",
+                    "validation_finding": generated_validation_reason.diagnostic() if isinstance(generated_validation_reason, StagedUnitFinding) else None,
+                    "repair_guard_finding": repair_guard_finding,
                     "findings": staged_payload_diagnostics(generated),
+                    "instructional_findings": staged_instructional_diagnostics(generated),
                     "evidence_scope_findings": staged_evidence_scope_diagnostics(generated, expected),
-                    "repair_scope": "components" if repair_targets else "unit",
+                    "repair_scope": "components" if repair_targets else ("none" if checkpoint_unit_index is not None else "unit"),
                     "repair_component_indices": repair_targets,
+                    "coverage_findings": coverage_findings,
+                    "coverage_repair_component_indices": coverage_targets,
                     "unit_match": staged_unit_match_diagnostics(generated_units, expected["unit_title"]),
                 }))
+                if checkpoint_unit_index is not None and (not repair_targets or not isinstance(generated_validation_reason, StagedUnitFinding)
+                                                         or not generated_validation_reason.repairable):
+                    # No stable authorized payload target: never regenerate the
+                    # whole checkpoint unit or let a model fix source ownership.
+                    raise WorkflowFailure("LESSON_VALIDATION_FAILED", "The unit has no safe component repair target.",
+                                          internal_code="CHAPTER_UNIT_CONTRACT_REJECTED", failure_stage="chapter_component_repair_preflight",
+                                          diagnostics={"validation_finding": generated_validation_reason.diagnostic() if isinstance(generated_validation_reason, StagedUnitFinding) else None,
+                                                       "repair_guard_finding": repair_guard_finding,
+                                                       "repair_scope": "none", "repair_component_indices": []})
                 recovery_types = [generated["components"][i]["type"] for i in repair_targets] if repair_targets else expected.get("component_types", [])
                 expected_line = (
                     f"Chương: {expected['chapter_title']} > "
@@ -9669,17 +10096,28 @@ async def generate_staged_lesson_author_proposal(
                 )
                 if repair_targets:
                     recovery_prompt = "\n\n".join([
-                        "SCOPED COMPONENT REPAIR: " + STAGED_COMPONENT_REPAIR_CONTRACT_VERSION,
+                        "SCOPED COMPONENT REPAIR: " + repair_contract_version,
                         'Return exactly {"components":[{"component_index":0,...payload fields...}]}. '
                         "Use the exact listed component_index once each, no other addresses. Return only payload fields for each target's fixed type. "
-                        "Do NOT return a unit title/envelope, type, component_plan_id, source_fact_ids, covered_source_fact_ids, "
+                        "Do NOT return a unit title/envelope, type, component_plan_id, source_fact_ids, "
                         "supporting_evidence_fact_ids, learning blocks, metadata or source references. The server preserves them and all good components unchanged.",
+                        ("CONTENT COVERAGE REPAIR: Only these component indices may additionally return covered_source_fact_ids: "
+                         + json.dumps(coverage_targets)
+                         + ". Rewrite the affected component payload to actually teach or reinforce every assigned fact using the provided evidence. "
+                         "Return a truthful complete coverage claim within that component's existing owned IDs only. "
+                         "Do not merely append IDs; an ID-only change is rejected. Do not invent new terms or exceed the selected component limits. "
+                         "If source-grounded complete content is impossible, do not claim coverage. Other targets must omit covered_source_fact_ids."
+                         if coverage_targets else "Do NOT return covered_source_fact_ids; the server preserves the existing valid claim."),
                         staged_component_contract_prompt(recovery_types),
                         "Authorized targets (read-only baseline; not the response shape):\n" + json.dumps([
                             {"component_index": i, "baseline": repair_baseline["components"][i]}
                             for i in repair_targets
                         ], ensure_ascii=False),
                         "Deterministic payload findings:\n" + json.dumps(staged_payload_diagnostics(repair_baseline)),
+                        "Deterministic coverage findings:\n" + json.dumps(coverage_findings),
+                        "Deterministic instructional findings:\n" + json.dumps([
+                            f.diagnostic() for i in repair_targets if (f := staged_instructional_finding(repair_baseline["components"][i], i))
+                        ]),
                         f"Approved instructional contract (read-only):\n{instructional_contract}",
                         f"Mandatory evidence:\n{unit_coverage}",
                         f"Relevant source material:\n{unit_context or context[:STAGED_LESSON_AUTHOR_UNIT_CONTEXT_CHARS]}",
@@ -9694,12 +10132,13 @@ async def generate_staged_lesson_author_proposal(
                     recovery_text, recovery_usage = await generate_stage_two_content(
                         generation_stage="staged_lesson_content_recovery",
                         batch_index=batch_index,
-                        batch_count=len(batches),
+                        batch_count=content_batch_count,
                         unit_count=1,
                         prompt=recovery_prompt,
                         response_schema=build_staged_lesson_content_response_model(
                             recovery_types,
                             payload_only=bool(repair_targets),
+                            coverage_repair=bool(coverage_targets),
                             expected_unit_title=expected["unit_title"],
                         ),
                     )
@@ -9723,7 +10162,8 @@ async def generate_staged_lesson_author_proposal(
                         recovery_payload_findings = staged_payload_diagnostics(projected)
                         for finding in recovery_payload_findings:
                             finding["component_index"] = projected_indices[finding["component_index"]]
-                        generated = merge_staged_component_payload_delta(repair_baseline, recovery_value, repair_targets)
+                        generated = merge_staged_component_payload_delta(repair_baseline, recovery_value, repair_targets,
+                                                                         coverage_targets=coverage_targets)
                     else:
                         recovery_candidates = staged_unit_candidates(recovery_value)
                         recovery_unit_match = staged_unit_match_diagnostics(recovery_candidates, expected["unit_title"])
@@ -9742,20 +10182,35 @@ async def generate_staged_lesson_author_proposal(
                     generated_fact_ids = set()
                     generated_supporting_evidence_fact_ids = set()
                     recovery_validation_reason = str(getattr(error, "detail", None) or error)
+                recovery_failure_code = (
+                    recovery_validation_reason.code if isinstance(recovery_validation_reason, StagedUnitFinding)
+                    else recovery_validation_reason if recovery_validation_reason and re.fullmatch(r"[A-Z_]+", recovery_validation_reason)
+                    else "UNIT_REVALIDATION_FAILED" if recovery_validation_reason else None
+                )
                 logger.info("lesson_author_component_validation %s", json.dumps({
                     "correlation_id": request.correlation_id,
                     "contract_version": STAGED_COMPONENT_CONTRACT_VERSION,
                     "batch_index": batch_index,
                     "stage": "staged_repair_revalidation",
                     "status": "FAIL" if recovery_validation_reason else "PASS",
+                    "validation_finding": recovery_validation_reason.diagnostic() if isinstance(recovery_validation_reason, StagedUnitFinding) else None,
                     "repair_scope": "components" if repair_targets else "unit",
                     "repair_component_indices": repair_targets,
-                    "repair_contract_version": STAGED_COMPONENT_REPAIR_CONTRACT_VERSION if repair_targets else "legacy-unit-recovery",
+                    "repair_contract_version": repair_contract_version if repair_targets else "legacy-unit-recovery",
+                    "coverage_repair_component_indices": coverage_targets,
                     "findings": recovery_payload_findings,
                     "evidence_scope_findings": recovery_evidence_findings,
                     "unit_match": recovery_unit_match,
-                    "failure_code": recovery_validation_reason if recovery_validation_reason and re.fullmatch(r"[A-Z_]+", recovery_validation_reason) else ("UNIT_REVALIDATION_FAILED" if recovery_validation_reason else None),
+                    "failure_code": recovery_failure_code,
                 }))
+                if checkpoint_unit_index is not None and (generated is None or generated_fact_ids != expected_fact_ids
+                        or generated_supporting_evidence_fact_ids != expected_supporting_evidence_fact_ids or recovery_validation_reason):
+                    raise WorkflowFailure("LESSON_VALIDATION_FAILED", "The scoped component repair did not pass acceptance.",
+                                          internal_code="CHAPTER_COMPONENT_REPAIR_EXHAUSTED", failure_stage="chapter_component_repair_revalidation",
+                                          diagnostics={"validation_finding": recovery_validation_reason.diagnostic() if isinstance(recovery_validation_reason, StagedUnitFinding) else None,
+                                                       "repair_scope": "components", "repair_component_indices": repair_targets,
+                                                       "repair_failure_code": recovery_failure_code,
+                                                       "payload_findings": recovery_payload_findings})
                 if (
                     generated is None
                     or generated_fact_ids != expected_fact_ids
@@ -9777,9 +10232,9 @@ async def generate_staged_lesson_author_proposal(
                         )
                         if fallback_validation_reason is None:
                             logger.warning(
-                                "lesson_author_staged_unit_source_locked_fallback batch=%s title=%s dropped_types=%s",
+                                "lesson_author_staged_unit_source_locked_fallback batch=%s unit_path=%s dropped_types=%s",
                                 batch_index,
-                                expected["unit_title"],
+                                expected["unit_path"],
                                 ",".join(dropped_types) or "none",
                             )
                             expected = fallback_expected
@@ -9823,6 +10278,19 @@ async def generate_staged_lesson_author_proposal(
             # Unit titles are human-facing labels and can legitimately repeat
             # in a chapter. The structural path is the only safe assembly key.
             content_map[expected["unit_path"]] = generated
+
+    if checkpoint_unit_index is not None:
+        approved = select_checkpoint_unit(all_batches, checkpoint_unit_index)
+        unit = content_map[approved["unit_path"]]
+        # Revalidate against the ORIGINAL approved plan, not any recovery/fallback
+        # variant. A checkpoint cannot permanently omit a required component.
+        reason = validate_staged_unit_content(unit, approved, strict_payload=True)
+        if reason:
+            raise WorkflowFailure("LESSON_VALIDATION_FAILED", "The unit failed checkpoint acceptance.",
+                                  internal_code="CHAPTER_CHECKPOINT_UNIT_INVALID", failure_stage="chapter_checkpoint_unit_validation")
+        ChapterCheckpointUnit(unit_index=checkpoint_unit_index, unit=unit)
+        return {"checkpoint_version": 1, "unit_index": checkpoint_unit_index, "unit_path": approved["unit_path"],
+                "unit": unit, "provider_usage_complete": checkpoint_provider_usage_complete}, total_usage
 
     assembled = dict(skeleton)
     assembled_chapters: list[dict[str, Any]] = []
@@ -14895,6 +15363,149 @@ def apply_lesson_generation_repair_patches(
     return result
 
 
+async def build_lesson_author_checkpoint_result(
+    request: RagLessonAuthorCheckpointRequest,
+    *,
+    context: str,
+    source_outline: str,
+    source_coverage: str,
+    rows: list[dict[str, Any]],
+    manifest: dict[str, Any] | None,
+    known_source_refs: set[str],
+    retrieval: dict[str, Any],
+    retrieval_usage: AiUsage,
+    elapsed_ms: int,
+    emit: Callable[[dict[str, Any]], None],
+) -> dict[str, Any]:
+    """Generation per unit OR full deterministic acceptance; never DB persistence."""
+    started = perf_counter()
+    remaining = request.remaining_workflow_budget_ms - elapsed_ms
+    if remaining <= 0:
+        raise WorkflowFailure("PROVIDER_ERROR", "The chapter invocation deadline expired.",
+                              internal_code="AI_STAGED_LESSON_WORKFLOW_TIMEOUT", failure_stage="chapter_checkpoint_deadline")
+    if request.checkpoint_action == "generate_unit":
+        value, generated_usage = await generate_staged_lesson_author_proposal(
+            request, context, source_outline, source_coverage, source_rows=rows,
+            source_coverage_manifest=manifest, checkpoint_unit_index=request.checkpoint_unit_index,
+            remaining_workflow_budget_ms=remaining,
+        )
+        validate_lesson_author_proposal_source_refs(
+            {"chapters": [{"lessons": [{"units": [value["unit"]]}]}]}, known_source_refs,
+        )
+        approved_title = [unit.title for lesson in request.blueprint_architecture.lessons for unit in lesson.units][value["unit_index"]]
+        if value["unit"].get("title") != approved_title:
+            raise WorkflowFailure("LESSON_VALIDATION_FAILED", "The generated unit changed its approved identity.",
+                                  internal_code="CHAPTER_CHECKPOINT_UNIT_INVALID", failure_stage="chapter_checkpoint_unit_validation")
+        usage = combine_usage(retrieval_usage, generated_usage)
+        provider_known = value.pop("provider_usage_complete", False) is True
+        # Existing retrieval embedding accounting uses local estimates. Do not
+        # mislabel that aggregate as complete provider usage when settling holds.
+        complete_usage = provider_known and retrieval_usage.totalTokens == 0
+        emit({"stage": "chapter_checkpoint_unit_validation", "event": "unit_ready",
+              "unit_index": value["unit_index"], "unit_path": value["unit_path"],
+              "component_count": len(value["unit"].get("components", [])),
+              "usage_source": "provider" if complete_usage else "mixed_or_unavailable"})
+        return {**value, "correlation_id": request.correlation_id, "status": "unit_ready", "usage": usage.model_dump(),
+                "usage_complete": complete_usage, "usage_source": "provider" if complete_usage else "mixed_or_unavailable",
+                "retrieval": retrieval}
+
+    skeleton = build_source_locked_staged_skeleton(request, manifest)
+    batches = extract_lesson_author_unit_batches(skeleton, manifest, request.locale)
+    validate_staged_skeleton_source_facts(batches, manifest)
+    expected = checkpoint_expected_units(batches)
+    for checkpoint in request.checkpoint_units:
+        approved = expected[checkpoint.unit_index]
+        if checkpoint.unit.get("title") != approved["unit_title"] or validate_staged_unit_content(checkpoint.unit, approved, strict_payload=True):
+            raise WorkflowFailure("LESSON_VALIDATION_FAILED", "A stored unit no longer satisfies its approved contract.",
+                                  internal_code="CHAPTER_CHECKPOINT_UNIT_INVALID", failure_stage="chapter_checkpoint_revalidation",
+                                  diagnostics={"unit_index": checkpoint.unit_index})
+    proposal = normalize_lesson_author_proposal_tree(assemble_checkpoint_chapter(skeleton, expected, request.checkpoint_units))
+    # Ordered full-chapter gates. No implicit provider repair is allowed to modify
+    # immutable checkpoints during finalization; failures remain fail-closed.
+    all_codes: list[str] = []
+    for stage, validate in (
+        ("chapter_checkpoint_content_validation", lambda: validate_lesson_generation_workflow(proposal, manifest, known_source_refs)),
+        ("chapter_checkpoint_pedagogical_validation", lambda: pedagogical_validation_result(proposal, request.blueprint_architecture.model_dump())),
+        ("chapter_checkpoint_duplication_validation", lambda: duplicate_validation_result(proposal)),
+    ):
+        result = validate()
+        codes = sorted({str(issue.get("code") or "LESSON_VALIDATION_FAILED") for issue in result.issues})
+        all_codes.extend(codes)
+        emit({"stage": stage, "event": "rejected" if result.errors else "passed", "validation_codes": codes,
+              "error_count": len(result.errors), "unit_count": len(expected)})
+        if result.errors:
+            raise WorkflowFailure("LESSON_VALIDATION_FAILED", "The complete chapter did not pass acceptance.",
+                                  internal_code="CHAPTER_CHECKPOINT_REVALIDATION_FAILED", failure_stage=stage,
+                                  diagnostics={"validation_codes": codes})
+    coverage = validate_lesson_author_source_coverage(proposal, manifest)
+    retrieval.update({"source_coverage_required_count": coverage["required_count"],
+                      "source_coverage_covered_count": coverage["covered_count"],
+                      "source_coverage_ratio": coverage["coverage_ratio"],
+                      "source_coverage_missing_fact_ids": coverage["missing_fact_ids"], "source_coverage_status": coverage["status"]})
+    emit({"stage": "chapter_checkpoint_finalize", "event": "ready", "unit_count": len(expected)})
+    return {"checkpoint_version": 1, "correlation_id": request.correlation_id, "status": "ready", "proposal": proposal, "retrieval": retrieval,
+            "usage": retrieval_usage.model_dump(), "usage_complete": retrieval_usage.totalTokens == 0,
+            "usage_source": "no_generation" if retrieval_usage.totalTokens == 0 else "local_estimate",
+            "workflow": {"workflow": "lesson_generation", "workflow_version": "chapter-checkpoint-1",
+                         "status": "ready", "repair_count": 0, "validation_codes": all_codes,
+                         "duration_ms": elapsed_ms + round((perf_counter() - started) * 1000), "node_durations_ms": {}}}
+
+
+@app.post("/v1/lesson-author/chapter-checkpoint", dependencies=[Depends(require_internal_token)])
+async def lesson_author_chapter_checkpoint(
+    request: RagLessonAuthorCheckpointRequest,
+    pool: asyncpg.Pool = Depends(get_db),
+) -> dict[str, Any]:
+    started = perf_counter()
+    try:
+        # Covers retrieval and final validation too. Cancellation of a to_thread
+        # await is NOT proof that the synchronous Google HTTP request was stopped.
+        return await asyncio.wait_for(lesson_author_proposal(request, pool), request.remaining_workflow_budget_ms / 1000)
+    except asyncio.TimeoutError as error:
+        failure = WorkflowFailure("PROVIDER_ERROR", "The chapter invocation deadline expired.",
+                                  internal_code="AI_STAGED_LESSON_WORKFLOW_TIMEOUT", failure_stage="chapter_checkpoint_deadline")
+        cause: Exception = error
+    except WorkflowFailure as error:
+        failure, cause = error, error
+    except HTTPException as error:
+        detail = error.detail if isinstance(error.detail, dict) else {}
+        code = str(detail.get("code") or "SOURCE_SCOPE_INCOMPLETE")
+        if not re.fullmatch(r"[A-Z][A-Z0-9_]{0,95}", code):
+            code = "SOURCE_SCOPE_INCOMPLETE"
+        provider_error = code.startswith("AI_PROVIDER_") or code == "AI_STAGED_LESSON_WORKFLOW_TIMEOUT"
+        failure = WorkflowFailure("PROVIDER_ERROR" if provider_error else "SOURCE_SCOPE_INCOMPLETE",
+                                  "The chapter checkpoint request could not complete.", internal_code=code,
+                                  failure_stage="chapter_checkpoint_provider" if provider_error else "chapter_checkpoint_source_validation")
+        cause = error
+    except (ValueError, LessonAuthorProposalValidationError) as error:
+        failure = WorkflowFailure("LESSON_VALIDATION_FAILED", "The chapter checkpoint contract is invalid.",
+                                  internal_code="CHAPTER_CHECKPOINT_CONTRACT_INVALID", failure_stage="chapter_checkpoint_contract")
+        cause = error
+    except Exception as error:
+        failure = WorkflowFailure("LESSON_VALIDATION_FAILED", "The chapter checkpoint operation failed.",
+                                  internal_code="CHAPTER_CHECKPOINT_INTERNAL_ERROR", failure_stage="chapter_checkpoint_internal")
+        cause = error
+    diagnostics = {"workflow": "lesson_generation", "event": "final_failure",
+                   "correlation_id": request.correlation_id, "conversation_id": request.conversation_id,
+                   "checkpoint_action": request.checkpoint_action, "unit_index": request.checkpoint_unit_index,
+                   "failure_stage": failure.failure_stage, "internal_failure_code": failure.internal_code,
+                   "external_failure_code": failure.code, "duration_ms": round((perf_counter() - started) * 1000)}
+    if failure.internal_code in {"CHAPTER_UNIT_CONTRACT_REJECTED", "CHAPTER_COMPONENT_REPAIR_EXHAUSTED"}:
+        diagnostics.update(failure.diagnostics)
+    if failure.code == "PROVIDER_ERROR":
+        provider_keys = {"provider_http_status", "provider_error_type", "provider_status", "provider_error_category",
+                         "provider_message_class", "provider_error_detail_count",
+                         "provider_schema_constraint", "provider_error_markers", "usage_source", "provider_input_tokens", "provider_output_tokens",
+                         "provider_total_tokens", "provider_finish_reason", "provider_schema_fingerprint"}
+        diagnostics.update({key: value for key, value in failure.diagnostics.items() if key in provider_keys})
+    logger.info("lesson_author_checkpoint_diagnostic %s", json.dumps(diagnostics, sort_keys=True))
+    raise HTTPException(status_code=502 if failure.code == "PROVIDER_ERROR" else 422, detail={
+        "code": failure.code, "message": "The chapter could not complete its validated checkpoint operation.",
+        "internal_failure_code": failure.internal_code, "failure_stage": failure.failure_stage,
+        "correlation_id": request.correlation_id,
+    }) from cause
+
+
 @app.post("/v1/lesson-author/proposal", dependencies=[Depends(require_internal_token)])
 async def lesson_author_proposal(
     request: RagLessonAuthorRequest,
@@ -14908,7 +15519,7 @@ async def lesson_author_proposal(
         payload = {
             "timestamp_utc": datetime.now(timezone.utc).isoformat(),
             "workflow": "lesson_generation",
-            "workflow_version": "langgraph-v1",
+            "workflow_version": "chapter-checkpoint-1" if isinstance(request, RagLessonAuthorCheckpointRequest) else "langgraph-v1",
             "architecture_contract_version": (
                 request.blueprint_architecture.architecture_contract_version
                 if request.blueprint_architecture is not None else None
@@ -14983,6 +15594,21 @@ async def lesson_author_proposal(
                 "message": "Phạm vi nội dung nguồn vượt giới hạn kiểm tra đầy đủ; hệ thống không tạo bài học để tránh lược bỏ dữ liệu.",
                 "retrieval": retrieval,
             },
+        )
+    if isinstance(request, RagLessonAuthorCheckpointRequest):
+        # The normal endpoint applies this gate in its LangGraph evidence node.
+        # Checkpoint mode branches before that graph, so retain the same gate here
+        # and require the canonical manifest used to validate cached ownership.
+        if not rows or not isinstance(source_coverage_manifest, dict) or not (
+            source_coverage_manifest.get("facts") or source_coverage_manifest.get("supporting_evidence_facts")
+        ):
+            raise WorkflowFailure("SOURCE_EVIDENCE_INSUFFICIENT", "The approved chapter evidence is unavailable.",
+                                  internal_code="SOURCE_EVIDENCE_INSUFFICIENT", failure_stage="chapter_checkpoint_evidence_validation")
+        return await build_lesson_author_checkpoint_result(
+            request, context=context, source_outline=structure_context.get("outline", ""), source_coverage=source_coverage,
+            rows=rows, manifest=source_coverage_manifest, known_source_refs=set(structure_context.get("known_source_refs", set())),
+            retrieval=retrieval, retrieval_usage=retrieval_usage, elapsed_ms=round((perf_counter() - workflow_started) * 1000),
+            emit=emit_lesson_diagnostic,
         )
     prompt = build_lesson_author_prompt(
         request,
