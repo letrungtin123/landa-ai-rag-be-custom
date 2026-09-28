@@ -62,7 +62,10 @@ from app.source_structure import (
     structure_outline,
 )
 from app.source_map import build_course_architect_context, build_source_map
-from app.lesson_prompt_policy import bounded_architect_policy, lesson_output_language_policy, lesson_instructional_quality_policy
+from app.lesson_prompt_policy import (
+    bounded_architect_policy, lesson_output_language_policy, lesson_instructional_quality_policy,
+    component_instructional_brief, instructional_contract_review_signals,
+)
 from app.source_chapter_policy import resolve_source_chapter_policy, bind_source_chapters
 from app.component_capabilities import ComponentCapabilities, validate_instance_plan
 from app.instructional_opportunities import compile_evidence_treatments, VERSION as EVIDENCE_TREATMENT_VERSION
@@ -9939,6 +9942,7 @@ async def generate_staged_lesson_author_proposal(
             source_coverage_manifest,
         )
         instructional_contract = json.dumps({
+            "component_instructional_brief": component_instructional_brief(expected),
             "lesson_learning_objectives": expected.get("learning_objectives", []),
             "assessment_required": expected.get("assessment_required") is True,
             "assessment_objective_refs": expected.get("assessment_objective_refs", []),
@@ -10082,6 +10086,7 @@ async def generate_staged_lesson_author_proposal(
                             if repair_targets else "Repair the requested unit contract."
                         ),
                         f"Target unit: {expected_line}",
+                        f"Approved instructional contract (read-only):\n{instructional_contract}",
                         f"Mandatory facts for this unit:\n{unit_coverage}",
                         f"Relevant source material:\n{unit_context or context[:STAGED_LESSON_AUTHOR_UNIT_CONTEXT_CHARS]}",
                         f"Validation feedback from the previous unit: {generated_validation_reason or 'The unit omitted mandatory source facts.'} Fix this exact issue.",
@@ -10278,6 +10283,14 @@ async def generate_staged_lesson_author_proposal(
             # Unit titles are human-facing labels and can legitimately repeat
             # in a chapter. The structural path is the only safe assembly key.
             content_map[expected["unit_path"]] = generated
+            # Non-blocking observations about the approved contract, never a
+            # declaration that provider prose is factually/semantically verified.
+            logger.info("lesson_author_instructional_contract_review %s", json.dumps({
+                "correlation_id": request.correlation_id,
+                "conversation_id": request.conversation_id,
+                "batch_index": batch_index,
+                **instructional_contract_review_signals(expected),
+            }, sort_keys=True))
 
     if checkpoint_unit_index is not None:
         approved = select_checkpoint_unit(all_batches, checkpoint_unit_index)

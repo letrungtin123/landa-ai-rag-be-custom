@@ -3,9 +3,13 @@ from __future__ import annotations
 import asyncio
 import json
 import unittest
+from copy import deepcopy
 from unittest.mock import AsyncMock, patch
 
-from app.lesson_prompt_policy import bounded_architect_policy, lesson_output_language_policy, lesson_instructional_quality_policy
+from app.lesson_prompt_policy import (
+    bounded_architect_policy, lesson_output_language_policy, lesson_instructional_quality_policy,
+    component_instructional_brief, instructional_contract_review_signals,
+)
 from app.main import (
     AiUsage, build_course_architect_prompt, build_lesson_generation_repair_prompt,
     generate_staged_lesson_author_proposal, generate_validated_lesson_author_blueprint,
@@ -58,6 +62,88 @@ def request_and_unit(component_type: str, locale: str):
 
 
 class LessonPromptPolicyTests(unittest.TestCase):
+    def test_source_fidelity_rules_cover_observed_quality_risks(self):
+        policy = lesson_instructional_quality_policy()
+        for phrase in ("Absence from the source is NOT an exemption", "negations, quantities, units",
+                       "Do not concatenate independent source sections", "Hypothetical practice inputs",
+                       "calculation objectives require applying", "silently substituting a vocabulary question"):
+            self.assertIn(phrase, policy)
+
+    def test_brief_uses_exact_local_binding_without_mutating_approved_ownership(self):
+        for objective in ("Calculate using the source rule.", "Tính toán theo quy tắc trong nguồn."):
+            expected = {"learning_objectives": [objective, "Identify terms"],
+                        "learning_blocks": [{"id": "b1", "learning_objective_refs": ["lo_1"]}],
+                        "component_plan": [
+                            {"type": "html", "learning_objective_refs": ["lo_1"], "source_fact_ids": ["f1"]},
+                            {"type": "problem", "learning_block_ids": ["b1"], "supporting_evidence_fact_ids": ["f1"]},
+                            {"type": "la_faq", "learning_objective_refs": ["lo_2"]}]}
+            before = deepcopy(expected)
+            brief = component_instructional_brief(expected)
+            self.assertEqual(expected, before)
+            self.assertEqual(brief, component_instructional_brief(expected))
+            assessment = brief["components"][1]
+            self.assertEqual(assessment["local_objective_refs"], ["lo_1"])
+            self.assertEqual(assessment["objective_binding_origin"], "linked_learning_blocks")
+            self.assertEqual(assessment["owned_fact_count"], 0)
+            self.assertEqual(assessment["supporting_fact_count"], 1)
+            self.assertEqual(instructional_contract_review_signals(expected)["findings"], [])
+
+    def test_unknown_objective_does_not_bind_to_neighbour_or_global_lesson_objectives(self):
+        expected = {"learning_objectives": ["First", ""], "learning_objective_refs": ["lo_1"],
+                    "component_plan": [{"type": "problem", "learning_objective_refs": ["lo_2", "lo_99"]}]}
+        component = component_instructional_brief(expected)["components"][0]
+        self.assertEqual(component["local_objective_refs"], [])
+        self.assertEqual(component["unresolved_objective_ref_count"], 2)
+        signals = instructional_contract_review_signals(expected)
+        self.assertFalse(signals["blocking"])
+        self.assertEqual({f["code"] for f in signals["findings"]}, {
+            "OBJECTIVE_BINDING_UNRESOLVED_REVIEW", "ASSESSMENT_OBJECTIVE_BINDING_MISSING_REVIEW"})
+
+    def test_interaction_ownership_review_is_not_a_false_semantic_coverage_score(self):
+        expected = {"component_plan": [{"type": "la_crossword", "source_fact_ids": [f"f{i}" for i in range(23)]}]}
+        signals = instructional_contract_review_signals(expected)
+        self.assertEqual(signals["semantic_coverage"], "not_measured")
+        self.assertEqual(signals["semantic_fidelity"], "not_measured")
+        self.assertEqual(signals["findings"][0]["owned_fact_count"], 23)
+        self.assertEqual(signals["findings"][0]["code"], "INTERACTION_OWNERSHIP_SEMANTIC_COVERAGE_REVIEW")
+        expected["component_plan"][0] = {"type": "la_crossword", "supporting_evidence_fact_ids": ["f1"]}
+        self.assertEqual(instructional_contract_review_signals(expected)["findings"], [])
+
+    def test_brief_size_does_not_repeat_fact_inventory_and_diagnostics_contain_no_private_text(self):
+        expected = {"learning_objectives": ["PRIVATE_OBJECTIVE"],
+                    "component_plan": [{"type": "html", "source_fact_ids": [f"PRIVATE_FACT_{i}" for i in range(1001)]},
+                                       {"type": "problem", "learning_objective_refs": ["PRIVATE_BAD_REF"]}],
+                    "title": "PRIVATE_TITLE", "source_text": "PRIVATE_SOURCE"}
+        brief = component_instructional_brief(expected)
+        self.assertEqual(brief["components"][0]["owned_fact_count"], 1001)
+        self.assertLess(len(json.dumps(brief)), 3000)
+        self.assertNotIn("PRIVATE", json.dumps(brief))
+        self.assertNotIn("PRIVATE", json.dumps(instructional_contract_review_signals(expected)))
+
+    def test_stage_two_review_log_is_correlated_private_and_non_blocking(self):
+        request, generated = request_and_unit("la_crossword", "vi")
+        request = request.model_copy(update={"correlation_id": "11111111-1111-4111-8111-111111111111"})
+        before = deepcopy(generated)
+        provider = AsyncMock(return_value=(json.dumps(generated), AiUsage()))
+        with patch("app.main.generate_content", provider), patch("app.main.logger.info") as log:
+            proposal, _ = asyncio.run(generate_staged_lesson_author_proposal(
+                request, "PRIVATE_SOURCE", "", source_rows=[],
+                source_coverage_manifest={"facts": [{"fact_id": "fact-1", "text": "PRIVATE_SOURCE"}]},
+            ))
+        entries = [json.loads(call.args[1]) for call in log.call_args_list
+                   if call.args[0] == "lesson_author_instructional_contract_review %s"]
+        self.assertEqual(len(entries), 1)
+        self.assertEqual(entries[0]["correlation_id"], request.correlation_id)
+        self.assertEqual(entries[0]["conversation_id"], request.conversation_id)
+        self.assertGreater(entries[0]["review_signal_count"], 0)
+        self.assertNotIn("PRIVATE_SOURCE", json.dumps(entries))
+        self.assertNotIn("Locked source unit", json.dumps(entries))
+        self.assertFalse(entries[0]["blocking"])
+        self.assertEqual(provider.await_count, 1)
+        unit = proposal["chapters"][0]["lessons"][0]["units"][0]
+        self.assertEqual(unit["components"], before["components"])
+        self.assertEqual(unit["source_fact_ids"], before["source_fact_ids"])
+
     def test_teaching_policy_allows_synthesis_not_new_facts_or_asset_claims(self):
         policy = lesson_instructional_quality_policy()
         for phrase in ("synthesize questions", "Never create canonical IDs",
@@ -111,6 +197,8 @@ class LessonPromptPolicyTests(unittest.TestCase):
                         self.assertIn(source, sent)
                         self.assertIn("Locked source unit", sent)
                         self.assertIn("crossword clues, diagram labels", sent)
+                        self.assertIn('"component_instructional_brief"', sent)
+                        self.assertIn("not proof of semantic completeness", sent)
                         self.assertEqual(provider.await_args.kwargs["request_timeout_ms"], 180000)
                         # Only selected payload schema (plus shared contract fields).
                         schema = provider.await_args.kwargs["response_schema"].model_json_schema()
@@ -135,6 +223,7 @@ class LessonPromptPolicyTests(unittest.TestCase):
         for call in provider.await_args_list:
             self.assertTrue(call.args[2].startswith(lesson_output_language_policy("en")))
             self.assertIn(lesson_instructional_quality_policy(), call.args[2])
+            self.assertIn('"component_instructional_brief"', call.args[2])
         self.assertIn("SERVER STAGE 2 RECOVERY", provider.await_args_list[1].args[2])
         self.assertEqual(proposal["chapters"][0]["title"], "Locked source chapter")
 
