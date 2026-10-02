@@ -102,7 +102,9 @@ class StagedRecoveryIdentityTests(unittest.TestCase):
         for key in ("source_fact_ids", "supporting_evidence_fact_ids", "covered_source_fact_ids"):
             bad = deepcopy(unit)
             bad["components"][0][key] = ["fact-0", "fact-0"]
-            self.assertEqual(staged_component_repair_targets(bad, scope), [])
+            # Duplicate content claims may repair; canonical owned/supporting
+            # arrays remain immutable and reject before any provider recovery.
+            self.assertEqual(staged_component_repair_targets(bad, scope), [0, 2] if key == "covered_source_fact_ids" else [])
             self.assertIn("INVALID_FACT_ID_ARRAY", validate_staged_unit_content(bad, scope))
 
     def test_diagram_only_wire_bounds_and_title_enum_survive_actual_sdk(self):
@@ -110,16 +112,16 @@ class StagedRecoveryIdentityTests(unittest.TestCase):
         for delta in (False, True):
             model = build_staged_lesson_content_response_model(["la_diagram"], payload_only=delta, expected_unit_title="Mục đã duyệt")
             wire = models._GenerateContentConfig_to_mldev(client._api_client, types.GenerateContentConfig(response_schema=model))["responseSchema"]
-            component = wire["properties"]["components"].items
+            component = wire.properties["components"].items
             self.assertEqual((component.properties["nodes"].min_items, component.properties["nodes"].max_items), (2, 20))
             self.assertEqual((component.properties["edges"].min_items, component.properties["edges"].max_items), (1, 40))
             self.assertIn("nodes", component.required)
             if not delta:
-                self.assertEqual(wire["properties"]["title"].enum, ["Mục đã duyệt"])
+                self.assertEqual(wire.properties["title"].enum, ["Mục đã duyệt"])
         # Mixed schemas still permit other component types' empty node arrays.
         mixed = build_staged_lesson_content_response_model(["html", "la_diagram"])
         wire = models._GenerateContentConfig_to_mldev(client._api_client, types.GenerateContentConfig(response_schema=mixed))["responseSchema"]
-        self.assertNotIn("nodes", wire["properties"]["components"].items.required)
+        self.assertNotIn("nodes", wire.properties["components"].items.required)
 
     def test_safe_diagram_diagnostics_have_paths_not_private_values(self):
         payload = {"type": "la_diagram", "nodes": [{"label": "PRIVATE", "shape": "PRIVATE_ENUM"}, {"label": "PRIVATE", "shape": "rounded"}],

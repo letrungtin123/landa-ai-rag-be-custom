@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 import os
+import sys
+from io import StringIO
 from pathlib import Path
+from typing import Literal
 
 from dotenv import load_dotenv
 from pydantic import BaseModel, Field
@@ -10,8 +13,43 @@ from pydantic import BaseModel, Field
 APP_ROOT = Path(__file__).resolve().parents[2]
 REPO_ROOT = APP_ROOT.parent
 
-load_dotenv(APP_ROOT / ".env")
-load_dotenv(REPO_ROOT / "landa-backend" / ".env.production", override=False)
+
+def load_runtime_dotenv(
+    path: Path,
+    *,
+    override: bool = False,
+    allow_nul_sanitization: bool = False,
+) -> bool:
+    """Load dotenv without ever logging values; local NUL corruption is sanitized in memory only."""
+    try:
+        return load_dotenv(path, override=override)
+    except ValueError as error:
+        if not allow_nul_sanitization or "embedded null character" not in str(error):
+            raise
+        raw = path.read_bytes()
+        nul_count = raw.count(b"\x00")
+        if nul_count == 0:
+            raise
+        sanitized = raw.replace(b"\x00", b"").decode("utf-8-sig")
+        loaded = load_dotenv(stream=StringIO(sanitized), override=override)
+        print(
+            "[Config] Loaded local backend dotenv after in-memory NUL sanitization "
+            f"path={path.name} nul_bytes={nul_count}",
+            file=sys.stderr,
+        )
+        return loaded
+
+
+load_runtime_dotenv(APP_ROOT / ".env")
+_environment = os.getenv("NODE_ENV", "development").strip().lower() or "development"
+_backend_env = ".env.production" if _environment == "production" else ".env"
+load_runtime_dotenv(
+    REPO_ROOT / "landa-backend" / _backend_env,
+    override=False,
+    # Production remains fail-closed. This fallback exists only because the
+    # shared local Node dotenv currently contains invalid NUL bytes.
+    allow_nul_sanitization=_environment != "production",
+)
 
 
 class Settings(BaseModel):
@@ -65,6 +103,9 @@ class Settings(BaseModel):
     retrieval_max_chunks_per_document: int = Field(default_factory=lambda: int(os.getenv("AI_RAG_RETRIEVAL_MAX_CHUNKS_PER_DOCUMENT", "4")))
     max_user_message_chars: int = Field(default_factory=lambda: int(os.getenv("AI_RAG_MAX_USER_MESSAGE_CHARS", "20000")))
     generation_temperature: float = Field(default_factory=lambda: float(os.getenv("AI_RAG_GENERATION_TEMPERATURE", "0.2")))
+    gemini_38_thinking_level: Literal["low", "medium", "high"] = Field(
+        default_factory=lambda: os.getenv("AI_RAG_GEMINI_38_THINKING_LEVEL", "medium").strip().lower(),
+    )
 
     @property
     def is_production(self) -> bool:

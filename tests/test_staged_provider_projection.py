@@ -13,14 +13,18 @@ from tests.test_staged_instance_output import checkpoint_instance_fixture
 
 
 class StagedProviderProjectionTests(unittest.TestCase):
-    def test_mixed_sdk_wire_matches_the_live_accepted_schema_fingerprint(self):
+    def test_mixed_sdk_wire_has_reviewed_offline_v4_fingerprint(self):
         projected, _ = staged_provider_response_model(schema_cases()["mixed"])
-        # Approved synthetic call10, 2026-09-26: HTTP200 / STOP. This fingerprint
-        # is an observed fixture, not a guarantee of future provider availability.
+        # Ordered writer plus exact owned coverage-reference enum. Captured through the real SDK with
+        # mocked HTTP; NOT live Gemini acceptance. Previous live v2 fingerprint:
+        # 72c97f8ae697eb01e956581a50a2964b8c9692c238d71511974724228bd389ac.
+        # google-genai 2.22.0 serializes the same reviewed projection with its
+        # current canonical wire ordering. The structural equality test below
+        # remains the source-of-truth guard for every supported schema case.
         self.assertEqual(schema_metadata(capture_sdk_body(projected))["schema_sha256"],
-                         "72c97f8ae697eb01e956581a50a2964b8c9692c238d71511974724228bd389ac")
+                         "809de095faa953c30f0dca09bb21ec6a527c74518e92a940a46be48cad67aa81")
 
-    def test_actual_sdk_body_matches_successful_live_variant_for_every_case(self):
+    def test_actual_sdk_body_preserves_reviewed_bound_projection_for_every_case(self):
         for name, model in schema_cases().items():
             with self.subTest(case=name):
                 original = deepcopy(model.model_json_schema())

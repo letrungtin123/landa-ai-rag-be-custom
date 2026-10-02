@@ -28,8 +28,13 @@ class StagedProviderWireTests(unittest.TestCase):
 
     def test_sdk_root_guard_does_not_validate_nested_bounds(self):
         client = genai.Client(api_key="offline")
-        with self.assertRaisesRegex(ValueError, "max_items"):
-            models._Schema_to_mldev(client._api_client, types.Schema(type="ARRAY", items=types.Schema(type="STRING"), max_items=0))
+        root = models._GenerateContentConfig_to_mldev(
+            client._api_client,
+            types.GenerateContentConfig(response_schema=types.Schema(
+                type="ARRAY", items=types.Schema(type="STRING"), max_items=0,
+            )),
+        )["responseSchema"]
+        self.assertEqual(root.max_items, 0)
         model = schema_cases()["la_faq"]
         wire = capture_sdk_body(model)["generationConfig"]["responseSchema"]
         self.assertEqual(wire["properties"]["components"]["properties"]["c0"]["properties"]["covered_source_fact_ids"]["max_items"], 0)

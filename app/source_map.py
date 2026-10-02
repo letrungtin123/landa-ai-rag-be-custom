@@ -661,6 +661,29 @@ def build_course_architect_context(
         ]} if is_v2 else {}),
     }
     base_text = json.dumps(base, ensure_ascii=False, separators=(",", ":"))
+    uncompressed_context_chars = len(base_text)
+    hierarchy_encoding = "objects"
+    if is_v2 and len(base_text) > max_chars:
+        # Lossless transport compaction only: repeated JSON field names can
+        # outweigh the actual hierarchy for heading-rich documents. Preserve
+        # every row, value, order and canonical ID; never prune inventory to
+        # fit. The stored Source Map and allocation authority remain untouched.
+        hierarchy = dict(hierarchy)
+        for key in ("sections", "concepts"):
+            rows = hierarchy[key]
+            columns = list(rows[0]) if rows else []
+            hierarchy[key] = {
+                "columns": columns,
+                "rows": [[row[column] for column in columns] for row in rows],
+            }
+        hierarchy_encoding = "columnar-v1"
+        hierarchy["hierarchy_encoding"] = hierarchy_encoding
+        hierarchy["hierarchy_row_contract"] = (
+            "sections and concepts rows use their columns in order; "
+            "all values and IDs are unchanged, nulls are explicit."
+        )
+        base = {**base, **hierarchy}
+        base_text = json.dumps(base, ensure_ascii=False, separators=(",", ":"))
     diagnostics = {
         "source_total_facts": total_fact_count,
         "source_total_sections": int(coverage.get("section_count") or 0),
@@ -668,6 +691,8 @@ def build_course_architect_context(
         "source_map_complete": bool(coverage.get("fact_scope_complete")) and bool(coverage.get("section_scope_complete")),
         "architect_context_mode": "evidence_scope" if is_v2 else "hierarchical",
         "architect_context_size": len(base_text),
+        "architect_hierarchy_encoding": hierarchy_encoding,
+        "architect_uncompressed_context_chars": uncompressed_context_chars,
         "architect_detail_fact_count": 0,
         "source_evidence_scope_count": len(scope_descriptors),
         "architect_scope_descriptor_count": len(scope_descriptors),

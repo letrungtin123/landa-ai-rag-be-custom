@@ -1,11 +1,13 @@
 """Small prompt contracts; no provider, retrieval or acceptance policy here."""
 from typing import Any, Literal
+import re
+import unicodedata
 
 from app.workflows.contracts import WorkflowFailure
 
 ARCHITECT_POLICY_MAX_CHARS = 12_000
 LESSON_LANGUAGE_POLICY_VERSION = "lesson-language-1"
-LESSON_INSTRUCTIONAL_POLICY_VERSION = "evidence-teaching-3"
+LESSON_INSTRUCTIONAL_POLICY_VERSION = "evidence-teaching-4"
 
 
 def lesson_instructional_quality_policy() -> str:
@@ -19,6 +21,8 @@ def lesson_instructional_quality_policy() -> str:
         "For each selected FAQ, create 2-3 useful, distinct clarification questions about distinctions, conditions, decisions or cautions taught here. No verbatim paragraph copies or generic filler. Put FAQ last. Do not force unsupported exceptions or explanations of why when the source states only what.",
         "A problem must address its mapped objectives, not just an easy neighbouring definition. For procedural/application objectives use a source-supported decision or clearly labelled instructional calculation using the source rule. Do not present a hypothetical example as an observed source event. Use plausible distinct distractors, avoid absurd giveaways and do not always place the correct option first.",
         "Match the learner action, not merely the topic: calculation objectives require applying the evidenced formula; analysis objectives require distinguishing relevant conditions; identification objectives may use recall. Feedback must explain why the answer follows from what was taught. When evidence cannot support the required action, disclose the local limitation rather than inventing a rule or silently substituting a vocabulary question.",
+        "For calculation practice, teach one worked example using the source formula and explicitly hypothetical inputs, then ask the learner to compute with another set of inputs if an approved problem is available. If no problem is selected, include a short self-check and explained answer inside the existing HTML; never add a component outside the plan. Avoid disputed source boundary values. Analysis and selection practice must require a justified choice from the available evidence, not merely repeat a definition.",
+        "Before finalizing, check each assigned fact against an actual teaching paragraph, step or table row, not merely its ID in coverage metadata. Preserve essential qualifiers and list members. Do not place internal fact IDs such as p5-f2 or component/block IDs in learner-facing text; keep IDs only in the required structured metadata. Use source page numbers for learner-facing attribution when available. Give activities accurate names; sortable is ordering practice, not crossword.",
         "Sortable uses only explicit source order. Diagram distinguishes membership/hierarchy from temporal/causal edges; co-occurrence alone does not establish causation. Crossword uses only source-defined terms with accurate clues; spelling normalization must not change the term's meaning.",
         "Do not ask learners to inspect an absent image, video or unspecified Scenario 1-4. Use the available textual scenario instead where sufficient; otherwise state the local missing evidence briefly without inventing its contents. Missing optional illustrative material must not turn usable teaching into an empty lesson.",
         "Source contradictions must not become unambiguous quiz answers: label the specific uncertainty for review and teach the undisputed material. Never silently choose a disputed threshold or invent a resolution.",
@@ -39,6 +43,19 @@ _COMPONENT_PURPOSES = {
 
 def _ids(value: Any) -> list[str]:
     return list(dict.fromkeys(item for item in value if isinstance(item, str) and item)) if isinstance(value, list) else []
+
+
+def instructional_action_intents(text: str) -> list[str]:
+    """Conservative EN/VI lexical hints, not a cognitive/psychometric score."""
+    folded = unicodedata.normalize("NFD", text.casefold().replace("đ", "d"))
+    folded = "".join(c for c in folded if unicodedata.category(c) != "Mn")
+    patterns = {
+        "calculation": r"\b(?:calculate|compute|tinh toan|tinh diem)\b",
+        "analysis": r"\b(?:analyse|analyze|phan tich)\b",
+        "selection": r"\b(?:select|choose|lua chon|chon bien phap)\b",
+        "procedure": r"\b(?:perform|thuc hien)\b",
+    }
+    return [name for name, pattern in patterns.items() if re.search(pattern, folded)]
 
 
 def component_instructional_brief(expected: dict[str, Any]) -> dict[str, Any]:
@@ -68,6 +85,9 @@ def component_instructional_brief(expected: dict[str, Any]) -> dict[str, Any]:
             "type": kind,
             "objective_binding_origin": origin,
             "local_objective_refs": [ref for ref in refs if ref in valid_refs],
+            "objective_actions": [{"objective_ref": ref,
+                                   "actions": instructional_action_intents(objectives[int(ref[3:]) - 1])}
+                                  for ref in refs if ref in valid_refs],
             "unresolved_objective_ref_count": sum(ref not in valid_refs for ref in refs),
             "owned_fact_count": len(_ids(plan.get("source_fact_ids"))),
             "supporting_fact_count": len(_ids(plan.get("supporting_evidence_fact_ids"))),
@@ -76,6 +96,7 @@ def component_instructional_brief(expected: dict[str, Any]) -> dict[str, Any]:
         })
     return {"version": LESSON_INSTRUCTIONAL_POLICY_VERSION,
             "authority": "read_only_approved_plan",
+            "unit_action_hints": instructional_action_intents(str(expected.get("unit_title") or "") + " " + str(expected.get("unit_purpose") or "")),
             "objective_reference_rule": "lo_N addresses item N in lesson_learning_objectives; never assign missing links yourself.",
             "coverage_rule": "Canonical ownership and declared coverage are contract metadata, not proof of semantic completeness. Keep them unchanged; actually teach the owned facts. Reinforcement does not replace HTML teaching.",
             "components": components}

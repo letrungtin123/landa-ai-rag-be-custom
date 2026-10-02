@@ -58,14 +58,18 @@ class StagedLessonProviderBoundaryTests(unittest.TestCase):
             for selected in (["html"], ["html", "problem", "la_faq"]):
                 model = build_staged_lesson_content_response_model(selected, payload_only=repair)
                 wire = models._GenerateContentConfig_to_mldev(client._api_client, types.GenerateContentConfig(response_schema=model))["responseSchema"]
-                component = wire["properties"]["components"].items
+                component = wire.properties["components"].items
                 semantic = component.properties["semantic_content"]
-                self.assertEqual(set(semantic.properties), {"heading", "paragraphs", "bullet_points", "ordered_steps", "warnings", "comparison_rows"})
-                self.assertIn("paragraphs", semantic.required)
-                self.assertEqual(semantic.properties["paragraphs"].min_items, 1)
-                for key in ("paragraphs", "bullet_points", "ordered_steps", "warnings"):
-                    self.assertEqual(semantic.properties[key].items.type, types.Type.STRING)
-                self.assertEqual(set(semantic.properties["comparison_rows"].items.required), {"label", "value"})
+                self.assertEqual(set(semantic.properties), {"sections"})
+                self.assertEqual(semantic.required, ["sections"])
+                # One writer shape only, no format choice or legacy arrays.
+                sections = semantic.properties["sections"]
+                self.assertEqual(sections.type, types.Type.ARRAY)
+                self.assertFalse(sections.nullable)
+                self.assertEqual(set(sections.items.properties), {"heading", "learning_block_ids", "blocks"})
+                self.assertEqual(sections.items.properties["blocks"].items.properties["kind"].type, types.Type.STRING)
+                self.assertEqual(sections.items.properties["blocks"].items.properties["items"].items.type, types.Type.STRING)
+                self.assertEqual(set(sections.items.properties["blocks"].items.properties["rows"].items.required), {"label", "value"})
                 if selected == ["html"]:
                     self.assertIn("semantic_content", component.required)
                 self.assertTrue(staged_response_schema_diagnostics(model)["schema_valid"])
@@ -101,7 +105,7 @@ class StagedLessonProviderBoundaryTests(unittest.TestCase):
             if not repaired:
                 event = next(line for line in logs.output if '"stage": "staged_repair_revalidation"' in line)
                 self.assertIn("semantic_shape_reason", event)
-                self.assertIn("non-empty object", event)
+                self.assertIn("Ordered content requires 1-12 sections", event)
 
     @staticmethod
     def payloads() -> list[dict]:
@@ -154,7 +158,7 @@ class StagedLessonProviderBoundaryTests(unittest.TestCase):
         client = genai.Client(api_key="test-key")
         response_model = build_staged_lesson_content_response_model(["problem", "la_faq", "la_sortable"])
         wire = models._GenerateContentConfig_to_mldev(client._api_client, types.GenerateContentConfig(response_schema=response_model))["responseSchema"]
-        component = wire["properties"]["components"].items
+        component = wire.properties["components"].items
         self.assertEqual(set(component.properties["type"].enum), {"problem", "la_faq", "la_sortable"})
         self.assertEqual(set(component.properties["choices"].items.required), {"text", "correct"})
         self.assertEqual(set(component.properties["items"].items.properties), {"question", "answer", "text"})
@@ -225,8 +229,8 @@ class StagedLessonProviderBoundaryTests(unittest.TestCase):
             model = build_staged_lesson_content_response_model(types_, payload_only=True)
             client = genai.Client(api_key="test-key")
             wire = models._GenerateContentConfig_to_mldev(client._api_client, types.GenerateContentConfig(response_schema=model))["responseSchema"]
-            self.assertEqual(set(wire["properties"]), {"components"})
-            fields = wire["properties"]["components"].items.properties
+            self.assertEqual(set(wire.properties), {"components"})
+            fields = wire.properties["components"].items.properties
             self.assertIn("component_index", fields)
             for key in ("type", "component_plan_id", "source_fact_ids", "covered_source_fact_ids", "supporting_evidence_fact_ids"):
                 self.assertNotIn(key, fields)
@@ -345,11 +349,12 @@ class StagedLessonProviderBoundaryTests(unittest.TestCase):
         self.assertTrue(fixture["chapter"]["supporting_only_assessment"]["supporting_scope_ids"])
 
     def test_installed_sdk_reproduces_schema_no_text_defect_without_network(self) -> None:
-        with self.assertRaises(TypeError):
-            types.GenerateContentResponse._from_response(
-                response={"candidates": []},
-                kwargs={"config": {"response_schema": types.Schema(type=types.Type.OBJECT)}},
-            )
+        response = types.GenerateContentResponse._from_response(
+            response={"candidates": []},
+            kwargs={"config": {"response_schema": types.Schema(type=types.Type.OBJECT)}},
+        )
+        self.assertIsNone(response.parsed)
+        self.assertIsNone(response.text)
 
     def test_typed_stage_two_model_serializes_and_handles_empty_candidates_without_type_error(self) -> None:
         response_model = build_staged_lesson_content_response_model(["html", "problem"])
@@ -383,7 +388,7 @@ class StagedLessonProviderBoundaryTests(unittest.TestCase):
             ),
         )
         root = payload["responseSchema"]
-        component = root["properties"]["components"].items
+        component = root.properties["components"].items
         for field in (
             "choices", "options", "items", "ordered_items", "steps", "words", "nodes", "edges",
         ):
@@ -418,7 +423,7 @@ class StagedLessonProviderBoundaryTests(unittest.TestCase):
                         response_schema=response_model,
                     ),
                 )
-                component = payload["responseSchema"]["properties"]["components"].items
+                component = payload["responseSchema"].properties["components"].items
                 for field in array_fields:
                     array_schema = component.properties[field]
                     self.assertEqual(array_schema.type, types.Type.ARRAY, field)

@@ -230,9 +230,201 @@ class AssessmentIntentRepairTests(unittest.TestCase):
         self.assertIn('responseSchema', payload)
 
 
+def missing_check_fixture(intent='introduction', facts=415):
+    candidate, source_map, manifest = fixture(facts)
+    unit_of(candidate)['learning_blocks'].pop()
+    unit_of(candidate)['learning_blocks'][0]['intent'] = intent
+    return candidate, source_map, manifest
+
+
+def missing_check_payload(targets):
+    patches = []
+    for target in targets:
+        selections = []
+        for objective in target['allowed_objective_ids']:
+            option = next(c for c in target['assessment_plan_candidates'] if c['objective_ref'] == objective)
+            selections.append({
+                'objective_ref': objective, 'decision': 'SELECT',
+                'unit_path': option['unit_path'], 'teaching_block_id': option['teaching_block_id'],
+                **({'intent': 'concept_explanation'} if option.get('allowed_intents') else {}),
+            })
+        patches.append({'path': target['path'], 'operation': 'select_assessment_teaching_alignment',
+                        'selections': selections})
+    return {'patches': patches}
+
+
+class MissingCheckIntentRepairTests(unittest.TestCase):
+    def test_missing_check_requires_explicit_semantic_resolution_not_automatic_relabel(self):
+        for intent in ['introduction', 'practice', 'reflection']:
+            with self.subTest(intent=intent):
+                candidate, source_map, _ = missing_check_fixture(intent)
+                baseline = copy.deepcopy(candidate)
+                compiled = compile_v5_assessment_plan(candidate)
+                self.assertEqual(compiled.status, 'NEEDS_SEMANTIC_RESOLUTION')
+                self.assertTrue(all(i.code == 'ASSESSMENT_SEMANTIC_SELECTION_REQUIRED' for i in compiled.issues))
+                self.assertTrue(all(d['intent_repair_candidate_count'] == 1 for d in compiled.objective_diagnostics))
+                self.assertEqual(candidate, baseline)
+                self.assertEqual(unit_of(compiled.blueprint)['learning_blocks'][0]['intent'], intent)
+                targets = targets_for(candidate, source_map)
+                self.assertEqual(targets[0]['path'], 'chapter_1.lesson_1')
+                self.assertTrue(all(c['allowed_intents'] for c in targets[0]['assessment_plan_candidates']))
+                direct_selections = {(p, ref): (options[0].unit_path, options[0].block_id)
+                                     for (p, ref), options in compiled.candidates.items()}
+                self.assertEqual(compile_v5_assessment_plan(candidate, selections=direct_selections).status, 'TERMINAL_GAP')
+
+    def test_delta_revalidates_preserves_provenance_and_allocates_once(self):
+        for facts in [371, 415]:
+            with self.subTest(facts=facts):
+                candidate, source_map, manifest = missing_check_fixture(facts=facts)
+                baseline = copy.deepcopy(candidate)
+                targets = targets_for(candidate, source_map)
+                repaired = apply_course_architecture_repair_patches(candidate, targets, missing_check_payload(targets))
+                self.assertEqual(candidate, baseline)
+                teaching, check = unit_of(repaired)['learning_blocks']
+                expected = dict(unit_of(baseline)['learning_blocks'][0], intent='concept_explanation')
+                self.assertEqual(teaching, expected)
+                self.assertEqual(check['intent'], 'knowledge_check')
+                self.assertEqual(check['primary_evidence_scope_ids'], [])
+                self.assertEqual(set(check['supporting_evidence_scope_ids']), set(teaching['primary_evidence_scope_ids']))
+                self.assertFalse(check.get('source_fact_ids'))
+                self.assertEqual(repaired['chapters'][1:], baseline['chapters'][1:])
+                self.assertEqual(compile_v5_assessment_plan(repaired).status, 'READY')
+                self.assertFalse(validate_course_architecture_evidence_scope(repaired, source_map).errors)
+                self.assertFalse(validate_v5_instructional_coherence(repaired).errors)
+                allocation = allocate_source_map_architecture_facts(repaired, source_map, manifest)['source_fact_allocation']
+                self.assertTrue(allocation['complete'])
+                self.assertEqual(allocation['allocated_count'], facts)
+                self.assertEqual(allocation['unallocated'], [])
+                self.assertEqual(len({a['fact_id'] for a in allocation['allocations']}), facts)
+
+    def test_other_missing_prerequisites_remain_terminal(self):
+        for field, value in [('primary_evidence_scope_ids', []), ('concept_ids', []),
+                             ('source_refs', []), ('intent', 'unknown'), ('intent', 'media_reference'), ('id', '')]:
+            with self.subTest(field=field, value=value):
+                candidate, _, _ = missing_check_fixture()
+                unit_of(candidate)['learning_blocks'][0][field] = value
+                self.assertEqual(compile_v5_assessment_plan(candidate).status, 'TERMINAL_GAP')
+        candidate, _, _ = missing_check_fixture()
+        unit_of(candidate)['learning_objective_refs'] = []
+        unit_of(candidate)['learning_blocks'][0]['learning_objective_refs'] = []
+        self.assertEqual(compile_v5_assessment_plan(candidate).status, 'TERMINAL_GAP')
+
+    def test_valid_anchor_preferred_without_extra_repair(self):
+        candidate, _, _ = missing_check_fixture()
+        unit_of(candidate)['learning_blocks'][0]['intent'] = 'concept_explanation'
+        compiled = compile_v5_assessment_plan(candidate)
+        self.assertEqual(compiled.status, 'READY')
+        self.assertFalse(compiled.candidates)
+        self.assertEqual(len(unit_of(compiled.blueprint)['learning_blocks']), 2)
+
+    def test_multiple_candidates_select_exact_unit_without_mutating_others(self):
+        candidate, source_map, manifest = missing_check_fixture('practice')
+        lesson = candidate['chapters'][0]['lessons'][0]
+        first = unit_of(candidate)
+        second = copy.deepcopy(first)
+        second_block = second['learning_blocks'][0]
+        second_block.update(id='reflection_owner', intent='reflection')
+        scopes = first['learning_blocks'][0]['primary_evidence_scope_ids']
+        self.assertGreater(len(scopes), 1)
+        second_block['primary_evidence_scope_ids'] = scopes[1:]
+        first['learning_blocks'][0]['primary_evidence_scope_ids'] = scopes[:1]
+        lesson['units'].append(second)
+        baseline = copy.deepcopy(candidate)
+        compiled = compile_v5_assessment_plan(candidate)
+        self.assertEqual(compiled.status, 'NEEDS_SEMANTIC_RESOLUTION')
+        self.assertTrue(all(len(options) == 2 for options in compiled.candidates.values()))
+        targets = targets_for(candidate, source_map)
+        payload = missing_check_payload(targets)
+        for selection in payload['patches'][0]['selections']:
+            selection.update(unit_path='chapter_1.lesson_1.unit_2', teaching_block_id='reflection_owner')
+        repaired = apply_course_architecture_repair_patches(candidate, targets, payload)
+        self.assertEqual(unit_of(repaired), unit_of(baseline))
+        self.assertEqual(candidate, baseline)
+        selected_blocks = repaired['chapters'][0]['lessons'][0]['units'][1]['learning_blocks']
+        self.assertEqual([b['intent'] for b in selected_blocks], ['concept_explanation', 'knowledge_check'])
+        self.assertEqual(selected_blocks[0], dict(second_block, intent='concept_explanation'))
+        self.assertFalse(validate_course_architecture_evidence_scope(repaired, source_map).errors)
+        self.assertFalse(validate_v5_instructional_coherence(repaired).errors)
+        self.assertEqual(allocate_source_map_architecture_facts(repaired, source_map, manifest)
+                         ['source_fact_allocation']['allocated_count'], 415)
+
+    def test_ordinary_missing_check_selection_cannot_change_intent(self):
+        candidate, source_map, _ = missing_check_fixture('concept_explanation')
+        unit_of(candidate)['learning_blocks'][0]['learning_objective_refs'] = []
+        targets = targets_for(candidate, source_map)
+        payload = missing_check_payload(targets)
+        self.assertTrue(all('intent' not in s for s in payload['patches'][0]['selections']))
+        repaired = apply_course_architecture_repair_patches(candidate, targets, payload)
+        self.assertEqual(compile_v5_assessment_plan(repaired).status, 'READY')
+        payload['patches'][0]['selections'][0]['intent'] = 'definition'
+        with self.assertRaises(WorkflowFailure) as caught:
+            apply_course_architecture_repair_patches(candidate, targets, payload)
+        self.assertEqual(caught.exception.internal_code, 'ARCH_REPAIR_SCOPE_VIOLATION')
+
+    def test_invalid_selections_are_transactional(self):
+        candidate, source_map, _ = missing_check_fixture()
+        baseline = copy.deepcopy(candidate)
+        targets = targets_for(candidate, source_map)
+        for case in ['missing_intent', 'bad_intent', 'conflicting_intent', 'wrong_block',
+                     'wrong_unit', 'wrong_objective', 'provenance', 'no_match']:
+            with self.subTest(case=case):
+                payload = missing_check_payload(targets)
+                selection = payload['patches'][0]['selections'][0]
+                if case == 'missing_intent':
+                    selection.pop('intent')
+                elif case == 'bad_intent':
+                    selection['intent'] = 'knowledge_check'
+                elif case == 'conflicting_intent':
+                    payload['patches'][0]['selections'][1]['intent'] = 'definition'
+                elif case == 'wrong_block':
+                    selection['teaching_block_id'] = 'unapproved'
+                elif case == 'wrong_unit':
+                    selection['unit_path'] = 'chapter_2.lesson_1.unit_1'
+                elif case == 'wrong_objective':
+                    selection['objective_ref'] = 'lo_99'
+                elif case == 'provenance':
+                    selection['primary_evidence_scope_ids'] = ['invented']
+                else:
+                    payload['patches'][0]['selections'][0] = {'objective_ref': selection['objective_ref'], 'decision': 'NO_MATCH'}
+                with self.assertRaises(WorkflowFailure) as caught:
+                    apply_course_architecture_repair_patches(candidate, targets, payload)
+                if 'intent' in case:
+                    self.assertEqual(caught.exception.internal_code, 'ARCH_REPAIR_INVALID_SEMANTIC_INTENT')
+                if case == 'no_match':
+                    self.assertEqual(caught.exception.internal_code, 'ARCH_REPAIR_ASSESSMENT_NO_MATCH')
+                self.assertEqual(candidate, baseline)
+
+    def test_candidate_fingerprint_rechecks_source_and_instructional_descriptor(self):
+        for field, value in [('source_refs', ['different_source']), ('content', {'purpose': 'Different purpose'})]:
+            with self.subTest(field=field):
+                candidate, source_map, _ = missing_check_fixture()
+                targets = targets_for(candidate, source_map)
+                unit_of(candidate)['learning_blocks'][0][field] = value
+                baseline = copy.deepcopy(candidate)
+                with self.assertRaises(WorkflowFailure):
+                    apply_course_architecture_repair_patches(candidate, targets, missing_check_payload(targets))
+                self.assertEqual(candidate, baseline)
+
+    def test_selection_schema_and_snapshot_only_expose_bounded_semantic_authority(self):
+        candidate, source_map, _ = missing_check_fixture()
+        target = targets_for(candidate, source_map)[0]
+        snapshot = _semantic_delta_target_snapshot(candidate['chapters'][0]['lessons'][0], target)
+        self.assertTrue(all(c.get('allowed_intents') for c in snapshot['assessment_plan_candidates']))
+        schema = build_v5_semantic_delta_repair_response_schema({'select_assessment_teaching_alignment'})
+        selection = schema.properties['patches'].items.properties['selections'].items
+        self.assertNotIn('intent', selection.required)
+        self.assertEqual(len(selection.properties['intent'].enum), 8)
+        self.assertNotIn('source_fact_ids', selection.properties)
+        client = genai.Client(api_key='test-key')
+        payload = models._GenerateContentConfig_to_mldev(client._api_client,
+            types.GenerateContentConfig(response_mime_type='application/json', response_schema=schema))
+        self.assertIn('responseSchema', payload)
+
+
 class AssessmentIntentWorkflowTests(unittest.IsolatedAsyncioTestCase):
     async def run_fixture(self, mode):
-        candidate, source_map, manifest = fixture()
+        missing = mode.startswith('missing_')
+        candidate, source_map, manifest = missing_check_fixture(facts=371) if missing else fixture()
         if mode == 'valid':
             unit_of(candidate)['learning_blocks'][0]['intent'] = 'concept_explanation'
         validations = []
@@ -249,9 +441,10 @@ class AssessmentIntentWorkflowTests(unittest.IsolatedAsyncioTestCase):
             return WorkflowValidationResult(issues, compiled.metrics)
 
         async def repair(blueprint, targets, source):
-            if mode == 'no_progress':
+            if mode in {'no_progress', 'missing_no_progress'}:
                 return WorkflowGenerationResult(copy.deepcopy(blueprint))
-            return WorkflowGenerationResult(apply_course_architecture_repair_patches(blueprint, targets, payload_for(targets)))
+            payload = missing_check_payload(targets) if missing else payload_for(targets)
+            return WorkflowGenerationResult(apply_course_architecture_repair_patches(blueprint, targets, payload))
 
         provider = AsyncMock(side_effect=repair)
         callbacks = CourseArchitectureWorkflowCallbacks(
@@ -261,7 +454,7 @@ class AssessmentIntentWorkflowTests(unittest.IsolatedAsyncioTestCase):
             prepare_repair_targets=_v5_prepare_semantic_repair_targets,
         )
         self.assertEqual(V5_MAX_PROVIDER_REPAIR_CALLS, 3)
-        if mode == 'no_progress':
+        if mode in {'no_progress', 'missing_no_progress'}:
             with self.assertRaises(WorkflowFailure) as raised:
                 await run_course_architecture_workflow(callbacks, request_context={}, max_repair_attempts=2)
             self.assertEqual(raised.exception.internal_code, 'ARCH_REPAIR_NO_PROGRESS')
@@ -281,3 +474,9 @@ class AssessmentIntentWorkflowTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_no_progress_remains_bounded_and_cannot_finalize(self):
         await self.run_fixture('no_progress')
+
+    async def test_missing_check_reuses_one_bounded_repair_call(self):
+        await self.run_fixture('missing_repair')
+
+    async def test_missing_check_no_progress_cannot_finalize(self):
+        await self.run_fixture('missing_no_progress')

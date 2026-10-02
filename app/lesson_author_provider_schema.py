@@ -52,7 +52,13 @@ def staged_provider_response_model(server_model: type[BaseModel]) -> tuple[type[
     class StagedProviderWire(server_model):
         @classmethod
         def model_json_schema(cls, *args: Any, **kwargs: Any) -> dict[str, Any]:
-            return _project_schema(super().model_json_schema(*args, **kwargs))[0]
+            projected = _project_schema(super().model_json_schema(*args, **kwargs))[0]
+            # Dynamic subclasses have a different root title under newer
+            # Pydantic versions. Keep the server model title so the provider
+            # projection changes only unsupported value bounds.
+            if "title" in projected:
+                projected["title"] = server_model.__name__
+            return projected
 
     return StagedProviderWire, {
         "schema_projection_version": STAGED_SCHEMA_PROJECTION_VERSION,

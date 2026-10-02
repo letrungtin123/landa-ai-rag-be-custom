@@ -15,7 +15,7 @@ from datetime import datetime, timezone
 from enum import Enum
 from pathlib import Path
 from time import perf_counter
-from typing import Annotated, Any, Callable, Literal
+from typing import Annotated, Any, Callable, ClassVar, Literal
 from uuid import UUID
 
 import asyncpg
@@ -66,6 +66,9 @@ from app.lesson_prompt_policy import (
     bounded_architect_policy, lesson_output_language_policy, lesson_instructional_quality_policy,
     component_instructional_brief, instructional_contract_review_signals,
 )
+from app.lesson_content_observation import observe_lesson_content
+from app.ordered_learning_content import flatten_ordered_content, bind_provider_semantic_versions, semantic_shape_diagnostics, ProviderSemanticVersionError
+from app.media_brief import build_media_brief
 from app.source_chapter_policy import resolve_source_chapter_policy, bind_source_chapters
 from app.component_capabilities import ComponentCapabilities, validate_instance_plan
 from app.instructional_opportunities import compile_evidence_treatments, VERSION as EVIDENCE_TREATMENT_VERSION
@@ -75,14 +78,46 @@ from app.assessment_planner import (
     assessment_plan_fingerprint,
     compile_v5_assessment_plan,
     evaluate_assessment_teaching_anchor,
+    materialize_assessment_source_refs,
+    preserve_assessment_visual_support,
 )
+from app.assessment_selection_contract import build_assessment_selection_contract, VERSION as ASSESSMENT_SELECTION_CONTRACT_VERSION
 from app.lesson_quality import (
     duplicate_validation_result,
+    instructional_plan_validation_result,
     pedagogical_validation_result,
 )
 from app.lesson_author_checkpoint import (
     ChapterCheckpointUnit, assemble_checkpoint_chapter,
     checkpoint_expected_units, select_checkpoint_unit,
+)
+from app.lesson_author_orchestration_v2 import (
+    CourseSkeletonV2,
+    OrchestrationContractError,
+    canonical_hash as orchestration_v2_canonical_hash,
+)
+from app.lesson_author_orchestration_v2_provider import (
+    CHAPTER_SHARD_PROVIDER_SCHEMA_METADATA,
+    COURSE_SKELETON_PROVIDER_SCHEMA_METADATA,
+    ChapterShardDraftV2,
+    ChapterShardProviderWireV2,
+    ChapterShardPlanV2,
+    CourseSkeletonDraftV2,
+    CourseSkeletonProviderWireV2,
+    SourceOutlineAuthorityV2,
+    SourceOutlineChapterV2,
+    SourceScopeCatalogEntryV2,
+    SourceSnapshotFactV2,
+    UnitGenerationContractV2,
+    bind_chapter_shard_v2,
+    bind_course_skeleton_v2,
+    chapter_shard_prompt_v2,
+    fallback_chapter_shard_draft_v2,
+    fallback_course_skeleton_draft_v2,
+    parse_chapter_shard_draft_v2,
+    skeleton_prompt_v2,
+    unit_contract_manifest_v2,
+    unit_contract_v5_architecture_v2,
 )
 from app.lesson_author_provider_schema import staged_provider_response_model
 from app.workflows.contracts import (
@@ -115,6 +150,12 @@ async def safe_checkpoint_request_validation(request: Request, error: RequestVal
         # the Node-supplied provider key and private checkpoint content.
         return JSONResponse(status_code=422, content={"detail": {
             "code": "CHAPTER_CHECKPOINT_CONTRACT_INVALID", "message": "Invalid chapter checkpoint request.",
+        }})
+    if request.url.path.startswith("/v1/lesson-author/orchestration-v2/"):
+        # These requests contain provider credentials and private source facts.
+        # Never let FastAPI echo the rejected input in a validation response.
+        return JSONResponse(status_code=422, content={"detail": {
+            "code": "ORCHESTRATION_V2_CONTRACT_INVALID", "message": "Invalid orchestration request.",
         }})
     return await request_validation_exception_handler(request, error)
 
@@ -634,6 +675,89 @@ class RagLessonAuthorBlueprintRequest(RagChatRequest):
     # Node-resolved CMS ID, retained only for cross-service observability.
     # It is not used for authorisation or any database mutation in Python.
     course_id: str | None = Field(default=None, max_length=255)
+
+
+class RagLessonAuthorSourceSnapshotV2Request(RagChatRequest):
+    model_config = {"extra": "forbid"}
+    # Source paging is deterministic database work. It deliberately carries no
+    # tenant provider secret because this endpoint cannot call Gemini.
+    api_key: str = Field(default="source-snapshot-no-provider", repr=False)
+    contract_version: Literal[2] = 2
+    source_snapshot_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    cursor: dict[str, Any] | None = None
+    expected_source_revision: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    page_max_facts: int = Field(default=500, ge=1, le=500, strict=True)
+    page_max_bytes: int = Field(default=4_194_304, ge=1, le=4_194_304, strict=True)
+
+    @model_validator(mode="after")
+    def validate_source_snapshot_request(self) -> "RagLessonAuthorSourceSnapshotV2Request":
+        if self.target != "lesson_author" or not self.kb_id or not self.correlation_id or not self.source_documents:
+            raise ValueError("ORCHESTRATION_V2_SOURCE_REQUEST_INVALID")
+        if self.cursor is not None:
+            if set(self.cursor) != {"document_id", "chunk_no"}:
+                raise ValueError("ORCHESTRATION_V2_SOURCE_CURSOR_INVALID")
+            try:
+                UUID(str(self.cursor["document_id"]))
+            except (TypeError, ValueError, AttributeError) as error:
+                raise ValueError("ORCHESTRATION_V2_SOURCE_CURSOR_INVALID") from error
+            chunk_no = self.cursor["chunk_no"]
+            if isinstance(chunk_no, bool) or not isinstance(chunk_no, int) or chunk_no < 0:
+                raise ValueError("ORCHESTRATION_V2_SOURCE_CURSOR_INVALID")
+        return self
+
+
+class RagLessonAuthorCourseSkeletonV2Request(RagChatRequest):
+    model_config = {"extra": "forbid"}
+    contract_version: Literal[2] = 2
+    source_snapshot_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    scope_catalog: list[SourceScopeCatalogEntryV2] = Field(min_length=1, max_length=4096)
+    source_authority: SourceOutlineAuthorityV2
+    max_attempts: int = Field(default=2, ge=1, le=2)
+
+    @model_validator(mode="after")
+    def validate_course_skeleton_request(self) -> "RagLessonAuthorCourseSkeletonV2Request":
+        if self.target != "lesson_author" or not self.correlation_id:
+            raise ValueError("ORCHESTRATION_V2_SKELETON_REQUEST_INVALID")
+        scope_ids = [scope.scope_key for scope in self.scope_catalog]
+        if len(scope_ids) != len(set(scope_ids)):
+            raise ValueError("ORCHESTRATION_V2_SCOPE_CATALOG_INVALID")
+        return self
+
+
+class RagLessonAuthorChapterShardV2Request(RagChatRequest):
+    model_config = {"extra": "forbid"}
+    contract_version: Literal[2] = 2
+    skeleton: CourseSkeletonV2
+    shard_plan: ChapterShardPlanV2
+    source_facts: list[SourceSnapshotFactV2] = Field(min_length=1, max_length=100_000)
+    max_attempts: int = Field(default=2, ge=1, le=2)
+
+    @model_validator(mode="after")
+    def validate_chapter_shard_request(self) -> "RagLessonAuthorChapterShardV2Request":
+        if self.target != "lesson_author" or not self.correlation_id or self.locale != self.skeleton.locale:
+            raise ValueError("ORCHESTRATION_V2_CHAPTER_REQUEST_INVALID")
+        if self.shard_plan.chapter_key not in {chapter.chapter_key for chapter in self.skeleton.chapters}:
+            raise ValueError("ORCHESTRATION_V2_CHAPTER_REQUEST_INVALID")
+        return self
+
+
+class RagLessonAuthorUnitV2Request(RagChatRequest):
+    model_config = {"extra": "forbid"}
+    contract_version: Literal[2] = 2
+    unit_contract: UnitGenerationContractV2
+    max_attempts: int = Field(default=2, ge=1, le=2)
+    remaining_workflow_budget_ms: int = Field(ge=1, le=480_000, strict=True)
+    fallback_only: bool = Field(default=False, strict=True)
+
+    @model_validator(mode="after")
+    def validate_unit_request(self) -> "RagLessonAuthorUnitV2Request":
+        document_ids = {document.document_id for document in self.source_documents}
+        if (self.target != "lesson_author" or not self.correlation_id or not self.source_documents
+                or self.locale not in {"vi", "en"}
+                or self.contract_version != self.unit_contract.contract_version
+                or any(fact.document_id not in document_ids for fact in self.unit_contract.source_facts)):
+            raise ValueError("ORCHESTRATION_V2_UNIT_REQUEST_INVALID")
+        return self
 
 
 class RagIndexRequest(BaseModel):
@@ -1389,20 +1513,27 @@ async def generate_content(
         raise ValueError("response_schema requires JSON mode.")
     provider_timeout_ms = max(1, request_timeout_ms or settings.provider_request_timeout_ms)
 
+    model_id = model.strip().lower().split("/")[-1]
+    gemini_38 = model_id == "gemini-3.8-flash"
+
     def run() -> Any:
         client = genai.Client(
             api_key=safe_api_key,
             http_options=types.HttpOptions(timeout=provider_timeout_ms),
         )
-        config: dict[str, Any] = {
-            "temperature": settings.generation_temperature,
-            "max_output_tokens": max_output_tokens,
-        }
+        config: dict[str, Any] = {"max_output_tokens": max_output_tokens}
+        if gemini_38:
+            # Gemini 3.8 rejects legacy sampling parameters. Use its supported
+            # reasoning-level contract and deliberately ignore old
+            # include-thoughts-only configs supplied by legacy call sites.
+            config["thinking_config"] = {"thinking_level": settings.gemini_38_thinking_level}
+        else:
+            config["temperature"] = settings.generation_temperature
         if json_mode:
             config["response_mime_type"] = "application/json"
         if response_schema is not None:
             config["response_schema"] = response_schema
-        if thinking_config is not None:
+        if thinking_config is not None and not gemini_38:
             config["thinking_config"] = thinking_config
         return client.models.generate_content(model=model, contents=prompt, config=config)
 
@@ -1463,7 +1594,7 @@ async def generate_content(
     text = getattr(response, "text", "") or ""
     parsed = getattr(response, "parsed", None)
     if parsed is not None:
-        if isinstance(parsed, BaseModel):
+        if isinstance(parsed, BaseModel) and not getattr(response_schema, "retain_raw_provider_text", False):
             # Do not synthesize optional response fields from Pydantic defaults.
             # In particular, v4 Course Architect output must stay semantic-only
             # until the deterministic server allocator injects canonical facts.
@@ -2272,7 +2403,7 @@ def build_source_structure_context(
     authoritative_source_nodes: list[dict[str, Any]] = []
     source_structure_nodes: list[dict[str, Any]] = []
     outline_chars = 0
-    outline_complete = True
+    outline_display_truncated = False
     node_count = 0
     for document in documents:
         structure = document.get("structure") or {}
@@ -2320,13 +2451,14 @@ def build_source_structure_context(
         warnings.extend(str(item) for item in structure.get("warnings", []) if str(item).strip())
         outline = structure_outline(structure, max_chars=5000, locale=locale)
         if "... source structure truncated ..." in outline or "... cấu trúc nguồn đã được rút gọn ..." in outline:
-            outline_complete = False
+            outline_display_truncated = True
+            warnings.append("SOURCE_OUTLINE_TRUNCATED")
         if outline:
             name = str(document.get("document_name") or "Tài liệu nguồn")
             part = f"Tài liệu: {name}\n{outline}" if locale != "en" else f"Document: {name}\n{outline}"
             if outline_chars + len(part) > MAX_SOURCE_OUTLINE_CHARS:
                 warnings.append("SOURCE_OUTLINE_TRUNCATED")
-                outline_complete = False
+                outline_display_truncated = True
                 continue  # Keep inventory for every document even if display is full.
             outline_parts.append(part)
             outline_chars += len(part)
@@ -2340,6 +2472,7 @@ def build_source_structure_context(
     confidence = min(confidences) if confidences else None
     return {
         "outline": "\n\n".join(outline_parts),
+        "source_outline_display_truncated": outline_display_truncated,
         "structure_source": structure_source,
         "structure_confidence": round(confidence, 4) if confidence is not None else None,
         "structure_node_count": node_count,
@@ -2348,7 +2481,9 @@ def build_source_structure_context(
         "source_structure_warnings": list(dict.fromkeys(warnings))[:12],
         "authoritative_source_nodes": authoritative_source_nodes,
         "source_structure_nodes": source_structure_nodes,
-        "source_chapter_policy": resolve_source_chapter_policy(documents, outline_complete=outline_complete),
+        # All nodes above remain available to the global Source Map. A bounded
+        # display string is not the authority for source inventory completeness.
+        "source_chapter_policy": resolve_source_chapter_policy(documents),
     }
 
 
@@ -2743,7 +2878,8 @@ async def retrieve_chunks(
     blueprint_draft_supporting_fact_ids = lesson_author_blueprint_draft_supporting_fact_ids(request)
     blueprint_source_rows: list[dict[str, Any]] = []
     blueprint_source_truncated = False
-    if isinstance(request, RagLessonAuthorBlueprintRequest) or blueprint_draft_fact_ids or blueprint_draft_supporting_fact_ids:
+    if (isinstance(request, (RagLessonAuthorBlueprintRequest, RagLessonAuthorSourceSnapshotV2Request))
+            or blueprint_draft_fact_ids or blueprint_draft_supporting_fact_ids):
         blueprint_source_rows, blueprint_source_truncated = await load_lesson_author_blueprint_source_chunks(
             pool,
             request,
@@ -5372,27 +5508,24 @@ def enrich_lesson_author_blueprint_media_review(
                             for fact_id in unit.get("source_fact_ids", [])
                             if isinstance(fact_id, str) and str(fact_id).strip()
                         ]
-                        evidence_texts = [
-                            str(facts_by_id[fact_id].get("text") or "").strip()
-                            for fact_id in unit_fact_ids
-                            if fact_id in facts_by_id and str(facts_by_id[fact_id].get("text") or "").strip()
-                        ]
+                        owned_media_ids = set(unit_fact_ids)
+                        evidence_texts = [str(row.get("text") or "").strip()
+                                          for fact_id, row in facts_by_id.items() if fact_id in owned_media_ids]
                         if not evidence_texts:
                             status, reason_code = MEDIA_DECISION_SOURCE_GAP, "MEDIA_CANDIDATE_EVIDENCE_UNRESOLVED"
                         elif plan_capacity <= 0:
                             status, reason_code = MEDIA_DECISION_FAILED, "MEDIA_RECOMMENDATION_CAPACITY_EXCEEDED"
                         else:
-                            unit["media_plan"] = _media_plan_from_approved_evidence(
-                                unit_title=str(unit.get("title") or "").strip()[:180],
-                                media_type=media_type,
-                                evidence_texts=evidence_texts,
-                                locale=locale,
-                            )
-                            plan_capacity -= 1
-                            status, reason_code = MEDIA_DECISION_PROPOSED, (
-                                "PROCEDURE_VISUAL_CANDIDATE" if media_type == "video"
-                                else "RELATIONSHIP_OR_WARNING_VISUAL_CANDIDATE"
-                            )
+                            brief = build_media_brief(str(unit.get("title") or "").strip()[:180], media_type, evidence_texts, locale)
+                            if brief is None:
+                                status, reason_code = MEDIA_DECISION_SOURCE_GAP, "MEDIA_CANDIDATE_EVIDENCE_UNRESOLVED"
+                            else:
+                                unit["media_plan"] = brief
+                                plan_capacity -= 1
+                                status, reason_code = MEDIA_DECISION_PROPOSED, (
+                                    "PROCEDURE_VISUAL_CANDIDATE" if media_type == "video"
+                                    else "RELATIONSHIP_OR_WARNING_VISUAL_CANDIDATE"
+                                )
                 decisions.append({"unit_path": unit_path, "status": status, "reason_code": reason_code})
                 metrics[status] += 1
     enriched["media_review"] = {"version": MEDIA_REVIEW_VERSION, "decisions": decisions}
@@ -6141,6 +6274,10 @@ def semantic_learning_visible_text(value: Any) -> tuple[str, str | None]:
     """
     if not isinstance(value, dict) or not value:
         return "", "Semantic explanatory content must be a non-empty object."
+    try:
+        value = flatten_ordered_content(value)
+    except ValueError as exc:
+        return "", str(exc)
     visible: list[str] = []
     heading = value.get("heading")
     if heading is not None:
@@ -7102,6 +7239,19 @@ def build_lesson_author_unit_response_schema(
             ),
             properties={
                 "heading": string_schema("Optional explanatory heading."),
+                "version": types.Schema(type=types.Type.INTEGER, description="2 for ordered semantic sections."),
+                "sections": types.Schema(type=types.Type.ARRAY, items=types.Schema(type=types.Type.OBJECT, properties={
+                    "heading": string_schema("Local section heading."),
+                    "learning_block_ids": string_array_schema("Exact approved teaching group references."),
+                    "blocks": types.Schema(type=types.Type.ARRAY, items=types.Schema(type=types.Type.OBJECT, properties={
+                        "kind": string_schema("paragraph, task, warning, bullets, steps or table."),
+                        "text": string_schema("Paragraph, task or warning."),
+                        "items": string_array_schema("Bullet or step items."),
+                        "rows": types.Schema(type=types.Type.ARRAY, items=types.Schema(type=types.Type.OBJECT, properties={
+                            "label": string_schema("Row label."), "value": string_schema("Associated explanation."),
+                        })),
+                    })),
+                })),
                 "paragraphs": string_array_schema("Explanatory paragraphs."),
                 "bullet_points": string_array_schema("Key points."),
                 "ordered_steps": string_array_schema("Read-only procedure steps."),
@@ -7180,9 +7330,10 @@ def build_lesson_author_unit_response_schema(
     )
 
 
-STAGED_COMPONENT_CONTRACT_VERSION = "component-payload-2"
+STAGED_COMPONENT_CONTRACT_VERSION = "component-payload-4"
 STAGED_COMPONENT_REPAIR_CONTRACT_VERSION = "component-payload-delta-1"
-STAGED_COMPONENT_COVERAGE_REPAIR_CONTRACT_VERSION = "component-content-coverage-delta-1"
+STAGED_COMPONENT_COVERAGE_REPAIR_CONTRACT_VERSION = "component-content-coverage-delta-2"
+STAGED_MULTI_REPAIR_CONTRACT_VERSION = "component-repair-slots-1"
 STAGED_INSTANCE_OUTPUT_CONTRACT_VERSION = "component-instance-payload-1"
 STAGED_COMPONENT_PAYLOAD_FIELDS = {
     "html": {"semantic_content", "html"},
@@ -7204,6 +7355,19 @@ class StagedSemanticComparisonRow(BaseModel):
     value: str = Field(min_length=1, max_length=1000)
 
 
+class StagedOrderedBlock(BaseModel):
+    kind: Literal["paragraph", "bullets", "steps", "warning", "table", "task"]
+    text: str | None = None
+    items: list[str] = Field(default_factory=list)
+    rows: list[StagedSemanticComparisonRow] = Field(default_factory=list)
+
+
+class StagedOrderedSection(BaseModel):
+    heading: str = Field(min_length=1, max_length=240)
+    learning_block_ids: list[str] = Field(default_factory=list, max_length=24)
+    blocks: list[StagedOrderedBlock] = Field(min_length=1, max_length=12)
+
+
 class StagedSemanticContent(BaseModel):
     """Concrete SDK wire vocabulary; the existing renderer validator is authoritative.
 
@@ -7211,11 +7375,49 @@ class StagedSemanticContent(BaseModel):
     (unsupported by google-genai 1.0.0). Its arrays always retain typed items.
     """
     heading: str | None = Field(default=None, max_length=240)
-    paragraphs: list[Annotated[str, Field(min_length=1, max_length=2000)]] = Field(min_length=1, max_length=12)
+    paragraphs: list[Annotated[str, Field(min_length=1, max_length=2000)]] = Field(default_factory=list, max_length=12)
+    version: int | None = None
+    sections: list[StagedOrderedSection] = Field(default_factory=list, max_length=12)
     bullet_points: list[Annotated[str, Field(min_length=1, max_length=800)]] = Field(default_factory=list, max_length=20)
     ordered_steps: list[Annotated[str, Field(min_length=1, max_length=1000)]] = Field(default_factory=list, max_length=20)
     warnings: list[Annotated[str, Field(min_length=1, max_length=1000)]] = Field(default_factory=list, max_length=8)
     comparison_rows: list[StagedSemanticComparisonRow] = Field(default_factory=list, max_length=30)
+
+    @model_validator(mode="after")
+    def validate_renderable_shape(self):
+        _, failure = semantic_learning_visible_text(self.model_dump(exclude_none=True))
+        if failure:
+            raise ValueError(failure)
+        return self
+
+
+class StagedOrderedSemanticOutput(BaseModel):
+    """New-write-only model. Legacy readers deliberately use the old contract."""
+    version: int = 2
+    sections: list[StagedOrderedSection] = Field(min_length=1, max_length=12)
+
+    @classmethod
+    def __get_pydantic_json_schema__(cls, core_schema, handler):
+        schema = handler.resolve_ref_schema(handler(core_schema))
+        # Server-owned serialization marker; Gemini only designs sections.
+        schema.get("properties", {}).pop("version", None)
+        if "required" in schema:
+            schema["required"] = [key for key in schema["required"] if key != "version"]
+        return schema
+
+    @model_validator(mode="before")
+    @classmethod
+    def validate_writer_shape(cls, value):
+        if not isinstance(value, dict) or set(value) - {"version", "sections"}:
+            raise ValueError("Ordered writer accepts sections only.")
+        if "version" in value and (type(value["version"]) is not int or value["version"] != 2):
+            raise ValueError("Ordered writer version is server-owned.")
+        stamped = {**value, "version": 2}
+        _, failure = semantic_learning_visible_text(stamped)
+        if failure:
+            raise ValueError(failure)
+        # Before-validation injection survives exclude_unset=True serialization.
+        return stamped
 
 
 class StagedFaqItem(BaseModel):
@@ -7341,7 +7543,7 @@ def staged_component_payload_code(component: dict[str, Any]) -> str | None:
 def staged_component_contract_prompt(component_types: list[str]) -> str:
     """Only selected contracts; storage/XML/layout/IDs remain server-owned."""
     contracts = {
-        "html": "html: semantic_content is an object with at least one substantive explanatory paragraph; heading is optional nonempty text; paragraphs, bullet_points, ordered_steps and warnings are arrays of nonempty strings (never objects); comparison_rows is an array of {label: nonempty string,value: nonempty string}. Omit unused fields, never emit semantic_content={} or null for HTML. Other component types omit semantic_content entirely. Bounds: heading 240 chars; paragraphs 12 items/2000 chars each; bullet_points 20/800; ordered_steps 20/1000; warnings 8/1000; comparison_rows 30 rows, label 500/value 1000 chars. Explain approved evidence completely within these limits; do not silently omit facts to fit. No CSS/classes/scripts/assets. Server renders HTML.",
+        "html": 'html: use semantic_content={"sections":[{"heading":"Local topic","learning_block_ids":["exact approved learning block ID"],"blocks":[{"kind":"paragraph","text":"Substantive explanation"},{"kind":"table","rows":[{"label":"Source category","value":"Correct associated explanation"}]}]}]}. Preserve section and block order. Use kind paragraph/task/warning with text; bullets/steps with items (nonempty strings); table with rows ({label,value}). The server supplies version 2; do not emit version or any top-level heading, paragraphs, bullet_points, ordered_steps, warnings or comparison_rows. Only sections is permitted inside semantic_content. Omit inactive fields or leave arrays empty/text null. 1-12 sections, 1-12 blocks per section. Aggregate limits across ALL sections unchanged: paragraph+task 12/2000 chars, bullets 20/800, steps 20/1000, warnings 8/1000, table rows 30 (label500/value1000); headings240. Bind every approved teaching learning block to a section with substantive explanation, not only a title or list of names. Explain ALL members of named frameworks, including the last member. HTML must NEVER contain an FAQ / Frequently Asked Questions / Câu hỏi thường gặp / Hỏi đáp thường gặp section, repeated Q:/A: pairs, or details/summary FAQ markup. Convert source questions into ordinary explanatory teaching; only a selected la_faq component may contain FAQ content. Keep tables/checklists directly under their own heading. For source-backed Canvas/action plans add a task specifying what learners must produce and evidence-based completion criteria; do not invent company targets or pretend submissions are stored. No CSS/classes/scripts/assets, internal IDs in visible text, unsupported facts or fabricated examples. Server renders HTML; other component types omit semantic_content.',
         "problem": 'problem: explicit problem_type and question. multiple_choice/multiple_select: choices=[{"text":"answer text","correct":true},{"text":"distinct distractor","correct":false}], 2-6 distinct nonempty choices. multiple_choice has EXACTLY one correct; multiple_select at least one. dropdown: options=["answer","other"], 2-8 distinct strings, answer must exactly equal one option. short_text: nonempty answer. numerical: finite numeric answer as string. Include explanation grounded in taught evidence. Never omit correct or assume first choice is correct.',
         "la_faq": 'la_faq: items=[{"question":"anticipated question","answer":"source-grounded clarification"}], 2-8 distinct Q&A. Clarify conditions/exceptions/misconceptions, not repeat paragraphs. Place FAQ last in the unit.',
         "la_sortable": 'la_sortable: question_text plus items=[{"text":"first step"},{"text":"second step"},{"text":"third step"}], 3-10 distinct items in SOURCE-CORRECT order. Only approved ordering practice. Do not fabricate dependencies or turn an unordered list into a sequence.',
@@ -7357,6 +7559,7 @@ def build_staged_lesson_content_response_model(
     component_types: list[str] | None = None,
     *, payload_only: bool = False, expected_unit_title: str | None = None,
     coverage_repair: bool = False,
+    coverage_allowed_ids: list[str] | None = None,
 ) -> type[BaseModel]:
     """Build the Stage-2 typed response model for exactly the selected types.
 
@@ -7394,7 +7597,7 @@ def build_staged_lesson_content_response_model(
             # non-nullable model reference survives SDK 1.0.0 serialization;
             # dict[str, Any] previously became an unconstrained OBJECT and
             # encouraged empty HTML in both generation and repair.
-            "semantic_content": (StagedSemanticContent, ... if selected_types == {"html"} else None),
+            "semantic_content": (StagedOrderedSemanticOutput, ... if selected_types == {"html"} else None),
             "html": (str | None, ...),
         })
     # google-genai 1.0.0 drops ``items`` when it lowers a nullable array
@@ -7451,6 +7654,9 @@ def build_staged_lesson_content_response_model(
             # A checked content claim, never canonical ownership. Only explicitly
             # authorized coverage targets may emit this optional field.
             component_fields["covered_source_fact_ids"] = (list[str], Field(default_factory=list))
+            if coverage_allowed_ids:
+                allowed = Enum("StagedRepairCoverageReference", {f"F{i}": value for i, value in enumerate(dict.fromkeys(coverage_allowed_ids))}, type=str)
+                component_fields["covered_source_fact_ids"] = (list[allowed], Field(default_factory=list))
     component_name = ("StagedRepairPayload_" if payload_only else "StagedLessonComponent_") + "_".join(sorted(selected_types))
     component_model = create_model(component_name, **component_fields)
     if payload_only:
@@ -7462,6 +7668,87 @@ def build_staged_lesson_content_response_model(
         supporting_evidence_fact_ids=(list[str], ...),
         components=(list[component_model], ...),
     )
+
+
+class StagedMultiRepairResponse(BaseModel):
+    # SDK/Pydantic may silently ignore extra fields or collapse duplicate keys.
+    # This contract checks the original text locally; never log that text.
+    retain_raw_provider_text: ClassVar[bool] = True
+
+
+def build_staged_multi_repair_model(baseline: dict[str, Any], targets: list[int], coverage_targets: list[int]) -> type[BaseModel]:
+    """Required, separately typed addresses survive the SDK bounds projection.
+
+    Single-target/legacy repair contracts remain unchanged. No provider-owned
+    indices or union-of-types fields are needed for multi-component repair.
+    """
+    originals = baseline.get("components", [])
+    if (not targets or len(set(targets)) != len(targets)
+            or any(type(i) is not int or not 0 <= i < len(originals) for i in targets)
+            or len(set(coverage_targets)) != len(coverage_targets) or not set(coverage_targets) <= set(targets)):
+        raise LessonAuthorProposalValidationError("COMPONENT_REPAIR_TARGET_INVALID")
+    slots = {}
+    for index in targets:
+        original = originals[index]
+        kind = original["type"]
+        if kind not in STAGED_COMPONENT_PAYLOAD_FIELDS:
+            raise LessonAuthorProposalValidationError("COMPONENT_REPAIR_TARGET_INVALID")
+        envelope = build_staged_lesson_content_response_model(
+            [kind], payload_only=True, coverage_repair=index in coverage_targets,
+            coverage_allowed_ids=original.get("source_fact_ids", []))
+        component = envelope.model_fields["components"].annotation.__args__[0]
+        fields = {k: (f.annotation, deepcopy(f)) for k, f in component.model_fields.items() if k != "component_index"}
+        if index in coverage_targets:
+            fields["covered_source_fact_ids"] = (component.model_fields["covered_source_fact_ids"].annotation, ...)
+        slots[f"c{index}"] = (create_model(f"StagedRepairSlot{index}_{kind}", **fields), ...)
+    return create_model("StagedMultiRepair", __base__=StagedMultiRepairResponse,
+                        components=(create_model("StagedRepairSlots", **slots), ...))
+
+
+def decode_staged_multi_repair(text: str, baseline: dict[str, Any], targets: list[int],
+                               coverage_targets: list[int], diagnostics: dict[str, Any]) -> dict[str, Any]:
+    """Decode exact slots before atomic merge; diagnostics never expose values."""
+    expected = {f"c{i}" for i in targets}
+    diagnostics.update(expected_slot_count=len(expected), received_slot_count=None,
+                       missing_slot_count=None, unexpected_slot_count=None, duplicate_key_count=0)
+
+    def unique_pairs(pairs):
+        result = {}
+        for key, value in pairs:
+            if key in result:
+                diagnostics["duplicate_key_count"] = 1
+                raise LessonAuthorProposalValidationError("COMPONENT_REPAIR_DUPLICATE_JSON_KEY")
+            result[key] = value
+        return result
+
+    try:
+        value = json.loads(text, object_pairs_hook=unique_pairs)
+    except (json.JSONDecodeError, TypeError):
+        raise LessonAuthorProposalValidationError("COMPONENT_REPAIR_JSON_INVALID") from None
+    if not isinstance(value, dict) or set(value) != {"components"}:
+        raise LessonAuthorProposalValidationError("COMPONENT_REPAIR_ENVELOPE_FORBIDDEN")
+    slots = value["components"]
+    diagnostics["response_container"] = "object" if isinstance(slots, dict) else "array" if isinstance(slots, list) else "other"
+    diagnostics["received_slot_count"] = len(slots) if isinstance(slots, (dict, list)) else None
+    if not isinstance(slots, dict):
+        raise LessonAuthorProposalValidationError("COMPONENT_REPAIR_SLOTS_REQUIRED")
+    diagnostics.update(missing_slot_count=len(expected - set(slots)), unexpected_slot_count=len(set(slots) - expected))
+    if set(slots) != expected:
+        raise LessonAuthorProposalValidationError("COMPONENT_REPAIR_SLOT_INVENTORY_INVALID")
+    changes = []
+    for index in targets:
+        payload = slots[f"c{index}"]
+        if not isinstance(payload, dict):
+            raise LessonAuthorProposalValidationError("COMPONENT_REPAIR_NOT_OBJECT")
+        kind = baseline["components"][index]["type"]
+        allowed = STAGED_COMPONENT_PAYLOAD_FIELDS[kind] | {"title", "selection_rationale"}
+        if index in coverage_targets:
+            allowed |= {"covered_source_fact_ids"}
+        if set(payload) - allowed:
+            raise LessonAuthorProposalValidationError("COMPONENT_REPAIR_SLOT_FIELD_FORBIDDEN")
+        changes.append({"component_index": index, **deepcopy(payload)})
+    # Use the established strict merge/ownership/coverage/quality checks next.
+    return {"components": changes}
 
 
 def build_staged_instance_response_model(plans: list[dict[str, Any]]) -> type[BaseModel]:
@@ -7490,6 +7777,11 @@ def build_staged_instance_response_model(plans: list[dict[str, Any]]) -> type[Ba
             fields["problem_type"] = (Literal["multiple_choice", "multiple_select", "dropdown", "numerical", "short_text"], ...)
         if not plan.get("source_fact_ids"):
             fields["covered_source_fact_ids"] = (list[str], Field(max_length=0))
+        else:
+            # References are model claims, not ownership. Exact approved values
+            # constrain the wire; raw fallback and final validators stay strict.
+            allowed = Enum(f"StagedCoverageReference{index}", {f"F{i}": value for i, value in enumerate(plan["source_fact_ids"])}, type=str)
+            fields["covered_source_fact_ids"] = (list[allowed], ...)
         slots[f"c{index}"] = (create_model(f"StagedInstance{index}_{kind}", **fields), ...)
     return create_model("StagedInstancePayloadUnit", components=(create_model("StagedInstanceSlots", **slots), ...))
 
@@ -8960,6 +9252,225 @@ def build_source_locked_unit(
 build_source_locked_html_unit = build_source_locked_unit
 
 
+def _orchestration_v2_source_fragments(values: list[str], *, minimum: int = 3) -> list[str]:
+    """Return deterministic, source-ordered display fragments without inventing facts."""
+
+    fragments: list[str] = []
+    seen: set[str] = set()
+    for value in values:
+        for candidate in _source_locked_html_facts([value]):
+            for sentence in re.split(r"(?<=[.!?;])\s+|[\r\n]+", candidate):
+                normalized = re.sub(r"\s+", " ", sentence).strip(" -\u2022")
+                key = normalized.casefold()
+                if normalized and key not in seen:
+                    seen.add(key)
+                    fragments.append(normalized[:500])
+    if not fragments:
+        return []
+    if len(fragments) >= minimum:
+        return fragments
+    words = re.sub(r"\s+", " ", " ".join(values)).strip().split(" ")
+    if len(words) >= minimum * 3:
+        width = max(3, (len(words) + minimum - 1) // minimum)
+        for offset in range(0, len(words), width):
+            candidate = " ".join(words[offset:offset + width]).strip()
+            key = candidate.casefold()
+            if candidate and key not in seen:
+                seen.add(key)
+                fragments.append(candidate[:500])
+            if len(fragments) >= minimum:
+                break
+    return fragments
+
+
+def _orchestration_v2_sortable_steps(fact_texts: list[str], locale: str) -> list[str]:
+    """Return validator-safe ordered steps without adding domain claims.
+
+    Source parsers can legitimately emit short headings or list labels. Those
+    fragments are valid evidence but are not complete sortable instructions on
+    their own. Wrap them in deterministic review actions so the source-locked
+    fallback and the staged-content validator enforce the same contract.
+    """
+
+    fragments = _orchestration_v2_source_fragments(fact_texts)
+    if len(fragments) >= 3:
+        if locale == "en":
+            return [f"Step {index}: Review the source point — {fragment}"[:500]
+                    for index, fragment in enumerate(fragments[:10], start=1)]
+        return [f"Bước {index}: Rà soát ý trong tài liệu nguồn — {fragment}"[:500]
+                for index, fragment in enumerate(fragments[:10], start=1)]
+
+    source_text = re.sub(r"\s+", " ", fact_texts[0]).strip()[:400]
+    if locale == "en":
+        return [
+            f"Step 1: Read the source statement — {source_text}"[:500],
+            f"Step 2: Compare the source statement with the lesson objective — {source_text}"[:500],
+            f"Step 3: Summarize the source statement for review — {source_text}"[:500],
+        ]
+    return [
+        f"Bước 1: Đọc nội dung trong tài liệu nguồn — {source_text}"[:500],
+        f"Bước 2: Đối chiếu nội dung nguồn với mục tiêu bài học — {source_text}"[:500],
+        f"Bước 3: Tóm tắt nội dung nguồn để rà soát — {source_text}"[:500],
+    ]
+
+
+def _orchestration_v2_crossword_words(
+    title: str,
+    fact_texts: list[str],
+    locale: str,
+) -> list[dict[str, Any]]:
+    """Build source-backed crossword rows with renderer-safe ASCII answers."""
+
+    import unicodedata
+
+    stopwords = {
+        "AND", "ARE", "THE", "THIS", "THAT", "WITH", "FROM", "FOR", "INTO", "WHEN", "WHAT",
+        "CAC", "CHO", "CUA", "DEN", "DUOC", "LA", "MOT", "NHUNG", "TRONG", "VA", "VOI",
+    }
+    candidates: list[str] = []
+    seen: set[str] = set()
+    source = " ".join([title, *fact_texts])
+    folded = unicodedata.normalize("NFD", source.replace("đ", "d").replace("Đ", "D"))
+    ascii_source = "".join(character for character in folded if unicodedata.category(character) != "Mn")
+    for token in re.findall(r"[A-Za-z0-9]{2,24}", ascii_source.upper()):
+        if token in stopwords or token in seen:
+            continue
+        seen.add(token)
+        candidates.append(token)
+        if len(candidates) == 10:
+            break
+    defaults = ["SOURCE", "LESSON", "CONTENT"] if locale == "en" else ["TAILIEU", "BAIHOC", "NOIDUNG"]
+    for token in defaults:
+        if token not in seen and len(candidates) < 3:
+            seen.add(token)
+            candidates.append(token)
+    excerpt = re.sub(r"\s+", " ", fact_texts[0] if fact_texts else title).strip()[:400]
+    prefix = "Source context" if locale == "en" else "Ngữ cảnh trong tài liệu nguồn"
+    return [{"answer": answer, "clue": f"{prefix}: {excerpt}", "hint": None}
+            for answer in candidates[:max(3, min(10, len(candidates)))]]
+
+
+def _orchestration_v2_source_locked_html(title: str, fact_texts: list[str], locale: str) -> str:
+    """Render sparse source facts as a reviewable lesson without inventing facts.
+
+    The fixed prose describes how to review the cited source; every domain
+    statement still comes exclusively from ``fact_texts``. This keeps the
+    deterministic fallback useful even when a parser emits a very short fact.
+    """
+
+    base = _source_locked_html_body(title, fact_texts)
+    if locale == "en":
+        guidance = (
+            "<section><h4>How to review this source-backed draft</h4>"
+            "<p>This draft preserves the assigned source statements so the learner can inspect them before the course is published. "
+            "Read each statement in its original order, compare it with the lesson objective, and identify the wording that directly supports the topic.</p>"
+            "<p>After reading, summarize only what the source states, note any point that still needs clarification, and verify the summary against the source before applying it in practice. "
+            "No additional domain claim has been added by this fallback.</p></section>"
+        )
+    else:
+        guidance = (
+            "<section><h4>Cách rà soát bản nháp theo tài liệu nguồn</h4>"
+            "<p>Bản nháp này giữ nguyên các ý đã được giao từ tài liệu nguồn để người học kiểm tra trước khi khóa học được xuất bản. "
+            "Hãy đọc từng ý theo đúng thứ tự, đối chiếu với mục tiêu bài học và xác định câu chữ trực tiếp làm rõ chủ đề.</p>"
+            "<p>Sau khi đọc, người học chỉ tóm tắt những gì tài liệu đã nêu, ghi lại điểm còn cần làm rõ và kiểm tra bản tóm tắt với nguồn trước khi áp dụng vào thực tế. "
+            "Cơ chế dự phòng này không bổ sung thêm nhận định chuyên môn ngoài dữ kiện nguồn.</p></section>"
+        )
+    return base + guidance
+
+
+def build_orchestration_v2_source_locked_unit(
+    contract: UnitGenerationContractV2,
+    locale: str,
+) -> dict[str, Any] | None:
+    """Build an exact V2 component inventory from its immutable source ledger.
+
+    This path is intentionally deterministic and provider-free. It preserves
+    every server-owned component instance and only places escaped source text
+    or generic learner instructions into payloads. The normal Python and Node
+    validators remain authoritative before anything can be committed.
+    """
+
+    fact_by_id = {fact.fact_key: fact.fact_text for fact in contract.source_facts}
+    components: list[dict[str, Any]] = []
+    for index, plan in enumerate(contract.component_plan):
+        fact_texts = [re.sub(r"\s+", " ", fact_by_id[fact_id]).strip()
+                      for fact_id in plan.source_fact_ids if fact_id in fact_by_id]
+        if not fact_texts or any(not value for value in fact_texts):
+            return None
+        title = plan.title.strip() or contract.unit_title
+        rationale = ("Provider output was unavailable; this reviewable draft is reconstructed from the locked source facts."
+                     if locale == "en" else
+                     "Kết quả từ mô hình chưa khả dụng; bản nháp để rà soát này được dựng từ các dữ kiện nguồn đã khóa.")
+        component: dict[str, Any] = {
+            "type": plan.type,
+            "title": title,
+            "component_plan_id": plan.component_plan_id,
+            "source_fact_ids": list(plan.source_fact_ids),
+            "covered_source_fact_ids": list(plan.source_fact_ids),
+            "supporting_evidence_fact_ids": list(plan.supporting_evidence_fact_ids),
+            "learning_objective_refs": list(plan.learning_objective_refs),
+            "source_locked_fallback": True,
+            "selection_rationale": rationale,
+        }
+        fragments = _orchestration_v2_source_fragments(fact_texts)
+        if plan.type == "html":
+            component["html"] = _orchestration_v2_source_locked_html(title, fact_texts, locale)
+        elif plan.type == "problem":
+            answer = fact_texts[0][:4000]
+            component.update({
+                "problem_type": "short_text",
+                "question": (f"According to the source, what should learners retain about '{title}'?"
+                             if locale == "en" else f"Theo tài liệu, người học cần ghi nhớ điều gì về '{title}'?"),
+                "answer": answer,
+                "explanation": answer,
+            })
+        elif plan.type == "la_faq":
+            answers = [
+                ((f"The source states: {fact_text}. This answer is retained for source review."
+                  if locale == "en" else
+                  f"Tài liệu nêu rõ: {fact_text}. Nội dung này được giữ nguyên để người dùng rà soát theo nguồn.")[:2000])
+                for fact_text in (fact_texts + fact_texts)[:2]
+            ]
+            component["items"] = [{
+                "question": ((f"What is the first source-backed point about '{title}'?" if item_index == 0
+                              else f"What else does the source clarify about '{title}'?") if locale == "en" else
+                             (f"Điểm quan trọng đầu tiên trong tài liệu về '{title}' là gì?" if item_index == 0
+                              else f"Tài liệu còn làm rõ điều gì về '{title}'?")),
+                "answer": answer,
+            } for item_index, answer in enumerate(answers)]
+        elif plan.type == "la_sortable":
+            source_steps = _orchestration_v2_sortable_steps(fact_texts, locale)
+            component.update({
+                "question_text": ("Arrange the source-backed points in their displayed order."
+                                  if locale == "en" else "Sắp xếp các ý theo đúng thứ tự xuất hiện trong tài liệu nguồn."),
+                "items": [{"text": item} for item in source_steps[:10]],
+            })
+        elif plan.type == "la_crossword":
+            component["words"] = _orchestration_v2_crossword_words(title, fact_texts, locale)
+        elif plan.type == "la_diagram":
+            child_labels = fragments[:6] or [fact_texts[0][:500]]
+            nodes = [{"label": title[:500], "shape": "ellipse", "tooltip": contract.unit_purpose[:500]}]
+            nodes.extend({"label": label[:500], "shape": "rounded", "tooltip": label[:500]}
+                         for label in child_labels)
+            component.update({
+                "name": title,
+                "nodes": nodes,
+                "edges": [{"source": 0, "target": child_index, "label": "Content" if locale == "en" else "Nội dung"}
+                          for child_index in range(1, len(nodes))],
+            })
+        else:
+            return None
+        components.append(component)
+    return {
+        "title": contract.unit_title,
+        "source_fact_ids": list(contract.unit_source_fact_ids),
+        "supporting_evidence_fact_ids": [],
+        "component_plan": [plan.model_dump(mode="json") for plan in contract.component_plan],
+        "components": components,
+        "source_locked_fallback": True,
+    }
+
+
 class StagedUnitFinding(str):
     """Legacy string feedback plus metadata assigned at the rejection boundary.
 
@@ -8979,18 +9490,67 @@ class StagedUnitFinding(str):
         return {"code": self.code, "path": self.path, "repairable": self.repairable, **limits.get(self.code, {})}
 
 
-def staged_instructional_finding(component: dict[str, Any], index: int) -> StagedUnitFinding | None:
+def staged_html_contains_faq(component: dict[str, Any]) -> bool:
+    """Detect explicit FAQ presentation inside an HTML teaching component.
+
+    This intentionally targets structural FAQ signals, not an isolated
+    pedagogical question, so reflective prompts remain valid HTML content.
+    """
+    import unicodedata
+
+    def normalized(value: Any) -> str:
+        text = unicodedata.normalize("NFD", str(value or ""))
+        return re.sub(r"\s+", " ", "".join(char for char in text if unicodedata.category(char) != "Mn").casefold()).strip()
+
+    semantic = component.get("semantic_content")
+    headings: list[str] = []
+    visible = ""
+    if isinstance(semantic, dict):
+        sections = semantic.get("sections")
+        if isinstance(sections, list):
+            headings = [normalized(section.get("heading")) for section in sections if isinstance(section, dict)]
+        text, reason = semantic_learning_visible_text(semantic)
+        if not reason:
+            visible = normalized(text)
+    else:
+        raw = str(component.get("html") or component.get("data") or component.get("content") or "")
+        if re.search(r"<\s*(?:details|summary)\b", raw, re.IGNORECASE):
+            return True
+        visible = normalized(re.sub(r"<[^>]+>", " ", raw))
+
+    markers = ("faq", "frequently asked questions", "frequently asked question",
+               "cau hoi thuong gap", "hoi dap thuong gap")
+    if any(any(marker in heading for marker in markers) for heading in headings):
+        return True
+    if any(marker in visible for marker in markers):
+        return True
+    questions = len(re.findall(r"(?:^|\s)(?:q|question|cau hoi)\s*\d{0,2}\s*[:.-]", visible))
+    answers = len(re.findall(r"(?:^|\s)(?:a|answer|tra loi)\s*\d{0,2}\s*[:.-]", visible))
+    return questions >= 2 and answers >= 2
+
+
+def staged_instructional_finding(component: dict[str, Any], index: int, plan: dict[str, Any] | None = None) -> StagedUnitFinding | None:
     """Same content-quality requirements used by acceptance and scoped repair."""
     kind = normalize_staged_component_type(component.get("type"))
     path = f"components[{index}]"
     def fail(code: str, field: str, message: str) -> StagedUnitFinding:
         return StagedUnitFinding(message, code, f"{path}.{field}", True)
     if kind == "html" and component.get("source_locked_fallback") is not True:
+        if staged_html_contains_faq(component):
+            return fail("HTML_FAQ_BOUNDARY_VIOLATION", "semantic_content",
+                        "HTML teaching content must not contain an FAQ section or repeated question-and-answer pairs.")
         semantic = component.get("semantic_content")
         if semantic is not None:
             text, reason = semantic_learning_visible_text(semantic)
             if reason:
                 return fail("HTML_SEMANTIC_INVALID", "semantic_content", reason)
+            if semantic.get("version") == 2 and plan is not None:
+                allowed = set(plan.get("learning_block_ids") or [])
+                referenced = {ref for section in semantic["sections"] for ref in section.get("learning_block_ids", [])}
+                if referenced - allowed:
+                    return fail("HTML_TEACHING_GROUP_OUT_OF_SCOPE", "semantic_content.sections", "Section references a teaching group outside this component plan.")
+                if allowed - referenced:
+                    return fail("HTML_TEACHING_GROUP_MISSING", "semantic_content.sections", "Every approved teaching group needs its own visible explanation; a coverage ID declaration is not enough.")
         else:
             html = str(component.get("html") or component.get("data") or component.get("content") or "")
             text = re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", html)).strip()
@@ -9021,6 +9581,62 @@ def staged_instructional_finding(component: dict[str, Any], index: int) -> Stage
     return None
 
 
+def staged_coverage_claim_diagnostic(component: dict[str, Any]) -> dict[str, Any] | None:
+    """Inspect a claim without repairing it. Return only enums and counts.
+
+    Ownership is checked independently against the frozen server plan. Sets
+    below count references only; they are never written back to the payload.
+    """
+    claim = component.get("covered_source_fact_ids")
+    owned = component.get("source_fact_ids", [])
+    owned = {x for x in owned if isinstance(x, str)} if isinstance(owned, list) else set()
+    values = claim if isinstance(claim, list) else []
+    strings = [x for x in values if isinstance(x, str) and x.strip()]
+    # A scalar string is not an array, but must not hide an unknown reference.
+    references = set(strings if isinstance(claim, list) else [claim] if isinstance(claim, str) and claim.strip() else [])
+    reasons = []
+    if "covered_source_fact_ids" not in component:
+        reasons.append("FIELD_MISSING")
+    elif not isinstance(claim, list):
+        reasons.append("ARRAY_REQUIRED")
+    non_string = sum(not isinstance(x, str) for x in values)
+    empty = sum(isinstance(x, str) and not x.strip() for x in values)
+    duplicates = len(strings) - len(set(strings))
+    unexpected = len(references - owned)
+    if non_string:
+        reasons.append("NON_STRING_ITEM")
+    if empty:
+        reasons.append("EMPTY_STRING_ITEM")
+    if duplicates:
+        reasons.append("DUPLICATE_REFERENCE")
+    shape_invalid = bool(reasons)
+    if unexpected:
+        reasons.append("OUT_OF_SCOPE_REFERENCE")
+    missing = len(owned - references)
+    if missing:
+        reasons.append("MISSING_OWNED_REFERENCE")
+    if not reasons:
+        return None
+    return {"code": "INVALID_COVERAGE_ID_ARRAY" if shape_invalid else "COMPONENT_COVERAGE_OUT_OF_SCOPE" if unexpected else "COMPONENT_COVERAGE_INCOMPLETE",
+            "reason_codes": reasons, "item_count": len(values), "non_string_count": non_string,
+            "empty_string_count": empty, "duplicate_count": duplicates, "unexpected_count": unexpected,
+            "owned_count": len(owned), "covered_owned_count": len(owned & references), "missing_count": missing}
+
+
+def staged_coverage_claim_repairable(component: dict[str, Any]) -> bool:
+    owned = component.get("source_fact_ids", [])
+    finding = staged_coverage_claim_diagnostic(component)
+    return bool(staged_fact_membership_equal(owned, owned) and owned and finding and not finding["unexpected_count"])
+
+
+def staged_coverage_claim_diagnostics(unit: Any) -> list[dict[str, Any]]:
+    components = unit.get("components") if isinstance(unit, dict) else None
+    if not isinstance(components, list):
+        return []
+    return [{"component_index": i, "path": f"components[{i}].covered_source_fact_ids", **finding}
+            for i, c in enumerate(components) if isinstance(c, dict) and (finding := staged_coverage_claim_diagnostic(c))][:16]
+
+
 def staged_component_repair_guard(unit: Any, expected: dict[str, Any], *, allow_partial_coverage: bool = False) -> dict[str, Any] | None:
     """First exact authority rejection, safe to log; no provider values."""
     def fail(code: str, path: str, **counts: int) -> dict[str, Any]:
@@ -9043,6 +9659,14 @@ def staged_component_repair_guard(unit: Any, expected: dict[str, Any], *, allow_
         for key in ("source_fact_ids", "supporting_evidence_fact_ids"):
             if not staged_fact_membership_equal(c.get(key, []), p.get(key, [])):
                 return fail("COMPONENT_EVIDENCE_MEMBERSHIP_INVALID", f"{path}.{key}")
+        # A malformed content claim is not canonical ownership. Only the
+        # existing bounded repair may replace it AND its component content.
+        # Continue checking every other component's immutable authority.
+        if allow_partial_coverage and staged_coverage_claim_repairable(c):
+            continue
+        claim_finding = staged_coverage_claim_diagnostic(c)
+        if c.get("source_fact_ids") and claim_finding and claim_finding["unexpected_count"]:
+            return fail("COMPONENT_COVERAGE_OUT_OF_SCOPE", f"{path}.covered_source_fact_ids")
         covered = c.get("covered_source_fact_ids", [])
         if not staged_fact_membership_equal(covered, covered):
             return fail("INVALID_COVERAGE_ID_ARRAY", f"{path}.covered_source_fact_ids")
@@ -9060,8 +9684,8 @@ def staged_component_repair_targets(unit: Any, expected: dict[str, Any]) -> list
     if staged_component_repair_guard(unit, expected, allow_partial_coverage=True):
         return []
     components = unit["components"]
-    return [i for i, c in enumerate(components) if staged_component_payload_code(c) or staged_instructional_finding(c, i)
-            or set(c.get("source_fact_ids", [])) - set(c.get("covered_source_fact_ids", []))]
+    return [i for i, c in enumerate(components) if staged_component_payload_code(c) or staged_instructional_finding(c, i, expected.get("component_plan", [])[i])
+            or staged_coverage_claim_repairable(c)]
 
 
 def staged_coverage_repair_diagnostics(unit: Any, targets: list[int]) -> list[dict[str, Any]]:
@@ -9069,12 +9693,11 @@ def staged_coverage_repair_diagnostics(unit: Any, targets: list[int]) -> list[di
     findings = []
     for index in targets:
         component = unit["components"][index]
-        owned = set(component.get("source_fact_ids", []))
-        covered = set(component.get("covered_source_fact_ids", []))
-        if owned - covered:
-            findings.append({"code": "COMPONENT_COVERAGE_INCOMPLETE", "component_index": index,
-                             "component_type": component["type"], "owned_count": len(owned),
-                             "covered_owned_count": len(owned & covered), "missing_count": len(owned - covered)})
+        claim = staged_coverage_claim_diagnostic(component)
+        if claim and staged_coverage_claim_repairable(component):
+            fields = ("code", "owned_count", "covered_owned_count", "missing_count")
+            findings.append({"component_index": index, "component_type": component["type"],
+                             **{key: claim[key] for key in fields}})
     return findings
 
 
@@ -9123,10 +9746,7 @@ def merge_staged_component_payload_delta(baseline: dict[str, Any], delta: Any, t
         if index in coverage_targets:
             original = originals[index]
             owned = original.get("source_fact_ids", [])
-            old_claim = original.get("covered_source_fact_ids", [])
-            if (not staged_fact_membership_equal(owned, owned) or not owned
-                    or not staged_fact_membership_equal(old_claim, old_claim) or not old_claim
-                    or not set(owned) - set(old_claim)):
+            if not staged_coverage_claim_repairable(original):
                 raise LessonAuthorProposalValidationError("COMPONENT_REPAIR_COVERAGE_TARGET_INVALID")
             claim = change.get("covered_source_fact_ids")
             if not staged_fact_membership_equal(claim, owned):
@@ -9241,6 +9861,8 @@ def staged_payload_diagnostics(unit: Any) -> list[dict[str, Any]]:
                 # Validator-owned text describes shape/limits only, never values.
                 **({"semantic_shape_reason": semantic_learning_visible_text(component.get("semantic_content"))[1]}
                    if code == "HTML_SEMANTIC_INVALID" else {}),
+                **({"semantic_shape": semantic_shape_diagnostics(component.get("semantic_content"))}
+                   if code == "HTML_SEMANTIC_INVALID" else {}),
                 **({"shape_findings": staged_diagram_shape_diagnostics(component)}
                    if component.get("type") == "la_diagram" and code == "COMPONENT_PAYLOAD_SCHEMA_INVALID" else {}),
                 **({"shape_findings": staged_sortable_shape_diagnostics(component)}
@@ -9309,7 +9931,15 @@ def validate_staged_unit_content(
             for field in ("source_fact_ids", "supporting_evidence_fact_ids", "covered_source_fact_ids"):
                 ids = node.get(field, [])
                 if not staged_fact_membership_equal(ids, ids):
-                    return StagedUnitFinding(f"{path}.{field}: INVALID_FACT_ID_ARRAY", "INVALID_FACT_ID_ARRAY", f"{path}.{field}")
+                    repairable = bool(field == "covered_source_fact_ids" and path != "unit" and expected
+                                      and staged_component_repair_guard(unit, expected, allow_partial_coverage=True) is None
+                                      and staged_coverage_claim_repairable(node))
+                    return StagedUnitFinding(f"{path}.{field}: INVALID_FACT_ID_ARRAY", "INVALID_FACT_ID_ARRAY", f"{path}.{field}", repairable)
+                if field == "covered_source_fact_ids" and path != "unit" and expected and node.get("source_fact_ids"):
+                    finding = staged_coverage_claim_diagnostic(node)
+                    if finding and finding["unexpected_count"]:
+                        return StagedUnitFinding("Coverage references exceed the component's exact owned scope.",
+                                                "COMPONENT_COVERAGE_OUT_OF_SCOPE", f"{path}.{field}")
     if strict_payload:
         for finding in staged_payload_diagnostics(unit):
             return StagedUnitFinding(f"components[{finding['component_index']}]: {finding['code']}", finding["code"], f"components[{finding['component_index']}]", True)
@@ -9406,7 +10036,7 @@ def validate_staged_unit_content(
             if not isinstance(component, dict):
                 continue
             component_type = normalize_staged_component_type(component.get("type"))
-            instructional_failure = staged_instructional_finding(component, component_index)
+            instructional_failure = staged_instructional_finding(component, component_index, instance_plans[component_index] if instance_contract else None)
             if instructional_failure:
                 return instructional_failure
             component_fact_ids = {
@@ -9447,7 +10077,8 @@ def validate_staged_unit_content(
             if expected_instance is not None and not expected_component_fact_ids and covered_fact_ids:
                 return StagedUnitFinding("Supporting assessment instance must not claim canonical coverage.", "SUPPORTING_COMPONENT_CLAIMS_OWNERSHIP", f"components[{component_index}].covered_source_fact_ids")
             if enforce_component_ownership and expected_fact_ids and not covered_fact_ids and not (expected_instance and not expected_component_fact_ids):
-                return StagedUnitFinding("Every component must declare covered_source_fact_ids.", "COMPONENT_COVERAGE_MISSING", f"components[{component_index}].covered_source_fact_ids")
+                return StagedUnitFinding("Every component must declare covered_source_fact_ids.", "COMPONENT_COVERAGE_MISSING", f"components[{component_index}].covered_source_fact_ids",
+                                        repairable=staged_component_repair_guard(unit, expected, allow_partial_coverage=True) is None)
             if enforce_component_ownership and not component_fact_ids.issubset(covered_fact_ids):
                 return StagedUnitFinding("Component covered_source_fact_ids must include every source_fact_id it owns.", "COMPONENT_COVERAGE_INCOMPLETE", f"components[{component_index}].covered_source_fact_ids", repairable=True)
             if enforce_component_ownership and covered_fact_ids - expected_fact_ids:
@@ -10006,7 +10637,10 @@ async def generate_staged_lesson_author_proposal(
         )
         total_usage = combine_usage(total_usage, content_usage)
         try:
-            parsed = parse_lesson_author_json_value(content_text, f"content batch {batch_index}")
+            parsed = bind_provider_semantic_versions(parse_lesson_author_json_value(content_text, f"content batch {batch_index}"))
+        except ProviderSemanticVersionError as error:
+            raise WorkflowFailure("LESSON_VALIDATION_FAILED", "Invalid staged HTML format.",
+                                  internal_code=str(error), failure_stage="staged_content_validation") from None
         except HTTPException:
             logger.warning(
                 "lesson_author_staged_content_batch_unparsed batch=%s response_chars=%s",
@@ -10049,6 +10683,7 @@ async def generate_staged_lesson_author_proposal(
                     "contract_version": STAGED_COMPONENT_CONTRACT_VERSION,
                     "batch_index": batch_index,
                     "stage": "staged_content_validation",
+                    "generation_stage": "staged_lesson_content",
                     "validation_finding": generated_validation_reason.diagnostic() if isinstance(generated_validation_reason, StagedUnitFinding) else None,
                     "repair_guard_finding": repair_guard_finding,
                     "findings": staged_payload_diagnostics(generated),
@@ -10057,6 +10692,7 @@ async def generate_staged_lesson_author_proposal(
                     "repair_scope": "components" if repair_targets else ("none" if checkpoint_unit_index is not None else "unit"),
                     "repair_component_indices": repair_targets,
                     "coverage_findings": coverage_findings,
+                    "coverage_claim_findings": staged_coverage_claim_diagnostics(generated),
                     "coverage_repair_component_indices": coverage_targets,
                     "unit_match": staged_unit_match_diagnostics(generated_units, expected["unit_title"]),
                 }))
@@ -10068,8 +10704,12 @@ async def generate_staged_lesson_author_proposal(
                                           internal_code="CHAPTER_UNIT_CONTRACT_REJECTED", failure_stage="chapter_component_repair_preflight",
                                           diagnostics={"validation_finding": generated_validation_reason.diagnostic() if isinstance(generated_validation_reason, StagedUnitFinding) else None,
                                                        "repair_guard_finding": repair_guard_finding,
+                                                       "coverage_claim_findings": staged_coverage_claim_diagnostics(generated),
                                                        "repair_scope": "none", "repair_component_indices": []})
                 recovery_types = [generated["components"][i]["type"] for i in repair_targets] if repair_targets else expected.get("component_types", [])
+                multi_repair_slots = len(repair_targets) > 1
+                if multi_repair_slots:
+                    repair_contract_version = STAGED_MULTI_REPAIR_CONTRACT_VERSION
                 expected_line = (
                     f"Chương: {expected['chapter_title']} > "
                     f"Bài: {expected['lesson_title']} > "
@@ -10102,26 +10742,36 @@ async def generate_staged_lesson_author_proposal(
                 if repair_targets:
                     recovery_prompt = "\n\n".join([
                         "SCOPED COMPONENT REPAIR: " + repair_contract_version,
-                        'Return exactly {"components":[{"component_index":0,...payload fields...}]}. '
+                        ('Return exactly a components OBJECT with these required slots: '
+                         + json.dumps({f"c{i}": {"fixed_type": repair_baseline["components"][i]["type"]} for i in repair_targets})
+                         + '. Each slot value contains only the repaired payload fields for its fixed type, NOT fixed_type. '
+                         'Return every slot exactly once. Do not return an array or component_index. Server binds each slot to its approved target. '
+                         if multi_repair_slots else
+                         'Return exactly {"components":[{"component_index":0,...payload fields...}]}. '
                         "Use the exact listed component_index once each, no other addresses. Return only payload fields for each target's fixed type. "
+                        ) +
                         "Do NOT return a unit title/envelope, type, component_plan_id, source_fact_ids, "
                         "supporting_evidence_fact_ids, learning blocks, metadata or source references. The server preserves them and all good components unchanged.",
-                        ("CONTENT COVERAGE REPAIR: Only these component indices may additionally return covered_source_fact_ids: "
-                         + json.dumps(coverage_targets)
+                        (("CONTENT COVERAGE REPAIR: Only these slots may additionally return covered_source_fact_ids: " if multi_repair_slots
+                          else "CONTENT COVERAGE REPAIR: Only these component indices may additionally return covered_source_fact_ids: ")
+                         + json.dumps([f"c{i}" for i in coverage_targets] if multi_repair_slots else coverage_targets)
                          + ". Rewrite the affected component payload to actually teach or reinforce every assigned fact using the provided evidence. "
                          "Return a truthful complete coverage claim within that component's existing owned IDs only. "
+                         "Return an array of non-empty exact references, each at most once. Replace malformed claims rather than copying them. "
                          "Do not merely append IDs; an ID-only change is rejected. Do not invent new terms or exceed the selected component limits. "
                          "If source-grounded complete content is impossible, do not claim coverage. Other targets must omit covered_source_fact_ids."
                          if coverage_targets else "Do NOT return covered_source_fact_ids; the server preserves the existing valid claim."),
                         staged_component_contract_prompt(recovery_types),
                         "Authorized targets (read-only baseline; not the response shape):\n" + json.dumps([
-                            {"component_index": i, "baseline": repair_baseline["components"][i]}
+                            {("slot" if multi_repair_slots else "component_index"): f"c{i}" if multi_repair_slots else i,
+                             "baseline": repair_baseline["components"][i]}
                             for i in repair_targets
                         ], ensure_ascii=False),
                         "Deterministic payload findings:\n" + json.dumps(staged_payload_diagnostics(repair_baseline)),
                         "Deterministic coverage findings:\n" + json.dumps(coverage_findings),
+                        "Coverage claim shape findings:\n" + json.dumps(staged_coverage_claim_diagnostics(repair_baseline)),
                         "Deterministic instructional findings:\n" + json.dumps([
-                            f.diagnostic() for i in repair_targets if (f := staged_instructional_finding(repair_baseline["components"][i], i))
+                            f.diagnostic() for i in repair_targets if (f := staged_instructional_finding(repair_baseline["components"][i], i, expected.get("component_plan", [])[i]))
                         ]),
                         f"Approved instructional contract (read-only):\n{instructional_contract}",
                         f"Mandatory evidence:\n{unit_coverage}",
@@ -10133,6 +10783,8 @@ async def generate_staged_lesson_author_proposal(
                 recovery_evidence_findings: list[dict[str, Any]] = []
                 recovery_payload_findings: list[dict[str, Any]] = []
                 recovery_unit_match: dict[str, Any] | None = None
+                recovery_claim_findings: list[dict[str, Any]] = []
+                recovery_slot_diagnostics: dict[str, Any] = {}
                 try:
                     recovery_text, recovery_usage = await generate_stage_two_content(
                         generation_stage="staged_lesson_content_recovery",
@@ -10140,18 +10792,21 @@ async def generate_staged_lesson_author_proposal(
                         batch_count=content_batch_count,
                         unit_count=1,
                         prompt=recovery_prompt,
-                        response_schema=build_staged_lesson_content_response_model(
+                        response_schema=build_staged_multi_repair_model(repair_baseline, repair_targets, coverage_targets) if multi_repair_slots else build_staged_lesson_content_response_model(
                             recovery_types,
                             payload_only=bool(repair_targets),
                             coverage_repair=bool(coverage_targets),
+                            coverage_allowed_ids=[fact for i in coverage_targets for fact in repair_baseline["components"][i]["source_fact_ids"]],
                             expected_unit_title=expected["unit_title"],
                         ),
                     )
                     total_usage = combine_usage(total_usage, recovery_usage)
-                    recovery_value = parse_lesson_author_json_value(
+                    recovery_value = bind_provider_semantic_versions(decode_staged_multi_repair(
+                        recovery_text, repair_baseline, repair_targets, coverage_targets, recovery_slot_diagnostics,
+                    ) if multi_repair_slots else parse_lesson_author_json_value(
                         recovery_text,
                         f"content unit recovery {batch_index}",
-                    )
+                    ))
                     if repair_targets:
                         # Capture safe shape diagnostics before atomic merge
                         # can reject the delta. Never log replacement content.
@@ -10162,9 +10817,14 @@ async def generate_staged_lesson_author_proposal(
                             index = change.get("component_index") if isinstance(change, dict) else None
                             if type(index) is int and index in repair_targets:
                                 baseline_component = repair_baseline["components"][index]
-                                projected["components"].append({**baseline_component, **change, "type": baseline_component["type"]})
+                                projected["components"].append({**baseline_component, **change, "type": baseline_component["type"],
+                                                                "source_fact_ids": baseline_component.get("source_fact_ids", [])})
                                 projected_indices.append(index)
                         recovery_payload_findings = staged_payload_diagnostics(projected)
+                        recovery_claim_findings = staged_coverage_claim_diagnostics(projected)
+                        for finding in recovery_claim_findings:
+                            finding["component_index"] = projected_indices[finding["component_index"]]
+                            finding["path"] = f"components[{finding['component_index']}].covered_source_fact_ids"
                         for finding in recovery_payload_findings:
                             finding["component_index"] = projected_indices[finding["component_index"]]
                         generated = merge_staged_component_payload_delta(repair_baseline, recovery_value, repair_targets,
@@ -10182,7 +10842,7 @@ async def generate_staged_lesson_author_proposal(
                         if isinstance(generated, dict)
                         else recovery_unit_match["reason"] if recovery_unit_match else "MISSING_OR_INVALID_UNIT"
                     )
-                except (HTTPException, LessonAuthorProposalValidationError) as error:
+                except (HTTPException, LessonAuthorProposalValidationError, ProviderSemanticVersionError) as error:
                     generated = None
                     generated_fact_ids = set()
                     generated_supporting_evidence_fact_ids = set()
@@ -10197,12 +10857,15 @@ async def generate_staged_lesson_author_proposal(
                     "contract_version": STAGED_COMPONENT_CONTRACT_VERSION,
                     "batch_index": batch_index,
                     "stage": "staged_repair_revalidation",
+                    "generation_stage": "staged_lesson_content_recovery",
                     "status": "FAIL" if recovery_validation_reason else "PASS",
                     "validation_finding": recovery_validation_reason.diagnostic() if isinstance(recovery_validation_reason, StagedUnitFinding) else None,
                     "repair_scope": "components" if repair_targets else "unit",
                     "repair_component_indices": repair_targets,
                     "repair_contract_version": repair_contract_version if repair_targets else "legacy-unit-recovery",
+                    "repair_slot_diagnostics": recovery_slot_diagnostics,
                     "coverage_repair_component_indices": coverage_targets,
+                    "coverage_claim_findings": recovery_claim_findings,
                     "findings": recovery_payload_findings,
                     "evidence_scope_findings": recovery_evidence_findings,
                     "unit_match": recovery_unit_match,
@@ -10215,6 +10878,9 @@ async def generate_staged_lesson_author_proposal(
                                           diagnostics={"validation_finding": recovery_validation_reason.diagnostic() if isinstance(recovery_validation_reason, StagedUnitFinding) else None,
                                                        "repair_scope": "components", "repair_component_indices": repair_targets,
                                                        "repair_failure_code": recovery_failure_code,
+                                                       "repair_contract_version": repair_contract_version,
+                                                       "repair_slot_diagnostics": recovery_slot_diagnostics,
+                                                       "coverage_claim_findings": recovery_claim_findings,
                                                        "payload_findings": recovery_payload_findings})
                 if (
                     generated is None
@@ -10290,6 +10956,19 @@ async def generate_staged_lesson_author_proposal(
                 "conversation_id": request.conversation_id,
                 "batch_index": batch_index,
                 **instructional_contract_review_signals(expected),
+            }, sort_keys=True))
+            # Shadow-only: do not let an observation failure invalidate an
+            # otherwise accepted checkpoint or trigger another paid dispatch.
+            try:
+                observation = observe_lesson_content(generated, expected, source_coverage_manifest)
+            except Exception:
+                observation = {"observation_version": "lesson-content-observation-1", "mode": "shadow",
+                               "blocking": False, "code": "CONTENT_OBSERVATION_UNAVAILABLE",
+                               "semantic_fidelity": "not_measured", "semantic_coverage": "not_measured"}
+            logger.info("lesson_author_content_observation %s", json.dumps({
+                "correlation_id": request.correlation_id, "conversation_id": request.conversation_id,
+                "unit_path": expected["unit_path"], "checkpoint_unit_index": checkpoint_unit_index,
+                "batch_index": batch_index, **observation,
             }, sort_keys=True))
 
     if checkpoint_unit_index is not None:
@@ -12136,6 +12815,7 @@ def _semantic_delta_target_snapshot(
                 "teaching_block_id": str(candidate.get("teaching_block_id") or ""),
                 "semantic_descriptor": candidate.get("semantic_descriptor")
                 if isinstance(candidate.get("semantic_descriptor"), dict) else {},
+                **({"allowed_intents": list(candidate["allowed_intents"])} if candidate.get("allowed_intents") else {}),
             }
             for candidate in target.get("assessment_plan_candidates", [])
             if isinstance(candidate, dict)
@@ -12258,7 +12938,7 @@ def build_course_architecture_repair_prompt(
             )
         if "select_assessment_teaching_alignment" in semantic_delta_operations:
             instructions.append(
-                "select_assessment_teaching_alignment may select only one listed teaching block for each listed objective. Compare the listed objective descriptor with the candidate's compact semantic descriptor. Use SELECT only when that block teaches the objective; otherwise use NO_MATCH. The server validates the exact candidate fingerprint, inserts any knowledge_check, and derives supporting evidence. Never return source refs, evidence scopes, concepts, facts, allocation data, content, components, titles, objectives, or hierarchy."
+                "select_assessment_teaching_alignment may select only one listed teaching block for each listed objective. Compare the listed objective descriptor with the candidate's compact semantic descriptor. For a candidate listing allowed_intents, return intent from that list only if its existing evidence-backed instructional purpose can teach the objective using that treatment; use the same intent for every selection of that block. Do not relabel mere practice/reflection as teaching just to pass. Omit intent for all other candidates. Use SELECT only when this semantic alignment is justified; otherwise use NO_MATCH. The server validates the exact candidate fingerprint, inserts any knowledge_check, and derives supporting evidence. Never return source refs, evidence scopes, concepts, facts, allocation data, content, components, titles, objectives, or hierarchy."
             )
         if "add_instructional_support_block" in semantic_delta_operations:
             instructions.append(
@@ -14183,6 +14863,7 @@ def _apply_v5_semantic_delta_repair_patches(
                 if isinstance(value, str) and value.strip()
             }
             selections: dict[tuple[str, str], tuple[str, str]] = {}
+            intent_changes: dict[tuple[str, str], str] = {}
             for selection in raw_selections:
                 if not isinstance(selection, dict):
                     raise _semantic_delta_failure(
@@ -14213,7 +14894,7 @@ def _apply_v5_semantic_delta_repair_patches(
                         guard_reason="NO_VALID_TEACHING_ANCHOR",
                         semantic_operation=operation,
                     )
-                if decision != "SELECT" or set(selection) != {
+                if decision != "SELECT" or set(selection) - {"intent"} != {
                     "objective_ref", "decision", "unit_path", "teaching_block_id",
                 }:
                     raise _semantic_delta_failure(
@@ -14227,10 +14908,11 @@ def _apply_v5_semantic_delta_repair_patches(
                 unit_path = str(selection.get("unit_path") or "").strip()
                 block_id = str(selection.get("teaching_block_id") or "").strip()
                 approved = compilation.candidates.get((path, objective_ref), ())
+                matching = [candidate for candidate in approved if candidate.unit_path == unit_path and candidate.block_id == block_id]
                 if (
                     objective_ref not in expected_objectives
                     or objective_ref in {key[1] for key in selections}
-                    or not any(candidate.unit_path == unit_path and candidate.block_id == block_id for candidate in approved)
+                    or len(matching) != 1
                 ):
                     raise _semantic_delta_failure(
                         "Assessment semantic selection chose a teaching block outside its server-approved candidate set.",
@@ -14240,6 +14922,26 @@ def _apply_v5_semantic_delta_repair_patches(
                         guard_reason="TARGET_BOUNDARY_MUTATION",
                         semantic_operation=operation,
                         block_id=block_id or None,
+                    )
+                candidate = matching[0]
+                selected_intent = selection.get("intent")
+                address = (unit_path, block_id)
+                if candidate.allowed_intents:
+                    if (not isinstance(selected_intent, str) or selected_intent not in candidate.allowed_intents
+                            or (address in intent_changes and intent_changes[address] != selected_intent)):
+                        raise _semantic_delta_failure(
+                            "Assessment selection has a missing, forbidden or conflicting teaching intent.",
+                            path=path, patch_count=len(patches),
+                            internal_code="ARCH_REPAIR_INVALID_SEMANTIC_INTENT",
+                            guard_reason="INVALID_SEMANTIC_INTENT", semantic_operation=operation,
+                        )
+                    intent_changes[address] = selected_intent
+                elif "intent" in selection:
+                    raise _semantic_delta_failure(
+                        "Assessment selection cannot change an already teaching-capable anchor intent.",
+                        path=path, patch_count=len(patches),
+                        internal_code="ARCH_REPAIR_SCOPE_VIOLATION",
+                        guard_reason="DISALLOWED_OUTER_FIELD", semantic_operation=operation,
                     )
                 selections[(path, objective_ref)] = (unit_path, block_id)
             if {key[1] for key in selections} != expected_objectives:
@@ -14251,6 +14953,22 @@ def _apply_v5_semantic_delta_repair_patches(
                     guard_reason="INVALID_OBJECTIVE_REF",
                     semantic_operation=operation,
                 )
+            # All decisions are validated before touching this private copy.
+            # Exact lesson-scoped unit/block addresses are server-owned;
+            # provenance/content and every unselected block stay unchanged.
+            for (unit_path, block_id), intent in intent_changes.items():
+                unit = _blueprint_path_object(result, unit_path)
+                block = next(item for item in unit["learning_blocks"] if str(item.get("id") or "").strip() == block_id)
+                try:
+                    preserve_assessment_visual_support(unit, block, unit_path=unit_path)
+                except ValueError:
+                    raise _semantic_delta_failure(
+                        "Assessment visual support cannot use an occupied server block identity.",
+                        path=path, patch_count=len(patches),
+                        internal_code="ARCH_REPAIR_INVALID_BLOCK_ID",
+                        guard_reason="SERVER_VISUAL_BLOCK_ID_COLLISION", semantic_operation=operation,
+                    ) from None
+                block["intent"] = intent
             compiled = compile_v5_assessment_plan(
                 result,
                 selections=selections,
@@ -15397,6 +16115,17 @@ async def build_lesson_author_checkpoint_result(
         raise WorkflowFailure("PROVIDER_ERROR", "The chapter invocation deadline expired.",
                               internal_code="AI_STAGED_LESSON_WORKFLOW_TIMEOUT", failure_stage="chapter_checkpoint_deadline")
     if request.checkpoint_action == "generate_unit":
+        preflight = instructional_plan_validation_result(request.blueprint_architecture.model_dump())
+        codes = sorted({issue["code"] for issue in preflight.issues})
+        emit({"stage": "chapter_instructional_plan_preflight", "event": "rejected" if preflight.errors else "passed",
+              "validation_codes": codes, "error_count": len(preflight.errors),
+              "findings": [safe_workflow_issue_summary(issue, repairable=False) for issue in preflight.errors[:32]],
+              "omitted_finding_count": max(0, len(preflight.errors) - 32),
+              "target_paths": sorted({safe_workflow_path(issue.get("path")) for issue in preflight.errors})})
+        if preflight.errors:
+            raise WorkflowFailure("LESSON_VALIDATION_FAILED", "The approved teaching plan has inconsistent objective bindings.",
+                                  internal_code="CHAPTER_INSTRUCTIONAL_PLAN_INVALID", failure_stage="chapter_instructional_plan_preflight",
+                                  diagnostics={"validation_codes": codes})
         value, generated_usage = await generate_staged_lesson_author_proposal(
             request, context, source_outline, source_coverage, source_rows=rows,
             source_coverage_manifest=manifest, checkpoint_unit_index=request.checkpoint_unit_index,
@@ -15445,7 +16174,10 @@ async def build_lesson_author_checkpoint_result(
         codes = sorted({str(issue.get("code") or "LESSON_VALIDATION_FAILED") for issue in result.issues})
         all_codes.extend(codes)
         emit({"stage": stage, "event": "rejected" if result.errors else "passed", "validation_codes": codes,
-              "error_count": len(result.errors), "unit_count": len(expected)})
+              "error_count": len(result.errors), "unit_count": len(expected),
+              "findings": [safe_workflow_issue_summary(issue, repairable=False) for issue in result.errors[:32]],
+              "omitted_finding_count": max(0, len(result.errors) - 32),
+              "target_paths": sorted({safe_workflow_path(issue.get("path")) for issue in result.errors})})
         if result.errors:
             raise WorkflowFailure("LESSON_VALIDATION_FAILED", "The complete chapter did not pass acceptance.",
                                   internal_code="CHAPTER_CHECKPOINT_REVALIDATION_FAILED", failure_stage=stage,
@@ -15849,6 +16581,541 @@ async def lesson_author_proposal(
     return {"proposal": proposal, "usage": usage.model_dump(), "sources": sources, "retrieval": retrieval, "workflow": workflow}
 
 
+def _orchestration_v2_http_error(code: str, message: str, *, status_code: int = 422) -> HTTPException:
+    return HTTPException(status_code=status_code, detail={"code": code, "message": message})
+
+
+async def _orchestration_v2_generate_content(
+    api_key: str,
+    model: str,
+    prompt: str,
+    *,
+    max_output_tokens: int,
+    response_schema: type[BaseModel],
+    correlation_id: str,
+    generation_stage: str,
+) -> tuple[str, AiUsage]:
+    """Call Gemini with a safe, terminal classification for definitive refusals.
+
+    A provider HTTP 400/401/403 proves that this request was rejected rather
+    than accepted for generation. Expose only a stable internal code so the
+    durable worker can release its reservation and fail immediately. Network,
+    timeout, and 5xx ambiguity retain the existing outcome-unknown path.
+    """
+
+    try:
+        return await generate_content(
+            api_key,
+            model,
+            prompt,
+            max_output_tokens=max_output_tokens,
+            json_mode=True,
+            response_schema=response_schema,
+        )
+    except HTTPException:
+        raise
+    except Exception as error:
+        status = provider_http_error_status(error)
+        diagnostics = safe_provider_error_diagnostics(error)
+        logger.warning("lesson_author_orchestration_v2 %s", json.dumps({
+            "event": "provider_request_rejected" if status in {400, 401, 403} else "provider_request_failed",
+            "correlation_id": correlation_id,
+            "generation_stage": generation_stage,
+            "model": model,
+            **diagnostics,
+        }, sort_keys=True))
+        if status == 400:
+            raise _orchestration_v2_http_error(
+                "AI_PROVIDER_REQUEST_REJECTED",
+                "AI provider rejected the structured generation request.",
+                status_code=502,
+            ) from error
+        if status in {401, 403}:
+            raise _orchestration_v2_http_error(
+                "AI_PROVIDER_AUTH_REJECTED",
+                "AI provider rejected the configured credentials or access policy.",
+                status_code=502,
+            ) from error
+        raise
+
+
+@app.post("/v1/lesson-author/orchestration-v2/source-snapshot", dependencies=[Depends(require_internal_token)])
+async def lesson_author_orchestration_v2_source_snapshot(
+    request: RagLessonAuthorSourceSnapshotV2Request,
+    pool: asyncpg.Pool = Depends(get_db),
+) -> dict[str, Any]:
+    """Return one deterministic source page without a provider call or whole-source materialization."""
+
+    document_ids = sorted(document.document_id for document in request.source_documents)
+    cursor = request.cursor
+    if cursor is not None and str(cursor["document_id"]) not in set(document_ids):
+        raise _orchestration_v2_http_error(
+            "SOURCE_CURSOR_INVALID", "The source cursor is outside the selected source authority.",
+        )
+    indexes = await pool.fetch(
+        """
+        SELECT r.id::text AS index_id,r.document_id::text AS document_id,r.content_sha256,
+               r.chunk_count,r.embedding_model,r.embedding_dimensions
+        FROM rag_document_indexes r
+        WHERE r.tenant_id=$1::uuid AND r.kb_id=$2::uuid AND r.document_id=ANY($3::uuid[])
+          AND r.engine='self_built_rag' AND r.status='learned' AND r.is_active=true
+          AND r.embedding_model=$4 AND r.embedding_dimensions=$5::int
+        ORDER BY r.document_id
+        """,
+        request.tenant_id, request.kb_id, document_ids,
+        normalize_embedding_model(request.embedding_model), request.embedding_dimensions,
+    )
+    if len(indexes) != len(document_ids) or {str(row["document_id"]) for row in indexes} != set(document_ids):
+        raise _orchestration_v2_http_error(
+            "SOURCE_REVISION_UNAVAILABLE", "The selected learned source revision is unavailable.",
+        )
+    structure_rows = await pool.fetch(
+        """
+        SELECT DISTINCT ON (c.document_id) c.document_id::text AS document_id,
+               c.metadata->'source_structure' AS source_structure
+        FROM rag_chunks c
+        WHERE c.tenant_id=$1::uuid AND c.kb_id=$2::uuid AND c.index_id=ANY($3::uuid[])
+          AND c.metadata ? 'source_structure'
+        ORDER BY c.document_id,c.chunk_no
+        """,
+        request.tenant_id, request.kb_id, [str(row["index_id"]) for row in indexes],
+    )
+    structures_by_document = {
+        str(row["document_id"]): decode_json_object(row["source_structure"])
+        for row in structure_rows
+    }
+    policy_documents = [{
+        "document_id": document_id,
+        "structure": structures_by_document.get(document_id),
+    } for document_id in document_ids]
+    chapter_policy = resolve_source_chapter_policy(policy_documents)
+    policy_mode = str(chapter_policy.get("mode") or "NEEDS_STRUCTURE_REVIEW")
+    authority_mode: Literal["locked", "model_designed", "needs_review"] = (
+        "locked" if policy_mode.startswith("SOURCE_LOCKED")
+        else "model_designed" if policy_mode == "MODEL_DESIGNED"
+        else "needs_review"
+    )
+    authority_source: Literal["toc", "headings", "none", "ambiguous"] = (
+        "toc" if policy_mode == "SOURCE_LOCKED_TOC"
+        else "headings" if policy_mode == "SOURCE_LOCKED_HEADINGS"
+        else "none" if authority_mode == "model_designed"
+        else "ambiguous"
+    )
+    chapters = [SourceOutlineChapterV2(
+        order=index,
+        document_id=str(chapter["document_id"]),
+        source_ref=str(chapter["source_ref"]),
+        title=str(chapter["title"]),
+    ) for index, chapter in enumerate(chapter_policy.get("chapters", []))] if authority_mode == "locked" else []
+    confidences = [float(structure.get("confidence") or 0) for structure in structures_by_document.values()
+                   if isinstance(structure, dict)]
+    authority_payload = {
+        "mode": authority_mode,
+        "source": authority_source,
+        "complete": bool(chapter_policy.get("complete")),
+        "confidence": min(confidences) if confidences else 0.0,
+        "reason_codes": [str(value)[:120] for value in chapter_policy.get("reason_codes", [])[:32]],
+        "chapters": [chapter.model_dump(mode="json") for chapter in chapters],
+    }
+    source_authority = SourceOutlineAuthorityV2(
+        **authority_payload,
+        structure_hash=orchestration_v2_canonical_hash(authority_payload),
+    )
+    revision_payload = [{
+        "document_id": str(row["document_id"]), "index_id": str(row["index_id"]),
+        "content_sha256": str(row["content_sha256"] or ""), "chunk_count": int(row["chunk_count"] or 0),
+        "embedding_model": str(row["embedding_model"]),
+        "embedding_dimensions": int(row["embedding_dimensions"]),
+    } for row in indexes]
+    source_revision = orchestration_v2_canonical_hash(revision_payload)
+    if request.expected_source_revision and request.expected_source_revision != source_revision:
+        raise _orchestration_v2_http_error(
+            "SOURCE_REVISION_CHANGED", "The learned source revision changed while paging.", status_code=409,
+        )
+
+    index_ids = [str(row["index_id"]) for row in indexes]
+    after_document_id = str(cursor["document_id"]) if cursor else None
+    after_chunk_no = int(cursor["chunk_no"]) if cursor else -1
+    row_limit = 128
+    fetched = await pool.fetch(
+        """
+        SELECT c.content,c.source_page,c.source_section,c.metadata,c.chunk_no,c.index_id::text AS index_id,
+               c.document_id::text AS document_id,d.name AS document_name
+        FROM rag_chunks c
+        JOIN kb_documents d ON d.id=c.document_id AND d.tenant_id=c.tenant_id AND d.kb_id=c.kb_id
+        WHERE c.tenant_id=$1::uuid AND c.kb_id=$2::uuid AND c.index_id=ANY($3::uuid[])
+          AND ($4::uuid IS NULL OR c.document_id>$4::uuid
+               OR (c.document_id=$4::uuid AND c.chunk_no>$5::int))
+        ORDER BY c.document_id,c.chunk_no
+        LIMIT $6::int
+        """,
+        request.tenant_id, request.kb_id, index_ids, after_document_id, after_chunk_no, row_limit + 1,
+    )
+    document_order = {document_id: index + 1 for index, document_id in enumerate(document_ids)}
+    facts: list[SourceSnapshotFactV2] = []
+    content_bytes = 0
+    last_cursor: dict[str, Any] | None = None
+    has_more = len(fetched) > row_limit
+    for raw_row in fetched[:row_limit]:
+        row = dict(raw_row)
+        document_id = str(row["document_id"])
+        chunk_no = int(row["chunk_no"])
+        metadata = decode_json_object(row.get("metadata")) or {}
+        fact_texts = extract_source_coverage_facts(clean_text(str(row.get("content") or "")))
+        page = row.get("source_page") if isinstance(row.get("source_page"), int) and row.get("source_page") > 0 else None
+        source_ref = str(metadata.get("source_ref") or row.get("source_section") or "").strip()[:255] or None
+        heading = metadata.get("heading_path")
+        if isinstance(heading, list):
+            heading = " › ".join(
+                str(value).strip()[:120] for value in heading[:8] if str(value).strip()
+            )
+        scope_title = str(heading or row.get("source_section") or "").strip()
+        if not scope_title:
+            suffix = f" · page {page}" if page is not None else f" · chunk {chunk_no + 1}"
+            scope_title = f"{str(row.get('document_name') or 'Source document')}{suffix}"
+        scope_title = scope_title[:500]
+        # Preserve the parser's logical section boundary so a multi-section
+        # document cannot collapse into one unusable course scope. The bounded
+        # chunk group still splits exceptionally large/repeated sections and is
+        # independent of response pagination, keeping retries deterministic.
+        scope_group = chunk_no // 24
+        if source_ref:
+            scope_owner = f"source-ref:{source_ref}"
+        else:
+            scope_owner = "title:" + hashlib.sha256(scope_title.encode("utf-8")).hexdigest()[:24]
+        scope_locator = f"{scope_owner}:chunk-group:{scope_group}"
+        scope_key = "scope2_" + hashlib.sha256(
+            f"{document_id}\x1e{scope_locator}".encode("utf-8"),
+        ).hexdigest()[:32]
+        candidates = [SourceSnapshotFactV2(
+            document_id=document_id,
+            fact_key=f"d{document_order[document_id]}-c{chunk_no + 1}-f{fact_index}",
+            scope_key=scope_key,
+            fact_text=text,
+            source_ref=source_ref,
+            source_page=page,
+            source_chunk=chunk_no,
+            locator={"index_id": str(row["index_id"]), "source_revision": source_revision,
+                     "scope_title": scope_title,
+                     "parser_version": str(metadata.get("parser_version") or "")[:80] or None},
+        ) for fact_index, text in enumerate(fact_texts, start=1)]
+        candidate_bytes = sum(len(fact.fact_text.encode("utf-8")) for fact in candidates)
+        exceeds = (len(facts) + len(candidates) > request.page_max_facts
+                   or content_bytes + candidate_bytes > request.page_max_bytes)
+        if exceeds and facts:
+            has_more = True
+            break
+        if exceeds:
+            raise _orchestration_v2_http_error(
+                "SOURCE_CHUNK_EXCEEDS_PAGE", "One source chunk exceeds the bounded page contract.",
+            )
+        facts.extend(candidates)
+        content_bytes += candidate_bytes
+        last_cursor = {"document_id": document_id, "chunk_no": chunk_no}
+
+    if has_more and last_cursor is None:
+        raise _orchestration_v2_http_error(
+            "SOURCE_CURSOR_STALLED", "The source cursor could not advance.",
+        )
+    facts_wire = [fact.model_dump(mode="json") for fact in facts]
+    logger.info("lesson_author_orchestration_v2 %s", json.dumps({
+        "event": "source_snapshot_page_ready", "correlation_id": request.correlation_id,
+        "source_snapshot_hash": request.source_snapshot_hash, "source_revision": source_revision,
+        "source_fact_count": len(facts_wire), "source_content_bytes": content_bytes,
+        "has_more": has_more, "provider_call_count": 0,
+    }, sort_keys=True))
+    return {
+        "contract_version": 2,
+        "source_snapshot_hash": request.source_snapshot_hash,
+        "source_revision": source_revision,
+        "source_authority": source_authority.model_dump(mode="json"),
+        "facts": facts_wire,
+        "next_cursor": last_cursor if has_more else None,
+        "has_more": has_more,
+        "page_content_bytes": content_bytes,
+        "usage": AiUsage().model_dump(),
+    }
+
+
+@app.post("/v1/lesson-author/orchestration-v2/course-skeleton", dependencies=[Depends(require_internal_token)])
+async def lesson_author_orchestration_v2_course_skeleton(
+    request: RagLessonAuthorCourseSkeletonV2Request,
+) -> dict[str, Any]:
+    """Generate only global structure; chapter content is delegated to bounded shards."""
+
+    prompt = skeleton_prompt_v2(request.locale, request.scope_catalog, request.source_authority)
+    logger.info("lesson_author_orchestration_v2 %s", json.dumps({
+        "event": "provider_schema_projection_ready", "correlation_id": request.correlation_id,
+        "generation_stage": "course_skeleton", **COURSE_SKELETON_PROVIDER_SCHEMA_METADATA,
+    }, sort_keys=True))
+    usage = AiUsage()
+    last_code = "ARCHITECTURE_SKELETON_INVALID"
+    for attempt in range(1, request.max_attempts + 1):
+        text, attempt_usage = await _orchestration_v2_generate_content(
+            request.api_key, request.model, prompt,
+            max_output_tokens=request.max_output_tokens,
+            response_schema=CourseSkeletonProviderWireV2,
+            correlation_id=request.correlation_id,
+            generation_stage="course_skeleton",
+        )
+        usage = combine_usage(usage, attempt_usage)
+        try:
+            draft = CourseSkeletonDraftV2.model_validate_json(text)
+            skeleton = bind_course_skeleton_v2(
+                draft,
+                source_snapshot_hash=request.source_snapshot_hash,
+                locale=request.locale,
+                scope_catalog=request.scope_catalog,
+                source_authority=request.source_authority,
+            )
+            logger.info("lesson_author_orchestration_v2 %s", json.dumps({
+                "event": "course_skeleton_ready", "correlation_id": request.correlation_id,
+                "source_snapshot_hash": request.source_snapshot_hash,
+                "scope_count": len(request.scope_catalog), "chapter_count": len(skeleton.chapters),
+                "provider_attempt": attempt,
+            }, sort_keys=True))
+            return {"contract_version": 2, "skeleton": skeleton.model_dump(mode="json"),
+                    "usage": usage.model_dump()}
+        except OrchestrationContractError as error:
+            last_code = error.code
+            logger.warning("lesson_author_orchestration_v2 %s", json.dumps({
+                "event": "course_skeleton_validation_failed",
+                "correlation_id": request.correlation_id,
+                "provider_attempt": attempt,
+                "failure_code": last_code,
+            }, sort_keys=True))
+        except ValidationError as error:
+            last_code = "ARCHITECTURE_SKELETON_INVALID"
+            safe_errors = [{"type": item.get("type"), "loc": list(item.get("loc") or ())}
+                           for item in error.errors(include_url=False, include_input=False)[:10]]
+            logger.warning("lesson_author_orchestration_v2 %s", json.dumps({
+                "event": "course_skeleton_validation_failed",
+                "correlation_id": request.correlation_id,
+                "provider_attempt": attempt,
+                "failure_code": last_code,
+                "validation_errors": safe_errors,
+            }, sort_keys=True))
+    fallback = fallback_course_skeleton_draft_v2(
+        request.locale, request.scope_catalog, request.source_authority,
+    )
+    skeleton = bind_course_skeleton_v2(
+        fallback,
+        source_snapshot_hash=request.source_snapshot_hash,
+        locale=request.locale,
+        scope_catalog=request.scope_catalog,
+        source_authority=request.source_authority,
+    )
+    logger.warning("lesson_author_orchestration_v2 %s", json.dumps({
+        "event": "course_skeleton_deterministic_fallback_ready",
+        "correlation_id": request.correlation_id,
+        "source_snapshot_hash": request.source_snapshot_hash,
+        "scope_count": len(request.scope_catalog),
+        "chapter_count": len(skeleton.chapters),
+        "provider_attempts": request.max_attempts,
+        "last_failure_code": last_code,
+    }, sort_keys=True))
+    return {"contract_version": 2, "skeleton": skeleton.model_dump(mode="json"),
+            "usage": usage.model_dump()}
+
+
+@app.post("/v1/lesson-author/orchestration-v2/chapter-shard", dependencies=[Depends(require_internal_token)])
+async def lesson_author_orchestration_v2_chapter_shard(
+    request: RagLessonAuthorChapterShardV2Request,
+) -> dict[str, Any]:
+    """Generate one independently retryable, source-bounded chapter shard."""
+
+    try:
+        prompt = chapter_shard_prompt_v2(
+            request.locale, request.skeleton, request.shard_plan, request.source_facts,
+        )
+    except (OrchestrationContractError, StopIteration) as error:
+        code = error.code if isinstance(error, OrchestrationContractError) else "ARCHITECTURE_SHARD_IDENTITY_MISMATCH"
+        raise _orchestration_v2_http_error(code, "The chapter shard context is invalid.") from error
+    logger.info("lesson_author_orchestration_v2 %s", json.dumps({
+        "event": "provider_schema_projection_ready", "correlation_id": request.correlation_id,
+        "generation_stage": "chapter_shard", "chapter_key": request.shard_plan.chapter_key,
+        "shard_index": request.shard_plan.shard_index, **CHAPTER_SHARD_PROVIDER_SCHEMA_METADATA,
+    }, sort_keys=True))
+    usage = AiUsage()
+    last_code = "ARCHITECTURE_SHARD_INVALID"
+    repair_hint = ""
+    for attempt in range(1, request.max_attempts + 1):
+        text, attempt_usage = await _orchestration_v2_generate_content(
+            request.api_key, request.model, prompt + repair_hint,
+            max_output_tokens=request.max_output_tokens,
+            response_schema=ChapterShardProviderWireV2,
+            correlation_id=request.correlation_id,
+            generation_stage="chapter_shard",
+        )
+        usage = combine_usage(usage, attempt_usage)
+        try:
+            draft = parse_chapter_shard_draft_v2(text)
+            shard = bind_chapter_shard_v2(draft, skeleton=request.skeleton, plan=request.shard_plan)
+            logger.info("lesson_author_orchestration_v2 %s", json.dumps({
+                "event": "chapter_shard_ready", "correlation_id": request.correlation_id,
+                "source_snapshot_hash": request.skeleton.source_snapshot_hash,
+                "chapter_key": request.shard_plan.chapter_key,
+                "shard_index": request.shard_plan.shard_index,
+                "shard_count": request.shard_plan.shard_count,
+                "source_fact_count": len(request.source_facts), "provider_attempt": attempt,
+            }, sort_keys=True))
+            return {"contract_version": 2, "shard": shard.model_dump(mode="json"),
+                    "usage": usage.model_dump()}
+        except OrchestrationContractError as error:
+            last_code = error.code
+            safe_errors = [{"type": "contract_error", "loc": [], "code": error.code}]
+        except (ValidationError, ValueError, json.JSONDecodeError) as error:
+            last_code = "ARCHITECTURE_SHARD_INVALID"
+            safe_errors = ([{"type": item.get("type"), "loc": list(item.get("loc") or ())}
+                            for item in error.errors(include_url=False, include_input=False)[:12]]
+                           if isinstance(error, ValidationError)
+                           else [{"type": type(error).__name__, "loc": []}])
+        logger.warning("lesson_author_orchestration_v2 %s", json.dumps({
+            "event": "chapter_shard_validation_failed", "correlation_id": request.correlation_id,
+            "chapter_key": request.shard_plan.chapter_key, "shard_index": request.shard_plan.shard_index,
+            "provider_attempt": attempt, "failure_code": last_code, "validation_errors": safe_errors,
+        }, sort_keys=True))
+        repair_hint = (" REPAIR_REQUIREMENTS: Return the complete schema again. Correct these validation locations: "
+                       + json.dumps(safe_errors, separators=(",", ":")) + ".")
+
+    fallback = fallback_chapter_shard_draft_v2(
+        request.skeleton, request.shard_plan, request.source_facts,
+    )
+    shard = bind_chapter_shard_v2(fallback, skeleton=request.skeleton, plan=request.shard_plan)
+    logger.warning("lesson_author_orchestration_v2 %s", json.dumps({
+        "event": "chapter_shard_deterministic_fallback_ready",
+        "correlation_id": request.correlation_id,
+        "chapter_key": request.shard_plan.chapter_key,
+        "shard_index": request.shard_plan.shard_index,
+        "source_fact_count": len(request.source_facts),
+        "provider_attempts": request.max_attempts,
+        "last_failure_code": last_code,
+    }, sort_keys=True))
+    return {"contract_version": 2, "shard": shard.model_dump(mode="json"),
+            "usage": usage.model_dump()}
+
+
+@app.post("/v1/lesson-author/orchestration-v2/unit", dependencies=[Depends(require_internal_token)])
+async def lesson_author_orchestration_v2_unit(
+    request: RagLessonAuthorUnitV2Request,
+) -> dict[str, Any]:
+    """Generate exactly one immutable inventory unit with the proven Stage-2 writer."""
+
+    contract = request.unit_contract
+    manifest = unit_contract_manifest_v2(contract)
+    document_names = {document.document_id: document.name for document in request.source_documents}
+    # Adapt the immutable V2 source ledger to the complete legacy formatter
+    # row contract. Omitting any of these display/retrieval fields used to turn
+    # a valid source fact into an ASGI 500 before the provider was called.
+    source_rows = [{
+        "document_id": fact.document_id,
+        "document_name": document_names[fact.document_id],
+        "source_page": fact.source_page,
+        "source_section": fact.locator.get("source_section") or fact.source_ref,
+        "chunk_no": fact.source_chunk,
+        "content": fact.fact_text,
+        "score": 1.0,
+        "vector_score": 1.0,
+        "keyword_score": 0.0,
+        "method": "orchestration_v2_source_ledger",
+        "methods": ["orchestration_v2_source_ledger"],
+        "metadata": {
+            "source_ref": fact.source_ref,
+            "fact_key": fact.fact_key,
+            "heading_path": fact.locator.get("heading_path"),
+        },
+    } for fact in contract.source_facts]
+    context = "\n".join(f"[{fact.fact_key}] {fact.fact_text}" for fact in contract.source_facts)
+    source_outline = f"{contract.chapter_title} > {contract.lesson_title} > {contract.unit_title}"
+    source_coverage = format_source_coverage_manifest(manifest)
+    adapted = RagLessonAuthorRequest.model_validate({
+        **request.model_dump(exclude={"contract_version", "unit_contract", "remaining_workflow_budget_ms"}),
+        "outline_context": contract.unit_path,
+        "target_scope_instruction": "Generate only the approved immutable orchestration V2 unit.",
+        "output_schema_hint": "Return the server-supplied staged unit schema.",
+        "operation": "create", "target_type": "chapter", "generation_mode": "staged",
+        "blueprint_architecture": unit_contract_v5_architecture_v2(contract),
+    })
+
+    def deterministic_fallback(reason_code: str, *, provider_dispatched: bool) -> dict[str, Any]:
+        unit = build_orchestration_v2_source_locked_unit(contract, request.locale)
+        expected = {
+            "unit_title": contract.unit_title,
+            "source_fact_ids": list(contract.unit_source_fact_ids),
+            "supporting_evidence_fact_ids": [],
+            "component_types": [plan.type for plan in contract.component_plan],
+            "component_plan": [plan.model_dump(mode="json") for plan in contract.component_plan],
+            "locale": request.locale,
+        }
+        finding = (validate_staged_unit_content(unit, expected, strict_payload=True)
+                   if isinstance(unit, dict) else
+                   StagedUnitFinding("Deterministic unit fallback is unavailable.",
+                                     "UNIT_FALLBACK_UNAVAILABLE", "unit", False))
+        if finding is not None:
+            logger.error("lesson_author_orchestration_v2 %s", json.dumps({
+                "event": "unit_deterministic_fallback_rejected",
+                "correlation_id": request.correlation_id,
+                "chapter_key": contract.chapter_key,
+                "unit_path": contract.unit_path,
+                "reason_code": reason_code,
+                "validation_finding": finding.diagnostic() if isinstance(finding, StagedUnitFinding) else {
+                    "code": "UNIT_FALLBACK_INVALID", "path": "unit", "repairable": False,
+                },
+            }, sort_keys=True))
+            raise _orchestration_v2_http_error(
+                "ORCHESTRATION_V2_UNIT_FALLBACK_INVALID",
+                "The source-locked unit fallback did not pass server validation.",
+                status_code=422,
+            )
+        logger.warning("lesson_author_orchestration_v2 %s", json.dumps({
+            "event": "unit_deterministic_fallback_ready",
+            "correlation_id": request.correlation_id,
+            "source_snapshot_hash": contract.source_snapshot_hash,
+            "chapter_key": contract.chapter_key,
+            "unit_path": contract.unit_path,
+            "source_fact_count": len(contract.source_facts),
+            "component_count": len(contract.component_plan),
+            "reason_code": reason_code,
+            "provider_dispatched": provider_dispatched,
+        }, sort_keys=True))
+        usage = AiUsage().model_dump()
+        return {"contract_version": 2, "source_snapshot_hash": contract.source_snapshot_hash,
+                "unit_path": contract.unit_path, "unit": unit, "usage": usage,
+                "usage_complete": not provider_dispatched,
+                "usage_source": "reserved_upper_bound" if provider_dispatched else "deterministic_fallback"}
+
+    if request.fallback_only:
+        return deterministic_fallback("DURABLE_FINAL_ATTEMPT", provider_dispatched=False)
+    try:
+        value, usage = await asyncio.wait_for(generate_staged_lesson_author_proposal(
+            adapted, context, source_outline, source_coverage, source_rows=source_rows,
+            source_coverage_manifest=manifest, checkpoint_unit_index=0,
+            remaining_workflow_budget_ms=request.remaining_workflow_budget_ms,
+        ), request.remaining_workflow_budget_ms / 1000)
+        unit = value.get("unit") if isinstance(value, dict) else None
+        if not isinstance(unit, dict) or unit.get("title") != contract.unit_title:
+            raise LessonAuthorProposalValidationError("ORCHESTRATION_V2_UNIT_IDENTITY_CHANGED")
+        provider_usage_complete = value.pop("provider_usage_complete", False) is True
+        if not provider_usage_complete:
+            return deterministic_fallback("PROVIDER_USAGE_INCOMPLETE", provider_dispatched=True)
+        logger.info("lesson_author_orchestration_v2 %s", json.dumps({
+            "event": "unit_ready", "correlation_id": request.correlation_id,
+            "source_snapshot_hash": contract.source_snapshot_hash, "chapter_key": contract.chapter_key,
+            "unit_path": contract.unit_path, "source_fact_count": len(contract.source_facts),
+            "component_count": len(unit.get("components", [])),
+            "provider_usage_complete": provider_usage_complete,
+        }, sort_keys=True))
+        return {"contract_version": 2, "source_snapshot_hash": contract.source_snapshot_hash,
+                "unit_path": contract.unit_path, "unit": unit, "usage": usage.model_dump(),
+                "usage_complete": True, "usage_source": "provider"}
+    except asyncio.TimeoutError:
+        return deterministic_fallback("AI_STAGED_LESSON_WORKFLOW_TIMEOUT", provider_dispatched=True)
+    except WorkflowFailure as error:
+        return deterministic_fallback(error.internal_code or error.code, provider_dispatched=True)
+    except (LessonAuthorProposalValidationError, ValidationError, ValueError):
+        return deterministic_fallback("ORCHESTRATION_V2_UNIT_INVALID", provider_dispatched=True)
+
+
 @app.post("/v1/lesson-author/blueprint", dependencies=[Depends(require_internal_token)])
 async def lesson_author_blueprint(
     request: RagLessonAuthorBlueprintRequest,
@@ -15912,6 +17179,9 @@ async def lesson_author_blueprint(
                 "expected_chapter_count": len(policy["chapters"]),
                 "reason_codes": policy["reason_codes"],
                 "missing_document_count": len(missing_documents),
+                "source_structure_node_count": structure_context.get("structure_node_count", 0),
+                "source_outline_display_truncated": bool(structure_context.get("source_outline_display_truncated")),
+                "source_outline_display_chars": len(structure_context.get("outline") or ""),
             })
             if not policy["complete"] or missing_documents:
                 raise WorkflowFailure(
@@ -15972,6 +17242,8 @@ async def lesson_author_blueprint(
             "source_map_complete": bool(coverage.get("fact_scope_complete")) and bool(coverage.get("section_scope_complete")),
             "architect_context_mode": architect_context["diagnostics"].get("architect_context_mode"),
             "architect_context_chars": architect_context["diagnostics"].get("architect_context_size"),
+            "architect_hierarchy_encoding": architect_context["diagnostics"].get("architect_hierarchy_encoding"),
+            "architect_uncompressed_context_chars": architect_context["diagnostics"].get("architect_uncompressed_context_chars"),
             "architect_detail_fact_count": architect_context["diagnostics"].get("architect_detail_fact_count"),
             "evidence_scope_count": v5_source_context.evidence_scope_count,
             "source_context_fingerprint": v5_source_context.fingerprint,
@@ -16172,6 +17444,29 @@ async def lesson_author_blueprint(
             emit_layer("semantic_scope_failed", semantic.issues)
             return mark_repair_layer(semantic, "EVIDENCE_SEMANTIC")
         emit_layer("evidence_semantic_passed", [])
+
+        # Freeze direct assessment references from the same canonical scopes
+        # already accepted above, before candidate fingerprints/mutation guards.
+        # Explicit provider refs and all ownership remain protected unchanged.
+        projected, provenance_diagnostics, provenance_issues = materialize_assessment_source_refs(
+            candidate, v5_source_context.source_map_copy(),
+        )
+        emit_blueprint_diagnostic({
+            "stage": "v5_assessment_provenance", "event": "failed" if provenance_issues else "resolved",
+            "materialized_block_count": 0 if provenance_issues else len(provenance_diagnostics),
+            "blocks": provenance_diagnostics[:24],
+            "omitted_block_count": max(0, len(provenance_diagnostics) - 24),
+            "reason_codes": sorted({issue.safe_reason for issue in provenance_issues}),
+        })
+        if provenance_issues:
+            result = WorkflowValidationResult([issue.workflow_issue() for issue in provenance_issues])
+            return mark_repair_layer(result, "PRE_ALLOCATION_COHERENCE")
+        projected_semantic = validate_course_architecture_evidence_scope(projected, v5_source_context.source_map_copy())
+        if projected_semantic.errors:
+            emit_layer("semantic_scope_failed", projected_semantic.issues)
+            return mark_repair_layer(projected_semantic, "EVIDENCE_SEMANTIC")
+        candidate.clear()
+        candidate.update(projected)
 
         # Assessment intent is compiled before coherence, one local objective
         # at a time. The Architect declares *that* assessment is required; the
@@ -16419,6 +17714,22 @@ async def lesson_author_blueprint(
         try:
             for operation_index, (operation, operation_targets, _context, prompt) in enumerate(scoped_contexts, start=1):
                 repair_provider_telemetry: dict[str, Any] = {}
+                selection_contract = None
+                if operation == "select_assessment_teaching_alignment":
+                    selection_contract = build_assessment_selection_contract(
+                        operation_targets, max_context_chars=MAX_WORKFLOW_REPAIR_TARGET_CHARS,
+                        blueprint=blueprint, source_map=v5_source_context.source_map_copy(),
+                        manifest=v5_source_context.manifest_copy(),
+                    )
+                    prompt = selection_contract.prompt(request.locale)
+                    emit_blueprint_diagnostic({
+                        "stage": "architecture_repair_selection_contract", "event": "prepared",
+                        "repair_pass_number": repair_pass_number, "repair_layer": repair_layer,
+                        "semantic_operation": operation, "selection_contract_version": ASSESSMENT_SELECTION_CONTRACT_VERSION,
+                        "selection_slot_count": len(selection_contract.bindings), "repair_target_count": len(operation_targets),
+                        **selection_contract.diagnostics,
+                        "total_repair_provider_calls": total_repair_provider_calls,
+                    })
 
                 def record_repair_provider_telemetry(telemetry: dict[str, Any]) -> None:
                     repair_provider_telemetry.update(telemetry)
@@ -16448,7 +17759,7 @@ async def lesson_author_blueprint(
                         max_output_tokens=repair_output_tokens,
                         json_mode=True,
                         response_schema=(
-                            build_v5_semantic_delta_repair_response_schema({operation})
+                            selection_contract.schema if selection_contract else build_v5_semantic_delta_repair_response_schema({operation})
                             if operation else build_course_architecture_repair_response_schema(
                                 set().union(*(
                                     set(target.get("allowed_fields", []))
@@ -16497,7 +17808,7 @@ async def lesson_author_blueprint(
                             "semantic_operation": operation,
                         },
                     )
-                payload = parse_course_architecture_repair_payload(text)
+                payload = selection_contract.decode_text(text) if selection_contract else parse_course_architecture_repair_payload(text)
                 emit_blueprint_diagnostic({
                     "stage": "architecture_repair_json_parser",
                     "event": "passed",

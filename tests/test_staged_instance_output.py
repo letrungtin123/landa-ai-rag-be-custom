@@ -37,7 +37,7 @@ class StagedInstanceOutputTests(unittest.TestCase):
         schema = main.build_staged_instance_response_model(plans)
         client = genai.Client(api_key="test-key")
         wire = models._GenerateContentConfig_to_mldev(client._api_client, types.GenerateContentConfig(response_schema=schema))["responseSchema"]
-        slots = wire["properties"]["components"]
+        slots = wire.properties["components"]
         self.assertEqual(set(slots.required), {f"c{i}" for i in range(4)})
         for key in ("nodes", "edges"):
             self.assertIn(key, slots.properties["c2"].required)
@@ -53,7 +53,7 @@ class StagedInstanceOutputTests(unittest.TestCase):
             extra_plans = [{**deepcopy(plans[i]), "type": kind} for i, kind in enumerate(kinds)]
             other = main.build_staged_instance_response_model(extra_plans)
             other_wire = models._GenerateContentConfig_to_mldev(client._api_client, types.GenerateContentConfig(response_schema=other))["responseSchema"]
-            other_slots = other_wire["properties"]["components"].properties
+            other_slots = other_wire.properties["components"].properties
             if kinds[1] == "la_sortable":
                 self.assertEqual(set(other_slots["c1"].properties["items"].items.properties), {"text"})
                 self.assertEqual(set(other_slots["c3"].properties["items"].items.properties), {"question", "answer"})

@@ -7,12 +7,10 @@ from collections import Counter
 from copy import deepcopy
 import hashlib
 import json
-from unittest.mock import patch
-
 from google import genai
 from google.genai import errors, types
+import httpx
 from pydantic import create_model
-import requests
 
 from app import main
 
@@ -39,21 +37,33 @@ def schema_cases():
 
 def capture_sdk_body(schema, model="offline-model", max_output_tokens=30000):
     """Run actual SDK serialization, but replace its entire HTTP transport."""
-    error_response = requests.Response()
-    error_response.status_code = 400
-    error_response._content = b'{"error":{"code":400,"message":"offline capture"}}'
-    with patch("requests.Session.request", return_value=error_response) as transport:
-        try:
-            genai.Client(api_key="offline-placeholder", http_options=types.HttpOptions(timeout=180000)).models.generate_content(
-                model=model, contents="Synthetic contract probe. Return the smallest schema-valid JSON. No private data.",
-                config={"response_schema": schema, "response_mime_type": "application/json",
-                        "max_output_tokens": max_output_tokens, "temperature": main.settings.generation_temperature,
-                        "thinking_config": types.ThinkingConfig(include_thoughts=False)})
-        except errors.ClientError:
-            pass
-        if transport.call_count != 1:
-            raise AssertionError("Expected exactly one mocked SDK dispatch")
-        return json.loads(transport.call_args.kwargs["data"])
+    captured: list[dict] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured.append(json.loads(request.content))
+        return httpx.Response(400, request=request,
+                              json={"error": {"code": 400, "message": "offline capture"}})
+
+    client = genai.Client(
+        api_key="offline-placeholder",
+        http_options=types.HttpOptions(
+            timeout=180000,
+            client_args={"transport": httpx.MockTransport(handler)},
+        ),
+    )
+    try:
+        client.models.generate_content(
+            model=model, contents="Synthetic contract probe. Return the smallest schema-valid JSON. No private data.",
+            config={"response_schema": schema, "response_mime_type": "application/json",
+                    "max_output_tokens": max_output_tokens, "temperature": main.settings.generation_temperature,
+                    "thinking_config": types.ThinkingConfig(include_thoughts=False)})
+    except errors.ClientError:
+        pass
+    finally:
+        client.close()
+    if len(captured) != 1:
+        raise AssertionError("Expected exactly one mocked SDK dispatch")
+    return captured[0]
 
 
 def visit_schema(node, path="responseSchema"):

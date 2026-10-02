@@ -4,11 +4,16 @@ from __future__ import annotations
 from copy import deepcopy
 from typing import Any
 
-from app.source_structure import MAX_NODES, strip_source_range_suffix
+from app.source_structure import MAX_NODES, PARSER_VERSION, strip_source_range_suffix
 from app.lesson_author_blueprint import LessonAuthorBlueprintValidationError, MAX_BLUEPRINT_CHAPTERS
 
 
-def resolve_source_chapter_policy(documents: list[dict[str, Any]], *, outline_complete: bool = True) -> dict[str, Any]:
+def resolve_source_chapter_policy(documents: list[dict[str, Any]]) -> dict[str, Any]:
+    """Resolve authority from the full inventory, never its display summary.
+
+    Current parser proof of *no* chapter authority permits pedagogical design;
+    absent legacy proof or an incomplete/invalid inventory does not.
+    """
     policy: dict[str, Any] = {"version": 1, "mode": "MODEL_DESIGNED", "complete": True,
                               "reason_codes": [], "chapters": []}
 
@@ -18,8 +23,6 @@ def resolve_source_chapter_policy(documents: list[dict[str, Any]], *, outline_co
         if reason not in policy["reason_codes"]:
             policy["reason_codes"].append(reason)
 
-    if not outline_complete:
-        review("SOURCE_OUTLINE_INCOMPLETE")
     modes: list[str] = []
     for document in documents:
         structure = document.get("structure") or {}
@@ -63,6 +66,17 @@ def resolve_source_chapter_policy(documents: list[dict[str, Any]], *, outline_co
             if authority["heading_refs"] != [n["source_ref"] for n in roots]:
                 review("SOURCE_HEADING_AUTHORITY_INVALID")
             mode = "SOURCE_LOCKED_HEADINGS"
+        elif (source == "heading_inferred"
+              and structure.get("parser_version") == PARSER_VERSION
+              and type(authority.get("version")) is int and authority["version"] == 1
+              and authority.get("complete") is True
+              and authority.get("basis") == "NONE"
+              and authority.get("heading_refs") == []):
+            # Body numbering, slide headings and repeated headers are evidence
+            # hints, not verified chapter bindings. The current parser has
+            # explicitly completed authority detection; no provenance is lost
+            # by leaving chapter grouping to the evidence-grounded Architect.
+            mode = "MODEL_DESIGNED"
         elif source == "heading_inferred" and any(n.get("number_label") for n in nodes):
             # Legacy numbering cannot distinguish a body list from a chapter
             # hierarchy. Do not turn lost parser evidence into model freedom.

@@ -88,6 +88,11 @@ class LessonAuthorBlueprintMediaPlanResponse(BaseModel):
     title: str
     content_outline: str
     rationale: str
+    brief_version: int | None = None
+    content_points: list[str] = Field(default_factory=list)
+    context_description: str | None = None
+    evidence_language: str | None = None
+    content_basis: str | None = None
 
 
 class LessonAuthorBlueprintUnitResponse(BaseModel):
@@ -639,6 +644,10 @@ def _v5_semantic_delta_patch_schema(operation: str) -> types.Schema:
                             ),
                             "unit_path": _string_schema("The exact server-approved candidate unit path when decision is SELECT."),
                             "teaching_block_id": _string_schema("The exact server-approved candidate teaching block ID when decision is SELECT."),
+                            "intent": _enum_string_schema(
+                                "Required only for a candidate with allowed_intents: choose an evidence-compatible teaching treatment. Otherwise omit; use NO_MATCH if none is justified.",
+                                ASSESSMENT_TEACHING_REPAIR_INTENTS,
+                            ),
                         },
                     ),
                 ),
@@ -1447,6 +1456,14 @@ def validate_lesson_author_blueprint(
                         "rationale": _require_text(media_record.get("rationale"), "media_plan.rationale", 240),
                     }
                     total_media_plans += 1
+                    if media_record.get("brief_version") == 2:
+                        media_plan.update({
+                            "brief_version": 2,
+                            "content_points": _require_text_array(media_record.get("content_points"), "media_plan.content_points", min_items=1, max_items=6, item_max_length=500),
+                            "context_description": _require_text(media_record.get("context_description"), "media_plan.context_description", 1000),
+                            "evidence_language": "original",
+                            "content_basis": "SOURCE_EXCERPTS",
+                        })
                 unit_primary_concept_ids = _require_text_array(
                     unit.get("primary_concept_ids") if forbid_provider_fact_ownership and is_server_owned_fact_architecture else unit.get("primary_concept_ids") or [],
                     f"{unit_label}.primary_concept_ids",

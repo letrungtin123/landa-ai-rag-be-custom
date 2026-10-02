@@ -36,7 +36,8 @@ def fixture(count=5, *, action="generate_unit", index=0):
         generated = deepcopy(template)
         generated.update(title="Repeated title", source_fact_ids=[fact], supporting_evidence_fact_ids=[])
         generated["components"][0].update(source_fact_ids=[fact], covered_source_fact_ids=[fact], supporting_evidence_fact_ids=[],
-                                            semantic_content={"heading": f"Topic {i}", "paragraphs": [text * 5]})
+                                            semantic_content={"version": 2, "sections": [{"heading": f"Topic {i}",
+                                                "learning_block_ids": [], "blocks": [{"kind": "paragraph", "text": text * 5}]}]})
         units.append(generated)
         facts.append({"fact_id": fact, "source_page": i + 1, "text": text})
         architecture["lessons"][0]["units"].append({"title": "Repeated title", "source_fact_ids": [fact],
@@ -75,6 +76,34 @@ async def checkpoint_result(request, manifest, events=None, retrieval_usage=None
 
 
 class ChapterCheckpointTests(unittest.TestCase):
+    def test_explicit_html_block_mismatch_fails_before_provider_without_mutating_plan(self):
+        request, _, manifest = fixture(count=1)
+        architecture = request.blueprint_architecture.model_dump()
+        lesson = architecture["lessons"][0]
+        lesson["learning_objectives"] = ["Explain the first concept.", "Explain the relationship."]
+        unit = lesson["units"][0]
+        unit["learning_objective_refs"] = ["lo_1", "lo_2"]
+        unit["learning_blocks"] = [
+            {"id": "block_a", "intent": "concept_explanation", "learning_objective_refs": ["lo_1"], "source_fact_ids": ["fixture-fact-0"]},
+            {"id": "block_b", "intent": "relationship_visualization", "learning_objective_refs": ["lo_2"], "source_fact_ids": ["fixture-fact-0"]},
+        ]
+        unit["component_plan"][0]["learning_block_ids"] = ["block_a"]
+        request = main.RagLessonAuthorCheckpointRequest.model_validate({**request.model_dump(), "blueprint_architecture": architecture})
+        before = request.model_dump()
+        events = []
+        with patch("app.main.generate_content", AsyncMock()) as provider, self.assertRaises(WorkflowFailure) as raised:
+            asyncio.run(checkpoint_result(request, manifest, events))
+        provider.assert_not_called()
+        self.assertEqual(raised.exception.internal_code, "CHAPTER_INSTRUCTIONAL_PLAN_INVALID")
+        self.assertEqual(events[0]["target_paths"], ["chapter_1.lesson_1.unit_1"])
+        self.assertEqual(events[0]["validation_codes"], ["OBJECTIVE_INSTRUCTION_PLAN_MISMATCH"])
+        self.assertEqual(request.model_dump(), before)
+        self.assertNotIn("Explain", json.dumps(events))
+        unit["component_plan"][0]["learning_block_ids"].append("block_b")
+        self.assertFalse(main.instructional_plan_validation_result(architecture).errors)
+        unit["learning_blocks"][1]["intent"] = "knowledge_check"
+        self.assertTrue(main.instructional_plan_validation_result(architecture).errors)
+
     def test_request_rejects_non_v5_wrong_operation_and_provider_owned_state(self):
         request, _, _ = fixture()
         for update in ({"operation": "delete"}, {"target_type": "unit"}, {"correlation_id": None},

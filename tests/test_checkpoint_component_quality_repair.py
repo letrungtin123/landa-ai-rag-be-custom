@@ -90,7 +90,8 @@ class CheckpointComponentQualityRepairTests(unittest.TestCase):
                 request, valid, scope, manifest = fixture()
                 broken = deepcopy(valid)
                 if target == 0:
-                    broken["components"][0]["semantic_content"] = {"paragraphs": ["PRIVATE_THIN"]}
+                    broken["components"][0]["semantic_content"] = {"version": 2, "sections": [
+                        {"heading": "Synthetic", "blocks": [{"kind": "paragraph", "text": "PRIVATE_THIN"}]}]}
                     fields = {"semantic_content": valid["components"][0]["semantic_content"]}
                 elif target == 2:
                     broken["components"][2]["items"][0]["text"] = "inspect the authorized conditions before starting."
@@ -109,6 +110,35 @@ class CheckpointComponentQualityRepairTests(unittest.TestCase):
                 self.assertEqual(provider.await_count, 2)
                 self.assertNotIn("PRIVATE_THIN", "\n".join(logs.output))
                 self.assertIn(code, "\n".join(logs.output))
+
+    def test_html_faq_leakage_repairs_only_html_and_reflective_question_remains_valid(self):
+        request, valid, scope, manifest = fixture()
+        broken = deepcopy(valid)
+        leaked = deepcopy(valid["components"][0]["semantic_content"])
+        leaked["sections"][0]["heading"] = "Câu hỏi thường gặp về nội dung"
+        broken["components"][0]["semantic_content"] = leaked
+        finding = main.validate_staged_unit_content(broken, scope, strict_payload=True)
+        self.assertEqual(finding.code, "HTML_FAQ_BOUNDARY_VIOLATION")
+        self.assertEqual(main.staged_component_repair_targets(broken, scope), [0])
+        delta = {"components": [{"component_index": 0,
+                                  "semantic_content": valid["components"][0]["semantic_content"]}]}
+        provider = AsyncMock(side_effect=[(json.dumps(instance_wire(broken)), main.AiUsage()),
+                                         (json.dumps(delta), main.AiUsage())])
+        with patch("app.main.generate_content", provider):
+            result, _ = run(request, manifest)
+        self.assertEqual(result["unit"]["components"], valid["components"])
+        self.assertEqual(provider.await_count, 2)
+
+        reflective = deepcopy(valid["components"][0])
+        reflective["semantic_content"]["sections"][0]["blocks"].append({
+            "kind": "task", "text": "Bạn sẽ áp dụng nguyên tắc này vào tình huống nào? Hãy giải thích bằng bằng chứng trong tài liệu."
+        })
+        self.assertFalse(main.staged_html_contains_faq(reflective))
+
+    def test_html_contract_explicitly_separates_faq_component_content(self):
+        contract = main.staged_component_contract_prompt(["html", "la_faq"])
+        for phrase in ("must NEVER contain an FAQ", "Câu hỏi thường gặp", "only a selected la_faq component"):
+            self.assertIn(phrase, contract)
 
     def test_sortable_shape_metadata_is_bounded_and_redacted(self):
         cases = [(None, "ARRAY_REQUIRED"), ([], "CARDINALITY"),

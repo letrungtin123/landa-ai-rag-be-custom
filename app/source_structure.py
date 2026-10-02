@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from typing import Any, Iterable
 
 
-PARSER_VERSION = "source-structure-v2"
+PARSER_VERSION = "source-structure-v3"
 MAX_NODE_TITLE_CHARS = 220
 MAX_NODES = 400
 TOC_MARKERS = (
@@ -119,6 +119,72 @@ def _has_toc_signal(text: str) -> bool:
     # Require both a numbered sequence and page/slide evidence so a normal
     # numbered body list is not promoted to an authoritative outline.
     return numbered_count >= 2 and (slide_count >= 2 or dotted_count >= 2 or page_only_count >= 2)
+
+
+def _chapter_table_with_body_anchors(material: list[Any]) -> tuple[list[dict[str, Any]], bool, bool]:
+    """Bind a page-less chapter table to exact body labels, not numbered outcomes.
+
+    Returns candidates, table detected, complete. Incomplete explicit authority
+    must not silently become model-designed chapters. Same-page chunk splits
+    are joined; repeated chapter headers on continuation pages are one chapter.
+    """
+    pages: dict[int, list[str]] = {}
+    for section in material:
+        page = getattr(section, "page", None)
+        if type(page) is int and page > 0:
+            pages.setdefault(page, []).extend(
+                line for raw in str(getattr(section, "text", "") or "").splitlines()
+                if (line := _clean_line(raw))
+            )
+
+    def marker(line: str) -> bool:
+        normalized = _normalise(line)
+        return len(line) <= 120 and any(
+            normalized == value or normalized.startswith(value + " ")
+            or (value == "table of contents" and "(table of contents)" in line.casefold())
+            for value in TOC_MARKERS
+        )
+
+    def identity(match: re.Match[str]) -> tuple[str, str]:
+        kind = match.group(1).casefold()
+        kind = "chapter" if kind in {"chương", "chuong", "chapter"} else "part"
+        number = match.group(2).upper()
+        return kind, str(int(number)) if number.isdigit() else number
+
+    tables: dict[int, list[re.Match[str]]] = {}
+    for page, lines in pages.items():
+        labels = [match for line in lines if (match := CHAPTER_HEADING_RE.match(line))]
+        # The traditional dotted/page-number TOC retains its existing parser.
+        if any(marker(line) for line in lines) and len(labels) >= 2 and not any(TOC_LINE_RE.match(line) for line in lines):
+            tables[page] = labels
+    if not tables:
+        return [], False, True
+    expected = [identity(match) for labels in tables.values() for match in labels]
+    if len(set(expected)) != len(expected) or len(expected) >= MAX_NODES:
+        return [], True, False
+    anchors: list[dict[str, Any]] = []
+    observed: list[tuple[str, str]] = []
+    complete = True
+    for page, lines in sorted(pages.items()):
+        if page <= max(tables):
+            continue
+        for index, line in enumerate(lines[:8]):
+            match = CHAPTER_HEADING_RE.match(line)
+            if not match:
+                continue
+            key = identity(match)
+            if observed and observed[-1] == key:
+                break
+            title = match.group(3).strip()
+            if not title and index + 1 < len(lines) and not CHAPTER_HEADING_RE.match(lines[index + 1]):
+                title = lines[index + 1]
+            if not title or len(title) > MAX_NODE_TITLE_CHARS:
+                complete = False
+            observed.append(key)
+            anchors.append({"title": title or line, "level": 1, "number_label": key[1],
+                            "page": page, "logical_page": page, "node_type": "chapter"})
+            break
+    return anchors, True, complete and observed == expected
 
 
 def _looks_like_heading(line: str) -> bool:
@@ -366,8 +432,8 @@ def analyze_source_structure(sections: Iterable[Any]) -> dict[str, Any]:
         if _has_toc_signal(text):
             toc_page_indexes.add(section_index)
 
-    toc_candidates: list[dict[str, Any]] = []
-    for section_index in sorted(toc_page_indexes):
+    toc_candidates, chapter_table_detected, chapter_table_complete = _chapter_table_with_body_anchors(material)
+    for section_index in ([] if chapter_table_detected else sorted(toc_page_indexes)):
         section = material[section_index]
         page = getattr(section, "page", None)
         toc_candidates.extend(
@@ -378,6 +444,8 @@ def analyze_source_structure(sections: Iterable[Any]) -> dict[str, Any]:
         )
 
     warnings: list[str] = []
+    if chapter_table_detected and not chapter_table_complete:
+        warnings.append("SOURCE_CHAPTER_TABLE_BODY_MISMATCH")
     if len(toc_candidates) >= 2:
         nodes = _build_nodes(toc_candidates, 0.95)
         structure_source = "toc"
@@ -453,9 +521,10 @@ def analyze_source_structure(sections: Iterable[Any]) -> dict[str, Any]:
         "warnings": list(dict.fromkeys(warnings)),
         "chapter_authority": {
             "version": 1,
-            "complete": candidate_count < MAX_NODES,
+            "complete": candidate_count < MAX_NODES and chapter_table_complete,
             "heading_refs": heading_authority_refs,
-            "basis": "EXPLICIT_CHAPTER_OR_NUMBERED_TREE" if heading_authority_refs else "NONE",
+            "basis": ("CHAPTER_TABLE_BODY_LABEL_MATCH" if chapter_table_detected and chapter_table_complete
+                      else "EXPLICIT_CHAPTER_OR_NUMBERED_TREE" if heading_authority_refs else "NONE"),
         },
         "nodes": [node.to_dict() for node in nodes],
     }

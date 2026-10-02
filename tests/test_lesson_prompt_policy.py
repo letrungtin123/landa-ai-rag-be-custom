@@ -25,7 +25,8 @@ def content_payload(component_type: str, locale: str) -> dict:
     explanation = ("Kiểm tra điều kiện trước khi thực hiện quy trình đã được xác nhận. " if vi else
                    "Check the conditions before performing the approved procedure. ") * 12
     fields = {
-        "html": {"semantic_content": {"heading": "Kiểm tra" if vi else "Check", "paragraphs": [explanation]}},
+        "html": {"semantic_content": {"version": 2, "sections": [{"heading": "Kiểm tra" if vi else "Check",
+                 "learning_block_ids": [], "blocks": [{"kind": "paragraph", "text": explanation}]}]}},
         "problem": {"problem_type": "short_text", "question": "Bước nào trước tiên?" if vi else "Which step is first?",
                     "answer": "Kiểm tra" if vi else "Check", "explanation": explanation},
         "la_faq": {"items": [
@@ -262,7 +263,7 @@ class LessonPromptPolicyTests(unittest.TestCase):
                 "title": "Locked title", "source_fact_ids": ["fact-1"], "learning_blocks": [{"intent": "procedure"}],
             }]}]}]}
             enriched, _ = enrich_lesson_author_blueprint_media_review(
-                blueprint, {"facts": [{"fact_id": "fact-1", "text": "Nguyên văn nguồn."}]}, locale,
+                blueprint, {"facts": [{"fact_id": "fact-1", "text": "Nguyên văn nguồn. Chuẩn bị trước khi thực hiện quy trình."}]}, locale,
             )
             outline = enriched["chapters"][0]["lessons"][0]["units"][0]["media_plan"]["content_outline"]
             self.assertIn("Nguyên văn nguồn.", outline)

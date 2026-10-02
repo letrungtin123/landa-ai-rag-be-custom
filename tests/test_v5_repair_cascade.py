@@ -1406,7 +1406,7 @@ class V5RepairCascadeTests(unittest.IsolatedAsyncioTestCase):
                 response_schema=schema,
             ),
         )
-        wire_replacement = payload["responseSchema"]["properties"]["patches"].items.properties["replacement"]
+        wire_replacement = payload["responseSchema"].properties["patches"].items.properties["replacement"]
         self.assertEqual(set(wire_replacement.properties), {"units"})
         self.assertIsNotNone(wire_replacement.properties["units"].items)
 

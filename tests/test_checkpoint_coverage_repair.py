@@ -129,13 +129,15 @@ class CheckpointCoverageRepairTests(unittest.TestCase):
         for mutation in ("unknown", "duplicate", "support_claim", "ownership"):
             request, _, broken, scope, manifest, _ = coverage_fixture()
             if mutation == "unknown": broken["components"][2]["covered_source_fact_ids"].append("PRIVATE_UNKNOWN_FACT")
-            elif mutation == "duplicate": broken["components"][2]["covered_source_fact_ids"] *= 2
+            # Duplicate *ownership* still blocks. Duplicate coverage claims are
+            # exercised through bounded recovery in test_coverage_claim_recovery.
+            elif mutation == "duplicate": broken["components"][2]["source_fact_ids"] *= 2
             elif mutation == "support_claim": broken["components"][3]["covered_source_fact_ids"] = ["synthetic-fact-0"]
             else: broken["components"][2]["source_fact_ids"] = ["PRIVATE_UNKNOWN_FACT"]
             self.assertEqual(main.staged_component_repair_targets(broken, scope), [])
             # Wire binding rejects ownership injection before the repair guard.
             wire = instance_wire(broken)
-            if mutation == "ownership": wire["components"]["c2"]["source_fact_ids"] = ["PRIVATE_UNKNOWN_FACT"]
+            if mutation in ("ownership", "duplicate"): wire["components"]["c2"]["source_fact_ids"] = broken["components"][2]["source_fact_ids"]
             provider = AsyncMock(return_value=(json.dumps(wire), main.AiUsage()))
             with patch("app.main.generate_content", provider):
                 with self.assertRaises(WorkflowFailure):
@@ -164,7 +166,7 @@ class CheckpointCoverageRepairTests(unittest.TestCase):
         schema = main.build_staged_lesson_content_response_model(["la_crossword"], payload_only=True, coverage_repair=True)
         client = genai.Client(api_key="offline-placeholder")
         wire = models._GenerateContentConfig_to_mldev(client._api_client, types.GenerateContentConfig(response_schema=schema))["responseSchema"]
-        fields = wire["properties"]["components"].items.properties
+        fields = wire.properties["components"].items.properties
         self.assertIn("covered_source_fact_ids", fields)
         self.assertIn("words", fields)
         self.assertFalse({"source_fact_ids", "component_plan_id", "supporting_evidence_fact_ids", "type"}.intersection(fields))

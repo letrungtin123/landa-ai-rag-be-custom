@@ -14,6 +14,7 @@ import unicodedata
 from typing import Any
 
 from app.workflows.contracts import WorkflowIssue, WorkflowValidationResult
+from app.ordered_learning_content import flatten_ordered_content
 
 
 EXPLANATORY_TYPES = {"html", "la_faq"}
@@ -150,7 +151,7 @@ def _problem_choices(component: dict[str, Any]) -> list[str]:
 
 def _semantic_learning_text(value: Any) -> str:
     """Extract only text Node's deterministic semantic renderer can display."""
-    content = _record(value)
+    content = flatten_ordered_content(_record(value))
     values: list[str] = []
     heading = content.get("heading")
     if isinstance(heading, str) and heading.strip():
@@ -216,7 +217,7 @@ def _html_artifact_item_count(component: dict[str, Any], artifact_type: str) -> 
     requested structure, but never claims that a structural match proves the
     source statement itself is entailed.
     """
-    semantic = _record(component.get("semantic_content"))
+    semantic = flatten_ordered_content(_record(component.get("semantic_content")))
     html_value = str(component.get("html") or component.get("data") or component.get("content") or "")
     if artifact_type == "ordered_list":
         semantic_items = semantic.get("ordered_steps", semantic.get("steps"))
@@ -414,6 +415,40 @@ def _learner_readiness_warnings(components: list[dict[str, Any]]) -> list[Workfl
                                        "Risk bands share a boundary value; confirm source interval semantics before using that boundary as a quiz answer.",
                                        path=item["component_path"], severity="warning"))
     return findings
+
+
+def instructional_plan_validation_result(architecture: dict[str, Any]) -> WorkflowValidationResult:
+    """Reject explicit teaching bindings that cannot pass final acceptance.
+
+    This checks plan structure, not content fidelity. Legacy plans without
+    block bindings retain their existing content-time validation fallback.
+    Never rewrite an approved plan or count an assessment as instruction.
+    """
+    findings = []
+    for lesson_index, lesson in enumerate(architecture.get("lessons") or [], start=1):
+        lesson = _record(lesson)
+        units = [_record(unit) for unit in lesson.get("units") or []]
+        objectives = _text_list(lesson.get("learning_objectives"), max_items=12, max_length=300)
+        for objective_index in range(1, len(objectives) + 1):
+            ref = f"lo_{objective_index}"
+            mapped = [(index, unit) for index, unit in enumerate(units, start=1)
+                      if ref in _text_list(unit.get("learning_objective_refs"), max_items=12, max_length=16)]
+            teaching = {str(block.get("id") or "") for _, unit in mapped
+                        for value in unit.get("learning_blocks") or [] for block in [_record(value)]
+                        if block.get("intent") != "knowledge_check"
+                        and ref in _text_list(block.get("learning_objective_refs"), max_items=12, max_length=16)} - {""}
+            html_bindings = {block_id for _, unit in mapped
+                             for value in unit.get("component_plan") or [] for plan in [_record(value)]
+                             if plan.get("type") == "html"
+                             for block_id in _text_list(plan.get("learning_block_ids"), max_items=12, max_length=80)}
+            if html_bindings and not html_bindings.intersection(teaching):
+                path = f"chapter_1.lesson_{lesson_index}"
+                if len(mapped) == 1:
+                    path += f".unit_{mapped[0][0]}"
+                findings.append(_issue("OBJECTIVE_INSTRUCTION_PLAN_MISMATCH",
+                                       "Explicit HTML bindings omit the objective's teaching blocks.",
+                                       path=path, objective_ids=[ref], learning_block_ids=sorted(teaching)))
+    return WorkflowValidationResult(findings)
 
 
 def validate_lesson_pedagogical_quality(

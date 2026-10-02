@@ -12,7 +12,7 @@ from tests.test_checkpoint_component_quality_repair import instance_wire
 
 
 def run(payload):
-    if payload["action"] in ("instance_repair", "coverage_repair"):
+    if payload["action"] in ("instance_repair", "coverage_repair", "duplicate_claim_repair", "null_claim_repair"):
         request, unit, _, manifest = checkpoint_instance_fixture()
         broken = instance_wire(unit)
         broken["components"]["c2"].pop("edges")
@@ -23,6 +23,23 @@ def run(payload):
             request, unit, broken_unit, _, manifest, delta = coverage_fixture()
             provider = AsyncMock(side_effect=[(json.dumps(instance_wire(broken_unit)), main.AiUsage()),
                                               (json.dumps(delta), main.AiUsage())])
+        if payload["action"] in ("duplicate_claim_repair", "null_claim_repair"):
+            from tests.test_staged_ordered_writer import uat_fixture
+            from tests.test_coverage_claim_recovery import repaired_payload
+            request, unit, _, manifest = uat_fixture()
+            # The dense Python-only fixture replaces the unit scope; restore
+            # the same approved treatment reasons as checkpoint_instance_fixture
+            # before exercising Node's independent pedagogical gate.
+            architecture = request.blueprint_architecture.model_dump()
+            plans = architecture["lessons"][0]["units"][0]["component_plan"]
+            plans[2]["reason_code"] = "RELATIONSHIP_VISUALIZATION"
+            plans[3]["reason_code"] = "FAQ_ANTICIPATED_QUESTIONS"
+            request = request.model_copy(update={"blueprint_architecture": type(request.blueprint_architecture).model_validate(architecture)})
+            broken = instance_wire(unit)
+            broken["components"]["c0"]["covered_source_fact_ids"] = (
+                unit["source_fact_ids"] * 2 if payload["action"] == "duplicate_claim_repair" else None)
+            provider = AsyncMock(side_effect=[(json.dumps(broken), main.AiUsage()),
+                                              (json.dumps(repaired_payload(unit)), main.AiUsage())])
         def forbidden(*_args, **_kwargs):
             raise AssertionError("REAL_PROVIDER_OR_DATABASE_ACCESS_FORBIDDEN")
         events = []

@@ -1,11 +1,11 @@
 """Exercise the installed Google SDK, mocking only HTTP; no Gemini or database."""
 import asyncio
 import json
+from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
 
 import httpx
-import requests
 from google.genai import errors
 
 from app import main
@@ -15,11 +15,12 @@ from tests.test_chapter_checkpoint import checkpoint_result
 
 
 def response(status, body):
-    result = requests.Response()
-    result.status_code = status
-    result._content = json.dumps(body).encode()
-    result.headers["Content-Type"] = "application/json"
-    return result
+    return httpx.Response(status, json=body, request=httpx.Request("POST", "https://offline.invalid"))
+
+
+def sent_json(transport):
+    request = next(value for value in transport.call_args.args if isinstance(value, httpx.Request))
+    return json.loads(request.content)
 
 
 class CheckpointProviderSDKTests(unittest.TestCase):
@@ -40,8 +41,9 @@ class CheckpointProviderSDKTests(unittest.TestCase):
             return asyncio.run(run())
 
     def test_real_sdk_code_not_status_code_is_classified(self):
-        error = errors.ClientError(400, response(400, {"error": {
-            "status": "INVALID_ARGUMENT", "message": "generation_config.response_schema max_items PRIVATE_SOURCE"}}))
+        body = {"error": {"status": "INVALID_ARGUMENT",
+                          "message": "generation_config.response_schema max_items PRIVATE_SOURCE"}}
+        error = errors.ClientError(400, body, response(400, body))
         self.assertEqual(error.code, 400)
         self.assertFalse(hasattr(error, "status_code"))
         self.assertEqual(main.provider_http_error_status(error), 400)
@@ -50,18 +52,45 @@ class CheckpointProviderSDKTests(unittest.TestCase):
         self.assertEqual(diagnostics["provider_schema_constraint"], "MAX_ITEMS")
         self.assertNotIn("PRIVATE_SOURCE", json.dumps(diagnostics))
 
+    def test_gemini_38_uses_supported_thinking_level_without_legacy_sampling(self):
+        calls = []
+
+        class Models:
+            def generate_content(self, **kwargs):
+                calls.append(kwargs)
+                return SimpleNamespace(text="ok", parsed=None, candidates=[], prompt_feedback=None,
+                                       usage_metadata=None)
+
+        class Client:
+            def __init__(self, **_kwargs):
+                self.models = Models()
+
+        with patch("app.main.genai.Client", Client), patch.object(main.settings, "gemini_38_thinking_level", "medium"):
+            asyncio.run(main.generate_content("offline-key", "gemini-3.8-flash", "prompt", max_output_tokens=1024,
+                                              thinking_config={"include_thoughts": False}))
+            asyncio.run(main.generate_content("offline-key", "gemini-3.5-flash", "prompt", max_output_tokens=1024,
+                                              thinking_config={"include_thoughts": False}))
+        modern = calls[0]["config"]
+        legacy = calls[1]["config"]
+        self.assertNotIn("temperature", modern)
+        self.assertEqual(modern["thinking_config"], {"thinking_level": "medium"})
+        self.assertEqual(legacy["temperature"], main.settings.generation_temperature)
+        self.assertEqual(legacy["thinking_config"], {"include_thoughts": False})
+
     def test_generic_provider_message_is_distinguished_from_redacted_details(self):
         for message, detail_list, message_class in (
             ("Request contains an invalid argument.", [], "GENERIC_INVALID_ARGUMENT"),
             ("PRIVATE_SOURCE", [{"message": "PRIVATE_DETAIL"}], "REDACTED_OTHER"),
         ):
-            error = errors.ClientError(400, response(400, {"error": {"message": message, "details": detail_list}}))
+            body = {"error": {"message": message, "details": detail_list}}
+            error = errors.ClientError(400, body, response(400, body))
             diagnostics = main.safe_provider_error_diagnostics(error)
             self.assertEqual(diagnostics["provider_message_class"], message_class)
             self.assertEqual(diagnostics["provider_error_detail_count"], len(detail_list))
             self.assertNotIn("PRIVATE", json.dumps(diagnostics))
-        alternate = errors.ClientError(400, response(400, {"error": {
-            "status": "INVALID_ARGUMENT", "message": "JSON schema maxItems must be greater than zero PRIVATE_SOURCE"}}))
+        body = {"error": {"status": "INVALID_ARGUMENT",
+                          "message": "JSON schema maxItems must be greater than zero PRIVATE_SOURCE"}}
+        alternate = errors.ClientError(400, body, response(400, body))
         self.assertTrue(main.is_stage_two_provider_schema_error(alternate))
         diagnostics = main.safe_provider_error_diagnostics(alternate)
         self.assertIn("POSITIVE_BOUND", diagnostics["provider_error_markers"])
@@ -76,7 +105,7 @@ class CheckpointProviderSDKTests(unittest.TestCase):
         ):
             with self.subTest(status=status, code=expected):
                 body = {"error": {"code": status, "status": "INVALID_ARGUMENT", "message": message}}
-                with patch("requests.Session.request", return_value=response(status, body)) as transport, \
+                with patch("httpx.Client.send", return_value=response(status, body)) as transport, \
                         self.assertLogs("app.main", "INFO") as logs:
                     result = self.send(request, manifest)
                 self.assertEqual(transport.call_count, 1)  # no identical retry or content repair
@@ -97,7 +126,7 @@ class CheckpointProviderSDKTests(unittest.TestCase):
 
     def test_transport_exception_keeps_unavailable_status_and_no_retry(self):
         request, _, _, manifest = checkpoint_instance_fixture()
-        with patch("requests.Session.request", side_effect=requests.ConnectionError("PRIVATE_URL_AND_TOKEN")) as transport, \
+        with patch("httpx.Client.send", side_effect=httpx.ConnectError("PRIVATE_URL_AND_TOKEN")) as transport, \
                 self.assertLogs("app.main", "INFO") as logs:
             result = self.send(request, manifest)
         self.assertEqual(transport.call_count, 1)
@@ -105,28 +134,32 @@ class CheckpointProviderSDKTests(unittest.TestCase):
         self.assertEqual(result.json()["detail"]["internal_failure_code"], "LESSON_PROVIDER_REQUEST_FAILED")
         final = next(line for line in logs.output if "lesson_author_checkpoint_diagnostic" in line)
         self.assertIn('"provider_http_status": null', final)
-        self.assertIn('"provider_error_type": "ConnectionError"', final)
+        self.assertIn('"provider_error_type": "ConnectError"', final)
         self.assertNotIn("PRIVATE_URL_AND_TOKEN", "\n".join(logs.output) + result.text)
 
     def test_sdk_roundtrip_valid_payload_still_reaches_full_chapter_acceptance(self):
         request, valid, _, manifest = checkpoint_instance_fixture()
         request = request.model_copy(update={"max_output_tokens": 30000})
-        body = {"candidates": [{"content": {"parts": [{"text": json.dumps(instance_wire(valid))}]}, "finishReason": "STOP"}],
+        wire = instance_wire(valid)
+        del wire["components"]["c0"]["semantic_content"]["version"]  # Server-owned, absent from Gemini wire.
+        body = {"candidates": [{"content": {"parts": [{"text": json.dumps(wire)}]}, "finishReason": "STOP"}],
                 "usageMetadata": {"promptTokenCount": 100, "candidatesTokenCount": 200, "totalTokenCount": 300}}
-        with patch("requests.Session.request", return_value=response(200, body)) as transport, \
+        with patch("httpx.Client.send", return_value=response(200, body)) as transport, \
                 self.assertLogs("app.main", "INFO") as logs:
             result = self.send(request, manifest)
             self.assertEqual(result.status_code, 200)
             self.assertEqual(result.json()["status"], "unit_ready")
+            self.assertEqual(result.json()["unit"]["components"][0]["semantic_content"]["version"], 2)
             final_request = request.model_copy(update={"checkpoint_action": "validate_chapter", "checkpoint_unit_index": None,
                 "checkpoint_units": [main.ChapterCheckpointUnit(unit_index=0, unit=result.json()["unit"])]})
             final = self.send(final_request, manifest)
         self.assertEqual(final.status_code, 200)
         self.assertEqual(final.json()["status"], "ready")
         self.assertEqual(transport.call_count, 1)
-        payload = json.loads(transport.call_args.kwargs["data"])
+        payload = sent_json(transport)
         self.assertEqual(payload["generationConfig"]["maxOutputTokens"], 30000)
-        self.assertEqual(transport.call_args.kwargs["timeout"], 180)
+        sent_request = next(value for value in transport.call_args.args if isinstance(value, httpx.Request))
+        self.assertTrue(all(value == 180 for value in sent_request.extensions["timeout"].values()))
         slots = payload["generationConfig"]["responseSchema"]["properties"]["components"]
         self.assertEqual(set(slots["required"]), {"c0", "c1", "c2", "c3"})
         from tests.staged_schema_probe import BOUNDS, visit_schema
@@ -142,7 +175,7 @@ class CheckpointProviderSDKTests(unittest.TestCase):
         for status, attempts, expected in ((429, 1, "AI_PROVIDER_QUOTA_EXHAUSTED"), (503, 2, "AI_PROVIDER_UNAVAILABLE")):
             events = []
             body = {"error": {"code": status, "message": "PRIVATE", "status": "RESOURCE_EXHAUSTED" if status == 429 else "UNAVAILABLE"}}
-            with patch("requests.Session.request", return_value=response(status, body)) as transport, \
+            with patch("httpx.Client.send", return_value=response(status, body)) as transport, \
                     patch("app.main.PROVIDER_TRANSIENT_RETRY_DELAY_SECONDS", 0):
                 with self.assertRaises(main.HTTPException) as failure:
                     asyncio.run(main.generate_content("offline-key", "offline-model", "PRIVATE", max_output_tokens=30000,
@@ -156,7 +189,7 @@ class CheckpointProviderSDKTests(unittest.TestCase):
         wire = instance_wire(valid)
         wire["components"]["c1"]["covered_source_fact_ids"] = ["fact-0"]
         body = {"candidates": [{"content": {"parts": [{"text": json.dumps(wire)}]}, "finishReason": "STOP"}]}
-        with patch("requests.Session.request", return_value=response(200, body)) as transport:
+        with patch("httpx.Client.send", return_value=response(200, body)) as transport:
             result = self.send(request, manifest)
         self.assertNotEqual(result.status_code, 200)
         self.assertEqual(transport.call_count, 1)  # ownership violation never repaired
@@ -167,7 +200,7 @@ class CheckpointProviderSDKTests(unittest.TestCase):
         wire = instance_wire(valid)
         wire["components"]["c2"]["nodes"] = []
         body = {"candidates": [{"content": {"parts": [{"text": json.dumps(wire)}]}, "finishReason": "STOP"}]}
-        with patch("requests.Session.request", return_value=response(200, body)) as transport:
+        with patch("httpx.Client.send", return_value=response(200, body)) as transport:
             result = self.send(request, manifest)
         self.assertNotEqual(result.status_code, 200)
         self.assertLessEqual(transport.call_count, 2)  # existing single repair, no new loop

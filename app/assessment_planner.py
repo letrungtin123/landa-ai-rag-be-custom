@@ -74,7 +74,8 @@ class AssessmentTeachingCandidate:
     concept_ids: tuple[str, ...]
     primary_evidence_scope_ids: tuple[str, ...]
     semantic_descriptor: dict[str, str]
-    alignment: Literal["fully_aligned", "semantic_candidate"]
+    alignment: Literal["fully_aligned", "semantic_candidate", "intent_candidate"]
+    allowed_intents: tuple[str, ...] = ()
 
     def safe_provider_value(self) -> dict[str, Any]:
         return {
@@ -82,6 +83,7 @@ class AssessmentTeachingCandidate:
             "unit_path": self.unit_path,
             "teaching_block_id": self.block_id,
             "semantic_descriptor": dict(self.semantic_descriptor),
+            **({"allowed_intents": list(self.allowed_intents)} if self.allowed_intents else {}),
         }
 
 
@@ -202,7 +204,7 @@ def assessment_plan_fingerprint(
     lesson_path: str,
     candidates: dict[tuple[str, str], tuple[AssessmentTeachingCandidate, ...]],
 ) -> str:
-    """Fingerprint server-approved selection authority without customer text."""
+    """Hash server-approved selection authority; never expose descriptor text."""
 
     payload = {
         "lesson_path": lesson_path,
@@ -216,6 +218,9 @@ def assessment_plan_fingerprint(
                         "block_id": candidate.block_id,
                         "primary_scope_ids": list(candidate.primary_evidence_scope_ids),
                         "concept_ids": list(candidate.concept_ids),
+                        "source_refs": list(candidate.source_refs),
+                        "semantic_descriptor": candidate.semantic_descriptor,
+                        "allowed_intents": list(candidate.allowed_intents),
                     }
                     for candidate in options
                 ],
@@ -264,6 +269,89 @@ class AssessmentTeachingEligibility:
     reasons: tuple[str, ...]
 
 
+def materialize_assessment_source_refs(
+    blueprint: dict[str, Any], source_map: dict[str, Any],
+) -> tuple[dict[str, Any], list[dict[str, Any]], list[AssessmentPlanIssue]]:
+    """Project missing references from canonical scopes, AFTER evidence validation.
+
+    V5 evidence validation permits inherited source refs, whereas assessment
+    candidate authority needs direct refs. This copy-on-write projection never
+    repairs an explicit mismatch, infers concepts, or assigns canonical facts.
+    Caller must validate evidence both before and after, before repair snapshots.
+    Legacy contracts and explicitly supplied references are unchanged.
+    """
+    candidate = deepcopy(blueprint)
+    if candidate.get("architecture_contract_version") != 5:
+        return candidate, [], []
+    scopes: dict[str, dict[str, Any]] = {}
+    duplicates: set[str] = set()
+    for scope in source_map.get("source_evidence_scopes", []):
+        if isinstance(scope, dict) and isinstance(scope.get("id"), str):
+            if scope["id"] in scopes:
+                duplicates.add(scope["id"])
+            scopes[scope["id"]] = scope
+    diagnostics: list[dict[str, Any]] = []
+    issues: list[AssessmentPlanIssue] = []
+    for ci, chapter in enumerate(candidate.get("chapters", []), 1):
+        for li, lesson in enumerate(chapter.get("lessons", []), 1):
+            lesson_path = _safe_path(ci, li)
+            for ui, unit in enumerate(lesson.get("units", []), 1):
+                for bi, block in enumerate(unit.get("learning_blocks", []), 1):
+                    if _text_ids(block.get("source_refs")):
+                        continue
+                    path = f"{_safe_path(ci, li, ui)}.block_{bi}"
+                    ids = _text_ids(block.get("primary_evidence_scope_ids")) | _text_ids(block.get("supporting_evidence_scope_ids"))
+                    reason = None
+                    selected = [scopes[sid] for sid in sorted(ids) if sid in scopes]
+                    if not ids or len(selected) != len(ids) or ids & duplicates:
+                        reason = "UNKNOWN_OR_AMBIGUOUS_CANONICAL_SCOPE"
+                    elif len({s.get("document_id") for s in selected}) != 1 or not all(s.get("document_id") for s in selected):
+                        reason = "CROSS_DOCUMENT_OR_MISSING_DOCUMENT"
+                    elif not all(isinstance(s.get("source_ref"), str) and s["source_ref"].strip() for s in selected):
+                        reason = "CANONICAL_SOURCE_REF_MISSING"
+                    elif any(not _text_ids(s.get("concept_ids")).issubset(_text_ids(block.get("concept_ids"))) for s in selected):
+                        reason = "CANONICAL_CONCEPT_MISMATCH"
+                    if reason:
+                        issues.append(AssessmentPlanIssue(
+                            "ASSESSMENT_PROVENANCE_UNRESOLVED", lesson_path, None,
+                            reason, target_path=path,
+                        ))
+                        continue
+                    block["source_refs"] = sorted({s["source_ref"].strip() for s in selected})
+                    diagnostics.append({
+                        "block_path": path, "basis": "CANONICAL_EVIDENCE_SCOPE",
+                        "scope_count": len(ids), "source_ref_count": len(block["source_refs"]),
+                    })
+    # No partial projection may escape when any canonical boundary is invalid.
+    return (deepcopy(blueprint) if issues else candidate), diagnostics, issues
+
+
+def preserve_assessment_visual_support(unit: dict[str, Any], block: dict[str, Any], *, unit_path: str) -> None:
+    """Retain a selected diagram treatment when its primary block gains teaching intent.
+
+    Called only after typed provider selection/fingerprint validation, on the
+    transaction's private copy. Existing primary owner/refs/content stay intact;
+    the server-created visual reference owns no facts and cannot expand scope.
+    """
+    if block.get("intent") != "relationship_visualization":
+        return
+    identity = json.dumps([unit_path, block["id"]], separators=(",", ":"))
+    visual_id = "lb_server_visual_" + hashlib.sha256(identity.encode()).hexdigest()[:20]
+    blocks = unit["learning_blocks"]
+    if any(item.get("id") == visual_id for item in blocks):
+        raise ValueError("SERVER_VISUAL_BLOCK_ID_COLLISION")
+    visual = deepcopy(block)
+    visual.update(
+        id=visual_id, importance="supporting", primary_concept_ids=[], primary_evidence_scope_ids=[],
+        supporting_evidence_scope_ids=sorted(
+            _text_ids(block.get("primary_evidence_scope_ids")) | _text_ids(block.get("supporting_evidence_scope_ids"))
+        ),
+    )
+    for key in ("source_fact_ids", "covered_source_fact_ids"):
+        visual.pop(key, None)
+    blocks.insert(_insert_after(blocks, block["id"]), visual)
+
+
 def _record_anchor_diagnostic(
     diagnostic: dict[str, Any], *, unit_path: str, block_index: int,
     block: dict[str, Any], eligibility: AssessmentTeachingEligibility,
@@ -286,6 +374,13 @@ def _record_anchor_diagnostic(
             "base_eligible": eligibility.base_eligible,
             "fully_aligned": eligibility.fully_aligned,
             "reasons": list(eligibility.reasons),
+            "primary_evidence_scope_count": len(_text_ids(block.get("primary_evidence_scope_ids"))),
+            "concept_count": len(_text_ids(block.get("concept_ids"))),
+            "source_ref_count": len(_text_ids(block.get("source_refs"))),
+            "missing_direct_provenance": [
+                reason for field, reason in (("concept_ids", "MISSING_CONCEPT_IDS"), ("source_refs", "MISSING_SOURCE_REFS"))
+                if not _text_ids(block.get(field))
+            ],
         })
     else:
         diagnostic["omitted_candidate_count"] += 1
@@ -339,7 +434,7 @@ def evaluate_assessment_teaching_anchor(
 
 
 def assessment_intent_repair_options(
-    *, teaching_block: dict[str, Any], knowledge_check_block: dict[str, Any],
+    *, teaching_block: dict[str, Any], knowledge_check_block: dict[str, Any] | None,
     objective_refs: set[str], unit_objective_refs: set[str], precedes_check: bool,
     same_unit: bool,
 ) -> tuple[str, ...]:
@@ -352,6 +447,11 @@ def assessment_intent_repair_options(
     """
     intent = str(teaching_block.get("intent") or "")
     if not same_unit or intent not in SEMANTIC_LEARNING_BLOCK_INTENTS or intent in {"knowledge_check", "media_reference"}:
+        return ()
+    if knowledge_check_block is None and (
+        not _text_ids(teaching_block.get("concept_ids"))
+        or not _text_ids(teaching_block.get("source_refs"))
+    ):
         return ()
     eligibility = evaluate_assessment_teaching_anchor(
         teaching_block=teaching_block, knowledge_check_block=knowledge_check_block,
@@ -374,6 +474,7 @@ def _candidate_from_block(
     unit_objective_refs: set[str],
     knowledge_check_block: dict[str, Any] | None = None,
     precedes_check: bool = True,
+    allow_intent_repair: bool = False,
 ) -> AssessmentTeachingCandidate | None:
     eligibility = evaluate_assessment_teaching_anchor(
         teaching_block=block,
@@ -382,10 +483,16 @@ def _candidate_from_block(
         unit_objective_refs=unit_objective_refs,
         precedes_check=precedes_check,
     )
-    if not eligibility.base_eligible:
+    allowed_intents = assessment_intent_repair_options(
+        teaching_block=block, knowledge_check_block=None,
+        objective_refs={objective_ref}, unit_objective_refs=unit_objective_refs,
+        precedes_check=precedes_check, same_unit=True,
+    ) if allow_intent_repair and knowledge_check_block is None else ()
+    if not eligibility.base_eligible and not allowed_intents:
         return None
     primary_scope_ids = tuple(sorted(_text_ids(block.get("primary_evidence_scope_ids"))))
-    alignment: Literal["fully_aligned", "semantic_candidate"] = (
+    alignment: Literal["fully_aligned", "semantic_candidate", "intent_candidate"] = (
+        "intent_candidate" if allowed_intents else
         "fully_aligned" if eligibility.fully_aligned else "semantic_candidate"
     )
     block_id = str(block.get("id") or "").strip()
@@ -403,6 +510,7 @@ def _candidate_from_block(
         primary_evidence_scope_ids=primary_scope_ids,
         semantic_descriptor=assessment_teaching_semantic_descriptor(block),
         alignment=alignment,
+        allowed_intents=allowed_intents,
     )
 
 
@@ -638,6 +746,7 @@ def compile_v5_assessment_plan(
             for objective_ref in sorted(required_refs):
                 fully: list[AssessmentTeachingCandidate] = []
                 semantic: list[AssessmentTeachingCandidate] = []
+                intent_candidates: list[AssessmentTeachingCandidate] = []
                 diagnostic = begin_diagnostic(lesson_path, objective_ref)
                 for _position, unit_path, unit_index, _unit, block_index, block, unit_refs in flat:
                     eligibility = evaluate_assessment_teaching_anchor(
@@ -656,10 +765,16 @@ def compile_v5_assessment_plan(
                         block_index=block_index,
                         objective_ref=objective_ref,
                         unit_objective_refs=unit_refs,
+                        allow_intent_repair=True,
                     )
                     if item is None:
                         continue
-                    (fully if item.alignment == "fully_aligned" else semantic).append(item)
+                    if item.allowed_intents:
+                        intent_candidates.append(item)
+                    else:
+                        (fully if item.alignment == "fully_aligned" else semantic).append(item)
+
+                diagnostic["intent_repair_candidate_count"] = len(intent_candidates)
 
                 selected_address = selections.get((lesson_path, objective_ref))
                 if selected_address is not None:
@@ -679,18 +794,31 @@ def compile_v5_assessment_plan(
                 # A fully aligned anchor is stronger deterministic evidence
                 # than a merely scope-compatible candidate.  The latter must
                 # not manufacture ambiguity or trigger a model call.
+                offered: tuple[AssessmentTeachingCandidate, ...] = ()
                 if len(fully) == 1:
                     selected.append(fully[0])
-                elif not fully and len(semantic) == 1:
-                    unresolved[(lesson_path, objective_ref)] = tuple(semantic)
-                elif fully or semantic:
-                    unresolved[(lesson_path, objective_ref)] = tuple(fully + semantic)
+                elif fully:
+                    # Preserve existing selection policy for ambiguous fully
+                    # aligned anchors; an intent change is not needed here.
+                    offered = tuple(fully + semantic)
+                elif semantic or intent_candidates:
+                    # Neither family is already aligned. A valid teaching
+                    # role with a missing objective link is NOT proof that its
+                    # semantics teach this objective better than an eligible
+                    # intent repair. Offer both; the provider may still say
+                    # NO_MATCH, and all identity/evidence guards still apply.
+                    offered = tuple(semantic + intent_candidates)
                 else:
                     issues.append(AssessmentPlanIssue(
                         "ASSESSMENT_PLAN_NO_SAFE_ANCHOR", lesson_path, objective_ref,
                         "NO_SAFE_TEACHING_ANCHOR", 0,
                         candidate_rejection_counts=dict(sorted(diagnostic["rejection_counts"].items())),
                     ))
+                if offered:
+                    unresolved[(lesson_path, objective_ref)] = offered
+                diagnostic["offered_candidate_count"] = len(offered)
+                diagnostic["offered_intent_candidate_count"] = sum(bool(item.allowed_intents) for item in offered)
+                diagnostic["candidate_selection_policy"] = "fully_aligned_else_complete_repair_inventory_v2"
 
             if any(issue.lesson_path == lesson_path for issue in issues) or any(
                 key[0] == lesson_path for key in unresolved
