@@ -116,6 +116,9 @@ class LessonAuthorOrchestrationV2ProviderTests(unittest.TestCase):
                      for scope_id in unit.source_scope_ids]
         self.assertEqual(allocated, plan.source_scope_ids)
         self.assertEqual(len(fallback.lessons), 2)
+        self.assertNotEqual(fallback.lessons[0].objective, skeleton.chapters[0].objective)
+        self.assertIn(skeleton.chapters[0].title, fallback.lessons[0].objective)
+        self.assertIn(fallback.lessons[0].learning_objectives[0], fallback.lessons[0].units[0].purpose)
 
     def test_provider_wire_schemas_serialize_through_pinned_google_sdk(self) -> None:
         for server_model, wire_model, metadata in (
@@ -416,7 +419,10 @@ class LessonAuthorOrchestrationV2ProviderTests(unittest.TestCase):
         facts = [SourceSnapshotFactV2(
             document_id="document-1", fact_key=f"fact-{index}", scope_key=scope_id, fact_text="Nội dung",
         ) for index, scope_id in enumerate(plan.source_scope_ids, start=1)]
-        self.assertIn("SHARD_CONTEXT=", chapter_shard_prompt_v2("vi", skeleton, plan, facts))
+        shard_prompt = chapter_shard_prompt_v2("vi", skeleton, plan, facts)
+        self.assertIn("SHARD_CONTEXT=", shard_prompt)
+        self.assertIn("explicit pedagogical chain", shard_prompt)
+        self.assertIn("align with its local learning_objective_refs", shard_prompt)
         facts[0] = facts[0].model_copy(update={"scope_key": "scope-khác"})
         with self.assertRaisesRegex(OrchestrationContractError, "ARCHITECTURE_SHARD_CONTEXT_MISMATCH"):
             chapter_shard_prompt_v2("vi", skeleton, plan, facts)

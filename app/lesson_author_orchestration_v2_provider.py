@@ -335,22 +335,32 @@ def fallback_chapter_shard_draft_v2(
     if chapter is None or chapter.order != plan.order:
         raise OrchestrationContractError("ARCHITECTURE_SHARD_IDENTITY_MISMATCH")
     lessons: list[LessonArchitectureV2] = []
+    vi = skeleton.locale == "vi"
     scope_groups = [plan.source_scope_ids[index:index + 8]
                     for index in range(0, len(plan.source_scope_ids), 8)]
     for lesson_index, scopes in enumerate(scope_groups, start=1):
         labels = [_fallback_scope_title(scope_key, facts) for scope_key in scopes]
-        learning_objectives = [f"Hiểu và áp dụng nội dung: {label}"[:500] for label in labels]
+        learning_objectives = [
+            ((f"Phân tích và vận dụng nội dung trọng tâm: {label}" if vi else
+              f"Analyze and apply the core content: {label}")[:500])
+            for label in labels
+        ]
         units = [UnitArchitectureV2(
             title=label[:180],
-            purpose=f"Giúp người học đạt mục tiêu của chương: {chapter.objective}"[:500],
+            purpose=((f"Giúp người học đạt mục tiêu '{learning_objectives[index - 1]}' "
+                      f"và đóng góp vào kết quả đầu ra của chương '{chapter.title}'." if vi else
+                     f"Help learners achieve '{learning_objectives[index - 1]}' and contribute "
+                     f"to the expected outcomes of chapter '{chapter.title}'.")[:500]),
             learning_objective_refs=[f"lo_{index}"],
             source_scope_ids=[scope_key],
             component_plan=[ArchitectureComponentPlanV2(
                 type="html",
                 title=f"Nội dung trọng tâm: {label}"[:180],
-                rationale="Trình bày đầy đủ nội dung nguồn trước khi bổ sung hoạt động tương tác.",
+                rationale=("Trình bày đầy đủ nội dung nguồn để trực tiếp hỗ trợ mục tiêu của bài học."
+                           if vi else "Present the source content completely to directly support the lesson objective."),
                 author_review=ArchitectureComponentAuthorReviewV2(
-                    purpose="Giải thích và hệ thống hóa nội dung nguồn cho người học.",
+                    purpose=("Giải thích và hệ thống hóa nội dung nguồn theo mục tiêu của bài học."
+                             if vi else "Explain and organize the source content around the lesson objective."),
                     example_scenario=None,
                     visual_asset=None,
                     user_behavior_navigation=None,
@@ -359,13 +369,20 @@ def fallback_chapter_shard_draft_v2(
             )],
             media_brief=None,
         ) for index, (scope_key, label) in enumerate(zip(scopes, labels), start=1)]
-        lesson_title = chapter.title if len(scope_groups) == 1 else f"{chapter.title} - Phần {lesson_index}"
+        lesson_title = chapter.title if len(scope_groups) == 1 else (
+            f"{chapter.title} - Phần {lesson_index}" if vi else f"{chapter.title} - Part {lesson_index}")
+        lesson_objective = ((f"Vận dụng các nội dung {', '.join(labels)} để góp phần đạt kết quả đầu ra của "
+                             f"chương '{chapter.title}'.") if vi else
+                            (f"Apply {', '.join(labels)} to contribute to the expected outcomes of "
+                             f"chapter '{chapter.title}'."))
         lessons.append(LessonArchitectureV2(
             title=lesson_title[:180],
-            objective=chapter.objective,
+            objective=lesson_objective[:2000],
             learning_objectives=learning_objectives,
-            learning_activities=["Đọc nội dung, đối chiếu tình huống và thực hành áp dụng."],
-            assessment="Đánh giá mức độ hiểu và khả năng áp dụng nội dung của phần học.",
+            learning_activities=[("Đọc nội dung, đối chiếu tình huống và thực hành áp dụng."
+                                  if vi else "Study the content, compare scenarios, and practice applying it.")],
+            assessment=("Đánh giá mức độ hiểu và khả năng áp dụng nội dung của phần học."
+                        if vi else "Assess understanding and the ability to apply the section content."),
             units=units,
         ))
     return ChapterShardDraftV2(lessons=lessons)
@@ -680,6 +697,10 @@ def chapter_shard_prompt_v2(
                "facts": [fact.model_dump() for fact in facts]}
     return (
         "Design strict lesson, unit, and component-plan architecture only for this immutable chapter shard. "
+        "Maintain an explicit pedagogical chain: every lesson objective must operationalize one or more chapter learning_outcomes; "
+        "the lesson learning_objectives must be observable, specific steps toward that lesson objective; every unit purpose must state "
+        "what the learner will achieve and must align with its local learning_objective_refs; every component rationale and author_review "
+        "must explain how that block supports the containing unit rather than repeat generic chapter copy. "
         "Allocate every supplied source_scope_id to exactly one unit. Every unit must reference valid local learning objectives "
         "(lo_1, lo_2, ...), start component_plan with one html component covering all unit scopes, use at most one additional "
         "interactive component, and place la_faq last when present. Component scopes must remain inside their unit. "

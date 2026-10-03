@@ -40,16 +40,37 @@ def load_runtime_dotenv(
         return loaded
 
 
-load_runtime_dotenv(APP_ROOT / ".env")
-_environment = os.getenv("NODE_ENV", "development").strip().lower() or "development"
-_backend_env = ".env.production" if _environment == "production" else ".env"
-load_runtime_dotenv(
-    REPO_ROOT / "landa-backend" / _backend_env,
-    override=False,
-    # Production remains fail-closed. This fallback exists only because the
-    # shared local Node dotenv currently contains invalid NUL bytes.
-    allow_nul_sanitization=_environment != "production",
-)
+def load_runtime_environment(*, app_root: Path = APP_ROOT, repo_root: Path = REPO_ROOT) -> str:
+    """Load the environment without allowing local development values into production."""
+    environment = os.getenv("NODE_ENV", "development").strip().lower() or "development"
+
+    if environment == "production":
+        # PM2 marks production explicitly. Keep process-level variables authoritative,
+        # then fill missing values from the backend's production source of truth. The
+        # AI service's local .env may contain stale development credentials and must
+        # never participate in this path.
+        load_runtime_dotenv(
+            repo_root / "landa-backend" / ".env.production",
+            override=False,
+            allow_nul_sanitization=False,
+        )
+        return environment
+
+    load_runtime_dotenv(app_root / ".env")
+    environment = os.getenv("NODE_ENV", "development").strip().lower() or "development"
+    if environment == "production":
+        raise RuntimeError("NODE_ENV=production must be supplied by the process environment.")
+    load_runtime_dotenv(
+        repo_root / "landa-backend" / ".env",
+        override=False,
+        # The shared local Node dotenv currently contains invalid NUL bytes.
+        # Sanitization remains a development-only compatibility path.
+        allow_nul_sanitization=True,
+    )
+    return environment
+
+
+_environment = load_runtime_environment()
 
 
 class Settings(BaseModel):
