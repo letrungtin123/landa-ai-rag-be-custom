@@ -1,0 +1,100 @@
+from __future__ import annotations
+
+import unittest
+
+from app.instructional_quality import (
+    build_source_locked_single_choice,
+    clean_source_facts,
+    ordered_source_steps,
+    render_source_locked_html,
+    source_term_definitions,
+)
+
+
+class InstructionalQualityTests(unittest.TestCase):
+    def test_source_cleaning_removes_presentation_and_contact_debris(self) -> None:
+        facts = clean_source_facts([
+            "THANK YOU",
+            "www.l-a.com.vn",
+            "training@example.com",
+            "vvvvvvvvvvvvvvvv",
+            "Kiểm tra mối nguy trước khi bắt đầu công việc.",
+        ])
+
+        self.assertEqual(facts, ["Kiểm tra mối nguy trước khi bắt đầu công việc."])
+
+    def test_table_rows_render_once_as_semantic_table(self) -> None:
+        value = render_source_locked_html(
+            "Ma trận rủi ro",
+            [
+                "Ma trận dùng để xác định mức ưu tiên kiểm soát.",
+                "Row 1: Khả năng | Hậu quả | Mức rủi ro",
+                "Row 2: Có thể xảy ra | Nghiêm trọng | Cao",
+                "Row 3: Hiếm khi | Nhẹ | Thấp",
+            ],
+            locale="vi",
+            required_artifacts=[{"type": "table", "minimum_items": 2}],
+        )
+
+        self.assertEqual(value.count("<table>"), 1)
+        self.assertIn("<th>Khả năng</th>", value)
+        self.assertIn("<td>Cao</td>", value)
+        self.assertNotIn("Row 1", value)
+
+    def test_problem_fallback_requires_an_explicit_source_authored_check(self) -> None:
+        problem = build_source_locked_single_choice(
+            "Kiểm tra trước công việc",
+            ["Người thực hiện phải kiểm tra điều kiện an toàn trước khi bắt đầu công việc."],
+            locale="vi",
+        )
+
+        self.assertIsNone(problem)
+
+    def test_explicit_source_authored_check_is_recovered_without_invented_distractors(self) -> None:
+        problem = build_source_locked_single_choice(
+            "Kiểm tra trước công việc",
+            [
+                "Câu hỏi: Việc nào phải thực hiện trước khi bắt đầu công việc?",
+                "A. Kiểm tra điều kiện an toàn tại nơi làm việc",
+                "B. Bỏ qua mối nguy đã nhận diện",
+                "C. Chờ đến khi xảy ra sự cố mới kiểm tra",
+                "Đáp án: A",
+                "Giải thích: Tài liệu yêu cầu kiểm tra điều kiện an toàn trước khi công việc bắt đầu.",
+            ],
+            locale="vi",
+        )
+
+        self.assertIsNotNone(problem)
+        assert problem is not None
+        self.assertEqual(problem["problem_type"], "multiple_choice")
+        self.assertEqual(len(problem["choices"]), 3)
+        self.assertEqual(sum(choice["correct"] for choice in problem["choices"]), 1)
+        self.assertEqual(problem["choices"][0]["text"], "Kiểm tra điều kiện an toàn tại nơi làm việc")
+
+    def test_sortable_requires_a_real_three_step_sequence(self) -> None:
+        self.assertEqual(ordered_source_steps([
+            "Khái niệm nhận diện mối nguy.",
+            "Mức độ rủi ro phụ thuộc khả năng và hậu quả.",
+            "Biện pháp kiểm soát cần phù hợp với mối nguy.",
+        ], locale="vi"), [])
+        self.assertEqual(len(ordered_source_steps([
+            "Bước 1: Nhận diện mối nguy tại khu vực làm việc.",
+            "Bước 2: Đánh giá khả năng và hậu quả của rủi ro.",
+            "Bước 3: Lựa chọn biện pháp kiểm soát phù hợp.",
+        ], locale="vi")), 3)
+
+    def test_crossword_requires_explicit_term_definitions(self) -> None:
+        self.assertEqual(source_term_definitions([
+            "Bước 1: Nhận diện mối nguy tại khu vực làm việc.",
+            "Nội dung chung không định nghĩa một thuật ngữ cụ thể.",
+        ]), [])
+        self.assertEqual(source_term_definitions([
+            "Mối nguy cơ khí: Nguồn chuyển động có thể gây va đập, cuốn hoặc kẹp người lao động.",
+        ]), [("MOINGUYCOKHI", "Nguồn chuyển động có thể gây va đập, cuốn hoặc kẹp người lao động.")])
+        self.assertEqual(source_term_definitions([
+            "5S: Phương pháp tổ chức nơi làm việc nhằm duy trì trật tự, sạch sẽ và kỷ luật.",
+        ])[0][0], "5S")
+
+
+if __name__ == "__main__":
+    unittest.main()

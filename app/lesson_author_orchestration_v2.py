@@ -194,6 +194,44 @@ class LessonArchitectureV2(BaseModel):
         return self
 
 
+class AssessmentObligationV2(BaseModel):
+    """A planned assessment slot that is not safe to publish as learner content."""
+
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    planned_slot_key: str
+    lesson_index: int = Field(ge=1, le=4096)
+    unit_index: int = Field(ge=1, le=4096)
+    component_index: int = Field(ge=1, le=3)
+    learning_objective_refs: list[str] = Field(min_length=1, max_length=24)
+    required_assessment_kind: Literal["single_choice"]
+    relevant_scope_ids: list[str] = Field(min_length=1, max_length=4096)
+    relevant_evidence_fact_ids: list[str] = Field(min_length=1, max_length=32768)
+    unresolved_reason: Literal["ASSESSMENT_SOURCE_CHECK_REQUIRED"]
+    status: Literal["open"]
+
+    @field_validator("planned_slot_key")
+    @classmethod
+    def validate_planned_slot_key(cls, value: str) -> str:
+        if not re.fullmatch(r"ao2_[a-f0-9]{32}", value):
+            raise ValueError("assessment obligation slot key is invalid")
+        return value
+
+    @field_validator("learning_objective_refs")
+    @classmethod
+    def validate_learning_objective_refs(cls, value: list[str]) -> list[str]:
+        if len(set(value)) != len(value) or any(not OBJECTIVE_REF_PATTERN.fullmatch(item) for item in value):
+            raise ValueError("assessment obligation objective references are invalid")
+        return value
+
+    @field_validator("relevant_scope_ids", "relevant_evidence_fact_ids")
+    @classmethod
+    def validate_evidence_ids(cls, value: list[str]) -> list[str]:
+        if len(set(value)) != len(value) or any(not item or len(item) > 255 for item in value):
+            raise ValueError("assessment obligation evidence references are invalid")
+        return value
+
+
 class ChapterBlueprintShardV2(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
 
@@ -207,6 +245,7 @@ class ChapterBlueprintShardV2(BaseModel):
     title: str = Field(min_length=1, max_length=500)
     objective: str = Field(min_length=1, max_length=2000)
     lessons: list[LessonArchitectureV2] = Field(min_length=1, max_length=512)
+    assessment_obligations: list[AssessmentObligationV2] = Field(default_factory=list, max_length=12288)
 
     @field_validator("source_snapshot_hash")
     @classmethod
@@ -236,6 +275,15 @@ class ChapterBlueprintShardV2(BaseModel):
         owned_scopes = [scope for lesson in self.lessons for unit in lesson.units for scope in unit.source_scope_ids]
         if len(owned_scopes) != len(set(owned_scopes)) or set(owned_scopes) != set(self.source_scope_ids):
             raise ValueError("shard unit scope ownership is incomplete")
+        slot_keys = [item.planned_slot_key for item in self.assessment_obligations]
+        if len(slot_keys) != len(set(slot_keys)):
+            raise ValueError("assessment obligation slot is duplicated")
+        for item in self.assessment_obligations:
+            lesson = self.lessons[item.lesson_index - 1] if item.lesson_index <= len(self.lessons) else None
+            unit = lesson.units[item.unit_index - 1] if lesson and item.unit_index <= len(lesson.units) else None
+            if (unit is None or not set(item.learning_objective_refs).issubset(unit.learning_objective_refs)
+                    or not set(item.relevant_scope_ids).issubset(unit.source_scope_ids)):
+                raise ValueError("assessment obligation is outside its planned unit")
         return self
 
 

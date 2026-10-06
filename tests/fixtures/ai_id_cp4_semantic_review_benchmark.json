@@ -1,0 +1,136 @@
+{
+  "contract_version": "semantic-review-benchmark-v1",
+  "label_notice": "Synthetic product-spec labels; SME review is still required before release claims.",
+  "before_cases": [
+    {
+      "case_id": "dev_table_preserved",
+      "split": "development",
+      "document_group": "synthetic_hse_table",
+      "course_group": "synthetic_hse_a",
+      "oracle": {"acceptable": true, "serious_error": false, "label_status": "provisional_product_spec", "expected_codes": []},
+      "prediction": {"verdict": "pass", "finding_codes": []}
+    },
+    {
+      "case_id": "dev_table_relation_lost",
+      "split": "development",
+      "document_group": "synthetic_hse_table",
+      "course_group": "synthetic_hse_a",
+      "oracle": {"acceptable": false, "serious_error": true, "label_status": "provisional_product_spec", "expected_codes": ["STRUCTURED_RELATION_LOST"]},
+      "prediction": {"verdict": "pass", "finding_codes": []}
+    },
+    {
+      "case_id": "dev_quiz_grounded",
+      "split": "development",
+      "document_group": "synthetic_quiz",
+      "course_group": "synthetic_hse_b",
+      "oracle": {"acceptable": true, "serious_error": false, "label_status": "provisional_product_spec", "expected_codes": []},
+      "prediction": {"verdict": "pass", "finding_codes": []}
+    },
+    {
+      "case_id": "dev_quiz_wrong_key",
+      "split": "development",
+      "document_group": "synthetic_quiz",
+      "course_group": "synthetic_hse_b",
+      "oracle": {"acceptable": false, "serious_error": true, "label_status": "provisional_product_spec", "expected_codes": ["ASSESSMENT_ANSWER_UNGROUNDED"]},
+      "prediction": {"verdict": "pass", "finding_codes": []}
+    },
+    {
+      "case_id": "heldout_process_preserved",
+      "split": "held_out",
+      "document_group": "synthetic_process",
+      "course_group": "synthetic_ops_a",
+      "oracle": {"acceptable": true, "serious_error": false, "label_status": "provisional_product_spec", "expected_codes": []},
+      "prediction": {"verdict": "pass", "finding_codes": []}
+    },
+    {
+      "case_id": "heldout_sortable_not_ordered",
+      "split": "held_out",
+      "document_group": "synthetic_process",
+      "course_group": "synthetic_ops_a",
+      "oracle": {"acceptable": false, "serious_error": true, "label_status": "provisional_product_spec", "expected_codes": ["COMPONENT_SEMANTIC_MISMATCH"]},
+      "prediction": {"verdict": "pass", "finding_codes": []}
+    },
+    {
+      "case_id": "heldout_coherent_explanation",
+      "split": "held_out",
+      "document_group": "synthetic_policy",
+      "course_group": "synthetic_ops_b",
+      "oracle": {"acceptable": true, "serious_error": false, "label_status": "provisional_product_spec", "expected_codes": []},
+      "prediction": {"verdict": "pass", "finding_codes": []}
+    },
+    {
+      "case_id": "heldout_duplicate_filler",
+      "split": "held_out",
+      "document_group": "synthetic_policy",
+      "course_group": "synthetic_ops_b",
+      "oracle": {"acceptable": false, "serious_error": true, "label_status": "provisional_product_spec", "expected_codes": ["DUPLICATE_FILLER"]},
+      "prediction": {"verdict": "pass", "finding_codes": []}
+    }
+  ],
+  "after_cases": [
+    {
+      "case_id": "dev_table_preserved",
+      "split": "development",
+      "document_group": "synthetic_hse_table",
+      "course_group": "synthetic_hse_a",
+      "oracle": {"acceptable": true, "serious_error": false, "label_status": "provisional_product_spec", "expected_codes": []},
+      "prediction": {"verdict": "pass", "finding_codes": []}
+    },
+    {
+      "case_id": "dev_table_relation_lost",
+      "split": "development",
+      "document_group": "synthetic_hse_table",
+      "course_group": "synthetic_hse_a",
+      "oracle": {"acceptable": false, "serious_error": true, "label_status": "provisional_product_spec", "expected_codes": ["STRUCTURED_RELATION_LOST"]},
+      "prediction": {"verdict": "review_required", "finding_codes": ["STRUCTURED_RELATION_LOST"]}
+    },
+    {
+      "case_id": "dev_quiz_grounded",
+      "split": "development",
+      "document_group": "synthetic_quiz",
+      "course_group": "synthetic_hse_b",
+      "oracle": {"acceptable": true, "serious_error": false, "label_status": "provisional_product_spec", "expected_codes": []},
+      "prediction": {"verdict": "pass", "finding_codes": []}
+    },
+    {
+      "case_id": "dev_quiz_wrong_key",
+      "split": "development",
+      "document_group": "synthetic_quiz",
+      "course_group": "synthetic_hse_b",
+      "oracle": {"acceptable": false, "serious_error": true, "label_status": "provisional_product_spec", "expected_codes": ["ASSESSMENT_ANSWER_UNGROUNDED"]},
+      "prediction": {"verdict": "review_required", "finding_codes": ["ASSESSMENT_ANSWER_UNGROUNDED"]}
+    },
+    {
+      "case_id": "heldout_process_preserved",
+      "split": "held_out",
+      "document_group": "synthetic_process",
+      "course_group": "synthetic_ops_a",
+      "oracle": {"acceptable": true, "serious_error": false, "label_status": "provisional_product_spec", "expected_codes": []},
+      "prediction": {"verdict": "pass", "finding_codes": []}
+    },
+    {
+      "case_id": "heldout_sortable_not_ordered",
+      "split": "held_out",
+      "document_group": "synthetic_process",
+      "course_group": "synthetic_ops_a",
+      "oracle": {"acceptable": false, "serious_error": true, "label_status": "provisional_product_spec", "expected_codes": ["COMPONENT_SEMANTIC_MISMATCH"]},
+      "prediction": {"verdict": "review_required", "finding_codes": ["COMPONENT_SEMANTIC_MISMATCH"]}
+    },
+    {
+      "case_id": "heldout_coherent_explanation",
+      "split": "held_out",
+      "document_group": "synthetic_policy",
+      "course_group": "synthetic_ops_b",
+      "oracle": {"acceptable": true, "serious_error": false, "label_status": "provisional_product_spec", "expected_codes": []},
+      "prediction": {"verdict": "pass", "finding_codes": []}
+    },
+    {
+      "case_id": "heldout_duplicate_filler",
+      "split": "held_out",
+      "document_group": "synthetic_policy",
+      "course_group": "synthetic_ops_b",
+      "oracle": {"acceptable": false, "serious_error": true, "label_status": "provisional_product_spec", "expected_codes": ["DUPLICATE_FILLER"]},
+      "prediction": {"verdict": "review_required", "finding_codes": ["DUPLICATE_FILLER"]}
+    }
+  ]
+}

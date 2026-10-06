@@ -1,0 +1,22 @@
+{
+  "fixture_id": "hse-dense-source-scope-v1",
+  "description": "Synthetic density profile matching the observed HSE regression without retaining customer content.",
+  "profile": {
+    "canonical_fact_count": 233,
+    "source_chars": 29058,
+    "estimated_words": 4300,
+    "learning_objective_count": 8,
+    "independent_topic_count": 4
+  },
+  "expected": {
+    "split_required": true,
+    "recommended_unit_count": 5,
+    "reason_codes": [
+      "UNIT_FACT_DENSITY_EXCEEDED",
+      "UNIT_SOURCE_TEXT_DENSITY_EXCEEDED",
+      "UNIT_READING_TIME_EXCEEDED",
+      "UNIT_OBJECTIVE_DENSITY_EXCEEDED",
+      "UNIT_TOPIC_DENSITY_EXCEEDED"
+    ]
+  }
+}

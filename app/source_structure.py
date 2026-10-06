@@ -421,11 +421,26 @@ def _build_nodes(candidates: Iterable[dict[str, Any]], confidence: float) -> lis
 
 def analyze_source_structure(sections: Iterable[Any]) -> dict[str, Any]:
     page_lines: list[tuple[str, int | None]] = []
+    structured_heading_candidates: list[dict[str, Any]] = []
     toc_page_indexes: set[int] = set()
     material = list(sections)
     for section_index, section in enumerate(material):
         page = getattr(section, "page", None)
         text = str(getattr(section, "text", "") or "")
+        metadata = getattr(section, "metadata", {})
+        if isinstance(metadata, dict):
+            for candidate in metadata.get("heading_candidates", []):
+                if not isinstance(candidate, dict):
+                    continue
+                title = _clean_line(str(candidate.get("title") or ""))
+                level = candidate.get("level")
+                if title and 3 <= len(title) <= MAX_NODE_TITLE_CHARS and type(level) is int:
+                    structured_heading_candidates.append({
+                        "title": title,
+                        "level": max(1, min(6, level)),
+                        "page": page,
+                        "node_type": "chapter" if level == 1 else "section",
+                    })
         lines = [_clean_line(line) for line in text.splitlines()]
         lines = [line for line in lines if line]
         page_lines.extend((line, page) for line in lines)
@@ -451,27 +466,40 @@ def analyze_source_structure(sections: Iterable[Any]) -> dict[str, Any]:
         structure_source = "toc"
         candidate_count = len(toc_candidates)
     else:
-        heading_candidates: list[dict[str, Any]] = []
+        heading_candidates = list(structured_heading_candidates)
+        seen_heading_keys = {
+            (_normalise(str(candidate.get("title") or "")), candidate.get("page"))
+            for candidate in heading_candidates
+        }
         for line, page in page_lines:
             parsed = _parse_explicit_heading(line, page)
             if parsed:
                 title, level, number_label, _ = parsed
-                heading_candidates.append(
-                    {
-                        "title": title,
-                        "level": level,
-                        "number_label": number_label,
-                        "page": page,
-                        "node_type": "chapter" if level == 1 else "section",
-                    },
-                )
+                key = (_normalise(title), page)
+                if key not in seen_heading_keys:
+                    heading_candidates.append(
+                        {
+                            "title": title,
+                            "level": level,
+                            "number_label": number_label,
+                            "page": page,
+                            "node_type": "chapter" if level == 1 else "section",
+                        },
+                    )
+                    seen_heading_keys.add(key)
             elif _looks_like_heading(line):
-                heading_candidates.append(
-                    {"title": line, "level": 1, "page": page, "node_type": "section"},
-                )
-        nodes = _build_nodes(heading_candidates, 0.76 if heading_candidates else 0.35)
+                key = (_normalise(line), page)
+                if key not in seen_heading_keys:
+                    heading_candidates.append(
+                        {"title": line, "level": 1, "page": page, "node_type": "section"},
+                    )
+                    seen_heading_keys.add(key)
+        confidence = 0.9 if structured_heading_candidates else 0.76 if heading_candidates else 0.35
+        nodes = _build_nodes(heading_candidates, confidence)
         structure_source = "heading_inferred" if nodes else "semantic_inferred"
         candidate_count = len(heading_candidates)
+        if structured_heading_candidates:
+            warnings.append("STRUCTURED_HEADINGS_USED")
 
     # Additive authority evidence, not a new source-ref namespace. Existing
     # source-map/fact ownership and persisted node identities remain unchanged.

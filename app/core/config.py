@@ -104,6 +104,31 @@ class Settings(BaseModel):
     )
     course_workflow_max_repair_attempts: int = Field(default_factory=lambda: int(os.getenv("AI_RAG_COURSE_WORKFLOW_MAX_REPAIR_ATTEMPTS", "2")))
     lesson_workflow_max_repair_attempts: int = Field(default_factory=lambda: int(os.getenv("AI_RAG_LESSON_WORKFLOW_MAX_REPAIR_ATTEMPTS", "2")))
+    # CP4 remains opt-in until a human-labelled live benchmark is approved.
+    # `observe` measures without changing the quality envelope; `repair` may
+    # perform one bounded component repair and otherwise keeps the draft visible.
+    semantic_review_mode: Literal["off", "observe", "repair"] = Field(
+        default_factory=lambda: os.getenv("AI_RAG_SEMANTIC_REVIEW_MODE", "off").strip().lower(),
+    )
+    semantic_review_model: str = Field(
+        default_factory=lambda: os.getenv("AI_RAG_SEMANTIC_REVIEW_MODEL", "").strip(),
+        max_length=255,
+    )
+    semantic_review_timeout_ms: int = Field(
+        default_factory=lambda: int(os.getenv("AI_RAG_SEMANTIC_REVIEW_TIMEOUT_MS", "60000")),
+        ge=1_000,
+        le=120_000,
+    )
+    semantic_review_max_output_tokens: int = Field(
+        default_factory=lambda: int(os.getenv("AI_RAG_SEMANTIC_REVIEW_MAX_OUTPUT_TOKENS", "4096")),
+        ge=512,
+        le=8_192,
+    )
+    semantic_review_provider_attempt_cap: int = Field(
+        default_factory=lambda: int(os.getenv("AI_RAG_SEMANTIC_REVIEW_PROVIDER_ATTEMPT_CAP", "8")),
+        ge=2,
+        le=8,
+    )
     database_command_timeout_seconds: int = Field(default_factory=lambda: int(os.getenv("AI_RAG_DATABASE_COMMAND_TIMEOUT_SECONDS", "600")))
     top_k: int = Field(default_factory=lambda: int(os.getenv("AI_RAG_TOP_K", "8")))
     max_context_chars: int = Field(default_factory=lambda: int(os.getenv("AI_RAG_MAX_CONTEXT_CHARS", "18000")))

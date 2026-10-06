@@ -1,0 +1,426 @@
+{
+  "fixture_version": "ai-id-cp2a-boundary-replay-1",
+  "contract_versions": {
+    "orchestration": 2,
+    "instructional_density": "unit-content-v3-density-1",
+    "provider_projection": "orchestration-v2-google-wire-2"
+  },
+  "cases": [
+    {
+      "id": "text_valid",
+      "category": "text",
+      "source_facts": [
+        {
+          "fact_key": "text-fact-1",
+          "fact_text": "Trước khi bắt đầu công việc, người thực hiện phải kiểm tra điều kiện hiện trường, xác nhận phạm vi công việc và nhận diện các mối nguy liên quan.",
+          "locator": {}
+        },
+        {
+          "fact_key": "text-fact-2",
+          "fact_text": "Biện pháp kiểm soát phải được lựa chọn theo mối nguy đã nhận diện, được thông báo cho người tham gia và được xác nhận trước khi triển khai.",
+          "locator": {}
+        }
+      ],
+      "plans": [
+        {
+          "component_plan_id": "cp2_11111111111111111111111111111111",
+          "type": "html",
+          "title": "Chuẩn bị công việc an toàn",
+          "rationale": "Giải thích các điều kiện cần kiểm tra trước khi làm việc.",
+          "purpose": "explain",
+          "source_fact_ids": ["text-fact-1", "text-fact-2"],
+          "supporting_evidence_fact_ids": [],
+          "required_artifacts": []
+        }
+      ],
+      "writer_payload": {
+        "components": {
+          "c0": {
+            "covered_source_fact_ids": ["text-fact-1", "text-fact-2"],
+            "selection_rationale": "Trình bày nội dung cốt lõi trước khi người học thực hành.",
+            "title": "Chuẩn bị công việc an toàn",
+            "semantic_content": {
+              "sections": [
+                {
+                  "heading": "Kiểm tra trước khi bắt đầu",
+                  "blocks": [
+                    {
+                      "kind": "paragraph",
+                      "text": "Người thực hiện bắt đầu bằng việc kiểm tra điều kiện hiện trường, xác nhận rõ phạm vi công việc và nhận diện các mối nguy có thể ảnh hưởng đến người, thiết bị hoặc khu vực xung quanh. Ba hoạt động này tạo cơ sở để quyết định công việc có đủ điều kiện triển khai hay chưa."
+                    },
+                    {
+                      "kind": "paragraph",
+                      "text": "Sau khi nhận diện mối nguy, nhóm thực hiện lựa chọn biện pháp kiểm soát phù hợp, thông báo biện pháp đó cho tất cả người tham gia và chỉ bắt đầu khi việc kiểm soát đã được xác nhận. Nếu điều kiện thay đổi, nhóm phải dừng lại và đánh giá lại trước khi tiếp tục."
+                    }
+                  ]
+                }
+              ]
+            },
+            "html": null
+          }
+        }
+      },
+      "expected": {
+        "status": "accepted",
+        "first_failing_boundary": null,
+        "classification": "accepted"
+      }
+    },
+    {
+      "id": "table_valid",
+      "category": "table",
+      "source_facts": [
+        {
+          "fact_key": "table-fact-1",
+          "fact_text": "Row 1: Nhóm mối nguy | Biện pháp kiểm soát",
+          "locator": {"content_kinds": ["table"], "table_count": 1}
+        },
+        {
+          "fact_key": "table-fact-2",
+          "fact_text": "Row 2: Cơ khí | Che chắn bộ phận chuyển động và cô lập nguồn năng lượng trước bảo trì",
+          "locator": {"content_kinds": ["table"], "table_count": 1}
+        },
+        {
+          "fact_key": "table-fact-3",
+          "fact_text": "Row 3: Điện | Kiểm tra mất điện, khóa nguồn và xác nhận trước khi tiếp xúc",
+          "locator": {"content_kinds": ["table"], "table_count": 1}
+        }
+      ],
+      "plans": [
+        {
+          "component_plan_id": "cp2_22222222222222222222222222222222",
+          "type": "html",
+          "title": "Mối nguy và biện pháp kiểm soát",
+          "rationale": "Giữ nguyên quan hệ hàng giữa nhóm mối nguy và biện pháp kiểm soát.",
+          "purpose": "explain",
+          "source_fact_ids": ["table-fact-1", "table-fact-2", "table-fact-3"],
+          "supporting_evidence_fact_ids": [],
+          "required_artifacts": [{"type": "table", "minimum_items": 2}]
+        }
+      ],
+      "writer_payload": {
+        "components": {
+          "c0": {
+            "covered_source_fact_ids": ["table-fact-1", "table-fact-2", "table-fact-3"],
+            "selection_rationale": "Bảng giúp người học đối chiếu đúng từng nhóm mối nguy với kiểm soát tương ứng.",
+            "title": "Mối nguy và biện pháp kiểm soát",
+            "semantic_content": {
+              "sections": [
+                {
+                  "heading": "Đối chiếu mối nguy và kiểm soát",
+                  "blocks": [
+                    {
+                      "kind": "paragraph",
+                      "text": "Mỗi nhóm mối nguy cần được ghép với biện pháp kiểm soát đúng bản chất. Bảng dưới đây giữ nguyên quan hệ giữa đối tượng cần kiểm soát và hành động bắt buộc trước khi công việc được thực hiện."
+                    },
+                    {
+                      "kind": "table",
+                      "rows": [
+                        {"label": "Nhóm mối nguy", "value": "Biện pháp kiểm soát"},
+                        {"label": "Cơ khí", "value": "Che chắn bộ phận chuyển động và cô lập nguồn năng lượng trước bảo trì"},
+                        {"label": "Điện", "value": "Kiểm tra mất điện, khóa nguồn và xác nhận trước khi tiếp xúc"}
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            "html": null
+          }
+        }
+      },
+      "expected": {
+        "status": "accepted",
+        "first_failing_boundary": null,
+        "classification": "accepted"
+      }
+    },
+    {
+      "id": "procedure_valid",
+      "category": "procedure",
+      "source_facts": [
+        {
+          "fact_key": "procedure-fact-1",
+          "fact_text": "Bước 1: Kiểm tra điều kiện hiện trường và xác nhận phạm vi công việc trước khi bắt đầu.",
+          "locator": {"content_kinds": ["ordered_list"]}
+        },
+        {
+          "fact_key": "procedure-fact-2",
+          "fact_text": "Bước 2: Lựa chọn và triển khai biện pháp kiểm soát phù hợp với từng mối nguy đã nhận diện.",
+          "locator": {"content_kinds": ["ordered_list"]}
+        },
+        {
+          "fact_key": "procedure-fact-3",
+          "fact_text": "Bước 3: Xác nhận hiệu lực kiểm soát, thông báo cho người tham gia và chỉ sau đó mới thực hiện công việc.",
+          "locator": {"content_kinds": ["ordered_list"]}
+        }
+      ],
+      "plans": [
+        {
+          "component_plan_id": "cp2_33333333333333333333333333333333",
+          "type": "html",
+          "title": "Quy trình kiểm soát trước công việc",
+          "rationale": "Giải thích mục đích và trình tự của quy trình.",
+          "purpose": "explain",
+          "source_fact_ids": ["procedure-fact-1", "procedure-fact-2", "procedure-fact-3"],
+          "supporting_evidence_fact_ids": [],
+          "required_artifacts": [{"type": "ordered_list", "minimum_items": 3}]
+        },
+        {
+          "component_plan_id": "cp2_44444444444444444444444444444444",
+          "type": "la_sortable",
+          "title": "Sắp xếp trình tự kiểm soát",
+          "rationale": "Cho người học luyện lại đúng trình tự đã được dạy.",
+          "purpose": "sequence",
+          "source_fact_ids": [],
+          "supporting_evidence_fact_ids": ["procedure-fact-1", "procedure-fact-2", "procedure-fact-3"],
+          "required_artifacts": []
+        }
+      ],
+      "writer_payload": {
+        "components": {
+          "c0": {
+            "covered_source_fact_ids": ["procedure-fact-1", "procedure-fact-2", "procedure-fact-3"],
+            "selection_rationale": "Dạy quy trình trước khi yêu cầu người học sắp xếp.",
+            "title": "Quy trình kiểm soát trước công việc",
+            "semantic_content": {
+              "sections": [
+                {
+                  "heading": "Ba bước kiểm soát",
+                  "blocks": [
+                    {
+                      "kind": "paragraph",
+                      "text": "Quy trình được thực hiện theo thứ tự để bảo đảm mối nguy được nhận diện và kiểm soát trước khi con người tiếp xúc với công việc. Mỗi bước tạo đầu vào xác nhận cho bước tiếp theo nên không được đảo thứ tự hoặc bỏ qua."
+                    },
+                    {
+                      "kind": "steps",
+                      "items": [
+                        "Kiểm tra điều kiện hiện trường và xác nhận phạm vi công việc trước khi bắt đầu.",
+                        "Lựa chọn và triển khai biện pháp kiểm soát phù hợp với từng mối nguy đã nhận diện.",
+                        "Xác nhận hiệu lực kiểm soát, thông báo cho người tham gia rồi mới thực hiện công việc."
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            "html": null
+          },
+          "c1": {
+            "covered_source_fact_ids": [],
+            "selection_rationale": "Kiểm tra khả năng nhớ và áp dụng đúng thứ tự nguồn.",
+            "title": "Sắp xếp trình tự kiểm soát",
+            "question_text": "Hãy sắp xếp các bước kiểm soát theo đúng trình tự trước khi thực hiện công việc.",
+            "items": [
+              {"text": "Kiểm tra điều kiện hiện trường và xác nhận phạm vi công việc."},
+              {"text": "Lựa chọn và triển khai biện pháp kiểm soát phù hợp với mối nguy."},
+              {"text": "Xác nhận hiệu lực kiểm soát và thông báo trước khi làm việc."}
+            ],
+            "ordered_items": [],
+            "steps": []
+          }
+        }
+      },
+      "expected": {
+        "status": "accepted",
+        "first_failing_boundary": null,
+        "classification": "accepted"
+      }
+    },
+    {
+      "id": "quiz_valid",
+      "category": "quiz",
+      "source_facts": [
+        {
+          "fact_key": "quiz-fact-1",
+          "fact_text": "Người thực hiện chỉ được bắt đầu công việc sau khi điều kiện hiện trường và biện pháp kiểm soát đã được xác nhận.",
+          "locator": {}
+        },
+        {
+          "fact_key": "quiz-fact-2",
+          "fact_text": "Nếu điều kiện hiện trường thay đổi, công việc phải dừng để đánh giá lại mối nguy và cập nhật biện pháp kiểm soát.",
+          "locator": {}
+        }
+      ],
+      "plans": [
+        {
+          "component_plan_id": "cp2_55555555555555555555555555555555",
+          "type": "html",
+          "title": "Điều kiện bắt đầu và dừng công việc",
+          "rationale": "Dạy quy tắc quyết định trước khi đánh giá.",
+          "purpose": "explain",
+          "source_fact_ids": ["quiz-fact-1", "quiz-fact-2"],
+          "supporting_evidence_fact_ids": [],
+          "required_artifacts": []
+        },
+        {
+          "component_plan_id": "cp2_66666666666666666666666666666666",
+          "type": "problem",
+          "title": "Kiểm tra quyết định an toàn",
+          "rationale": "Kiểm tra một quyết định có một đáp án đúng từ nội dung đã dạy.",
+          "purpose": "assess",
+          "source_fact_ids": [],
+          "supporting_evidence_fact_ids": ["quiz-fact-1", "quiz-fact-2"],
+          "required_artifacts": []
+        }
+      ],
+      "writer_payload": {
+        "components": {
+          "c0": {
+            "covered_source_fact_ids": ["quiz-fact-1", "quiz-fact-2"],
+            "selection_rationale": "Giải thích rõ điều kiện bắt đầu và tín hiệu phải dừng.",
+            "title": "Điều kiện bắt đầu và dừng công việc",
+            "semantic_content": {
+              "sections": [
+                {
+                  "heading": "Quy tắc quyết định",
+                  "blocks": [
+                    {
+                      "kind": "paragraph",
+                      "text": "Công việc chỉ được bắt đầu khi điều kiện hiện trường và biện pháp kiểm soát đã được xác nhận. Xác nhận này giúp người thực hiện biết rằng các mối nguy đã được xem xét và các hành động kiểm soát cần thiết đang có hiệu lực."
+                    },
+                    {
+                      "kind": "paragraph",
+                      "text": "Khi điều kiện hiện trường thay đổi, quyết định an toàn là dừng công việc, đánh giá lại mối nguy và cập nhật biện pháp kiểm soát trước khi tiếp tục. Tiến độ không phải là lý do để bỏ qua bước đánh giá lại."
+                    }
+                  ]
+                }
+              ]
+            },
+            "html": null
+          },
+          "c1": {
+            "covered_source_fact_ids": [],
+            "selection_rationale": "Đánh giá khả năng chọn đúng hành động khi điều kiện thay đổi.",
+            "title": "Kiểm tra quyết định an toàn",
+            "problem_type": "multiple_choice",
+            "question": "Khi điều kiện hiện trường thay đổi trong lúc làm việc, hành động nào là phù hợp nhất?",
+            "choices": [
+              {"text": "Dừng công việc, đánh giá lại mối nguy và cập nhật biện pháp kiểm soát.", "correct": true},
+              {"text": "Tiếp tục công việc vì biện pháp kiểm soát ban đầu vẫn luôn có hiệu lực.", "correct": false},
+              {"text": "Chỉ ghi nhận thay đổi sau khi toàn bộ công việc đã hoàn thành.", "correct": false}
+            ],
+            "options": [],
+            "answer": null,
+            "tolerance": null,
+            "explanation": "Điều kiện thay đổi làm thay đổi cơ sở đánh giá ban đầu, vì vậy công việc phải dừng để mối nguy và biện pháp kiểm soát được xác nhận lại."
+          }
+        }
+      },
+      "expected": {
+        "status": "accepted",
+        "first_failing_boundary": null,
+        "classification": "accepted"
+      }
+    },
+    {
+      "id": "quiz_invalid_short_text",
+      "category": "quiz",
+      "source_facts": [
+        {
+          "fact_key": "invalid-quiz-fact-1",
+          "fact_text": "Biện pháp kiểm soát phải được xác nhận trước khi công việc bắt đầu.",
+          "locator": {}
+        }
+      ],
+      "plans": [
+        {
+          "component_plan_id": "cp2_77777777777777777777777777777777",
+          "type": "html",
+          "title": "Xác nhận biện pháp kiểm soát",
+          "rationale": "Giải thích quy tắc nguồn trước khi kiểm tra.",
+          "purpose": "explain",
+          "source_fact_ids": ["invalid-quiz-fact-1"],
+          "supporting_evidence_fact_ids": [],
+          "required_artifacts": []
+        },
+        {
+          "component_plan_id": "cp2_88888888888888888888888888888888",
+          "type": "problem",
+          "title": "Câu hỏi không đúng contract",
+          "rationale": "Fixture âm để xác nhận short_text bị chặn.",
+          "purpose": "assess",
+          "source_fact_ids": [],
+          "supporting_evidence_fact_ids": ["invalid-quiz-fact-1"],
+          "required_artifacts": []
+        }
+      ],
+      "writer_payload": {
+        "components": {
+          "c0": {
+            "covered_source_fact_ids": ["invalid-quiz-fact-1"],
+            "selection_rationale": "Giải thích quy tắc nguồn.",
+            "title": "Xác nhận biện pháp kiểm soát",
+            "semantic_content": {
+              "sections": [
+                {
+                  "heading": "Quy tắc bắt đầu công việc",
+                  "blocks": [
+                    {
+                      "kind": "paragraph",
+                      "text": "Trước khi công việc bắt đầu, người phụ trách và người thực hiện phải xác nhận rằng biện pháp kiểm soát phù hợp đã được triển khai và đang có hiệu lực. Việc xác nhận tạo ra một điểm quyết định rõ ràng, tránh bắt đầu công việc khi mối nguy chưa được kiểm soát."
+                    }
+                  ]
+                }
+              ]
+            },
+            "html": null
+          },
+          "c1": {
+            "covered_source_fact_ids": [],
+            "selection_rationale": "Fixture âm.",
+            "title": "Câu hỏi không đúng contract",
+            "problem_type": "short_text",
+            "question": "Cần làm gì trước khi bắt đầu công việc?",
+            "choices": [],
+            "options": [],
+            "answer": "Xác nhận biện pháp kiểm soát",
+            "tolerance": null,
+            "explanation": "Biện pháp kiểm soát phải được xác nhận trước khi công việc bắt đầu."
+          }
+        }
+      },
+      "expected": {
+        "status": "rejected",
+        "first_failing_boundary": "provider_wire_schema",
+        "classification": "candidate_invalid",
+        "code": "PROVIDER_WIRE_SCHEMA_REJECTED"
+      }
+    },
+    {
+      "id": "image_situation_missing_asset",
+      "category": "image_situation",
+      "requires_visual_asset": true,
+      "source_facts": [
+        {
+          "fact_key": "image-fact-1",
+          "fact_text": "Tình huống trong hình yêu cầu người học nhận diện mối nguy và đề xuất biện pháp kiểm soát.",
+          "locator": {
+            "content_kinds": ["image_situation"],
+            "image_region_count": 1,
+            "asset_revision": null
+          }
+        }
+      ],
+      "plans": [
+        {
+          "component_plan_id": "cp2_99999999999999999999999999999999",
+          "type": "html",
+          "title": "Phân tích tình huống trong hình",
+          "rationale": "Giải thích tình huống dựa trên asset nguồn.",
+          "purpose": "explain",
+          "source_fact_ids": ["image-fact-1"],
+          "supporting_evidence_fact_ids": [],
+          "required_artifacts": []
+        }
+      ],
+      "writer_payload": null,
+      "expected": {
+        "status": "inconclusive",
+        "first_failing_boundary": "writer_input_assembly",
+        "classification": "input_missing",
+        "code": "IMAGE_ASSET_CONTEXT_UNAVAILABLE"
+      }
+    }
+  ]
+}

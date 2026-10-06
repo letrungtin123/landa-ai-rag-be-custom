@@ -120,6 +120,27 @@ class LessonAuthorOrchestrationV2ProviderTests(unittest.TestCase):
         self.assertIn(skeleton.chapters[0].title, fallback.lessons[0].objective)
         self.assertIn(fallback.lessons[0].learning_objectives[0], fallback.lessons[0].units[0].purpose)
 
+    def test_deterministic_chapter_fallback_bounds_long_lesson_objective(self) -> None:
+        catalog = [SourceScopeCatalogEntryV2(
+            scope_key=f"scope-{index}", title=(f"Phần {index} " + "Nội dung dài " * 20),
+            fact_count=1, content_chars=100,
+        ) for index in range(1, 7)]
+        skeleton = bind_course_skeleton_v2(
+            skeleton_draft().model_copy(update={
+                "chapters": [skeleton_draft().chapters[0].model_copy(update={
+                    "source_scope_ids": [item.scope_key for item in catalog],
+                })],
+            }), source_snapshot_hash=SOURCE_HASH, locale="vi", scope_catalog=catalog,
+        )
+        plan = plan_chapter_shards_v2(skeleton, catalog, max_source_chars=10_000)[0]
+        facts = [SourceSnapshotFactV2(
+            document_id="document-1", fact_key=f"fact-{index}", scope_key=item.scope_key,
+            fact_text=f"Nội dung nguồn {index}",
+        ) for index, item in enumerate(catalog, start=1)]
+        fallback = fallback_chapter_shard_draft_v2(skeleton, plan, facts)
+        self.assertTrue(fallback.lessons)
+        self.assertTrue(all(len(item.objective) <= 500 for item in fallback.lessons))
+
     def test_provider_wire_schemas_serialize_through_pinned_google_sdk(self) -> None:
         for server_model, wire_model, metadata in (
             (CourseSkeletonDraftV2, CourseSkeletonProviderWireV2,
@@ -238,11 +259,111 @@ class LessonAuthorOrchestrationV2ProviderTests(unittest.TestCase):
         plan = architecture["lessons"][0]["units"][0]["component_plan"][0]
         self.assertEqual(plan["component_plan_id"], "cp2_" + "c" * 32)
         self.assertEqual(plan["source_fact_ids"], ["fact-1"])
+
+        v3_base = deepcopy(base)
+        v3_base["source_facts"][0]["locator"] = {
+            "instructional_density_policy_version": "unit-content-v3-density-1",
+        }
+        v3_base["component_plan"].append({
+            **deepcopy(v3_base["component_plan"][0]),
+            "component_plan_id": "cp2_" + "e" * 32,
+            "type": "problem",
+            "title": "Kiểm tra",
+            "purpose": "assess",
+            "source_fact_ids": [],
+            "supporting_evidence_fact_ids": ["fact-1"],
+        })
+        v3_contract = UnitGenerationContractV2.model_validate({
+            **v3_base,
+            "contract_hash": canonical_hash(v3_base),
+        })
+        self.assertEqual(v3_contract.component_plan[0].source_fact_ids, ["fact-1"])
+        self.assertEqual(v3_contract.component_plan[1].source_fact_ids, [])
+        self.assertEqual(v3_contract.component_plan[1].supporting_evidence_fact_ids, ["fact-1"])
+        v3_unit = unit_contract_v5_architecture_v2(v3_contract)["lessons"][0]["units"][0]
+        self.assertEqual(v3_unit["supporting_evidence_fact_ids"], ["fact-1"])
+        self.assertEqual(v3_unit["instructional_density_policy_version"], "unit-content-v3-density-1")
+        self.assertEqual(v3_unit["max_generated_visible_chars"], 4_000)
+        self.assertEqual(v3_unit["max_generated_words"], 600)
+        invalid_v3 = deepcopy(v3_base)
+        invalid_v3["component_plan"][1]["source_fact_ids"] = ["fact-1"]
+        invalid_v3["component_plan"][1]["supporting_evidence_fact_ids"] = []
+        with self.assertRaisesRegex(ValueError, "ORCHESTRATION_V2_UNIT_PLAN_INVALID"):
+            UnitGenerationContractV2.model_validate({
+                **invalid_v3,
+                "contract_hash": canonical_hash(invalid_v3),
+            })
+
         with self.assertRaisesRegex(ValueError, "ORCHESTRATION_V2_UNIT_CONTRACT_HASH_INVALID"):
             UnitGenerationContractV2.model_validate({**base, "contract_hash": "d" * 64})
         wrong_type = {**base, "component_plan": [{**base["component_plan"][0], "type": "unknown"}]}
         with self.assertRaises(ValueError):
             UnitGenerationContractV2.model_validate({**wrong_type, "contract_hash": canonical_hash(wrong_type)})
+
+    def test_actual_stage_two_contract_receives_structured_evidence_without_new_ownership(self) -> None:
+        from app.main import build_staged_instructional_contract
+
+        source_revision = "e" * 64
+        asset_revision = "f" * 64
+        base = {
+            "contract_version": 2, "source_snapshot_hash": SOURCE_HASH, "assembly_hash": "b" * 64,
+            "chapter_key": "chapter-1", "unit_path": "chapter_1.lesson_1.unit_1",
+            "chapter_title": "Chương 1", "lesson_title": "Bài 1",
+            "lesson_learning_objectives": ["Áp dụng"], "unit_title": "Bảng kiểm soát",
+            "unit_purpose": "Giải thích quan hệ trong bảng", "unit_learning_objective_refs": ["lo_1"],
+            "unit_source_scope_ids": ["scope-1"],
+            "unit_source_fact_ids": ["fact-1", "fact-2"],
+            "component_plan": [{"component_plan_id": "cp2_" + "c" * 32, "type": "html",
+                "title": "Giải thích", "rationale": "Nội dung chính", "purpose": "explain",
+                "source_fact_ids": ["fact-1", "fact-2"], "supporting_evidence_fact_ids": [],
+                "learning_objective_refs": ["lo_1"], "source_scope_ids": ["scope-1"],
+                "content_requirements": [], "learning_block_ids": [], "required_artifacts": []}],
+            "source_facts": [
+                {"document_id": "document-1", "fact_key": "fact-1", "scope_key": "scope-1",
+                 "fact_text": "Row 1: Mối nguy | Biện pháp", "source_ref": "source-1",
+                 "source_page": 1, "source_chunk": 0, "locator": {
+                     "source_revision": source_revision,
+                     "visual_prompt_text": "Biện pháp nào có ưu tiên cao hơn?",
+                     "visual_regions": [{"region_kind": "embedded_image",
+                         "asset_revision": asset_revision,
+                         "locator": {"page": 1, "bbox_normalized": [0.1, 0.2, 0.8, 0.9]},
+                         "observation": {"status": "unreviewed", "facts": []},
+                         "inference": {"status": "not_performed", "claims": []}}],
+                 }},
+                {"document_id": "document-1", "fact_key": "fact-2", "scope_key": "scope-1",
+                 "fact_text": "Row 2: Hóa chất | Thay thế", "source_ref": "source-1",
+                 "source_page": 1, "source_chunk": 0,
+                 "locator": {"source_revision": source_revision}},
+            ],
+        }
+        contract = UnitGenerationContractV2.model_validate({
+            **base,
+            "contract_hash": canonical_hash(base),
+        })
+        manifest = unit_contract_manifest_v2(contract, locale="vi")
+        expected = {
+            "source_fact_ids": ["fact-1", "fact-2"],
+            "supporting_evidence_fact_ids": [],
+            "learning_objective_refs": ["lo_1"],
+            "strict_v5_evidence": True,
+        }
+
+        writer_contract = build_staged_instructional_contract(expected, manifest)
+        bundle = writer_contract["source_evidence_bundle"]
+        self.assertIsNotNone(bundle)
+        self.assertEqual(bundle["status"], "review_required")
+        table = next(item for item in bundle["elements"] if item["kind"] == "table")
+        self.assertEqual(table["payload"]["rows"], [
+            ["Mối nguy", "Biện pháp"],
+            ["Hóa chất", "Thay thế"],
+        ])
+        visual = next(item for item in bundle["elements"] if item["kind"] == "visual")
+        self.assertEqual(visual["payload"]["prompt_text"], "Biện pháp nào có ưu tiên cao hơn?")
+        self.assertEqual(manifest["represented_fact_count"], 2)
+        self.assertEqual(
+            [item["fact_id"] for item in manifest["facts"]],
+            ["fact-1", "fact-2"],
+        )
 
     def test_builds_exact_source_snapshot(self) -> None:
         manifest = {
@@ -399,6 +520,144 @@ class LessonAuthorOrchestrationV2ProviderTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "component scope exceeds"):
             ChapterShardDraftV2(lessons=[invalid])
 
+    def test_v3_density_rejects_oversized_unit_then_accepts_deterministic_split(self) -> None:
+        catalog = [scope("scope3_one", 25, 2_500), scope("scope3_two", 25, 2_500)]
+        draft = skeleton_draft().model_copy(update={
+            "chapters": [skeleton_draft().chapters[0].model_copy(update={
+                "source_scope_ids": [item.scope_key for item in catalog],
+            })],
+        })
+        skeleton = bind_course_skeleton_v2(
+            draft,
+            source_snapshot_hash=SOURCE_HASH,
+            locale="vi",
+            scope_catalog=catalog,
+        )
+        plan = plan_chapter_shards_v2(skeleton, catalog)[0]
+        facts = [
+            SourceSnapshotFactV2(
+                document_id="document-1",
+                fact_key=f"{scope_id}-fact-{index}",
+                scope_key=scope_id,
+                fact_text=f"Canonical source statement {scope_id} {index}.",
+                locator={"instructional_density_policy_version": "unit-content-v3-density-1"},
+            )
+            for scope_id in ("scope3_one", "scope3_two")
+            for index in range(25)
+        ]
+        oversized = ChapterShardDraftV2(lessons=[lesson(plan.source_scope_ids)])
+        with self.assertRaisesRegex(OrchestrationContractError, "ARCHITECTURE_UNIT_DENSITY_EXCEEDED"):
+            bind_chapter_shard_v2(
+                oversized,
+                skeleton=skeleton,
+                plan=plan,
+                source_facts=facts,
+            )
+
+        fallback = fallback_chapter_shard_draft_v2(skeleton, plan, facts)
+        bound = bind_chapter_shard_v2(
+            fallback,
+            skeleton=skeleton,
+            plan=plan,
+            source_facts=facts,
+        )
+        self.assertEqual(sum(len(item.units) for item in bound.lessons), 2)
+
+        legacy_facts = [fact.model_copy(update={"locator": {}}) for fact in facts]
+        legacy = bind_chapter_shard_v2(
+            oversized,
+            skeleton=skeleton,
+            plan=plan,
+            source_facts=legacy_facts,
+        )
+        self.assertEqual(len(legacy.lessons[0].units), 1)
+
+    def test_v3_admits_optional_interactions_only_with_matching_source_evidence(self) -> None:
+        def bound_component_types(component_type: str, texts: list[str]) -> list[str]:
+            catalog = [scope("scope-1", len(texts), sum(len(text) for text in texts))]
+            draft = skeleton_draft().model_copy(update={
+                "chapters": [skeleton_draft().chapters[0].model_copy(update={
+                    "source_scope_ids": ["scope-1"],
+                })],
+            })
+            skeleton = bind_course_skeleton_v2(
+                draft,
+                source_snapshot_hash=SOURCE_HASH,
+                locale="vi",
+                scope_catalog=catalog,
+            )
+            plan = plan_chapter_shards_v2(skeleton, catalog)[0]
+            lesson_payload = lesson(["scope-1"])
+            optional = deepcopy(lesson_payload["units"][0]["component_plan"][0])
+            optional.update(type=component_type, title="Tương tác", rationale="Thực hành theo nguồn")
+            lesson_payload["units"][0]["component_plan"].append(optional)
+            facts = [SourceSnapshotFactV2(
+                document_id="document-1",
+                fact_key=f"fact-{index}",
+                scope_key="scope-1",
+                fact_text=text,
+                locator={"instructional_density_policy_version": "unit-content-v3-density-1"},
+            ) for index, text in enumerate(texts, start=1)]
+            bound = bind_chapter_shard_v2(
+                ChapterShardDraftV2(lessons=[lesson_payload]),
+                skeleton=skeleton,
+                plan=plan,
+                source_facts=facts,
+            )
+            return [component.type for component in bound.lessons[0].units[0].component_plan]
+
+        prose = [
+            "Người học nhận diện mối nguy trước khi bắt đầu công việc tại khu vực được giao.",
+            "Biện pháp kiểm soát phải phù hợp với mối nguy và điều kiện làm việc thực tế.",
+            "Kết quả kiểm tra phải được xác nhận theo yêu cầu của quy trình đã phê duyệt.",
+        ]
+        steps = [
+            "Bước 1: Nhận diện mối nguy tại khu vực làm việc trước khi bắt đầu.",
+            "Bước 2: Đánh giá khả năng xảy ra và mức hậu quả theo tiêu chí.",
+            "Bước 3: Chọn biện pháp kiểm soát và xác nhận kết quả thực hiện.",
+        ]
+        definitions = [
+            "Mối nguy cơ khí: Nguồn chuyển động có thể gây va đập, cuốn hoặc kẹp người lao động.",
+            "Mối nguy điện: Nguồn điện không được kiểm soát có thể gây điện giật hoặc hồ quang.",
+            "Mối nguy hóa chất: Phơi nhiễm cần được kiểm soát theo đặc tính của hóa chất.",
+        ]
+
+        self.assertEqual(bound_component_types("la_sortable", prose), ["html"])
+        self.assertEqual(bound_component_types("la_sortable", steps), ["html", "la_sortable"])
+        self.assertEqual(bound_component_types("la_crossword", steps), ["html"])
+        self.assertEqual(bound_component_types("la_crossword", definitions), ["html", "la_crossword"])
+
+    def test_missing_source_authored_quiz_becomes_traceable_obligation_not_fake_problem(self) -> None:
+        catalog = [scope("scope-1", 1, 80)]
+        draft = skeleton_draft().model_copy(update={
+            "chapters": [skeleton_draft().chapters[0].model_copy(update={
+                "source_scope_ids": ["scope-1"],
+            })],
+        })
+        skeleton = bind_course_skeleton_v2(draft, source_snapshot_hash=SOURCE_HASH,
+                                           locale="vi", scope_catalog=catalog)
+        plan = plan_chapter_shards_v2(skeleton, catalog)[0]
+        lesson_payload = lesson(["scope-1"])
+        problem = deepcopy(lesson_payload["units"][0]["component_plan"][0])
+        problem.update(type="problem", title="Kiểm tra", rationale="Kiểm tra mục tiêu")
+        lesson_payload["units"][0]["component_plan"].append(problem)
+        facts = [SourceSnapshotFactV2(
+            document_id="document-1", fact_key="fact-1", scope_key="scope-1",
+            fact_text="Người thực hiện phải kiểm tra điều kiện an toàn trước khi bắt đầu công việc.",
+            locator={"instructional_density_policy_version": "unit-content-v3-density-1"},
+        )]
+
+        bound = bind_chapter_shard_v2(ChapterShardDraftV2(lessons=[lesson_payload]),
+                                      skeleton=skeleton, plan=plan, source_facts=facts)
+
+        self.assertEqual([item.type for item in bound.lessons[0].units[0].component_plan], ["html"])
+        self.assertEqual(len(bound.assessment_obligations), 1)
+        obligation = bound.assessment_obligations[0]
+        self.assertEqual(obligation.required_assessment_kind, "single_choice")
+        self.assertEqual(obligation.learning_objective_refs, ["lo_1"])
+        self.assertEqual(obligation.relevant_evidence_fact_ids, ["fact-1"])
+        self.assertEqual(obligation.status, "open")
+
     def test_rejects_indivisible_scope_above_shard_capacity(self) -> None:
         catalog = [scope("scope-1", 1, 101), scope("scope-2", 1, 1), scope("scope-3", 1, 1)]
         skeleton = bind_course_skeleton_v2(
@@ -421,6 +680,7 @@ class LessonAuthorOrchestrationV2ProviderTests(unittest.TestCase):
         ) for index, scope_id in enumerate(plan.source_scope_ids, start=1)]
         shard_prompt = chapter_shard_prompt_v2("vi", skeleton, plan, facts)
         self.assertIn("SHARD_CONTEXT=", shard_prompt)
+        self.assertIn("UNIT_DENSITY_BUDGET=", shard_prompt)
         self.assertIn("explicit pedagogical chain", shard_prompt)
         self.assertIn("align with its local learning_objective_refs", shard_prompt)
         facts[0] = facts[0].model_copy(update={"scope_key": "scope-khác"})

@@ -133,14 +133,6 @@ def _signals(texts: list[str]) -> dict[str, dict[str, Any]]:
         result["terminology_reinforcement"] = {"definitions_supported": True, "terminology_count": min(len(terms), 20)}
     if len(clarifications) >= 2:
         result["faq"] = {"anticipated_questions": True, "question_count": min(len(clarifications), 8)}
-    # Questions need not be pre-written in the source. Two distinct substantive
-    # statements support bounded clarification/comparison questions at Stage 2.
-    # This is an opportunity, not a claim that generated answers are verified.
-    # Repeated lines whose only difference is an ordinal/number are one
-    # statement, not two distinct clarification opportunities.
-    statements = {re.sub(r"\d+", "#", _fold(t.strip())) for t in texts if _is_instructional_text(t)}
-    if len(statements) >= 2 and sum(len(x.split()) for x in statements) >= 20:
-        result.setdefault("faq", {"anticipated_questions": True, "question_count": min(3, len(statements))})
     return result
 
 

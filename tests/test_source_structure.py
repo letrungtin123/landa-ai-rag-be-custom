@@ -328,7 +328,9 @@ class SourceStructureTests(unittest.TestCase):
         self.assertEqual(manifest["resolved_source_refs"], ["src-002"])
 
     def test_source_fact_split_does_not_truncate_long_docx_lines(self) -> None:
-        source = "A" * 1000
+        # Avoid a single repeated glyph: that is intentionally rejected as OCR
+        # noise.  This fixture isolates the bounded split/no-truncation contract.
+        source = "".join(chr(ord("A") + (index % 26)) for index in range(1000))
         facts = extract_source_coverage_facts(source)
 
         self.assertGreater(len(facts), 1)

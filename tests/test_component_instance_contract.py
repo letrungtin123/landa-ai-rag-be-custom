@@ -67,8 +67,12 @@ def draft_fixture(payload: dict) -> dict:
             content["html"] = "<p>" + " ".join(fact["text"] for fact in manifest["facts"]) + "</p>"
         else:
             question = "What kind of definition does the source evidence provide?" if index == 1 else "Which procedure is documented before beginning the task?"
-            content.update(problem_type="short_text", question=question,
-                           answer="source-backed definition" if index == 1 else "source-backed procedure", explanation="The prior teaching explains this documented requirement.")
+            correct = "The source-backed definition" if index == 1 else "The source-backed procedure"
+            content.update(problem_type="multiple_choice", question=question,
+                           choices=[{"text": correct, "correct": True},
+                                    {"text": "An unrelated optional activity", "correct": False},
+                                    {"text": "A step performed only after the incident", "correct": False}],
+                           explanation="The prior teaching explains this documented requirement and its approved evidence.")
         components.append(content)
     generated = {"title": unit["title"], "source_fact_ids": unit["source_fact_ids"],
                  "supporting_evidence_fact_ids": unit.get("supporting_evidence_fact_ids", []), "components": components}
@@ -83,7 +87,7 @@ def draft_fixture(payload: dict) -> dict:
         proposal, _usage = asyncio.run(generate_staged_lesson_author_proposal(
             request, "Synthetic context", "", "", source_rows=[], source_coverage_manifest=manifest,
         ))
-    assert provider.await_count == 1
+    assert provider.await_count == 1, f"unexpected provider call count: {provider.await_count}"
     quality = validate_lesson_pedagogical_quality(proposal, architecture)
     assert quality.status != "FAIL", quality.findings
     return {"proposal": proposal, "provider_calls": provider.await_count}
@@ -198,7 +202,13 @@ class ComponentInstanceContractTests(unittest.TestCase):
                     'source_fact_ids': ['fact_a'], 'supporting_evidence_fact_ids': ['fact_a']}
         components = [dict(p, covered_source_fact_ids=p['source_fact_ids']) for p in plans]
         components[0]['html'] = '<p>' + 'Documented safety procedure. ' * 40 + '</p>'
-        for p in components[1:]: p.update(question='What is the documented requirement?', problem_type='short_text', answer='Safety')
+        for p in components[1:]: p.update(
+            question='What is the documented safety requirement?', problem_type='multiple_choice',
+            choices=[{'text': 'Follow the documented safety requirement.', 'correct': True},
+                     {'text': 'Ignore the documented requirement.', 'correct': False},
+                     {'text': 'Apply it only after an incident.', 'correct': False}],
+            explanation='The source evidence identifies the documented requirement that must be followed.',
+        )
         unit = {'components': components, 'source_fact_ids': ['fact_a'], 'supporting_evidence_fact_ids': ['fact_a']}
         self.assertIsNone(validate_staged_unit_content(unit, expected))
         components[1]['component_plan_id'] = components[2]['component_plan_id']

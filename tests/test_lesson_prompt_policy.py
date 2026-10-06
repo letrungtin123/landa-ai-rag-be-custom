@@ -27,8 +27,17 @@ def content_payload(component_type: str, locale: str) -> dict:
     fields = {
         "html": {"semantic_content": {"version": 2, "sections": [{"heading": "Kiểm tra" if vi else "Check",
                  "learning_block_ids": [], "blocks": [{"kind": "paragraph", "text": explanation}]}]}},
-        "problem": {"problem_type": "short_text", "question": "Bước nào trước tiên?" if vi else "Which step is first?",
-                    "answer": "Kiểm tra" if vi else "Check", "explanation": explanation},
+        "problem": {
+            "problem_type": "multiple_choice",
+            "question": ("Hành động nào phải được thực hiện trước khi bắt đầu quy trình?" if vi
+                         else "Which action must be completed before starting the procedure?"),
+            "choices": [
+                {"text": "Kiểm tra các điều kiện ban đầu." if vi else "Check the initial conditions.", "correct": True},
+                {"text": "Bỏ qua bước kiểm tra." if vi else "Skip the condition check.", "correct": False},
+                {"text": "Chỉ ghi nhận sau khi xảy ra sự cố." if vi else "Record only after an incident.", "correct": False},
+            ],
+            "explanation": explanation,
+        },
         "la_faq": {"items": [
             {"question": "Khi nào kiểm tra điều kiện?" if vi else "When should conditions be checked?", "answer": explanation},
             {"question": "Vì sao cần giữ đúng thứ tự?" if vi else "Why preserve the approved order?", "answer": explanation},
@@ -69,6 +78,8 @@ class LessonPromptPolicyTests(unittest.TestCase):
                        "Do not concatenate independent source sections", "Hypothetical practice inputs",
                        "calculation objectives require applying", "silently substituting a vocabulary question"):
             self.assertIn(phrase, policy)
+        self.assertIn("Keep all provenance in structured metadata only", policy)
+        self.assertNotIn("Use source page numbers for learner-facing attribution", policy)
 
     def test_brief_uses_exact_local_binding_without_mutating_approved_ownership(self):
         for objective in ("Calculate using the source rule.", "Tính toán theo quy tắc trong nguồn."):

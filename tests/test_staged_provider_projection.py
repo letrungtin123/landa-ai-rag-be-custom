@@ -22,7 +22,7 @@ class StagedProviderProjectionTests(unittest.TestCase):
         # current canonical wire ordering. The structural equality test below
         # remains the source-of-truth guard for every supported schema case.
         self.assertEqual(schema_metadata(capture_sdk_body(projected))["schema_sha256"],
-                         "809de095faa953c30f0dca09bb21ec6a527c74518e92a940a46be48cad67aa81")
+                         "c2ab6e51ca92e4947cb47806b52363d25dc6242e1823b300593fb74ab510baf2")
 
     def test_actual_sdk_body_preserves_reviewed_bound_projection_for_every_case(self):
         for name, model in schema_cases().items():

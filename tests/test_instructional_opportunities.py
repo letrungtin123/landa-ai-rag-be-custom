@@ -110,8 +110,8 @@ class InstructionalOpportunityTests(unittest.TestCase):
             bp, sm, mf = fixture(texts)
             enriched, diagnostics = compile_evidence_treatments(bp, sm, mf)
             self.assertIn("practice", [b["intent"] for b in blocks(enriched)])
-            self.assertEqual(blocks(enriched)[-1]["intent"], "faq")
-            self.assertEqual(diagnostics[0]["faq_status"], "PRESENT")
+            self.assertEqual(blocks(enriched)[-1]["intent"], "practice")
+            self.assertEqual(diagnostics[0]["faq_status"], "NO_GROUNDED_OPPORTUNITY")
             self.assertEqual(compile_evidence_treatments(enriched, sm, mf)[0], enriched)
 
     def test_numbered_procedure_not_arbitrary_list_and_no_cross_page_assembly(self):
@@ -132,8 +132,7 @@ class InstructionalOpportunityTests(unittest.TestCase):
                       "Workers clean and store their protective equipment after using it."]
         bp, sm, mf = fixture(statements)
         enriched, _ = compile_evidence_treatments(bp, sm, mf)
-        self.assertEqual(blocks(enriched)[-1]["intent"], "faq")
-        self.assertEqual(blocks(enriched)[-1]["primary_evidence_scope_ids"], [])
+        self.assertEqual(enriched, bp)
         for bad in ([statements[0]] * 3, [f"Evidence fact {i}: source-backed procedure or definition." for i in range(4)], ["THANK YOU for your participation in our training course.",
                     "Contact our team for more information at support@example.test."]):
             bp, sm, mf = fixture(bad)
@@ -151,7 +150,7 @@ class InstructionalOpportunityTests(unittest.TestCase):
         bp, sm, mf = fixture(terms)
         enriched, _ = compile_evidence_treatments(bp, sm, mf)
         self.assertIn("terminology_reinforcement", [b["intent"] for b in blocks(enriched)])
-        self.assertEqual(blocks(enriched)[-1]["intent"], "faq")
+        self.assertEqual(blocks(enriched)[-1]["intent"], "terminology_reinforcement")
 
     def test_faq_and_best_activity_fit_capacity_without_forcing_all_types(self):
         texts = self.CASES["terminology_reinforcement"] + self.CASES["faq"] + self.CASES["practice"]

@@ -20,6 +20,7 @@ coverage.xml
 
 # Local runtime output
 *.log
+tmp/
 
 # Local secrets. Keep the committed template available to operators.
 .env

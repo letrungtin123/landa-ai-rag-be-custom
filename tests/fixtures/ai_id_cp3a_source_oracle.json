@@ -1,0 +1,413 @@
+{
+  "fixture_version": "ai-id-cp3a-source-oracle-2",
+  "review_contract": {
+    "verified_against_original_render": true,
+    "reviewed_on": "2026-10-05",
+    "runtime_signals_are_not_labels": true,
+    "semantic_visual_inference_allowed": false
+  },
+  "documents": [
+    {
+      "id": "hse_pdf_regression",
+      "split": "development_regression",
+      "file_name": "HSE chia lai.pptx.pdf",
+      "sha256": "3083ecff437c0d155826ec8361854dba63c56e50628d2c835fcf0df60fc2a0cc",
+      "byte_count": 2134829,
+      "page_count": 37,
+      "notes": "Real HSE regression case. It is not a universal customer-document specification.",
+      "pages": [
+        {
+          "page": 11,
+          "split": "development",
+          "expected_route": "fast_parse",
+          "critical_elements": []
+        },
+        {
+          "page": 12,
+          "split": "development",
+          "expected_route": "fast_parse",
+          "critical_elements": [
+            {"kind": "ordered_process", "count": 1}
+          ]
+        },
+        {
+          "page": 13,
+          "split": "development",
+          "expected_route": "enrichment_required",
+          "critical_elements": [
+            {
+              "kind": "table",
+              "count": 1,
+              "required_strings": ["Nhóm mối nguy", "Ví dụ thực tế", "Tâm lý – xã hội"]
+            },
+            {"kind": "multi_column_reading_order", "count": 1}
+          ]
+        },
+        {
+          "page": 14,
+          "split": "development",
+          "expected_route": "enrichment_required",
+          "critical_elements": [
+            {
+              "kind": "table",
+              "count": 2,
+              "required_strings": [
+                "Mức độ nghiêm trọng (Severity)",
+                "Rất nghiêm trọng",
+                "Xác suất xảy ra (Likelihood)",
+                "Gần như chắc chắn"
+              ]
+            }
+          ]
+        },
+        {
+          "page": 18,
+          "split": "development",
+          "expected_route": "enrichment_required",
+          "critical_elements": [
+            {"kind": "multi_column_reading_order", "count": 1},
+            {"kind": "scenario_group", "count": 4}
+          ]
+        },
+        {
+          "page": 21,
+          "split": "development",
+          "expected_route": "enrichment_required",
+          "critical_elements": [
+            {"kind": "relational_vector_visual", "count": 1}
+          ],
+          "reviewed_visual_facts": [
+            "Một vòng HIRA có bốn nhãn bao quanh tâm: Nhận diện Mối nguy, Đánh giá Rủi ro, Xác định Ưu tiên và Đề xuất Biện pháp."
+          ]
+        },
+        {
+          "page": 23,
+          "split": "development",
+          "expected_route": "review_required",
+          "critical_elements": [
+            {"kind": "broken_or_empty_page", "count": 1}
+          ]
+        },
+        {
+          "page": 33,
+          "split": "development",
+          "expected_route": "enrichment_required",
+          "critical_elements": [
+            {"kind": "image_situation_asset", "count": 1}
+          ],
+          "reviewed_visual_facts": [
+            "Một người đội mũ bảo hộ và mặc trang phục bảo hộ đang đi giữa hai dãy máy công nghiệp lớn."
+          ]
+        },
+        {
+          "page": 34,
+          "split": "development",
+          "expected_route": "enrichment_required",
+          "critical_elements": [
+            {"kind": "image_situation_asset", "count": 1}
+          ],
+          "reviewed_visual_facts": [
+            "Một người mặc bộ đồ bảo hộ màu vàng đang thao tác cạnh dây chuyền và thiết bị xử lý trong nhà máy."
+          ]
+        },
+        {
+          "page": 15,
+          "split": "held_out_page",
+          "expected_route": "enrichment_required",
+          "critical_elements": [
+            {
+              "kind": "table",
+              "count": 2,
+              "required_strings": ["Điểm rủi ro", "1-6", "16-25", "Không được tiến hành công việc"]
+            }
+          ]
+        },
+        {
+          "page": 16,
+          "split": "held_out_page",
+          "expected_route": "enrichment_required",
+          "critical_elements": [
+            {
+              "kind": "table",
+              "count": 1,
+              "required_strings": [
+                "Loại bỏ hoàn toàn mối nguy hiểm",
+                "Thay thế mối nguy hiểm",
+                "Sử dụng PPE phù hợp"
+              ]
+            }
+          ]
+        },
+        {
+          "page": 17,
+          "split": "held_out_page",
+          "expected_route": "fast_parse",
+          "critical_elements": [
+            {"kind": "ordered_process", "count": 1}
+          ]
+        },
+        {
+          "page": 19,
+          "split": "held_out_page",
+          "expected_route": "fast_parse",
+          "critical_elements": []
+        },
+        {
+          "page": 20,
+          "split": "held_out_page",
+          "expected_route": "fast_parse",
+          "critical_elements": [
+            {"kind": "ordered_process", "count": 1}
+          ]
+        },
+        {
+          "page": 22,
+          "split": "held_out_page",
+          "expected_route": "enrichment_required",
+          "critical_elements": [
+            {"kind": "matrix_image_asset", "count": 1},
+            {"kind": "source_integrity_issue", "count": 1, "code": "REFERENCED_SITUATION_IMAGE_MISSING"}
+          ],
+          "reviewed_visual_facts": [
+            "Một ma trận 5 x 5 có trục Frequency và Severity, các ô mang giá trị từ 1 đến 25 và được tô xanh lá, vàng, cam hoặc đỏ."
+          ]
+        },
+        {
+          "page": 24,
+          "split": "held_out_page",
+          "expected_route": "fast_parse",
+          "critical_elements": [
+            {"kind": "ordered_process", "count": 1}
+          ]
+        },
+        {
+          "page": 25,
+          "split": "held_out_page",
+          "expected_route": "fast_parse",
+          "critical_elements": [
+            {"kind": "ordered_process", "count": 1}
+          ]
+        },
+        {
+          "page": 29,
+          "split": "held_out_page",
+          "expected_route": "fast_parse",
+          "critical_elements": []
+        },
+        {
+          "page": 35,
+          "split": "held_out_page",
+          "expected_route": "enrichment_required",
+          "critical_elements": [
+            {"kind": "image_situation_asset", "count": 1}
+          ],
+          "reviewed_visual_facts": [
+            "Nhiều công nhân mặc đồng phục xanh, khẩu trang và mũ bảo hộ đang làm việc cạnh máy công nghiệp trong nhà xưởng."
+          ]
+        },
+        {
+          "page": 36,
+          "split": "held_out_page",
+          "expected_route": "enrichment_required",
+          "critical_elements": [
+            {"kind": "image_situation_asset", "count": 1}
+          ],
+          "reviewed_visual_facts": [
+            "Một người lao động đang cúi thao tác với nhiều bao vật liệu mở trong khu vực sản xuất trong nhà."
+          ]
+        }
+      ]
+    },
+    {
+      "id": "bic_change_mindset_real_held_out",
+      "split": "held_out_document",
+      "file_name": "Executive Training Playbook - BiC Modun 1_ Change Mindset.pdf",
+      "sha256": "ca0d92fd3c47ef8ccfe9d27795b2db641bca3b2ce814b7211887928fa8f48775",
+      "byte_count": 1024421,
+      "page_count": 12,
+      "notes": "Separately authored real document supplied by the user for CP3A held-out evaluation. Labels were frozen from the original 12-page render before detector comparison.",
+      "pages": [
+        {
+          "page": 1,
+          "split": "held_out_document",
+          "expected_route": "enrichment_required",
+          "critical_elements": [
+            {"kind": "content_image_asset", "count": 1},
+            {"kind": "multi_column_reading_order", "count": 1}
+          ],
+          "reviewed_visual_facts": [
+            "Trang bìa hiển thị ba trụ cột: Business Excellence, ERA5.0 Connection và Made-in-World Scale."
+          ]
+        },
+        {
+          "page": 2,
+          "split": "held_out_document",
+          "expected_route": "enrichment_required",
+          "critical_elements": [
+            {
+              "kind": "table",
+              "count": 1,
+              "required_strings": [
+                "CHƯƠNG",
+                "KẾT QUẢ ĐẦU RA CHO LÃNH ĐẠO",
+                "ACTION ROADMAP"
+              ]
+            },
+            {"kind": "multi_column_reading_order", "count": 1}
+          ]
+        },
+        {
+          "page": 3,
+          "split": "held_out_document",
+          "expected_route": "enrichment_required",
+          "critical_elements": [
+            {
+              "kind": "table",
+              "count": 1,
+              "required_strings": [
+                "TRỤC VẬN HÀNH",
+                "MÔ HÌNH CŨ",
+                "MÔ HÌNH MỚI"
+              ]
+            },
+            {"kind": "multi_column_reading_order", "count": 1}
+          ]
+        },
+        {
+          "page": 4,
+          "split": "held_out_document",
+          "expected_route": "enrichment_required",
+          "critical_elements": [
+            {
+              "kind": "table",
+              "count": 1,
+              "required_strings": [
+                "CHU TRÌNH",
+                "CẤU PHẦN CÔNG CỤ BIC",
+                "ADVANCED"
+              ]
+            },
+            {"kind": "multi_column_reading_order", "count": 1}
+          ]
+        },
+        {
+          "page": 5,
+          "split": "held_out_document",
+          "expected_route": "enrichment_required",
+          "critical_elements": [
+            {"kind": "relational_vector_visual", "count": 1},
+            {"kind": "multi_column_reading_order", "count": 1}
+          ],
+          "reviewed_visual_facts": [
+            "Một khung dạng ngôi nhà có một dải mục tiêu tối thượng phía trên, tám ô năng lực ở giữa và một dải nền tảng Change Mindset phía dưới."
+          ]
+        },
+        {
+          "page": 6,
+          "split": "held_out_document",
+          "expected_route": "enrichment_required",
+          "critical_elements": [
+            {
+              "kind": "table",
+              "count": 1,
+              "required_strings": [
+                "NẤC THANG",
+                "Vietnam Brand",
+                "MADE-IN-WORLD"
+              ]
+            },
+            {"kind": "multi_column_reading_order", "count": 1}
+          ]
+        },
+        {
+          "page": 7,
+          "split": "held_out_document",
+          "expected_route": "enrichment_required",
+          "critical_elements": [
+            {"kind": "multi_column_reading_order", "count": 1}
+          ]
+        },
+        {
+          "page": 8,
+          "split": "held_out_document",
+          "expected_route": "enrichment_required",
+          "critical_elements": [
+            {
+              "kind": "table",
+              "count": 1,
+              "required_strings": [
+                "TRỤC QUẢN TRỊ",
+                "HỆ ĐIỀU HÀNH CŨ",
+                "Tái cấu trúc luồng công việc"
+              ]
+            },
+            {"kind": "multi_column_reading_order", "count": 1}
+          ]
+        },
+        {
+          "page": 9,
+          "split": "held_out_document",
+          "expected_route": "enrichment_required",
+          "critical_elements": [
+            {"kind": "relational_vector_visual", "count": 1},
+            {"kind": "multi_column_reading_order", "count": 1}
+          ],
+          "reviewed_visual_facts": [
+            "Biểu mẫu gồm chín ô đánh số 1 đến 9 theo lưới 3 x 3; mỗi ô có tiêu đề, câu hỏi gợi ý và vùng trống để người học điền."
+          ]
+        },
+        {
+          "page": 10,
+          "split": "held_out_document",
+          "expected_route": "enrichment_required",
+          "critical_elements": [
+            {
+              "kind": "table",
+              "count": 1,
+              "required_strings": [
+                "TRỤ CỘT BỘ LỌC",
+                "HIỆN ĐẠI HÓA",
+                "LÀNH MẠNH HÓA"
+              ]
+            },
+            {"kind": "multi_column_reading_order", "count": 1}
+          ]
+        },
+        {
+          "page": 11,
+          "split": "held_out_document",
+          "expected_route": "enrichment_required",
+          "critical_elements": [
+            {"kind": "ordered_process", "count": 2},
+            {"kind": "multi_column_reading_order", "count": 1}
+          ],
+          "reviewed_visual_facts": [
+            "Trang thể hiện một chuỗi sáu nhãn nối bằng mũi tên và ba thẻ giai đoạn 30 ngày theo thứ tự See Different, Think Different, Act Different."
+          ]
+        },
+        {
+          "page": 12,
+          "split": "held_out_document",
+          "expected_route": "enrichment_required",
+          "critical_elements": [
+            {
+              "kind": "table",
+              "count": 2,
+              "required_strings": [
+                "01 Năng Lực Sẽ Trở Thành Best-in-Class",
+                "Người Phụ Trách Triển Khai",
+                "KHUNG GIỜ",
+                "90-Day Finalization"
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "held_out_document_requirement": {
+    "required_real_document_count": 1,
+    "current_real_document_count": 1,
+    "synthetic_contract_document_covered_by_tests": true
+  }
+}

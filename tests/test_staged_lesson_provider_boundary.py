@@ -111,7 +111,11 @@ class StagedLessonProviderBoundaryTests(unittest.TestCase):
     def payloads() -> list[dict]:
         return [
             {"type": "html", "semantic_content": {"heading": "Explain", "paragraphs": ["Check the initial conditions before performing the approved task. Record the result of the inspection and act only when the conditions are satisfied. After completing the task, confirm the result against the documented requirement. These three stages have distinct purposes: establish readiness, perform the action, and verify completion."]}},
-            {"type": "problem", "problem_type": "multiple_choice", "question": "Which action is taught?", "choices": [{"text": "Inspect", "correct": True}, {"text": "Skip", "correct": False}]},
+            {"type": "problem", "problem_type": "multiple_choice", "question": "Which documented action must be completed before work begins?",
+             "choices": [{"text": "Inspect the initial conditions.", "correct": True},
+                         {"text": "Skip the documented inspection.", "correct": False},
+                         {"text": "Wait until an incident occurs.", "correct": False}],
+             "explanation": "The source-backed procedure requires the initial conditions to be inspected before work begins."},
             {"type": "la_faq", "items": [{"question": "When?", "answer": "Before the task."}, {"question": "Why?", "answer": "To check conditions."}]},
             {"type": "la_sortable", "question_text": "Order the taught steps.", "items": [{"text": x} for x in ["Inspect", "Act", "Confirm"]]},
             {"type": "la_crossword", "words": [{"answer": a, "clue": c} for a, c in [("CHECK", "Inspect conditions"), ("ACT", "Perform a step"), ("CONFIRM", "Verify completion")]]},
@@ -141,14 +145,16 @@ class StagedLessonProviderBoundaryTests(unittest.TestCase):
 
     def test_problem_subtypes_and_answer_cardinality(self):
         base = self.payloads()[1]
-        for subtype in ("multiple_choice", "multiple_select"):
-            candidate = {**deepcopy(base), "problem_type": subtype}
-            self.assertIsNone(staged_component_payload_code(candidate))
-            candidate["choices"][1]["correct"] = True
-            self.assertEqual(staged_component_payload_code(candidate), "PROBLEM_CORRECT_ANSWER_INVALID" if subtype == "multiple_choice" else None)
+        candidate = {**deepcopy(base), "problem_type": "multiple_choice"}
+        self.assertIsNone(staged_component_payload_code(candidate))
+        candidate["choices"][1]["correct"] = True
+        self.assertEqual(staged_component_payload_code(candidate), "PROBLEM_CORRECT_ANSWER_INVALID")
+        for subtype in ("multiple_select", "short_text", "numerical", "dropdown"):
+            rejected = {**deepcopy(base), "problem_type": subtype}
+            self.assertEqual(staged_component_payload_code(rejected), "PROBLEM_SINGLE_CHOICE_REQUIRED")
         for subtype, answer in (("short_text", "Check"), ("numerical", "0"), ("dropdown", "Check")):
             c = {"type": "problem", "problem_type": subtype, "question": "Check?", "answer": answer, "options": ["Check", "Skip"]}
-            self.assertIsNone(staged_component_payload_code(c))
+            self.assertEqual(staged_component_payload_code(c), "PROBLEM_SINGLE_CHOICE_REQUIRED")
             c["answer"] = ""
             self.assertIsNotNone(staged_component_payload_code(c))
         for invalid in (None, [], [{"label": "Unknown shape", "correct": True}], [{"text": "A", "correct": "true"}, {"text": "B", "correct": False}]):
@@ -698,8 +704,14 @@ class StagedLessonProviderBoundaryTests(unittest.TestCase):
         supporting_check = json.dumps({
             "title": "Supporting assessment", "source_fact_ids": [], "supporting_evidence_fact_ids": ["fixture-fact-1"],
             "components": [{
-                "type": "problem", "problem_type": "short_text", "question": "What does the taught evidence require?",
-                "answer": "Use the owned source fact.", "explanation": "The answer follows the taught evidence.",
+                "type": "problem", "problem_type": "multiple_choice",
+                "question": "Which action follows the taught source evidence?",
+                "choices": [
+                    {"text": "Use the documented requirement before acting.", "correct": True},
+                    {"text": "Ignore the documented requirement.", "correct": False},
+                    {"text": "Apply the requirement only after an incident.", "correct": False},
+                ],
+                "explanation": "The correct choice follows the source evidence taught in the preceding component.",
                 "source_fact_ids": [], "covered_source_fact_ids": [],
                 "supporting_evidence_fact_ids": ["fixture-fact-1"],
             }],

@@ -10,7 +10,7 @@ import re
 import shutil
 import subprocess
 import tempfile
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
 from pathlib import Path
@@ -67,11 +67,44 @@ from app.lesson_prompt_policy import (
     component_instructional_brief, instructional_contract_review_signals,
 )
 from app.lesson_content_observation import observe_lesson_content
+from app.semantic_review import (
+    SemanticReviewResponse,
+    SemanticReviewRunOutcome,
+    build_semantic_repair_prompt,
+    build_semantic_review_prompt,
+    run_bounded_semantic_review,
+    safe_semantic_review_summary,
+    semantic_review_config_hash,
+    validate_semantic_review_response,
+)
 from app.ordered_learning_content import flatten_ordered_content, bind_provider_semantic_versions, semantic_shape_diagnostics, ProviderSemanticVersionError
 from app.media_brief import build_media_brief
 from app.source_chapter_policy import resolve_source_chapter_policy, bind_source_chapters
 from app.component_capabilities import ComponentCapabilities, validate_instance_plan
 from app.instructional_opportunities import compile_evidence_treatments, VERSION as EVIDENCE_TREATMENT_VERSION
+from app.source_readiness import collect_pdf_visual_regions
+from app.instructional_density import (
+    INSTRUCTIONAL_DENSITY_POLICY_VERSION,
+    SOURCE_SCOPE_CHUNKS_PER_GROUP,
+    partition_chunk_facts_for_density,
+)
+from app.instructional_quality import (
+    build_source_locked_single_choice,
+    clean_source_facts,
+    contains_generic_review_language,
+    is_non_instructional_source_line,
+    ordered_source_steps,
+    parse_structured_table_rows,
+    render_source_locked_html,
+    source_clarification_signals,
+    source_term_definitions,
+)
+from app.learner_content_purity import (
+    build_learner_content_purity_context,
+    component_learner_text,
+    learner_content_purity_finding,
+    sanitize_source_fact_for_learner,
+)
 from app.assessment_planner import (
     assessment_intent_repair_options,
     assessment_teaching_semantic_descriptor,
@@ -595,6 +628,11 @@ class RagLessonAuthorBlueprintUnit(BaseModel):
     supporting_evidence_fact_ids: list[str] = Field(default_factory=list)
     learning_blocks: list[dict[str, Any]] = Field(default_factory=list)
     component_plan: list[RagLessonAuthorBlueprintComponentPlan] = Field(default_factory=list)
+    instructional_density_policy_version: str | None = None
+    source_content_chars: int | None = Field(default=None, ge=0)
+    source_estimated_words: int | None = Field(default=None, ge=0)
+    max_generated_visible_chars: int | None = Field(default=None, ge=1, le=18_000)
+    max_generated_words: int | None = Field(default=None, ge=1, le=2_400)
 
 
 class RagLessonAuthorBlueprintLesson(BaseModel):
@@ -800,6 +838,7 @@ class ExtractedSection:
     text: str
     page: int | None = None
     section: str | None = None
+    metadata: dict[str, Any] = field(default_factory=dict)
 
 
 def estimate_tokens(text: str | None) -> int:
@@ -975,16 +1014,165 @@ def decode_bytes(buffer: bytes) -> str:
     return buffer.decode("utf-8", errors="ignore")
 
 
+STRUCTURED_EXTRACTION_VERSION = "structured-source-v1"
+
+
+def _clean_table_cell(value: Any) -> str:
+    return clean_text("" if value is None else str(value)).replace("|", "¦")
+
+
+def _render_structured_table(rows: list[list[Any]], *, coordinate_labels: bool = False) -> str:
+    """Render a table without flattening row/column relationships into prose."""
+
+    rendered: list[str] = ["[TABLE]"]
+    for row_number, row in enumerate(rows, start=1):
+        cells: list[str] = []
+        for column_number, value in enumerate(row, start=1):
+            cell = _clean_table_cell(value)
+            if coordinate_labels:
+                if not cell:
+                    continue
+                # Spreadsheet columns remain identifiable even when blank cells
+                # exist between populated values.
+                column_label = ""
+                number = column_number
+                while number:
+                    number, remainder = divmod(number - 1, 26)
+                    column_label = chr(65 + remainder) + column_label
+                cells.append(f"{column_label}{row_number}={cell}")
+            else:
+                # A blank native-table cell is positional evidence. Keep it so
+                # every later value remains under its original source column.
+                cells.append(cell)
+        if any(cells):
+            rendered.append(f"Row {row_number}: " + " | ".join(cells))
+    return "\n".join(rendered) if len(rendered) > 1 else ""
+
+
+def _bbox_overlap_ratio(first: tuple[float, float, float, float], second: tuple[float, float, float, float]) -> float:
+    left = max(first[0], second[0])
+    top = max(first[1], second[1])
+    right = min(first[2], second[2])
+    bottom = min(first[3], second[3])
+    intersection = max(0.0, right - left) * max(0.0, bottom - top)
+    area = max(0.0, first[2] - first[0]) * max(0.0, first[3] - first[1])
+    return intersection / area if area else 0.0
+
+
+def _pdf_page_content(page: Any) -> tuple[str, dict[str, Any]]:
+    page_dict = page.get_text("dict", sort=True) or {}
+    span_sizes: list[float] = []
+    text_entries: list[dict[str, Any]] = []
+    for block in page_dict.get("blocks", []):
+        if not isinstance(block, dict) or block.get("type") != 0:
+            continue
+        lines: list[str] = []
+        block_sizes: list[float] = []
+        for line in block.get("lines", []):
+            spans = line.get("spans", []) if isinstance(line, dict) else []
+            line_text = clean_text("".join(str(span.get("text") or "") for span in spans if isinstance(span, dict)))
+            if line_text:
+                lines.append(line_text)
+            for span in spans:
+                if isinstance(span, dict) and isinstance(span.get("size"), (int, float)):
+                    size = float(span["size"])
+                    block_sizes.append(size)
+                    span_sizes.append(size)
+        text = "\n".join(lines).strip()
+        bbox = block.get("bbox")
+        if text and isinstance(bbox, (list, tuple)) and len(bbox) == 4:
+            text_entries.append({
+                "kind": "text",
+                "bbox": tuple(float(value) for value in bbox),
+                "text": text,
+                "max_font_size": max(block_sizes, default=0.0),
+            })
+
+    table_entries: list[dict[str, Any]] = []
+    try:
+        finder = page.find_tables()
+        for table in getattr(finder, "tables", []) or []:
+            rows = table.extract() or []
+            rendered = _render_structured_table(rows)
+            bbox = getattr(table, "bbox", None)
+            if rendered and isinstance(bbox, (list, tuple)) and len(bbox) == 4:
+                table_entries.append({
+                    "kind": "table",
+                    "bbox": tuple(float(value) for value in bbox),
+                    "text": rendered,
+                })
+    except (AttributeError, TypeError, ValueError):
+        # Text extraction remains available for malformed or unsupported table
+        # geometry. The diagnostic below makes the fallback observable.
+        table_entries = []
+
+    table_boxes = [entry["bbox"] for entry in table_entries]
+    visible_text_entries = [
+        entry for entry in text_entries
+        if not any(_bbox_overlap_ratio(entry["bbox"], table_bbox) >= 0.8 for table_bbox in table_boxes)
+    ]
+    ordered_entries = sorted(
+        [*visible_text_entries, *table_entries],
+        key=lambda entry: (entry["bbox"][1], entry["bbox"][0]),
+    )
+
+    body_font_size = sorted(span_sizes)[(len(span_sizes) - 1) // 2] if span_sizes else 0.0
+    heading_candidates: list[dict[str, Any]] = []
+    for entry in visible_text_entries:
+        title = entry["text"].replace("\n", " ").strip()
+        size = float(entry.get("max_font_size") or 0.0)
+        if (
+            body_font_size > 0
+            and size >= max(body_font_size * 1.18, body_font_size + 1.5)
+            and 3 <= len(title) <= 160
+            and len(title.split()) <= 18
+        ):
+            heading_candidates.append({
+                "title": title,
+                "level": 1 if size >= body_font_size * 1.45 else 2,
+            })
+
+    return clean_text("\n\n".join(entry["text"] for entry in ordered_entries)), {
+        "extraction_version": STRUCTURED_EXTRACTION_VERSION,
+        "content_kinds": sorted({entry["kind"] for entry in ordered_entries}),
+        "table_count": len(table_entries),
+        "heading_candidates": heading_candidates,
+        "reading_order": "top_to_bottom_left_to_right",
+    }
+
+
+def _visual_prompt_text(page_text: str) -> str | None:
+    candidates = [
+        re.sub(r"\s+", " ", line).strip()
+        for line in page_text.splitlines()
+        if re.search(
+            r"\?|\b(?:hãy|quan sát|tình huống|thảo luận|yêu cầu|identify|observe|scenario|discuss)\b",
+            line,
+            flags=re.IGNORECASE,
+        )
+    ]
+    value = " ".join(candidate for candidate in candidates[:4] if candidate).strip()
+    return value[:600] or None
+
+
 def extract_pdf(path: Path) -> list[ExtractedSection]:
     try:
         import pymupdf
 
         sections: list[ExtractedSection] = []
         with pymupdf.open(str(path)) as document:
+            visual_regions_by_page = collect_pdf_visual_regions(document)
             for index, page in enumerate(document, start=1):
-                text = clean_text(page.get_text("text") or "")
+                text, metadata = _pdf_page_content(page)
                 if text:
-                    sections.append(ExtractedSection(text=text, page=index))
+                    visual_regions = visual_regions_by_page.get(index, [])
+                    prompt_text = _visual_prompt_text(text)
+                    if visual_regions:
+                        metadata["visual_regions"] = visual_regions[:4]
+                        metadata["visual_region_count"] = len(visual_regions[:4])
+                        if prompt_text:
+                            metadata["visual_prompt_text"] = prompt_text
+                    sections.append(ExtractedSection(text=text, page=index, metadata=metadata))
         if sections:
             return sections
     except ImportError:
@@ -1008,16 +1196,45 @@ def extract_pdf(path: Path) -> list[ExtractedSection]:
 
 def extract_docx(path: Path) -> list[ExtractedSection]:
     from docx import Document
+    from docx.table import Table
+    from docx.text.paragraph import Paragraph
+    from docx.oxml.table import CT_Tbl
+    from docx.oxml.text.paragraph import CT_P
 
     document = Document(str(path))
     parts: list[str] = []
-    parts.extend(paragraph.text for paragraph in document.paragraphs if paragraph.text.strip())
-    for table in document.tables:
-        for row in table.rows:
-            cells = [cell.text.strip() for cell in row.cells if cell.text.strip()]
-            if cells:
-                parts.append(" | ".join(cells))
-    return [ExtractedSection(text=clean_text("\n".join(parts)))]
+    heading_candidates: list[dict[str, Any]] = []
+    table_count = 0
+    for child in document.element.body.iterchildren():
+        if isinstance(child, CT_P):
+            paragraph = Paragraph(child, document)
+            text = clean_text(paragraph.text)
+            if not text:
+                continue
+            parts.append(text)
+            style_name = str(getattr(paragraph.style, "name", "") or "")
+            match = re.match(r"Heading\s+(\d+)$", style_name, flags=re.IGNORECASE)
+            if match:
+                heading_candidates.append({"title": text[:220], "level": max(1, min(6, int(match.group(1))))})
+        elif isinstance(child, CT_Tbl):
+            table = Table(child, document)
+            rendered = _render_structured_table([
+                [cell.text for cell in row.cells]
+                for row in table.rows
+            ])
+            if rendered:
+                table_count += 1
+                parts.append(rendered)
+    return [ExtractedSection(
+        text=clean_text("\n\n".join(parts)),
+        metadata={
+            "extraction_version": STRUCTURED_EXTRACTION_VERSION,
+            "content_kinds": ["table", "text"] if table_count else ["text"],
+            "table_count": table_count,
+            "heading_candidates": heading_candidates,
+            "reading_order": "document_order",
+        },
+    )]
 
 
 def extract_pptx(path: Path) -> list[ExtractedSection]:
@@ -1027,30 +1244,73 @@ def extract_pptx(path: Path) -> list[ExtractedSection]:
     sections: list[ExtractedSection] = []
     for index, slide in enumerate(presentation.slides, start=1):
         parts: list[str] = []
-        for shape in slide.shapes:
+        heading_candidates: list[dict[str, Any]] = []
+        table_count = 0
+        for shape in sorted(slide.shapes, key=lambda item: (int(item.top), int(item.left))):
+            if getattr(shape, "has_table", False):
+                rendered = _render_structured_table([
+                    [cell.text for cell in row.cells]
+                    for row in shape.table.rows
+                ])
+                if rendered:
+                    table_count += 1
+                    parts.append(rendered)
+                continue
             text = getattr(shape, "text", "")
             if text and text.strip():
-                parts.append(text)
-        text = clean_text("\n".join(parts))
+                cleaned = clean_text(text)
+                parts.append(cleaned)
+                if shape == slide.shapes.title:
+                    heading_candidates.append({"title": cleaned[:220], "level": 1})
+        notes_included = False
+        try:
+            notes_text = clean_text(slide.notes_slide.notes_text_frame.text)
+            if notes_text:
+                parts.append("[SPEAKER NOTES]\n" + notes_text)
+                notes_included = True
+        except (AttributeError, KeyError):
+            pass
+        text = clean_text("\n\n".join(parts))
         if text:
-            sections.append(ExtractedSection(text=text, page=index, section=f"Slide {index}"))
+            sections.append(ExtractedSection(
+                text=text,
+                page=index,
+                section=f"Slide {index}",
+                metadata={
+                    "extraction_version": STRUCTURED_EXTRACTION_VERSION,
+                    "content_kinds": sorted({"text", *( ["table"] if table_count else []), *( ["speaker_notes"] if notes_included else [])}),
+                    "table_count": table_count,
+                    "heading_candidates": heading_candidates,
+                    "notes_included": notes_included,
+                    "reading_order": "top_to_bottom_left_to_right",
+                },
+            ))
     return sections
 
 
 def extract_xlsx(path: Path) -> list[ExtractedSection]:
     from openpyxl import load_workbook
 
-    workbook = load_workbook(str(path), read_only=True, data_only=True)
+    workbook = load_workbook(str(path), read_only=True, data_only=False)
     sections: list[ExtractedSection] = []
-    for sheet in workbook.worksheets:
-        rows: list[str] = []
-        for row in sheet.iter_rows(values_only=True):
-            cells = [str(cell).strip() for cell in row if cell is not None and str(cell).strip()]
-            if cells:
-                rows.append(" | ".join(cells))
-        text = clean_text("\n".join(rows))
-        if text:
-            sections.append(ExtractedSection(text=text, section=sheet.title))
+    try:
+        for sheet in workbook.worksheets:
+            values = [list(row) for row in sheet.iter_rows(values_only=True)]
+            text = clean_text(_render_structured_table(values, coordinate_labels=True))
+            if text:
+                sections.append(ExtractedSection(
+                    text=text,
+                    section=sheet.title,
+                    metadata={
+                        "extraction_version": STRUCTURED_EXTRACTION_VERSION,
+                        "content_kinds": ["table"],
+                        "table_count": 1,
+                        "heading_candidates": [{"title": sheet.title[:220], "level": 1}],
+                        "reading_order": "row_major_with_coordinates",
+                    },
+                ))
+    finally:
+        workbook.close()
     return sections
 
 
@@ -1060,14 +1320,20 @@ def extract_xls(path: Path) -> list[ExtractedSection]:
     workbook = xlrd.open_workbook(str(path))
     sections: list[ExtractedSection] = []
     for sheet in workbook.sheets():
-        rows: list[str] = []
-        for row_index in range(sheet.nrows):
-            cells = [str(value).strip() for value in sheet.row_values(row_index) if str(value).strip()]
-            if cells:
-                rows.append(" | ".join(cells))
-        text = clean_text("\n".join(rows))
+        values = [sheet.row_values(row_index) for row_index in range(sheet.nrows)]
+        text = clean_text(_render_structured_table(values, coordinate_labels=True))
         if text:
-            sections.append(ExtractedSection(text=text, section=sheet.name))
+            sections.append(ExtractedSection(
+                text=text,
+                section=sheet.name,
+                metadata={
+                    "extraction_version": STRUCTURED_EXTRACTION_VERSION,
+                    "content_kinds": ["table"],
+                    "table_count": 1,
+                    "heading_candidates": [{"title": sheet.name[:220], "level": 1}],
+                    "reading_order": "row_major_with_coordinates",
+                },
+            ))
     return sections
 
 
@@ -1149,6 +1415,21 @@ def build_chunks(
     chunks: list[dict[str, Any]] = []
     seen_hashes: set[str] = set()
     effective_structure = structure or analyze_source_structure(sections)
+    source_evidence_revision = hashlib.sha256(json.dumps({
+        "extraction_version": STRUCTURED_EXTRACTION_VERSION,
+        "structure": effective_structure,
+        "sections": [
+            {
+                "page": section.page,
+                "section": section.section,
+                "content_kinds": section.metadata.get("content_kinds", []),
+                "table_count": section.metadata.get("table_count", 0),
+                "reading_order": section.metadata.get("reading_order"),
+                "visual_regions": section.metadata.get("visual_regions", []),
+            }
+            for section in sections
+        ],
+    }, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")).hexdigest()
     for section in sections:
         for text in split_text(section.text, settings.chunk_max_chars, settings.chunk_overlap_chars):
             content_hash = hashlib.sha256(text.encode("utf-8")).hexdigest()
@@ -1161,6 +1442,16 @@ def build_chunks(
                 text=text,
                 include_outline=not chunks,
             )
+            # Heading candidates have already been compiled into the canonical
+            # source structure. Do not repeat private source titles in every
+            # chunk's metadata row.
+            extraction_metadata = {
+                key: value
+                for key, value in section.metadata.items()
+                if key != "heading_candidates"
+            }
+            extraction_metadata["source_evidence_revision"] = source_evidence_revision
+            metadata = {**extraction_metadata, **metadata}
             metadata = {key: value for key, value in metadata.items() if value is not None}
             chunks.append(
                 {
@@ -1191,6 +1482,18 @@ def build_index_diagnostics(
     )
     pages = sorted({section.page for section in sections if section.page is not None})
     sections_without_page = sum(1 for section in sections if section.page is None)
+    structured_section_count = sum(
+        1 for section in sections
+        if section.metadata.get("extraction_version") == STRUCTURED_EXTRACTION_VERSION
+    )
+    extracted_table_count = sum(
+        max(0, int(section.metadata.get("table_count") or 0))
+        for section in sections
+    )
+    extracted_heading_count = sum(
+        len(section.metadata.get("heading_candidates") or [])
+        for section in sections
+    )
     warnings: list[str] = []
     if file_name and Path(file_name).suffix.lower() == ".pdf":
         warnings.append("PDF_TEXT_LAYER_ONLY; OCR_OR_EMBEDDED_IMAGE_TEXT_IS_NOT_EXTRACTED")
@@ -1212,6 +1515,9 @@ def build_index_diagnostics(
         "extracted_page_count": len(pages),
         "extracted_pages": pages[:200],
         "sections_without_page": sections_without_page,
+        "structured_section_count": structured_section_count,
+        "extracted_table_count": extracted_table_count,
+        "extracted_heading_count": extracted_heading_count,
         "extracted_chars": extracted_chars,
         "chunk_count": len(chunks),
         "candidate_chunk_count": candidate_chunk_count,
@@ -1331,11 +1637,24 @@ async def call_provider_with_timeout(
     """
     timeout_ms = max(1, request_timeout_ms or settings.provider_request_timeout_ms)
     for attempt in range(PROVIDER_TRANSIENT_MAX_ATTEMPTS):
+        emit_safe_provider_telemetry(on_provider_diagnostic, {
+            "event": "provider_http_attempt_started",
+            "provider_attempt": attempt + 1,
+            "model": model,
+            "usage_source": "unavailable",
+        })
         try:
-            return await asyncio.wait_for(
+            response = await asyncio.wait_for(
                 asyncio.to_thread(run),
                 timeout=timeout_ms / 1000,
             )
+            emit_safe_provider_telemetry(on_provider_diagnostic, {
+                "event": "provider_http_attempt_succeeded",
+                "provider_attempt": attempt + 1,
+                "model": model,
+                "usage_source": "unavailable",
+            })
+            return response
         except asyncio.TimeoutError as error:
             if on_provider_diagnostic is not None:
                 emit_safe_provider_telemetry(on_provider_diagnostic, {
@@ -1343,6 +1662,7 @@ async def call_provider_with_timeout(
                     "internal_failure_code": "AI_PROVIDER_TIMEOUT",
                     "model": model,
                     "provider_http_status": None,
+                    "provider_attempt": attempt + 1,
                     "timeout_ms": timeout_ms,
                     "usage_source": "unavailable",
                 })
@@ -1368,6 +1688,7 @@ async def call_provider_with_timeout(
                         "event": "provider_quota_exhausted",
                         "model": model,
                         "provider_http_status": status_code,
+                        "provider_attempt": attempt + 1,
                         "provider_error_type": type(error).__name__,
                         "usage_source": "unavailable",
                     })
@@ -1410,6 +1731,7 @@ async def call_provider_with_timeout(
                         "event": "provider_unavailable",
                         "model": model,
                         "provider_http_status": status_code,
+                        "provider_attempt": attempt + 1,
                         "provider_error_type": type(error).__name__,
                         "usage_source": "unavailable",
                     })
@@ -1430,6 +1752,7 @@ async def call_provider_with_timeout(
             emit_safe_provider_telemetry(on_provider_diagnostic, {
                 "event": "provider_request_failed",
                 "model": model,
+                "provider_attempt": attempt + 1,
                 **safe_provider_error_diagnostics(error),
             })
             raise
@@ -1538,6 +1861,7 @@ async def generate_content(
         return client.models.generate_content(model=model, contents=prompt, config=config)
 
     provider_started = perf_counter()
+    last_provider_attempt = 0
     if on_provider_telemetry is not None:
         # Size measurements only. Never emit schema text, prompts or local token
         # estimates under provider usage. Failure to measure must not affect AI.
@@ -1566,6 +1890,10 @@ async def generate_content(
                 "usage_source": "unavailable",
             })
     def on_provider_diagnostic(metadata: dict[str, Any]) -> None:
+        nonlocal last_provider_attempt
+        provider_attempt = metadata.get("provider_attempt")
+        if type(provider_attempt) is int and provider_attempt > 0:
+            last_provider_attempt = provider_attempt
         emit_safe_provider_telemetry(
             on_provider_telemetry,
             {
@@ -1590,6 +1918,7 @@ async def generate_content(
         **{key: value for key, value in received.items() if key.startswith("provider_") or key in {"model", "duration_ms", "configured_max_output_tokens"}},
         "usage_source": "provider" if received["usage_source"] == "provider" else "unavailable",
         "event": "provider_response_received",
+        "provider_attempt": last_provider_attempt or 1,
     })
     text = getattr(response, "text", "") or ""
     parsed = getattr(response, "parsed", None)
@@ -3114,7 +3443,7 @@ def _merge_wrapped_source_lines(lines: list[str]) -> list[str]:
     return merged
 
 
-def extract_source_coverage_facts(text: str) -> list[str]:
+def extract_source_coverage_facts(text: str, *, preserve_table_numeric: bool = False) -> list[str]:
     """Extract bounded semantic facts while repairing visual PDF line wraps."""
     normalized = clean_text(text)
     if not normalized:
@@ -3126,12 +3455,14 @@ def extract_source_coverage_facts(text: str) -> list[str]:
         line
         for raw_line in normalized.splitlines()
         for line in [re.sub(r"\s+", " ", raw_line).strip()]
-        if line and not SOURCE_COVERAGE_MARKER_ONLY_RE.fullmatch(line)
+        if line
+        and not SOURCE_COVERAGE_MARKER_ONLY_RE.fullmatch(line)
+        and not is_non_instructional_source_line(line, preserve_table_numeric=preserve_table_numeric)
     ]
     facts: list[str] = []
     for line in _merge_wrapped_source_lines(source_lines):
         facts.extend(_split_bounded_source_text(line))
-    return facts
+    return clean_source_facts(facts, preserve_table_numeric=preserve_table_numeric)
 
 
 def _source_heading_signature(value: Any) -> str:
@@ -5907,7 +6238,7 @@ def build_lesson_author_prompt(
             locale_rule,
             "Vai trò: Chuyên gia Thiết kế Đào tạo và Thiết kế Học liệu. Nhiệm vụ là chuyển tài liệu thô thành đề xuất khóa học rõ mục tiêu, đúng logic học tập, có hoạt động kiểm tra hiểu và nội dung đủ dùng cho người học.",
             "Tư duy bắt buộc: xác định kết quả học tập, gom nhóm kiến thức, sắp xếp từ nền tảng đến ứng dụng, chia bài vừa sức, tạo nội dung học và câu hỏi kiểm tra bám sát tài liệu.",
-            "Chuẩn chất lượng: mỗi bài cần có mục tiêu rõ, nội dung đầy đủ theo phạm vi nguồn, ví dụ hoặc tình huống khi tài liệu có dữ liệu, và FAQ nguồn ở cuối bài học để làm rõ các điểm quan trọng.",
+            "Chuẩn chất lượng: mỗi bài cần có mục tiêu rõ, nội dung đầy đủ theo phạm vi nguồn, ví dụ hoặc tình huống khi tài liệu có dữ liệu. Chỉ tạo FAQ khi component plan đã chọn FAQ; tuyệt đối không nhét câu hỏi/đáp án FAQ vào HTML giải thích.",
             "Hoàn thiện học liệu theo vai trò học tập đã được phê duyệt, không đơn thuần kéo dài câu chữ: phần giải thích cần trình bày khái niệm, ý nghĩa/điều kiện và ví dụ chỉ khi có evidence; procedure cần giữ thứ tự; warning phải nhìn thấy trong HTML; practice/check phải dùng đúng fact đã được dạy. Không được bịa ví dụ như một khẳng định từ nguồn. Nếu source không có ví dụ, không thêm ví dụ mang tính factual.",
             "Tính đầy đủ: khi máy chủ đã khóa phạm vi nguồn, phải bao phủ tất cả ý chính, bước, điều kiện, định nghĩa, ví dụ và bảng dữ liệu xuất hiện trong các đoạn nguồn của phạm vi đó. Không được tự rút gọn thành vài ý chung chung hoặc bỏ phần cuối ngữ cảnh; chỉ diễn đạt lại cho dễ học, không chép lặp vô nghĩa.",
             "Kiểm soát sai sót: không được bịa dữ kiện ngoài tài liệu. Nếu tài liệu thiếu, ghi rõ phần thiếu trong summary và không biến giả định thành sự thật.",
@@ -6515,9 +6846,16 @@ def validate_lesson_author_proposal_shape(proposal: dict[str, Any]) -> None:
                                 )
                                 visible_text = re.sub(r"<[^>]+>", " ", str(html_value))
                                 visible_text = re.sub(r"\s+", " ", visible_text).strip()
-                            # Source-locked fallback preserves provenance but
-                            # must never bypass the learner-facing depth gate.
-                            minimum_html_chars = MIN_LESSON_AUTHOR_HTML_TEXT_CHARS
+                            # A deterministic source-locked baseline is a
+                            # review surface, not a claim that the model
+                            # produced a complete lesson. Keep readable source
+                            # visible instead of turning a sparse-but-valid
+                            # document into a blank terminal failure.
+                            source_locked = (
+                                component.get("source_locked_fallback") is True
+                                or normalized_component.get("source_locked_fallback") is True
+                            )
+                            minimum_html_chars = 1 if source_locked else MIN_LESSON_AUTHOR_HTML_TEXT_CHARS
                             if len(visible_text) < minimum_html_chars:
                                 raise LessonAuthorProposalValidationError(
                                     f"HTML component trong Unit {unit_index} phải có ít nhất {minimum_html_chars} ký tự nội dung hiển thị.",
@@ -6566,6 +6904,11 @@ STAGED_LESSON_AUTHOR_UNITS_PER_BATCH = 1
 STAGED_LESSON_AUTHOR_UNIT_CONTEXT_CHARS = 8000
 STAGED_LESSON_CONTENT_PROVIDER_TIMEOUT_MAX_MS = 300_000
 STAGED_LESSON_WORKFLOW_TIMEOUT_MAX_MS = 480_000
+# Keep the outer Node -> Python request alive long enough to serialize and
+# return a deterministic source-locked fallback after an inner provider
+# deadline. Without this gap, a provider timeout and the HTTP client timeout
+# race at the same millisecond and turn a valid fallback into outcome_unknown.
+ORCHESTRATION_V2_UNIT_FALLBACK_RESPONSE_HEADROOM_MS = 5_000
 
 
 class StagedLessonWorkflowDeadline:
@@ -7475,33 +7818,18 @@ def staged_component_payload_code(component: dict[str, Any]) -> str | None:
             return None if nonempty(component.get("html")) else "HTML_CONTENT_REQUIRED"
         if kind == "problem":
             subtype = component.get("problem_type")
-            if subtype not in {"multiple_choice", "multiple_select", "dropdown", "numerical", "short_text"}:
-                return "PROBLEM_SUBTYPE_INVALID"
+            if subtype != "multiple_choice":
+                return "PROBLEM_SINGLE_CHOICE_REQUIRED"
             if not nonempty(component.get("question")):
                 return "PROBLEM_QUESTION_REQUIRED"
-            if subtype in {"numerical", "short_text"}:
-                if not str(component.get("answer") if component.get("answer") is not None else "").strip():
-                    return "PROBLEM_ANSWER_REQUIRED"
-                if subtype == "numerical":
-                    import math
-                    if not math.isfinite(float(component["answer"])):
-                        return "PROBLEM_NUMERIC_ANSWER_INVALID"
-                return None
-            if subtype == "dropdown":
-                options = component.get("options")
-                if not isinstance(options, list) or not 2 <= len(options) <= 8 or not all(nonempty(x) for x in options):
-                    return "PROBLEM_OPTIONS_INVALID"
-                texts = [x.strip().casefold() for x in options]
-                correct_count = texts.count(str(component.get("answer") or "").strip().casefold())
-            else:
-                choices = rows("choices", StagedChoice, 2, 6)
-                if not all(nonempty(x["text"]) for x in choices):
-                    return "PROBLEM_CHOICES_INVALID"
-                texts = [x["text"].strip().casefold() for x in choices]
-                correct_count = sum(x["correct"] for x in choices)
+            choices = rows("choices", StagedChoice, 3, 6)
+            if not all(nonempty(x["text"]) for x in choices):
+                return "PROBLEM_CHOICES_INVALID"
+            texts = [x["text"].strip().casefold() for x in choices]
+            correct_count = sum(x["correct"] for x in choices)
             if len(set(texts)) != len(texts):
                 return "PROBLEM_DUPLICATE_CHOICES"
-            if correct_count == 0 or (subtype != "multiple_select" and correct_count != 1):
+            if correct_count != 1:
                 return "PROBLEM_CORRECT_ANSWER_INVALID"
         elif kind == "la_faq":
             items = rows("items", StagedFaqItem, 2, 8)
@@ -7544,7 +7872,7 @@ def staged_component_contract_prompt(component_types: list[str]) -> str:
     """Only selected contracts; storage/XML/layout/IDs remain server-owned."""
     contracts = {
         "html": 'html: use semantic_content={"sections":[{"heading":"Local topic","learning_block_ids":["exact approved learning block ID"],"blocks":[{"kind":"paragraph","text":"Substantive explanation"},{"kind":"table","rows":[{"label":"Source category","value":"Correct associated explanation"}]}]}]}. Preserve section and block order. Use kind paragraph/task/warning with text; bullets/steps with items (nonempty strings); table with rows ({label,value}). The server supplies version 2; do not emit version or any top-level heading, paragraphs, bullet_points, ordered_steps, warnings or comparison_rows. Only sections is permitted inside semantic_content. Omit inactive fields or leave arrays empty/text null. 1-12 sections, 1-12 blocks per section. Aggregate limits across ALL sections unchanged: paragraph+task 12/2000 chars, bullets 20/800, steps 20/1000, warnings 8/1000, table rows 30 (label500/value1000); headings240. Bind every approved teaching learning block to a section with substantive explanation, not only a title or list of names. Explain ALL members of named frameworks, including the last member. HTML must NEVER contain an FAQ / Frequently Asked Questions / Câu hỏi thường gặp / Hỏi đáp thường gặp section, repeated Q:/A: pairs, or details/summary FAQ markup. Convert source questions into ordinary explanatory teaching; only a selected la_faq component may contain FAQ content. Keep tables/checklists directly under their own heading. For source-backed Canvas/action plans add a task specifying what learners must produce and evidence-based completion criteria; do not invent company targets or pretend submissions are stored. No CSS/classes/scripts/assets, internal IDs in visible text, unsupported facts or fabricated examples. Server renders HTML; other component types omit semantic_content.',
-        "problem": 'problem: explicit problem_type and question. multiple_choice/multiple_select: choices=[{"text":"answer text","correct":true},{"text":"distinct distractor","correct":false}], 2-6 distinct nonempty choices. multiple_choice has EXACTLY one correct; multiple_select at least one. dropdown: options=["answer","other"], 2-8 distinct strings, answer must exactly equal one option. short_text: nonempty answer. numerical: finite numeric answer as string. Include explanation grounded in taught evidence. Never omit correct or assume first choice is correct.',
+        "problem": 'problem: problem_type MUST be multiple_choice. Return one complete question and choices=[{"text":"source-grounded correct answer","correct":true},{"text":"plausible distinct distractor","correct":false}], with 3-6 distinct choices and EXACTLY one correct. Include a substantive explanation grounded in the taught evidence. Never emit multiple_select, dropdown, numerical, short_text, free-text answers, or raw problem XML.',
         "la_faq": 'la_faq: items=[{"question":"anticipated question","answer":"source-grounded clarification"}], 2-8 distinct Q&A. Clarify conditions/exceptions/misconceptions, not repeat paragraphs. Place FAQ last in the unit.',
         "la_sortable": 'la_sortable: question_text plus items=[{"text":"first step"},{"text":"second step"},{"text":"third step"}], 3-10 distinct items in SOURCE-CORRECT order. Only approved ordering practice. Do not fabricate dependencies or turn an unordered list into a sequence.',
         "la_crossword": 'la_crossword: words=[{"answer":"TERM","clue":"source-backed definition","hint":"optional"}], 3-10 distinct terms. Normalized spelling 2-24 letters/digits. Preserve meaning across EN/VI. Do not generate coordinates or invent terminology.',
@@ -7610,7 +7938,7 @@ def build_staged_lesson_content_response_model(
     optional_array = lambda item_type: (list[item_type], Field(default_factory=list))
     if "problem" in selected_types:
         component_fields.update({
-            "problem_type": (Literal["multiple_choice", "multiple_select", "dropdown", "numerical", "short_text"] | None, ...),
+            "problem_type": (Literal["multiple_choice"] | None, ...),
             "question": (str | None, ...),
             "choices": optional_array(StagedChoice),
             "options": optional_array(str),
@@ -7774,7 +8102,9 @@ def build_staged_instance_response_model(plans: list[dict[str, Any]]) -> type[Ba
             fields["words"] = (list[StagedCrosswordWord], Field(min_length=3, max_length=10))
         elif kind == "problem":
             fields["question"] = (str, Field(min_length=1))
-            fields["problem_type"] = (Literal["multiple_choice", "multiple_select", "dropdown", "numerical", "short_text"], ...)
+            fields["problem_type"] = (Literal["multiple_choice"], ...)
+            fields["choices"] = (list[StagedChoice], Field(min_length=3, max_length=6))
+            fields["explanation"] = (str, Field(min_length=20, max_length=1500))
         if not plan.get("source_fact_ids"):
             fields["covered_source_fact_ids"] = (list[str], Field(max_length=0))
         else:
@@ -8068,6 +8398,27 @@ def _exact_local_objective_refs(values: Any, *, label: str, objective_count: int
     return refs
 
 
+def _blueprint_instructional_density_contract(unit: dict[str, Any]) -> dict[str, Any]:
+    """Preserve only the server-authored V3 output budget on staged units."""
+
+    if unit.get("instructional_density_policy_version") != INSTRUCTIONAL_DENSITY_POLICY_VERSION:
+        return {}
+    values = {
+        "source_content_chars": unit.get("source_content_chars"),
+        "source_estimated_words": unit.get("source_estimated_words"),
+        "max_generated_visible_chars": unit.get("max_generated_visible_chars"),
+        "max_generated_words": unit.get("max_generated_words"),
+    }
+    if any(type(value) is not int or value < 0 for value in values.values()):
+        raise LessonAuthorProposalValidationError("Instructional density output budget is invalid.")
+    if values["max_generated_visible_chars"] < 1 or values["max_generated_words"] < 1:
+        raise LessonAuthorProposalValidationError("Instructional density output budget is invalid.")
+    return {
+        "instructional_density_policy_version": INSTRUCTIONAL_DENSITY_POLICY_VERSION,
+        **values,
+    }
+
+
 def _locked_component_plan(
     component_plan: list[dict[str, Any]],
     source_fact_ids: list[str],
@@ -8241,6 +8592,7 @@ def _apply_blueprint_architecture_to_skeleton(
                     strict_ownership=architecture.get("architecture_contract_version") == 5,
                     instance_contract=bool(architecture.get("component_capabilities")),
                 ),
+                **_blueprint_instructional_density_contract(expected_unit),
                 "_blueprint_component_plan_locked": True,
                 "_v5_evidence_contract": architecture.get("architecture_contract_version") == 5,
             })
@@ -8348,6 +8700,7 @@ def _build_blueprint_locked_staged_skeleton(
                     strict_ownership=architecture.get("architecture_contract_version") == 5,
                     instance_contract=bool(architecture.get("component_capabilities")),
                 ),
+                **_blueprint_instructional_density_contract(unit),
                 "_blueprint_component_plan_locked": True,
                 "_v5_evidence_contract": architecture.get("architecture_contract_version") == 5,
             })
@@ -8420,6 +8773,7 @@ def _build_blueprint_locked_staged_skeleton(
                 "title": str(unit.get("title") or "").strip(),
                 "source_fact_ids": fact_ids,
                 "component_plan": _locked_component_plan(unit.get("component_plan", []), fact_ids),
+                **_blueprint_instructional_density_contract(unit),
                 "_blueprint_component_plan_locked": True,
             })
             cursor += 1
@@ -8516,6 +8870,18 @@ def extract_lesson_author_unit_batches(
                             if str(fact_id).strip()
                         ],
                         "strict_v5_evidence": unit_value.get("_v5_evidence_contract") is True,
+                        "instructional_output_budget": (
+                            {
+                                "policy_version": INSTRUCTIONAL_DENSITY_POLICY_VERSION,
+                                "source_content_chars": unit_value["source_content_chars"],
+                                "source_estimated_words": unit_value["source_estimated_words"],
+                                "max_visible_chars": unit_value["max_generated_visible_chars"],
+                                "max_words": unit_value["max_generated_words"],
+                            }
+                            if unit_value.get("instructional_density_policy_version")
+                            == INSTRUCTIONAL_DENSITY_POLICY_VERSION
+                            else None
+                        ),
                     }
                 )
     ensure_staged_chapter_component_diversity(
@@ -8758,17 +9124,6 @@ def _source_chunk_number(value: Any) -> int | None:
     return chunk if chunk >= 0 else None
 
 
-def _source_fact_locator(fact: dict[str, Any]) -> str:
-    page = _source_page_number(fact.get("source_page"))
-    if page is not None:
-        return f"trang/slide {page}"
-    source_ref = str(fact.get("source_ref") or "").strip()
-    if source_ref:
-        return f"mục nguồn {source_ref}"
-    chunk = _source_chunk_number(fact.get("source_chunk"))
-    return f"đoạn nguồn {(chunk or 0) + 1}"
-
-
 def staged_unit_source_material(
     expected: dict[str, Any],
     source_rows: list[dict[str, Any]],
@@ -8811,14 +9166,10 @@ def staged_unit_source_material(
     coverage_lines: list[str] = []
     for fact in facts:
         fact_text = re.sub(r"\s+", " ", str(fact.get("text") or "")).strip()
-        coverage_lines.append(
-            f"- [{fact['fact_id']}] {_source_fact_locator(fact)}: {fact_text}"
-        )
+        coverage_lines.append(f"- [{fact['fact_id']}] {fact_text}")
     for fact in supporting_facts:
         fact_text = re.sub(r"\s+", " ", str(fact.get("text") or "")).strip()
-        coverage_lines.append(
-            f"- [supporting:{fact['fact_id']}] {_source_fact_locator(fact)}: {fact_text}"
-        )
+        coverage_lines.append(f"- [supporting:{fact['fact_id']}] {fact_text}")
     coverage = "\n".join(coverage_lines) or "Không có checklist fact riêng cho Mục này."
     all_evidence_facts = [*facts, *supporting_facts]
     if any(str(fact.get("source_ref") or "").strip() for fact in all_evidence_facts):
@@ -8860,11 +9211,92 @@ def staged_unit_source_material(
         raise LessonAuthorProposalValidationError("V5 unit evidence did not resolve to approved source text.")
     if not scoped_rows:
         scoped_rows = source_rows[:4]
-    source_context, _sources = format_sources(
-        scoped_rows,
-        max_context_chars=STAGED_LESSON_AUTHOR_UNIT_CONTEXT_CHARS,
-    )
+    source_context_parts: list[str] = []
+    source_context_chars = 0
+    for row in scoped_rows:
+        content = clean_text(str(row.get("content") or ""))
+        if not content or source_context_chars + len(content) > STAGED_LESSON_AUTHOR_UNIT_CONTEXT_CHARS:
+            continue
+        source_context_parts.append(content)
+        source_context_chars += len(content)
+    source_context = "\n\n".join(source_context_parts)
     return coverage, source_context
+
+
+def staged_unit_source_evidence_bundle(
+    expected: dict[str, Any],
+    manifest: dict[str, Any] | None,
+) -> dict[str, Any] | None:
+    """Return the immutable structured evidence bundle only inside unit scope."""
+
+    bundle = (manifest or {}).get("source_evidence_bundle")
+    if not isinstance(bundle, dict):
+        return None
+    allowed_fact_ids = {
+        str(value).strip()
+        for field in ("source_fact_ids", "supporting_evidence_fact_ids")
+        for value in expected.get(field, [])
+        if isinstance(value, str) and value.strip()
+    }
+    elements = bundle.get("elements")
+    if not isinstance(elements, list):
+        return None
+    for element in elements:
+        if not isinstance(element, dict):
+            return None
+        element_fact_ids = {
+            str(value).strip()
+            for value in element.get("source_fact_ids", [])
+            if isinstance(value, str) and value.strip()
+        }
+        if not element_fact_ids.issubset(allowed_fact_ids):
+            if expected.get("strict_v5_evidence") is True:
+                raise LessonAuthorProposalValidationError(
+                    "Structured evidence bundle exceeds the immutable unit fact scope."
+                )
+            return None
+    return deepcopy(bundle)
+
+
+def build_staged_instructional_contract(
+    expected: dict[str, Any],
+    source_coverage_manifest: dict[str, Any] | None,
+) -> dict[str, Any]:
+    """Build the exact approved contract serialized into the Stage-2 prompt."""
+
+    return {
+        "component_instructional_brief": component_instructional_brief(expected),
+        "lesson_learning_objectives": expected.get("learning_objectives", []),
+        "assessment_required": expected.get("assessment_required") is True,
+        "assessment_objective_refs": expected.get("assessment_objective_refs", []),
+        "unit_purpose": expected.get("unit_purpose", ""),
+        "concept_ids": expected.get("concept_ids", []),
+        "learning_objective_refs": expected.get("learning_objective_refs", []),
+        "learning_blocks": [
+            {
+                "id": str(block.get("id") or "")[:80],
+                "intent": str(block.get("intent") or "")[:80],
+                "learning_objective_refs": (
+                    block.get("learning_objective_refs")
+                    if isinstance(block.get("learning_objective_refs"), list)
+                    else []
+                ),
+                "source_fact_ids": (
+                    block.get("source_fact_ids")
+                    if isinstance(block.get("source_fact_ids"), list)
+                    else []
+                ),
+            }
+            for block in expected.get("learning_blocks", [])
+            if isinstance(block, dict)
+        ],
+        "supporting_evidence_fact_ids": expected.get("supporting_evidence_fact_ids", []),
+        "instructional_output_budget": expected.get("instructional_output_budget"),
+        "source_evidence_bundle": staged_unit_source_evidence_bundle(
+            expected,
+            source_coverage_manifest,
+        ),
+    }
 
 
 def _source_locked_ordered_items(facts: list[dict[str, Any]]) -> list[str]:
@@ -8935,18 +9367,63 @@ def prepare_source_locked_expected(
     expected: dict[str, Any],
     manifest: dict[str, Any] | None,
 ) -> tuple[dict[str, Any], list[str]]:
-    """Keep the approved Blueprint component contract immutable in recovery."""
-    del manifest
+    """Degrade a failed legacy batch to only deterministically recoverable slots.
+
+    This legacy staged lane has no durable assessment-obligation ledger.  It is
+    safer to return the valid source-backed teaching content and record the
+    omitted format in diagnostics than to fabricate an interaction or fail the
+    complete batch.  Orchestration V2 removes unsupported assessments earlier
+    and persists them as CP2B obligations instead of entering this path.
+    """
     requested_types = [
         normalized
         for value in expected.get("component_types", [])
         for normalized in [normalize_staged_component_type(value)]
         if normalized
     ]
+    fact_ids = {
+        str(fact_id).strip()
+        for fact_id in expected.get("source_fact_ids", [])
+        if str(fact_id).strip()
+    }
+    facts = [
+        fact
+        for fact in (manifest or {}).get("facts", [])
+        if isinstance(fact, dict) and str(fact.get("fact_id") or "").strip() in fact_ids
+    ]
+    fact_texts = clean_source_facts(
+        [fact.get("text") for fact in facts],
+        preserve_table_numeric=True,
+    )
+    locale = str(expected.get("locale") or "vi")
+    title = str(expected.get("unit_title") or "Nội dung bài học").strip()
+    recoverable = {"html"}
+    if build_source_locked_single_choice(title, fact_texts, locale=locale) is not None:
+        recoverable.add("problem")
+    ordered_items = _source_locked_sequence_items(facts)
+    if len(ordered_items) >= 2:
+        recoverable.add("la_diagram")
+    if len(ordered_items) >= 3:
+        recoverable.add("la_sortable")
+    if len(source_clarification_signals(fact_texts)) >= 2:
+        recoverable.add("la_faq")
+
+    selected_types = [value for value in requested_types if value in recoverable]
+    if "html" not in selected_types:
+        selected_types.insert(0, "html")
+    dropped_types = [value for value in requested_types if value not in recoverable]
+    selected_type_set = set(selected_types)
+    component_plan = [
+        dict(plan)
+        for plan in expected.get("component_plan", [])
+        if isinstance(plan, dict)
+        and normalize_staged_component_type(plan.get("type")) in selected_type_set
+    ]
     return {
         **expected,
-        "component_types": requested_types,
-    }, []
+        "component_types": selected_types,
+        "component_plan": component_plan,
+    }, dropped_types
 
 
 def _source_locked_html_facts(fact_texts: list[str]) -> list[str]:
@@ -9023,7 +9500,7 @@ def _source_locked_html_body(title: str, fact_texts: list[str]) -> str:
                     break
                 heading_lines.append(candidate)
                 index += 1
-            parts.append(f"<h4>{html.escape(heading_lines[0])}</h4>")
+            parts.append(f"<h3>{html.escape(heading_lines[0])}</h3>")
             if len(heading_lines) > 1:
                 parts.append(
                     "<ul>"
@@ -9061,33 +9538,19 @@ def _source_locked_faq_question(answer: str, title: str, index: int, locale: str
     label = re.split(r"[:.!?]", answer, maxsplit=1)[0].strip()
     if len(label) >= 6 and len(label) <= 100:
         return (
-            f"What does the source state about {label}?"
+            f"What should learners understand about {label}?"
             if locale == "en"
-            else f"Tài liệu nêu gì về {label}?"
+            else f"Người học cần hiểu gì về {label}?"
         )
     if locale == "en":
-        return f"What should learners remember about '{title}'?" if index == 0 else f"What else does the source state about '{title}'?"
-    return f"Người học cần ghi nhớ gì về '{title}'?" if index == 0 else f"Tài liệu còn nêu điểm nào về '{title}'?"
+        return f"What should learners remember about '{title}'?" if index == 0 else f"Which condition needs attention in '{title}'?"
+    return f"Người học cần ghi nhớ gì về '{title}'?" if index == 0 else f"Điều kiện nào cần lưu ý trong '{title}'?"
 
 
 def _source_locked_faq_answers(fact_texts: list[str]) -> list[str]:
-    """Return two source excerpts for a fallback FAQ without inventing facts."""
-    candidates: list[str] = []
-    for fact_text in fact_texts:
-        segments = re.split(r"(?<=[.!?])\s+|[\r\n]+", fact_text)
-        candidates.extend(segment.strip() for segment in segments if segment.strip())
-    unique: list[str] = []
-    seen: set[str] = set()
-    for candidate in candidates:
-        key = candidate.casefold()
-        if len(candidate) >= 40 and key and key not in seen:
-            seen.add(key)
-            unique.append(candidate[:600])
-        if len(unique) == 2:
-            break
-    if not unique:
-        return []
-    return unique if len(unique) >= 2 else []
+    """Use only explicit source conditions/exceptions for a fallback FAQ."""
+    answers = source_clarification_signals(fact_texts)
+    return [answer[:600] for answer in answers[:2]] if len(answers) >= 2 else []
 
 
 def build_source_locked_unit(
@@ -9122,15 +9585,15 @@ def build_source_locked_unit(
         for fact in (manifest or {}).get("facts", [])
         if isinstance(fact, dict) and str(fact.get("fact_id") or "").strip() in fact_id_set
     ]
-    fact_texts = [
-        re.sub(r"\s+", " ", str(fact.get("text") or "")).strip()
-        for fact in facts
-        if re.sub(r"\s+", " ", str(fact.get("text") or "")).strip()
-    ]
+    fact_texts = clean_source_facts(
+        [fact.get("text") for fact in facts],
+        preserve_table_numeric=True,
+    )
     if not fact_texts:
         return None
     title = str(expected.get("unit_title") or "Nội dung bài học").strip()
-    html_content = _source_locked_html_body(title, fact_texts)
+    locale = str(expected.get("locale") or "vi")
+    html_content = render_source_locked_html(title, fact_texts, locale=locale)
     visible_text = re.sub(r"\s+", " ", " ".join(fact_texts)).strip()
     if len(visible_text) < MIN_SOURCE_LOCKED_HTML_TEXT_CHARS:
         return None
@@ -9151,28 +9614,22 @@ def build_source_locked_unit(
         },
     }
     if "problem" in expected_types:
-        locale = str(expected.get("locale") or "vi")
+        problem = build_source_locked_single_choice(title, fact_texts, locale=locale)
+        if problem is None:
+            return None
         components_by_type["problem"] = {
             "type": "problem",
             "title": title,
-            "problem_type": "short_text",
-            "question": (
-                f"According to the source, what is the key content of '{title}'?"
-                if locale == "en"
-                else f"Theo tài liệu, nội dung trọng tâm của '{title}' là gì?"
-            ),
-            "answer": fact_texts[0],
-            "explanation": fact_texts[0],
+            **problem,
             "source_fact_ids": fact_ids,
             "source_locked_fallback": True,
             "selection_rationale": (
-                "The answer is locked to source facts without invented distractors."
+                "The correct choice and explanation are locked to the assigned source evidence."
                 if locale == "en"
-                else "Câu trả lời được khóa trực tiếp theo fact nguồn, không tạo phương án nhiễu ngoài tài liệu."
+                else "Đáp án đúng và phần giải thích được khóa theo dữ kiện nguồn đã gán."
             ),
         }
     if "la_faq" in expected_types:
-        locale = str(expected.get("locale") or "vi")
         answer_candidates = _source_locked_faq_answers(fact_texts)
         if len(answer_candidates) < 2:
             return None
@@ -9198,7 +9655,7 @@ def build_source_locked_unit(
         components_by_type["la_sortable"] = {
             "type": "la_sortable",
             "title": title,
-            "question_text": "Sắp xếp các bước theo đúng trình tự trong tài liệu nguồn.",
+            "question_text": "Sắp xếp các bước thực hiện theo đúng trình tự.",
             "items": ordered_items,
             "source_fact_ids": fact_ids,
             "source_locked_fallback": True,
@@ -9284,34 +9741,14 @@ def _orchestration_v2_source_fragments(values: list[str], *, minimum: int = 3) -
 
 
 def _orchestration_v2_sortable_steps(fact_texts: list[str], locale: str) -> list[str]:
-    """Return validator-safe ordered steps without adding domain claims.
+    """Return only a real, source-evidenced sequence.
 
-    Source parsers can legitimately emit short headings or list labels. Those
-    fragments are valid evidence but are not complete sortable instructions on
-    their own. Wrap them in deterministic review actions so the source-locked
-    fallback and the staged-content validator enforce the same contract.
+    Fabricating review actions from arbitrary prose made the interaction valid
+    structurally but instructionally meaningless. Unsupported sortable plans
+    are removed before the immutable unit contract is published.
     """
 
-    fragments = _orchestration_v2_source_fragments(fact_texts)
-    if len(fragments) >= 3:
-        if locale == "en":
-            return [f"Step {index}: Review the source point — {fragment}"[:500]
-                    for index, fragment in enumerate(fragments[:10], start=1)]
-        return [f"Bước {index}: Rà soát ý trong tài liệu nguồn — {fragment}"[:500]
-                for index, fragment in enumerate(fragments[:10], start=1)]
-
-    source_text = re.sub(r"\s+", " ", fact_texts[0]).strip()[:400]
-    if locale == "en":
-        return [
-            f"Step 1: Read the source statement — {source_text}"[:500],
-            f"Step 2: Compare the source statement with the lesson objective — {source_text}"[:500],
-            f"Step 3: Summarize the source statement for review — {source_text}"[:500],
-        ]
-    return [
-        f"Bước 1: Đọc nội dung trong tài liệu nguồn — {source_text}"[:500],
-        f"Bước 2: Đối chiếu nội dung nguồn với mục tiêu bài học — {source_text}"[:500],
-        f"Bước 3: Tóm tắt nội dung nguồn để rà soát — {source_text}"[:500],
-    ]
+    return ordered_source_steps(fact_texts, locale=locale)
 
 
 def _orchestration_v2_crossword_words(
@@ -9319,63 +9756,28 @@ def _orchestration_v2_crossword_words(
     fact_texts: list[str],
     locale: str,
 ) -> list[dict[str, Any]]:
-    """Build source-backed crossword rows with renderer-safe ASCII answers."""
+    """Build crossword rows only from explicit source term definitions."""
 
-    import unicodedata
-
-    stopwords = {
-        "AND", "ARE", "THE", "THIS", "THAT", "WITH", "FROM", "FOR", "INTO", "WHEN", "WHAT",
-        "CAC", "CHO", "CUA", "DEN", "DUOC", "LA", "MOT", "NHUNG", "TRONG", "VA", "VOI",
-    }
-    candidates: list[str] = []
-    seen: set[str] = set()
-    source = " ".join([title, *fact_texts])
-    folded = unicodedata.normalize("NFD", source.replace("đ", "d").replace("Đ", "D"))
-    ascii_source = "".join(character for character in folded if unicodedata.category(character) != "Mn")
-    for token in re.findall(r"[A-Za-z0-9]{2,24}", ascii_source.upper()):
-        if token in stopwords or token in seen:
-            continue
-        seen.add(token)
-        candidates.append(token)
-        if len(candidates) == 10:
-            break
-    defaults = ["SOURCE", "LESSON", "CONTENT"] if locale == "en" else ["TAILIEU", "BAIHOC", "NOIDUNG"]
-    for token in defaults:
-        if token not in seen and len(candidates) < 3:
-            seen.add(token)
-            candidates.append(token)
-    excerpt = re.sub(r"\s+", " ", fact_texts[0] if fact_texts else title).strip()[:400]
-    prefix = "Source context" if locale == "en" else "Ngữ cảnh trong tài liệu nguồn"
-    return [{"answer": answer, "clue": f"{prefix}: {excerpt}", "hint": None}
-            for answer in candidates[:max(3, min(10, len(candidates)))]]
+    return [
+        {"answer": answer, "clue": definition, "hint": None}
+        for answer, definition in source_term_definitions(fact_texts)
+    ]
 
 
-def _orchestration_v2_source_locked_html(title: str, fact_texts: list[str], locale: str) -> str:
-    """Render sparse source facts as a reviewable lesson without inventing facts.
+def _orchestration_v2_source_locked_html(
+    title: str,
+    fact_texts: list[str],
+    locale: str,
+    required_artifacts: list[dict[str, Any]] | None = None,
+) -> str:
+    """Render source facts once, preserving semantic tables and lists."""
 
-    The fixed prose describes how to review the cited source; every domain
-    statement still comes exclusively from ``fact_texts``. This keeps the
-    deterministic fallback useful even when a parser emits a very short fact.
-    """
-
-    base = _source_locked_html_body(title, fact_texts)
-    if locale == "en":
-        guidance = (
-            "<section><h4>How to review this source-backed draft</h4>"
-            "<p>This draft preserves the assigned source statements so the learner can inspect them before the course is published. "
-            "Read each statement in its original order, compare it with the lesson objective, and identify the wording that directly supports the topic.</p>"
-            "<p>After reading, summarize only what the source states, note any point that still needs clarification, and verify the summary against the source before applying it in practice. "
-            "No additional domain claim has been added by this fallback.</p></section>"
-        )
-    else:
-        guidance = (
-            "<section><h4>Cách rà soát bản nháp theo tài liệu nguồn</h4>"
-            "<p>Bản nháp này giữ nguyên các ý đã được giao từ tài liệu nguồn để người học kiểm tra trước khi khóa học được xuất bản. "
-            "Hãy đọc từng ý theo đúng thứ tự, đối chiếu với mục tiêu bài học và xác định câu chữ trực tiếp làm rõ chủ đề.</p>"
-            "<p>Sau khi đọc, người học chỉ tóm tắt những gì tài liệu đã nêu, ghi lại điểm còn cần làm rõ và kiểm tra bản tóm tắt với nguồn trước khi áp dụng vào thực tế. "
-            "Cơ chế dự phòng này không bổ sung thêm nhận định chuyên môn ngoài dữ kiện nguồn.</p></section>"
-        )
-    return base + guidance
+    return render_source_locked_html(
+        title,
+        fact_texts,
+        locale=locale,
+        required_artifacts=required_artifacts or [],
+    )
 
 
 def build_orchestration_v2_source_locked_unit(
@@ -9393,11 +9795,21 @@ def build_orchestration_v2_source_locked_unit(
     fact_by_id = {fact.fact_key: fact.fact_text for fact in contract.source_facts}
     components: list[dict[str, Any]] = []
     for index, plan in enumerate(contract.component_plan):
-        fact_texts = [re.sub(r"\s+", " ", fact_by_id[fact_id]).strip()
-                      for fact_id in plan.source_fact_ids if fact_id in fact_by_id]
+        evidence_fact_ids = list(dict.fromkeys([
+            *plan.source_fact_ids,
+            *plan.supporting_evidence_fact_ids,
+        ]))
+        fact_texts = clean_source_facts(
+            [fact_by_id[fact_id] for fact_id in evidence_fact_ids if fact_id in fact_by_id],
+            preserve_table_numeric=True,
+        )
         if not fact_texts or any(not value for value in fact_texts):
             return None
-        title = plan.title.strip() or contract.unit_title
+        title = (
+            sanitize_source_fact_for_learner(plan.title)
+            or sanitize_source_fact_for_learner(contract.unit_title)
+            or ("Learning content" if locale == "en" else "Nội dung học tập")
+        )
         rationale = ("Provider output was unavailable; this reviewable draft is reconstructed from the locked source facts."
                      if locale == "en" else
                      "Kết quả từ mô hình chưa khả dụng; bản nháp để rà soát này được dựng từ các dữ kiện nguồn đã khóa.")
@@ -9414,57 +9826,77 @@ def build_orchestration_v2_source_locked_unit(
         }
         fragments = _orchestration_v2_source_fragments(fact_texts)
         if plan.type == "html":
-            component["html"] = _orchestration_v2_source_locked_html(title, fact_texts, locale)
+            component["html"] = _orchestration_v2_source_locked_html(
+                title,
+                fact_texts,
+                locale,
+                plan.required_artifacts,
+            )
         elif plan.type == "problem":
-            answer = fact_texts[0][:4000]
-            component.update({
-                "problem_type": "short_text",
-                "question": (f"According to the source, what should learners retain about '{title}'?"
-                             if locale == "en" else f"Theo tài liệu, người học cần ghi nhớ điều gì về '{title}'?"),
-                "answer": answer,
-                "explanation": answer,
-            })
+            problem = build_source_locked_single_choice(title, fact_texts, locale=locale)
+            if problem is None:
+                return None
+            component.update(problem)
         elif plan.type == "la_faq":
-            answers = [
-                ((f"The source states: {fact_text}. This answer is retained for source review."
-                  if locale == "en" else
-                  f"Tài liệu nêu rõ: {fact_text}. Nội dung này được giữ nguyên để người dùng rà soát theo nguồn.")[:2000])
-                for fact_text in (fact_texts + fact_texts)[:2]
-            ]
+            answers = _source_locked_faq_answers(fact_texts)
+            if len(answers) < 2:
+                return None
             component["items"] = [{
-                "question": ((f"What is the first source-backed point about '{title}'?" if item_index == 0
-                              else f"What else does the source clarify about '{title}'?") if locale == "en" else
-                             (f"Điểm quan trọng đầu tiên trong tài liệu về '{title}' là gì?" if item_index == 0
-                              else f"Tài liệu còn làm rõ điều gì về '{title}'?")),
+                "question": _source_locked_faq_question(answer, title, item_index, locale),
                 "answer": answer,
             } for item_index, answer in enumerate(answers)]
         elif plan.type == "la_sortable":
             source_steps = _orchestration_v2_sortable_steps(fact_texts, locale)
+            if len(source_steps) < 3:
+                return None
             component.update({
-                "question_text": ("Arrange the source-backed points in their displayed order."
-                                  if locale == "en" else "Sắp xếp các ý theo đúng thứ tự xuất hiện trong tài liệu nguồn."),
+                "question_text": ("Arrange the procedure steps in the correct order."
+                                  if locale == "en" else "Sắp xếp các bước thực hiện theo đúng trình tự."),
                 "items": [{"text": item} for item in source_steps[:10]],
             })
         elif plan.type == "la_crossword":
-            component["words"] = _orchestration_v2_crossword_words(title, fact_texts, locale)
+            words = _orchestration_v2_crossword_words(title, fact_texts, locale)
+            if len(words) < 3:
+                return None
+            component["words"] = words
         elif plan.type == "la_diagram":
-            child_labels = fragments[:6] or [fact_texts[0][:500]]
-            nodes = [{"label": title[:500], "shape": "ellipse", "tooltip": contract.unit_purpose[:500]}]
+            sequence = ordered_source_steps(fact_texts, locale=locale)
+            child_labels = (sequence or fragments)[:6] or [fact_texts[0][:500]]
+            unit_purpose = (
+                sanitize_source_fact_for_learner(contract.unit_purpose)
+                or ("Review the key relationships." if locale == "en" else "Xem lại các mối quan hệ chính.")
+            )
+            nodes = [{"label": title[:500], "shape": "ellipse", "tooltip": unit_purpose[:500]}]
             nodes.extend({"label": label[:500], "shape": "rounded", "tooltip": label[:500]}
                          for label in child_labels)
+            edges = (
+                [{"source": index, "target": index + 1,
+                  "label": "Next" if locale == "en" else "Tiếp theo"}
+                 for index in range(len(nodes) - 1)]
+                if sequence else
+                [{"source": 0, "target": child_index,
+                  "label": "Content" if locale == "en" else "Nội dung"}
+                 for child_index in range(1, len(nodes))]
+            )
             component.update({
                 "name": title,
                 "nodes": nodes,
-                "edges": [{"source": 0, "target": child_index, "label": "Content" if locale == "en" else "Nội dung"}
-                          for child_index in range(1, len(nodes))],
+                "edges": edges,
             })
         else:
             return None
         components.append(component)
     return {
-        "title": contract.unit_title,
+        "title": (
+            sanitize_source_fact_for_learner(contract.unit_title)
+            or ("Learning content" if locale == "en" else "Nội dung học tập")
+        ),
         "source_fact_ids": list(contract.unit_source_fact_ids),
-        "supporting_evidence_fact_ids": [],
+        "supporting_evidence_fact_ids": list(dict.fromkeys(
+            fact_id
+            for plan in contract.component_plan
+            for fact_id in plan.supporting_evidence_fact_ids
+        )),
         "component_plan": [plan.model_dump(mode="json") for plan in contract.component_plan],
         "components": components,
         "source_locked_fallback": True,
@@ -9529,22 +9961,61 @@ def staged_html_contains_faq(component: dict[str, Any]) -> bool:
     return questions >= 2 and answers >= 2
 
 
-def staged_instructional_finding(component: dict[str, Any], index: int, plan: dict[str, Any] | None = None) -> StagedUnitFinding | None:
+def _staged_semantic_artifact_count(semantic: Any, artifact_type: str) -> int:
+    if not isinstance(semantic, dict):
+        return 0
+    sections = semantic.get("sections")
+    if not isinstance(sections, list):
+        return 0
+    blocks = [
+        block
+        for section in sections
+        if isinstance(section, dict)
+        for block in section.get("blocks", [])
+        if isinstance(block, dict)
+    ]
+    if artifact_type == "ordered_list":
+        return sum(len(block.get("items", [])) for block in blocks if block.get("kind") == "steps")
+    if artifact_type == "checklist":
+        return sum(len(block.get("items", [])) for block in blocks if block.get("kind") == "bullets")
+    if artifact_type in {"table", "comparison"}:
+        return sum(len(block.get("rows", [])) for block in blocks if block.get("kind") == "table")
+    if artifact_type in {"warning", "requirement", "exception"}:
+        return sum(block.get("kind") == "warning" for block in blocks)
+    return 0
+
+
+def staged_instructional_finding(
+    component: dict[str, Any],
+    index: int,
+    plan: dict[str, Any] | None = None,
+    output_budget: dict[str, Any] | None = None,
+    purity_context: dict[str, Any] | None = None,
+) -> StagedUnitFinding | None:
     """Same content-quality requirements used by acceptance and scoped repair."""
     kind = normalize_staged_component_type(component.get("type"))
     path = f"components[{index}]"
     def fail(code: str, field: str, message: str) -> StagedUnitFinding:
         return StagedUnitFinding(message, code, f"{path}.{field}", True)
-    if kind == "html" and component.get("source_locked_fallback") is not True:
-        if staged_html_contains_faq(component):
+    purity_code = learner_content_purity_finding(component_learner_text(component), purity_context)
+    if purity_code:
+        return fail(
+            purity_code,
+            "content",
+            "Learner-facing content contains source provenance or an internal identifier; provenance belongs only in server metadata.",
+        )
+    if kind == "html":
+        source_locked = component.get("source_locked_fallback") is True
+        if not source_locked and staged_html_contains_faq(component):
             return fail("HTML_FAQ_BOUNDARY_VIOLATION", "semantic_content",
                         "HTML teaching content must not contain an FAQ section or repeated question-and-answer pairs.")
         semantic = component.get("semantic_content")
+        html = str(component.get("html") or component.get("data") or component.get("content") or "")
         if semantic is not None:
             text, reason = semantic_learning_visible_text(semantic)
             if reason:
                 return fail("HTML_SEMANTIC_INVALID", "semantic_content", reason)
-            if semantic.get("version") == 2 and plan is not None:
+            if not source_locked and semantic.get("version") == 2 and plan is not None:
                 allowed = set(plan.get("learning_block_ids") or [])
                 referenced = {ref for section in semantic["sections"] for ref in section.get("learning_block_ids", [])}
                 if referenced - allowed:
@@ -9552,11 +10023,121 @@ def staged_instructional_finding(component: dict[str, Any], index: int, plan: di
                 if allowed - referenced:
                     return fail("HTML_TEACHING_GROUP_MISSING", "semantic_content.sections", "Every approved teaching group needs its own visible explanation; a coverage ID declaration is not enough.")
         else:
-            html = str(component.get("html") or component.get("data") or component.get("content") or "")
             text = re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", html)).strip()
-        if len(text) < MIN_STAGED_LESSON_AUTHOR_HTML_TEXT_CHARS:
+        source_chars = output_budget.get("source_content_chars") if isinstance(output_budget, dict) else None
+        source_relative_minimum = (
+            max(20, min(MIN_STAGED_LESSON_AUTHOR_HTML_TEXT_CHARS, int(source_chars) // 2))
+            if type(source_chars) is int and source_chars > 0 else MIN_STAGED_LESSON_AUTHOR_HTML_TEXT_CHARS
+        )
+        if source_locked:
+            # A deterministic fallback must preserve the complete locked source,
+            # including legitimately terse labels, without padding or invented
+            # claims. Require all available short-source text (up to the normal
+            # 20-character floor). Legacy contracts do not carry source length,
+            # but their source-locked builders already reject empty evidence, so
+            # a one-character floor preserves availability without fabricating
+            # prose merely to satisfy a length target.
+            minimum_html_chars = (
+                max(1, min(20, int(source_chars)))
+                if type(source_chars) is int and source_chars > 0
+                else 1
+            )
+        else:
+            minimum_html_chars = source_relative_minimum
+        if len(text) < minimum_html_chars:
             return fail("HTML_INSUFFICIENT_DEPTH", "semantic_content",
-                        f"Generated HTML explanation is too thin: minimum {MIN_STAGED_LESSON_AUTHOR_HTML_TEXT_CHARS} visible characters required.")
+                        f"Generated HTML explanation is too thin: minimum {minimum_html_chars} visible characters required.")
+        if output_budget is not None:
+            maximum_chars = output_budget.get("max_visible_chars")
+            maximum_words = output_budget.get("max_words")
+            if (output_budget.get("policy_version") != INSTRUCTIONAL_DENSITY_POLICY_VERSION
+                    or type(maximum_chars) is not int or not 1 <= maximum_chars <= 18_000
+                    or type(maximum_words) is not int or not 1 <= maximum_words <= 2_400):
+                return StagedUnitFinding(
+                    "The server instructional output budget is invalid.",
+                    "INSTRUCTIONAL_OUTPUT_BUDGET_INVALID",
+                    f"{path}.semantic_content",
+                    False,
+                )
+            word_count = len(re.findall(r"\w+", text, flags=re.UNICODE))
+            if len(text) > maximum_chars or word_count > maximum_words:
+                return fail(
+                    "HTML_INSTRUCTIONAL_DENSITY_EXCEEDED",
+                    "semantic_content",
+                    "Generated HTML exceeds the bounded teaching treatment for this unit; the source must remain split across coherent units.",
+                )
+        if contains_generic_review_language(text):
+            return fail("HTML_GENERIC_REVIEW_COPY", "semantic_content",
+                        "Learner content contains internal source-review instructions instead of instruction.")
+        if re.search(r"(?:https?://|www\.|[\w.+-]+@[\w.-]+\.[A-Za-z]{2,})", text, re.IGNORECASE):
+            return fail("HTML_NON_INSTRUCTIONAL_CONTACT_COPY", "semantic_content",
+                        "Learner content contains source contact or website boilerplate.")
+        if re.search(r"(.)\1{5,}", text, re.IGNORECASE):
+            return fail("HTML_OCR_NOISE", "semantic_content", "Learner content contains repeated OCR noise.")
+        normalized_segments = [
+            re.sub(r"[^\w\d]+", " ", value.casefold()).strip()
+            for value in re.findall(r"<(?:p|li|th|td|blockquote)>\s*([^<]+?)\s*</", html if semantic is None else "", re.IGNORECASE)
+        ]
+        normalized_segments = [value for value in normalized_segments if len(value) >= 12]
+        if len(normalized_segments) != len(set(normalized_segments)):
+            return fail("HTML_DUPLICATE_BLOCK", "semantic_content",
+                        "Learner content repeats the same paragraph, list item, or table cell.")
+        if plan is not None:
+            for artifact in plan.get("required_artifacts", []):
+                if not isinstance(artifact, dict):
+                    continue
+                artifact_type = str(artifact.get("type") or "").strip().casefold()
+                if artifact_type not in {
+                    "ordered_list", "checklist", "table", "warning",
+                    "requirement", "exception", "comparison",
+                }:
+                    continue
+                minimum = artifact.get("minimum_items")
+                required_count = minimum if type(minimum) is int and minimum > 0 else 1
+                if artifact_type in {"table", "comparison"}:
+                    required_count = max(2, required_count)
+                if isinstance(semantic, dict):
+                    preserved_count = _staged_semantic_artifact_count(semantic, artifact_type)
+                elif artifact_type in {"table", "comparison"}:
+                    preserved_count = len(re.findall(r"<tr>", html, re.IGNORECASE))
+                elif artifact_type == "ordered_list":
+                    preserved_count = len(re.findall(r"<li>", "".join(re.findall(r"<ol>(.*?)</ol>", html, re.IGNORECASE | re.DOTALL)), re.IGNORECASE))
+                elif artifact_type == "checklist":
+                    preserved_count = len(re.findall(r"<li>", "".join(re.findall(r"<ul>(.*?)</ul>", html, re.IGNORECASE | re.DOTALL)), re.IGNORECASE))
+                else:
+                    preserved_count = len(re.findall(r"<blockquote>", html, re.IGNORECASE))
+                if preserved_count < required_count:
+                    return fail(
+                        "REQUIRED_ARTIFACT_NOT_PRESERVED",
+                        "semantic_content",
+                        f"The approved {artifact_type} source structure is absent or incomplete in generated teaching content.",
+                    )
+    elif kind == "problem":
+        if component.get("problem_type") != "multiple_choice":
+            return fail("PROBLEM_SINGLE_CHOICE_REQUIRED", "problem_type",
+                        "AI Instructional Design problems must use one-answer multiple choice only.")
+        question = re.sub(r"\s+", " ", str(component.get("question") or "")).strip()
+        choices = component.get("choices") if isinstance(component.get("choices"), list) else []
+        if len(question) < 20 or not 3 <= len(choices) <= 6:
+            return fail("PROBLEM_CONTENT_INCOMPLETE", "choices",
+                        "Multiple-choice problems require a complete question and three to six choices.")
+        choice_texts: list[str] = []
+        correct_count = 0
+        for choice_index, value in enumerate(choices):
+            if not isinstance(value, dict):
+                return fail("PROBLEM_CHOICE_INVALID", f"choices[{choice_index}]", "Problem choices must be objects.")
+            choice_text = re.sub(r"\s+", " ", str(value.get("text") or "")).strip()
+            if len(choice_text) < 8:
+                return fail("PROBLEM_CHOICE_INVALID", f"choices[{choice_index}].text", "Problem choice is incomplete.")
+            choice_texts.append(choice_text.casefold())
+            correct_count += value.get("correct") is True
+        if len(choice_texts) != len(set(choice_texts)) or correct_count != 1:
+            return fail("PROBLEM_CORRECT_ANSWER_INVALID", "choices",
+                        "Multiple-choice problems require distinct choices and exactly one correct answer.")
+        explanation = re.sub(r"\s+", " ", str(component.get("explanation") or "")).strip()
+        if len(explanation) < 20:
+            return fail("PROBLEM_EXPLANATION_INCOMPLETE", "explanation",
+                        "The correct answer needs a source-grounded explanation.")
     elif kind == "la_sortable":
         items = component.get("items") if isinstance(component.get("items"), list) else []
         # Current typed payload uses {text}; legacy source fallback uses strings.
@@ -9567,6 +10148,9 @@ def staged_instructional_finding(component: dict[str, Any], index: int, plan: di
             return fail("SORTABLE_DUPLICATE_STEP", "items", "Sortable items must not repeat a source fragment.")
         if any(x[:1].islower() for x in texts):
             return fail("SORTABLE_STEP_FRAGMENT", "items", "Sortable items contain a sentence fragment rather than a complete step.")
+        if contains_generic_review_language(" ".join(texts) + " " + str(component.get("question_text") or "")):
+            return fail("SORTABLE_GENERIC_SOURCE_ORDER", "items",
+                        "Sortable must represent a real procedure, not the display order of source text.")
     elif kind == "la_faq":
         items = component.get("items") if isinstance(component.get("items"), list) else []
         if len(items) < 2:
@@ -9578,6 +10162,9 @@ def staged_instructional_finding(component: dict[str, Any], index: int, plan: di
             answer = re.sub(r"\s+", " ", str(item.get("answer") or "")).strip()
             if len(question) < 14 or len(answer) < 40 or answer[:1].islower():
                 return fail("FAQ_CLARIFICATION_INCOMPLETE", f"items[{i}]", "FAQ contains a partial source line rather than a complete answer.")
+            if contains_generic_review_language(question + " " + answer):
+                return fail("FAQ_GENERIC_REVIEW_COPY", f"items[{i}]",
+                            "FAQ must answer a learner question instead of describing source review.")
     return None
 
 
@@ -9684,8 +10271,20 @@ def staged_component_repair_targets(unit: Any, expected: dict[str, Any]) -> list
     if staged_component_repair_guard(unit, expected, allow_partial_coverage=True):
         return []
     components = unit["components"]
-    return [i for i, c in enumerate(components) if staged_component_payload_code(c) or staged_instructional_finding(c, i, expected.get("component_plan", [])[i])
-            or staged_coverage_claim_repairable(c)]
+    targets: list[int] = []
+    for index, component in enumerate(components):
+        instructional = staged_instructional_finding(
+            component,
+            index,
+            expected.get("component_plan", [])[index],
+            expected.get("instructional_output_budget"),
+            expected.get("learner_content_purity"),
+        )
+        if (staged_component_payload_code(component)
+                or (instructional is not None and instructional.repairable)
+                or staged_coverage_claim_repairable(component)):
+            targets.append(index)
+    return targets
 
 
 def staged_coverage_repair_diagnostics(unit: Any, targets: list[int]) -> list[dict[str, Any]]:
@@ -9805,6 +10404,58 @@ def merge_staged_component_repair(baseline: dict[str, Any], replacement: Any, ta
                 if key not in wire_fields or value not in (None, [], ""):
                     raise LessonAuthorProposalValidationError("COMPONENT_REPAIR_FIELD_NOT_ALLOWED")
         result["components"][index] = {**original, **{k: v for k, v in change.items() if k in editable}}
+    return result
+
+
+def merge_checkpoint_component_fallback(
+    baseline: dict[str, Any],
+    fallback: Any,
+    targets: list[int],
+    expected: dict[str, Any],
+) -> dict[str, Any]:
+    """Replace only failed component instances with server-built source content.
+
+    Provider-authored siblings remain byte-for-byte unchanged. The fallback is
+    allowed to correct an invalid coverage claim, but only when every immutable
+    component identity and evidence field matches the approved server plan.
+    """
+
+    baseline_components = baseline.get("components") if isinstance(baseline, dict) else None
+    fallback_components = fallback.get("components") if isinstance(fallback, dict) else None
+    plans = expected.get("component_plan") if isinstance(expected, dict) else None
+    if (not isinstance(baseline_components, list) or not isinstance(fallback_components, list)
+            or not isinstance(plans, list) or len(baseline_components) != len(plans)
+            or len(fallback_components) != len(plans)):
+        raise LessonAuthorProposalValidationError("COMPONENT_FAIL_SOFT_ENVELOPE_INVALID")
+    normalized_targets = list(dict.fromkeys(targets))
+    if (not normalized_targets
+            or any(type(index) is not int or not 0 <= index < len(plans) for index in normalized_targets)):
+        raise LessonAuthorProposalValidationError("COMPONENT_FAIL_SOFT_TARGET_INVALID")
+    if (fallback.get("title") != expected.get("unit_title")
+            or not staged_fact_membership_equal(fallback.get("source_fact_ids"), expected.get("source_fact_ids"))
+            or not staged_fact_membership_equal(
+                fallback.get("supporting_evidence_fact_ids", []),
+                expected.get("supporting_evidence_fact_ids", []),
+            )):
+        raise LessonAuthorProposalValidationError("COMPONENT_FAIL_SOFT_AUTHORITY_INVALID")
+    result = deepcopy(baseline)
+    for index in normalized_targets:
+        replacement = fallback_components[index]
+        plan = plans[index]
+        if (not isinstance(replacement, dict) or not isinstance(plan, dict)
+                or replacement.get("type") != plan.get("type")
+                or replacement.get("component_plan_id") != plan.get("component_plan_id")
+                or not staged_fact_membership_equal(replacement.get("source_fact_ids", []), plan.get("source_fact_ids", []))
+                or not staged_fact_membership_equal(
+                    replacement.get("supporting_evidence_fact_ids", []),
+                    plan.get("supporting_evidence_fact_ids", []),
+                )
+                or not staged_fact_membership_equal(
+                    replacement.get("covered_source_fact_ids", []),
+                    plan.get("source_fact_ids", []),
+                )):
+            raise LessonAuthorProposalValidationError("COMPONENT_FAIL_SOFT_AUTHORITY_INVALID")
+        result["components"][index] = deepcopy(replacement)
     return result
 
 
@@ -10036,7 +10687,13 @@ def validate_staged_unit_content(
             if not isinstance(component, dict):
                 continue
             component_type = normalize_staged_component_type(component.get("type"))
-            instructional_failure = staged_instructional_finding(component, component_index, instance_plans[component_index] if instance_contract else None)
+            instructional_failure = staged_instructional_finding(
+                component,
+                component_index,
+                instance_plans[component_index] if instance_contract else None,
+                expected.get("instructional_output_budget"),
+                expected.get("learner_content_purity"),
+            )
             if instructional_failure:
                 return instructional_failure
             component_fact_ids = {
@@ -10147,10 +10804,15 @@ async def generate_staged_lesson_author_proposal(
     *,
     checkpoint_unit_index: int | None = None,
     remaining_workflow_budget_ms: int | None = None,
+    checkpoint_component_fallback_unit: dict[str, Any] | None = None,
+    on_provider_dispatch: Callable[[], None] | None = None,
+    attempt_trace_sink: list[dict[str, Any]] | None = None,
 ) -> tuple[dict[str, Any], AiUsage]:
     """Generate a large chapter as a validated skeleton plus bounded unit batches."""
     workflow_deadline = StagedLessonWorkflowDeadline(remaining_workflow_budget_ms)
     checkpoint_provider_usage_complete = True
+    checkpoint_fallback_component_indices: list[int] = []
+    checkpoint_attempt_events = attempt_trace_sink if attempt_trace_sink is not None else []
     # A V5 Blueprint is already an approved, server-validated topology with
     # canonical fact ownership. Calling the provider to recreate that tree
     # permits silent drift before Stage 2 begins, so derive the skeleton
@@ -10269,6 +10931,8 @@ async def generate_staged_lesson_author_proposal(
         def capture_provider_telemetry(metadata: dict[str, Any]) -> None:
             nonlocal provider_event, provider_finish_reason, response_usage_complete, uncertain_provider_attempt
             event = metadata.get("event")
+            if event == "provider_request_started" and on_provider_dispatch is not None:
+                on_provider_dispatch()
             if isinstance(event, str) and event.strip():
                 provider_event = event.strip()[:96]
             finish_reason = metadata.get("provider_finish_reason")
@@ -10285,6 +10949,51 @@ async def generate_staged_lesson_author_proposal(
                          "provider_schema_constraint", "provider_error_markers", "usage_source", "provider_input_tokens", "provider_output_tokens",
                          "provider_total_tokens", "provider_finish_reason"}
             provider_diagnostics.update({key: value for key, value in metadata.items() if key in safe_keys})
+            trace_outcome = {
+                "provider_http_attempt_started": "started",
+                "provider_http_attempt_succeeded": "succeeded",
+                "provider_response_received": "succeeded",
+                "provider_transient_retry": "retrying",
+                "provider_timeout": "failed",
+                "provider_quota_exhausted": "failed",
+                "provider_unavailable": "failed",
+                "provider_request_failed": "failed",
+            }.get(str(event or ""))
+            provider_attempt = metadata.get("provider_attempt")
+            if (trace_outcome and type(provider_attempt) is int and 1 <= provider_attempt <= 8
+                    and len(checkpoint_attempt_events) < 64):
+                raw_usage_source = metadata.get("usage_source")
+                trace_usage_source = ("provider_reported" if raw_usage_source == "provider"
+                                      else "estimated" if raw_usage_source == "local_estimate" else "unknown")
+                observed_usage = {
+                    key: metadata[key]
+                    for key in ("provider_input_tokens", "provider_output_tokens", "provider_total_tokens")
+                    if type(metadata.get(key)) is int and metadata[key] >= 0
+                }
+                diagnostics = {
+                    key: metadata[key]
+                    for key in ("provider_http_status", "provider_status", "provider_error_category",
+                                "provider_schema_constraint", "provider_finish_reason")
+                    if metadata.get(key) is not None
+                }
+                checkpoint_attempt_events.append({
+                    "sequence": len(checkpoint_attempt_events) + 1,
+                    "invocation_kind": "writer",
+                    "invocation_index": batch_index + 1,
+                    "provider_attempt": provider_attempt,
+                    "phase": "provider_transport",
+                    "outcome": trace_outcome,
+                    "event_code": str(event)[:96],
+                    "failure_stage": ("provider_transport" if trace_outcome == "failed" else None),
+                    "failure_code": (str(metadata.get("internal_failure_code") or event).upper()[:100]
+                                     if trace_outcome == "failed" else None),
+                    "failure_path": None,
+                    "provider_dispatched": True,
+                    "usage_source": trace_usage_source,
+                    "observed_usage": observed_usage,
+                    "duration_ms": max(0, int(metadata.get("duration_ms") or 0)),
+                    "diagnostics": diagnostics,
+                })
             logger.info("lesson_author_staged_provider_diagnostic %s", json.dumps({
                 "correlation_id": request.correlation_id, "conversation_id": request.conversation_id,
                 "generation_stage": generation_stage, "batch_index": batch_index, "batch_count": batch_count,
@@ -10563,7 +11272,14 @@ async def generate_staged_lesson_author_proposal(
             f"supporting_evidence_fact_ids: {', '.join(item.get('supporting_evidence_fact_ids', [])) or 'none'}"
             for index, item in enumerate(batch)
         )
-        expected = batch[0]
+        expected = {
+            **batch[0],
+            "learner_content_purity": build_learner_content_purity_context(
+                batch[0],
+                source_coverage_manifest,
+                source_rows or [],
+            ),
+        }
         instance_output = checkpoint_unit_index is not None and bool(expected.get("component_plan")) and all(
             p.get("component_plan_id") for p in expected["component_plan"]
         )
@@ -10572,26 +11288,11 @@ async def generate_staged_lesson_author_proposal(
             source_rows or [],
             source_coverage_manifest,
         )
-        instructional_contract = json.dumps({
-            "component_instructional_brief": component_instructional_brief(expected),
-            "lesson_learning_objectives": expected.get("learning_objectives", []),
-            "assessment_required": expected.get("assessment_required") is True,
-            "assessment_objective_refs": expected.get("assessment_objective_refs", []),
-            "unit_purpose": expected.get("unit_purpose", ""),
-            "concept_ids": expected.get("concept_ids", []),
-            "learning_objective_refs": expected.get("learning_objective_refs", []),
-            "learning_blocks": [
-                {
-                    "id": str(block.get("id") or "")[:80],
-                    "intent": str(block.get("intent") or "")[:80],
-                    "learning_objective_refs": block.get("learning_objective_refs") if isinstance(block.get("learning_objective_refs"), list) else [],
-                    "source_fact_ids": block.get("source_fact_ids") if isinstance(block.get("source_fact_ids"), list) else [],
-                }
-                for block in expected.get("learning_blocks", [])
-                if isinstance(block, dict)
-            ],
-            "supporting_evidence_fact_ids": expected.get("supporting_evidence_fact_ids", []),
-        }, ensure_ascii=False, separators=(",", ":"))
+        instructional_contract = json.dumps(
+            build_staged_instructional_contract(expected, source_coverage_manifest),
+            ensure_ascii=False,
+            separators=(",", ":"),
+        )
         content_prompt = "\n\n".join(
             [
                 "SERVER STAGE 2: Generate complete content for exactly one unit.",
@@ -10614,7 +11315,10 @@ async def generate_staged_lesson_author_proposal(
                     'The object must be {"title":"exact unit title","source_fact_ids":["<exact assigned fact_id>"],"supporting_evidence_fact_ids":[],"components":[...]} with real content. Copy only exact canonical source_fact_ids into ownership/coverage fields. If read-only supporting evidence is supplied, return its exact IDs only in supporting_evidence_fact_ids; never copy them into source_fact_ids or covered_source_fact_ids. Components must match the approved component plan exactly. Every component must return source_fact_ids equal to its canonical contract ownership and covered_source_fact_ids that include each owned fact. The HTML component must declare every assigned canonical fact_id and fully explain its facts, key points, conditions, steps, examples, and source tables; do not summarize away source details.'
                 ),
                 'Use only the selected component contracts above. Never populate content for other component types. Never generate media assets, URLs, storage paths or presentation styles.',
-                'Quality rules: teach every mapped objective with substantive explanation before any related check. If assessment_required is true, the problem must assess a fact taught by this unit HTML. Do not repeat an explanation, FAQ answer, or question already present in this unit. Do not use an interaction merely for variety. Keep procedures explanatory unless the approved plan explicitly calls for ordering practice. Do not fabricate factual examples; source material is the only source of domain claims.',
+                'Structured evidence rule: source_evidence_bundle is immutable read-only evidence, not new ownership. Preserve table headers, row/column positions, notes and conditions; preserve process order constraints and exceptions; preserve hierarchy parent/priority relations. For visual evidence, use only observed_facts as factual claims. Treat candidate_unverified regions and inference_claims as review cues, never as established domain facts. Never increase source_fact_ids or covered_source_fact_ids because structured/supporting evidence is present.',
+                'Quality rules: teach every mapped objective with substantive explanation before any related check. Respect instructional_output_budget when present; split decisions were already made upstream, so never inflate this unit into a handbook-sized HTML page. Preserve every required_artifact in the approved component plan using its matching semantic block. If assessment_required is true, the problem must assess a fact taught by this unit HTML. Do not repeat an explanation, FAQ answer, or question already present in this unit. Do not use an interaction merely for variety. Keep procedures explanatory unless the approved plan explicitly calls for ordering practice. Do not fabricate factual examples; source material is the only source of domain claims.',
+                'Ownership boundary: HTML is the only canonical teaching owner. Quiz, FAQ, diagram, sortable and crossword use supporting evidence only; they must not duplicate an HTML section, and HTML must not contain their questions, answers, choices, interaction instructions or FAQ presentation.',
+                'Learner-content purity: use evidence facts for teaching, but keep provenance metadata private. Never write source filenames, citations, page/slide/chunk locators, internal fact/source/component/block IDs, or phrases such as "theo tài liệu nguồn" in any learner-facing field.',
                 (f"Every listed source fact must be taught: {', '.join(expected.get('source_fact_ids', [])) or 'none'}." if instance_output else
                  f"Every listed source_fact_id is mandatory for this unit: {', '.join(expected.get('source_fact_ids', [])) or 'none'}. Include all of them in the response."),
                 (f"Read-only supporting evidence for grounding, never canonical coverage: {', '.join(expected.get('supporting_evidence_fact_ids', [])) or 'none'}." if instance_output else
@@ -10737,6 +11441,7 @@ async def generate_staged_lesson_author_proposal(
                         f"Include every mandatory source_fact_id for this unit: {', '.join(expected.get('source_fact_ids', [])) or 'none'}.",
                         f"Include read-only supporting evidence separately: {', '.join(expected.get('supporting_evidence_fact_ids', [])) or 'none'}.",
                         "Do not invent facts outside the source material. Do not include markdown or prose outside the JSON object.",
+                        "Keep provenance metadata private: no source filename, citation, page/slide/chunk locator, internal ID, or source-attribution phrase may appear in learner-facing content.",
                     ]
                 )
                 if repair_targets:
@@ -10771,13 +11476,19 @@ async def generate_staged_lesson_author_proposal(
                         "Deterministic coverage findings:\n" + json.dumps(coverage_findings),
                         "Coverage claim shape findings:\n" + json.dumps(staged_coverage_claim_diagnostics(repair_baseline)),
                         "Deterministic instructional findings:\n" + json.dumps([
-                            f.diagnostic() for i in repair_targets if (f := staged_instructional_finding(repair_baseline["components"][i], i, expected.get("component_plan", [])[i]))
+                            f.diagnostic() for i in repair_targets if (f := staged_instructional_finding(
+                                repair_baseline["components"][i],
+                                i,
+                                expected.get("component_plan", [])[i],
+                                expected.get("instructional_output_budget"),
+                                expected.get("learner_content_purity"),
+                            ))
                         ]),
                         f"Approved instructional contract (read-only):\n{instructional_contract}",
                         f"Mandatory evidence:\n{unit_coverage}",
                         f"Relevant source material:\n{unit_context or context[:STAGED_LESSON_AUTHOR_UNIT_CONTEXT_CHARS]}",
                         "Repair the invalid payload shape while retaining instructional completeness and teaching/check alignment. "
-                        "No new source claims or media assets. Do not emit markdown or text outside the JSON object.",
+                        "No new source claims or media assets. Remove all source filenames, citations, page/slide/chunk locators, internal IDs, and source-attribution phrases from learner-facing fields. Do not emit markdown or text outside the JSON object.",
                     ])
                 recovery_validation_reason: str | None = None
                 recovery_evidence_findings: list[dict[str, Any]] = []
@@ -10871,6 +11582,44 @@ async def generate_staged_lesson_author_proposal(
                     "unit_match": recovery_unit_match,
                     "failure_code": recovery_failure_code,
                 }))
+                if checkpoint_unit_index is not None and (generated is None or generated_fact_ids != expected_fact_ids
+                        or generated_supporting_evidence_fact_ids != expected_supporting_evidence_fact_ids or recovery_validation_reason):
+                    fail_soft_targets = repair_targets or list(range(len(repair_baseline.get("components", []))))
+                    try:
+                        fail_soft_unit = merge_checkpoint_component_fallback(
+                            repair_baseline,
+                            checkpoint_component_fallback_unit,
+                            fail_soft_targets,
+                            expected,
+                        )
+                        fail_soft_validation = validate_staged_unit_content(
+                            fail_soft_unit,
+                            expected,
+                            strict_payload=True,
+                        )
+                    except LessonAuthorProposalValidationError:
+                        fail_soft_unit = None
+                        fail_soft_validation = StagedUnitFinding(
+                            "The server component fallback did not preserve the approved unit contract.",
+                            "COMPONENT_FAIL_SOFT_INVALID",
+                            "unit.components",
+                            False,
+                        )
+                    if fail_soft_unit is not None and fail_soft_validation is None:
+                        generated = fail_soft_unit
+                        generated_fact_ids = set(expected_fact_ids)
+                        generated_supporting_evidence_fact_ids = set(expected_supporting_evidence_fact_ids)
+                        recovery_validation_reason = None
+                        checkpoint_fallback_component_indices[:] = fail_soft_targets
+                        logger.warning("lesson_author_component_fail_soft_recovered %s", json.dumps({
+                            "correlation_id": request.correlation_id,
+                            "conversation_id": request.conversation_id,
+                            "batch_index": batch_index,
+                            "unit_path": expected.get("unit_path"),
+                            "fallback_component_indices": fail_soft_targets,
+                            "preserved_provider_component_count": max(0, len(repair_baseline.get("components", [])) - len(fail_soft_targets)),
+                            "repair_failure_code": recovery_failure_code,
+                        }, sort_keys=True))
                 if checkpoint_unit_index is not None and (generated is None or generated_fact_ids != expected_fact_ids
                         or generated_supporting_evidence_fact_ids != expected_supporting_evidence_fact_ids or recovery_validation_reason):
                     raise WorkflowFailure("LESSON_VALIDATION_FAILED", "The scoped component repair did not pass acceptance.",
@@ -10982,7 +11731,9 @@ async def generate_staged_lesson_author_proposal(
                                   internal_code="CHAPTER_CHECKPOINT_UNIT_INVALID", failure_stage="chapter_checkpoint_unit_validation")
         ChapterCheckpointUnit(unit_index=checkpoint_unit_index, unit=unit)
         return {"checkpoint_version": 1, "unit_index": checkpoint_unit_index, "unit_path": approved["unit_path"],
-                "unit": unit, "provider_usage_complete": checkpoint_provider_usage_complete}, total_usage
+                "unit": unit, "provider_usage_complete": checkpoint_provider_usage_complete,
+                "fallback_component_indices": checkpoint_fallback_component_indices,
+                "attempt_trace": checkpoint_attempt_events}, total_usage
 
     assembled = dict(skeleton)
     assembled_chapters: list[dict[str, Any]] = []
@@ -16672,7 +17423,8 @@ async def lesson_author_orchestration_v2_source_snapshot(
     structure_rows = await pool.fetch(
         """
         SELECT DISTINCT ON (c.document_id) c.document_id::text AS document_id,
-               c.metadata->'source_structure' AS source_structure
+               c.metadata->'source_structure' AS source_structure,
+               c.metadata->>'source_evidence_revision' AS source_evidence_revision
         FROM rag_chunks c
         WHERE c.tenant_id=$1::uuid AND c.kb_id=$2::uuid AND c.index_id=ANY($3::uuid[])
           AND c.metadata ? 'source_structure'
@@ -16683,6 +17435,11 @@ async def lesson_author_orchestration_v2_source_snapshot(
     structures_by_document = {
         str(row["document_id"]): decode_json_object(row["source_structure"])
         for row in structure_rows
+    }
+    evidence_revisions_by_document = {
+        str(row["document_id"]): str(row["source_evidence_revision"] or "").strip().casefold()
+        for row in structure_rows
+        if re.fullmatch(r"[0-9a-f]{64}", str(row["source_evidence_revision"] or "").strip().casefold())
     }
     policy_documents = [{
         "document_id": document_id,
@@ -16721,12 +17478,24 @@ async def lesson_author_orchestration_v2_source_snapshot(
         **authority_payload,
         structure_hash=orchestration_v2_canonical_hash(authority_payload),
     )
-    revision_payload = [{
-        "document_id": str(row["document_id"]), "index_id": str(row["index_id"]),
-        "content_sha256": str(row["content_sha256"] or ""), "chunk_count": int(row["chunk_count"] or 0),
-        "embedding_model": str(row["embedding_model"]),
-        "embedding_dimensions": int(row["embedding_dimensions"]),
-    } for row in indexes]
+    revision_payload: list[dict[str, Any]] = []
+    for row in indexes:
+        document_id = str(row["document_id"])
+        revision_entry: dict[str, Any] = {
+            "document_id": document_id,
+            "index_id": str(row["index_id"]),
+            "content_sha256": str(row["content_sha256"] or ""),
+            "chunk_count": int(row["chunk_count"] or 0),
+            "embedding_model": str(row["embedding_model"]),
+            "embedding_dimensions": int(row["embedding_dimensions"]),
+        }
+        # Preserve the exact legacy revision for already learned documents.
+        # A new revision is materialized only after re-indexing has produced
+        # explicit structured-evidence metadata.
+        evidence_revision = evidence_revisions_by_document.get(document_id)
+        if evidence_revision is not None:
+            revision_entry["source_evidence_revision"] = evidence_revision
+        revision_payload.append(revision_entry)
     source_revision = orchestration_v2_canonical_hash(revision_payload)
     if request.expected_source_revision and request.expected_source_revision != source_revision:
         raise _orchestration_v2_http_error(
@@ -16761,7 +17530,17 @@ async def lesson_author_orchestration_v2_source_snapshot(
         document_id = str(row["document_id"])
         chunk_no = int(row["chunk_no"])
         metadata = decode_json_object(row.get("metadata")) or {}
-        fact_texts = extract_source_coverage_facts(clean_text(str(row.get("content") or "")))
+        content_kinds = {
+            str(value).strip().casefold()
+            for value in metadata.get("content_kinds", [])
+            if isinstance(value, str) and value.strip()
+        } if isinstance(metadata.get("content_kinds"), list) else set()
+        table_count = max(0, min(100, int(metadata.get("table_count") or 0))) \
+            if str(metadata.get("table_count") or "0").isdigit() else 0
+        fact_texts = extract_source_coverage_facts(
+            clean_text(str(row.get("content") or "")),
+            preserve_table_numeric=table_count > 0 or "table" in content_kinds,
+        )
         page = row.get("source_page") if isinstance(row.get("source_page"), int) and row.get("source_page") > 0 else None
         source_ref = str(metadata.get("source_ref") or row.get("source_section") or "").strip()[:255] or None
         heading = metadata.get("heading_path")
@@ -16774,31 +17553,65 @@ async def lesson_author_orchestration_v2_source_snapshot(
             suffix = f" · page {page}" if page is not None else f" · chunk {chunk_no + 1}"
             scope_title = f"{str(row.get('document_name') or 'Source document')}{suffix}"
         scope_title = scope_title[:500]
-        # Preserve the parser's logical section boundary so a multi-section
-        # document cannot collapse into one unusable course scope. The bounded
-        # chunk group still splits exceptionally large/repeated sections and is
-        # independent of response pagination, keeping retries deterministic.
-        scope_group = chunk_no // 24
+        visual_regions = metadata.get("visual_regions")
+        if not isinstance(visual_regions, list):
+            visual_regions = []
+        visual_regions = [region for region in visual_regions[:4] if isinstance(region, dict)]
+        visual_prompt_text = str(metadata.get("visual_prompt_text") or "").strip()[:600] or None
+        # Scope V3 is a deterministic density lane. Four adjacent chunks share
+        # one scope only when their same-index fact partitions remain within a
+        # complete instructional-unit budget. This is pagination independent:
+        # no cross-request mutable counter can change scope identity.
+        scope_group = chunk_no // SOURCE_SCOPE_CHUNKS_PER_GROUP
         if source_ref:
             scope_owner = f"source-ref:{source_ref}"
         else:
             scope_owner = "title:" + hashlib.sha256(scope_title.encode("utf-8")).hexdigest()[:24]
-        scope_locator = f"{scope_owner}:chunk-group:{scope_group}"
-        scope_key = "scope2_" + hashlib.sha256(
-            f"{document_id}\x1e{scope_locator}".encode("utf-8"),
-        ).hexdigest()[:32]
-        candidates = [SourceSnapshotFactV2(
-            document_id=document_id,
-            fact_key=f"d{document_order[document_id]}-c{chunk_no + 1}-f{fact_index}",
-            scope_key=scope_key,
-            fact_text=text,
-            source_ref=source_ref,
-            source_page=page,
-            source_chunk=chunk_no,
-            locator={"index_id": str(row["index_id"]), "source_revision": source_revision,
-                     "scope_title": scope_title,
-                     "parser_version": str(metadata.get("parser_version") or "")[:80] or None},
-        ) for fact_index, text in enumerate(fact_texts, start=1)]
+        candidates: list[SourceSnapshotFactV2] = []
+        fact_index = 0
+        try:
+            fact_partitions = partition_chunk_facts_for_density(fact_texts)
+        except ValueError as error:
+            raise _orchestration_v2_http_error(
+                "SOURCE_FACT_DENSITY_INVALID",
+                "One canonical source fact exceeds the instructional density contract.",
+            ) from error
+        for lane_index, partition in enumerate(fact_partitions):
+            scope_locator = f"{scope_owner}:chunk-group:{scope_group}:lane:{lane_index}"
+            scope_key = "scope3_" + hashlib.sha256(
+                f"{document_id}\x1e{scope_locator}".encode("utf-8"),
+            ).hexdigest()[:32]
+            for text in partition:
+                fact_index += 1
+                candidates.append(SourceSnapshotFactV2(
+                    document_id=document_id,
+                    fact_key=f"d{document_order[document_id]}-c{chunk_no + 1}-f{fact_index}",
+                    scope_key=scope_key,
+                    fact_text=text,
+                    source_ref=source_ref,
+                    source_page=page,
+                    source_chunk=chunk_no,
+                    locator={
+                        "index_id": str(row["index_id"]),
+                        "source_revision": source_revision,
+                        "scope_title": scope_title,
+                        "parser_version": str(metadata.get("parser_version") or "")[:80] or None,
+                        "content_kinds": sorted(content_kinds)[:8],
+                        "table_count": table_count,
+                        "source_evidence_revision": (
+                            str(metadata.get("source_evidence_revision") or "").strip().casefold()
+                            if re.fullmatch(
+                                r"[0-9a-f]{64}",
+                                str(metadata.get("source_evidence_revision") or "").strip().casefold(),
+                            )
+                            else None
+                        ),
+                        "visual_regions": visual_regions,
+                        "visual_prompt_text": visual_prompt_text,
+                        "instructional_density_policy_version": INSTRUCTIONAL_DENSITY_POLICY_VERSION,
+                        "scope_partition_lane": lane_index,
+                    },
+                ))
         candidate_bytes = sum(len(fact.fact_text.encode("utf-8")) for fact in candidates)
         exceeds = (len(facts) + len(candidates) > request.page_max_facts
                    or content_bytes + candidate_bytes > request.page_max_bytes)
@@ -16850,14 +17663,38 @@ async def lesson_author_orchestration_v2_course_skeleton(
     }, sort_keys=True))
     usage = AiUsage()
     last_code = "ARCHITECTURE_SKELETON_INVALID"
+    provider_failure_code: str | None = None
     for attempt in range(1, request.max_attempts + 1):
-        text, attempt_usage = await _orchestration_v2_generate_content(
-            request.api_key, request.model, prompt,
-            max_output_tokens=request.max_output_tokens,
-            response_schema=CourseSkeletonProviderWireV2,
-            correlation_id=request.correlation_id,
-            generation_stage="course_skeleton",
-        )
+        try:
+            text, attempt_usage = await _orchestration_v2_generate_content(
+                request.api_key, request.model, prompt,
+                max_output_tokens=request.max_output_tokens,
+                response_schema=CourseSkeletonProviderWireV2,
+                correlation_id=request.correlation_id,
+                generation_stage="course_skeleton",
+            )
+        except HTTPException as error:
+            detail = error.detail if isinstance(error.detail, dict) else {}
+            code = detail.get("code")
+            if code not in {"AI_PROVIDER_TIMEOUT", "AI_PROVIDER_UNAVAILABLE", "AI_PROVIDER_QUOTA_EXHAUSTED"}:
+                raise
+            provider_failure_code = str(code)
+            last_code = provider_failure_code
+            break
+        except Exception as error:
+            # The Node worker persists its dispatch fence before this HTTP
+            # request. Unknown SDK/transport failures must therefore settle
+            # conservatively instead of turning a valid source fallback into a
+            # blank 5xx response.
+            provider_failure_code = "AI_PROVIDER_UNAVAILABLE"
+            last_code = provider_failure_code
+            logger.warning("lesson_author_orchestration_v2 %s", json.dumps({
+                "event": "course_skeleton_provider_fallback",
+                "correlation_id": request.correlation_id,
+                "failure_code": provider_failure_code,
+                "exception_type": type(error).__name__,
+            }, sort_keys=True))
+            break
         usage = combine_usage(usage, attempt_usage)
         try:
             draft = CourseSkeletonDraftV2.model_validate_json(text)
@@ -16875,7 +17712,9 @@ async def lesson_author_orchestration_v2_course_skeleton(
                 "provider_attempt": attempt,
             }, sort_keys=True))
             return {"contract_version": 2, "skeleton": skeleton.model_dump(mode="json"),
-                    "usage": usage.model_dump()}
+                    "usage": usage.model_dump(), "usage_complete": True,
+                    "usage_source": "provider", "content_origin": "provider_validated",
+                    "quality_state": "validated"}
         except OrchestrationContractError as error:
             last_code = error.code
             logger.warning("lesson_author_orchestration_v2 %s", json.dumps({
@@ -16915,7 +17754,9 @@ async def lesson_author_orchestration_v2_course_skeleton(
         "last_failure_code": last_code,
     }, sort_keys=True))
     return {"contract_version": 2, "skeleton": skeleton.model_dump(mode="json"),
-            "usage": usage.model_dump()}
+            "usage": usage.model_dump(), "usage_complete": provider_failure_code is None,
+            "usage_source": "reserved_upper_bound" if provider_failure_code else "provider",
+            "content_origin": "structured_fallback", "quality_state": "review_required"}
 
 
 @app.post("/v1/lesson-author/orchestration-v2/chapter-shard", dependencies=[Depends(require_internal_token)])
@@ -16938,19 +17779,46 @@ async def lesson_author_orchestration_v2_chapter_shard(
     }, sort_keys=True))
     usage = AiUsage()
     last_code = "ARCHITECTURE_SHARD_INVALID"
+    provider_failure_code: str | None = None
     repair_hint = ""
     for attempt in range(1, request.max_attempts + 1):
-        text, attempt_usage = await _orchestration_v2_generate_content(
-            request.api_key, request.model, prompt + repair_hint,
-            max_output_tokens=request.max_output_tokens,
-            response_schema=ChapterShardProviderWireV2,
-            correlation_id=request.correlation_id,
-            generation_stage="chapter_shard",
-        )
+        try:
+            text, attempt_usage = await _orchestration_v2_generate_content(
+                request.api_key, request.model, prompt + repair_hint,
+                max_output_tokens=request.max_output_tokens,
+                response_schema=ChapterShardProviderWireV2,
+                correlation_id=request.correlation_id,
+                generation_stage="chapter_shard",
+            )
+        except HTTPException as error:
+            detail = error.detail if isinstance(error.detail, dict) else {}
+            code = detail.get("code")
+            if code not in {"AI_PROVIDER_TIMEOUT", "AI_PROVIDER_UNAVAILABLE", "AI_PROVIDER_QUOTA_EXHAUSTED"}:
+                raise
+            provider_failure_code = str(code)
+            last_code = provider_failure_code
+            break
+        except Exception as error:
+            provider_failure_code = "AI_PROVIDER_UNAVAILABLE"
+            last_code = provider_failure_code
+            logger.warning("lesson_author_orchestration_v2 %s", json.dumps({
+                "event": "chapter_shard_provider_fallback",
+                "correlation_id": request.correlation_id,
+                "chapter_key": request.shard_plan.chapter_key,
+                "shard_index": request.shard_plan.shard_index,
+                "failure_code": provider_failure_code,
+                "exception_type": type(error).__name__,
+            }, sort_keys=True))
+            break
         usage = combine_usage(usage, attempt_usage)
         try:
             draft = parse_chapter_shard_draft_v2(text)
-            shard = bind_chapter_shard_v2(draft, skeleton=request.skeleton, plan=request.shard_plan)
+            shard = bind_chapter_shard_v2(
+                draft,
+                skeleton=request.skeleton,
+                plan=request.shard_plan,
+                source_facts=request.source_facts,
+            )
             logger.info("lesson_author_orchestration_v2 %s", json.dumps({
                 "event": "chapter_shard_ready", "correlation_id": request.correlation_id,
                 "source_snapshot_hash": request.skeleton.source_snapshot_hash,
@@ -16960,7 +17828,9 @@ async def lesson_author_orchestration_v2_chapter_shard(
                 "source_fact_count": len(request.source_facts), "provider_attempt": attempt,
             }, sort_keys=True))
             return {"contract_version": 2, "shard": shard.model_dump(mode="json"),
-                    "usage": usage.model_dump()}
+                    "usage": usage.model_dump(), "usage_complete": True,
+                    "usage_source": "provider", "content_origin": "provider_validated",
+                    "quality_state": "validated"}
         except OrchestrationContractError as error:
             last_code = error.code
             safe_errors = [{"type": "contract_error", "loc": [], "code": error.code}]
@@ -16981,7 +17851,12 @@ async def lesson_author_orchestration_v2_chapter_shard(
     fallback = fallback_chapter_shard_draft_v2(
         request.skeleton, request.shard_plan, request.source_facts,
     )
-    shard = bind_chapter_shard_v2(fallback, skeleton=request.skeleton, plan=request.shard_plan)
+    shard = bind_chapter_shard_v2(
+        fallback,
+        skeleton=request.skeleton,
+        plan=request.shard_plan,
+        source_facts=request.source_facts,
+    )
     logger.warning("lesson_author_orchestration_v2 %s", json.dumps({
         "event": "chapter_shard_deterministic_fallback_ready",
         "correlation_id": request.correlation_id,
@@ -16992,7 +17867,9 @@ async def lesson_author_orchestration_v2_chapter_shard(
         "last_failure_code": last_code,
     }, sort_keys=True))
     return {"contract_version": 2, "shard": shard.model_dump(mode="json"),
-            "usage": usage.model_dump()}
+            "usage": usage.model_dump(), "usage_complete": provider_failure_code is None,
+            "usage_source": "reserved_upper_bound" if provider_failure_code else "provider",
+            "content_origin": "structured_fallback", "quality_state": "review_required"}
 
 
 @app.post("/v1/lesson-author/orchestration-v2/unit", dependencies=[Depends(require_internal_token)])
@@ -17001,8 +17878,15 @@ async def lesson_author_orchestration_v2_unit(
 ) -> dict[str, Any]:
     """Generate exactly one immutable inventory unit with the proven Stage-2 writer."""
 
+    unit_started = perf_counter()
     contract = request.unit_contract
-    manifest = unit_contract_manifest_v2(contract)
+    manifest = unit_contract_manifest_v2(contract, locale=request.locale)
+    evidence_bundle = manifest.get("source_evidence_bundle")
+    evidence_review_required = (
+        isinstance(evidence_bundle, dict)
+        and evidence_bundle.get("status") == "review_required"
+    )
+    evidence_quality_state = "review_required" if evidence_review_required else "validated"
     document_names = {document.document_id: document.name for document in request.source_documents}
     # Adapt the immutable V2 source ledger to the complete legacy formatter
     # row contract. Omitting any of these display/retrieval fields used to turn
@@ -17028,25 +17912,76 @@ async def lesson_author_orchestration_v2_unit(
     context = "\n".join(f"[{fact.fact_key}] {fact.fact_text}" for fact in contract.source_facts)
     source_outline = f"{contract.chapter_title} > {contract.lesson_title} > {contract.unit_title}"
     source_coverage = format_source_coverage_manifest(manifest)
+    adapted_architecture = unit_contract_v5_architecture_v2(contract)
     adapted = RagLessonAuthorRequest.model_validate({
         **request.model_dump(exclude={"contract_version", "unit_contract", "remaining_workflow_budget_ms"}),
         "outline_context": contract.unit_path,
         "target_scope_instruction": "Generate only the approved immutable orchestration V2 unit.",
         "output_schema_hint": "Return the server-supplied staged unit schema.",
         "operation": "create", "target_type": "chapter", "generation_mode": "staged",
-        "blueprint_architecture": unit_contract_v5_architecture_v2(contract),
+        "blueprint_architecture": adapted_architecture,
     })
+    source_locked_fallback_unit = build_orchestration_v2_source_locked_unit(contract, request.locale)
+    attempt_trace: list[dict[str, Any]] = []
+    semantic_review_mode = settings.semantic_review_mode
+    semantic_review_model = settings.semantic_review_model or request.model
+    semantic_config_hash = semantic_review_config_hash(
+        mode=semantic_review_mode,
+        model=semantic_review_model,
+        timeout_ms=settings.semantic_review_timeout_ms,
+        max_output_tokens=settings.semantic_review_max_output_tokens,
+        provider_attempt_cap=settings.semantic_review_provider_attempt_cap,
+    )
+    unit_supporting_evidence_fact_ids = list(dict.fromkeys(
+        fact_id
+        for plan in contract.component_plan
+        for fact_id in plan.supporting_evidence_fact_ids
+    ))
+    expected = {
+        "unit_title": contract.unit_title,
+        "unit_purpose": contract.unit_purpose,
+        "source_fact_ids": list(contract.unit_source_fact_ids),
+        "supporting_evidence_fact_ids": unit_supporting_evidence_fact_ids,
+        "component_types": [plan.type for plan in contract.component_plan],
+        "component_plan": [plan.model_dump(mode="json") for plan in contract.component_plan],
+        "learning_objectives": list(contract.lesson_learning_objectives),
+        "learning_objective_refs": list(contract.unit_learning_objective_refs),
+        "locale": request.locale,
+        "learner_content_purity": build_learner_content_purity_context(
+            {
+                "source_fact_ids": list(contract.unit_source_fact_ids),
+                "supporting_evidence_fact_ids": unit_supporting_evidence_fact_ids,
+            },
+            manifest,
+            source_rows,
+        ),
+        "instructional_output_budget": {
+            "policy_version": adapted_architecture["lessons"][0]["units"][0]["instructional_density_policy_version"],
+            "source_content_chars": adapted_architecture["lessons"][0]["units"][0]["source_content_chars"],
+            "source_estimated_words": adapted_architecture["lessons"][0]["units"][0]["source_estimated_words"],
+            "max_visible_chars": adapted_architecture["lessons"][0]["units"][0]["max_generated_visible_chars"],
+            "max_words": adapted_architecture["lessons"][0]["units"][0]["max_generated_words"],
+        } if adapted_architecture["lessons"][0]["units"][0]["instructional_density_policy_version"] else None,
+    }
+
+    def semantic_review_unavailable(unit: dict[str, Any], code: str) -> dict[str, Any]:
+        return safe_semantic_review_summary(
+            SemanticReviewRunOutcome(
+                unit=deepcopy(unit),
+                quality_state="review_required",
+                review_status="unavailable",
+                first_review=None,
+                scoped_review=None,
+                repair_attempted=False,
+                repair_applied=False,
+                repair_component_indices=(),
+                failure_code=code,
+            ),
+            config_hash=semantic_config_hash,
+        )
 
     def deterministic_fallback(reason_code: str, *, provider_dispatched: bool) -> dict[str, Any]:
-        unit = build_orchestration_v2_source_locked_unit(contract, request.locale)
-        expected = {
-            "unit_title": contract.unit_title,
-            "source_fact_ids": list(contract.unit_source_fact_ids),
-            "supporting_evidence_fact_ids": [],
-            "component_types": [plan.type for plan in contract.component_plan],
-            "component_plan": [plan.model_dump(mode="json") for plan in contract.component_plan],
-            "locale": request.locale,
-        }
+        unit = deepcopy(source_locked_fallback_unit)
         finding = (validate_staged_unit_content(unit, expected, strict_payload=True)
                    if isinstance(unit, dict) else
                    StagedUnitFinding("Deterministic unit fallback is unavailable.",
@@ -17067,6 +18002,15 @@ async def lesson_author_orchestration_v2_unit(
                 "The source-locked unit fallback did not pass server validation.",
                 status_code=422,
             )
+        # This is a whole-unit deterministic draft, not a provider-validated
+        # candidate. It must remain reviewable even when every source fact is
+        # text-only and otherwise validated. The V2 persistence fence relies
+        # on this exact provenance/quality pair for provider-free replay.
+        fallback_quality_state = "review_required"
+        semantic_summary = (
+            semantic_review_unavailable(unit, "SEMANTIC_REVIEW_NOT_RUN")
+            if semantic_review_mode != "off" else None
+        )
         logger.warning("lesson_author_orchestration_v2 %s", json.dumps({
             "event": "unit_deterministic_fallback_ready",
             "correlation_id": request.correlation_id,
@@ -17077,43 +18021,349 @@ async def lesson_author_orchestration_v2_unit(
             "component_count": len(contract.component_plan),
             "reason_code": reason_code,
             "provider_dispatched": provider_dispatched,
+            "content_origin": "structured_fallback",
+            "quality_state": fallback_quality_state,
+            **({"semantic_review": semantic_summary} if semantic_summary is not None else {}),
         }, sort_keys=True))
         usage = AiUsage().model_dump()
+        # The Node dispatch fence is persisted before this HTTP request. A
+        # first-attempt fallback therefore settles the reserved upper bound
+        # even when Python rejected the request before reaching Gemini. The
+        # durable fallback-only replay is provider-free and fully complete.
+        first_attempt = not request.fallback_only
+        if len(attempt_trace) < 64:
+            attempt_trace.append({
+                "sequence": len(attempt_trace) + 1,
+                "invocation_kind": "deterministic",
+                "invocation_index": 1,
+                "provider_attempt": None,
+                "phase": "fallback",
+                "outcome": "fallback",
+                "event_code": "deterministic_fallback",
+                "failure_stage": ("provider_usage" if reason_code == "PROVIDER_USAGE_INCOMPLETE"
+                                  else "durable_replay" if reason_code == "DURABLE_FINAL_ATTEMPT"
+                                  else "unit_generation"),
+                "failure_code": reason_code[:100] if re.fullmatch(r"[A-Z][A-Z0-9_]{0,99}", reason_code) else "FALLBACK_REQUIRED",
+                "failure_path": None,
+                "provider_dispatched": provider_dispatched,
+                "usage_source": "unknown",
+                "observed_usage": {},
+                "duration_ms": 0,
+                "diagnostics": {},
+            })
         return {"contract_version": 2, "source_snapshot_hash": contract.source_snapshot_hash,
                 "unit_path": contract.unit_path, "unit": unit, "usage": usage,
-                "usage_complete": not provider_dispatched,
-                "usage_source": "reserved_upper_bound" if provider_dispatched else "deterministic_fallback"}
+                "usage_complete": not first_attempt,
+                "usage_source": "reserved_upper_bound" if first_attempt else "deterministic_fallback",
+                "content_origin": "structured_fallback", "quality_state": fallback_quality_state,
+                "attempt_trace": attempt_trace,
+                **({"semantic_review": semantic_summary} if semantic_summary is not None else {})}
 
     if request.fallback_only:
         return deterministic_fallback("DURABLE_FINAL_ATTEMPT", provider_dispatched=False)
+    provider_dispatched = False
+
+    def mark_provider_dispatched() -> None:
+        nonlocal provider_dispatched
+        provider_dispatched = True
+
+    semantic_usage = AiUsage()
+    semantic_usage_complete = True
+    semantic_provider_dispatched = False
+
+    def semantic_provider_attempts_used() -> int:
+        return sum(
+            event.get("event_code") == "provider_http_attempt_started"
+            for event in attempt_trace
+            if isinstance(event, dict)
+        )
+
+    async def call_semantic_provider(
+        *,
+        prompt: str,
+        response_schema: type[BaseModel],
+        invocation_kind: Literal["evaluator", "repair"],
+        invocation_index: int,
+        max_output_tokens: int,
+    ) -> str:
+        """Dispatch one frozen semantic invocation inside the shared request budget."""
+
+        nonlocal semantic_usage, semantic_usage_complete, semantic_provider_dispatched
+        # `generate_content` may retry one transient 5xx response. Reserve both
+        # transport attempts before dispatch so nested retries cannot exceed the
+        # writer/evaluator/repair request ceiling.
+        if (
+            semantic_provider_attempts_used() + PROVIDER_TRANSIENT_MAX_ATTEMPTS
+            > settings.semantic_review_provider_attempt_cap
+        ):
+            raise RuntimeError("SEMANTIC_PROVIDER_ATTEMPT_BUDGET_EXHAUSTED")
+        elapsed_ms = max(0, int((perf_counter() - unit_started) * 1000))
+        remaining_ms = request.remaining_workflow_budget_ms - elapsed_ms
+        timeout_ms = min(settings.semantic_review_timeout_ms, remaining_ms)
+        if timeout_ms < 1_000:
+            raise RuntimeError("SEMANTIC_WORKFLOW_BUDGET_EXHAUSTED")
+        invocation_dispatched = False
+        invocation_usage_complete = False
+
+        def capture(metadata: dict[str, Any]) -> None:
+            nonlocal invocation_dispatched, invocation_usage_complete, semantic_provider_dispatched
+            event = str(metadata.get("event") or "")
+            provider_attempt = metadata.get("provider_attempt")
+            if event == "provider_http_attempt_started":
+                invocation_dispatched = True
+                semantic_provider_dispatched = True
+            counts = [
+                metadata.get(key)
+                for key in ("provider_input_tokens", "provider_output_tokens", "provider_total_tokens")
+            ]
+            if (
+                metadata.get("provider_http_status") == 200
+                and metadata.get("usage_source") == "provider"
+                and all(type(value) is int and value >= 0 for value in counts)
+                and counts[2] >= counts[0] + counts[1]
+            ):
+                invocation_usage_complete = True
+            outcome = {
+                "provider_http_attempt_started": "started",
+                "provider_http_attempt_succeeded": "succeeded",
+                "provider_response_received": "succeeded",
+                "provider_transient_retry": "retrying",
+                "provider_timeout": "failed",
+                "provider_quota_exhausted": "failed",
+                "provider_unavailable": "failed",
+                "provider_request_failed": "failed",
+            }.get(event)
+            if (
+                outcome is None
+                or type(provider_attempt) is not int
+                or not 1 <= provider_attempt <= 8
+                or len(attempt_trace) >= 64
+            ):
+                return
+            raw_code = str(metadata.get("internal_failure_code") or event).upper()
+            failure_code = re.sub(r"[^A-Z0-9_]", "_", raw_code)[:100] or "SEMANTIC_PROVIDER_FAILED"
+            observed_usage = {
+                key: metadata[key]
+                for key in ("provider_input_tokens", "provider_output_tokens", "provider_total_tokens")
+                if type(metadata.get(key)) is int and metadata[key] >= 0
+            }
+            diagnostics = {
+                key: metadata[key]
+                for key in ("provider_http_status", "provider_status", "provider_error_category",
+                            "provider_schema_constraint", "provider_finish_reason")
+                if metadata.get(key) is not None
+            }
+            attempt_trace.append({
+                "sequence": len(attempt_trace) + 1,
+                "invocation_kind": invocation_kind,
+                "invocation_index": invocation_index,
+                "provider_attempt": provider_attempt,
+                "phase": "semantic_review" if invocation_kind == "evaluator" else "semantic_repair",
+                "outcome": outcome,
+                "event_code": event[:96],
+                "failure_stage": "provider_transport" if outcome == "failed" else None,
+                "failure_code": failure_code if outcome == "failed" else None,
+                "failure_path": None,
+                "provider_dispatched": True,
+                "usage_source": (
+                    "provider_reported" if metadata.get("usage_source") == "provider"
+                    else "estimated" if metadata.get("usage_source") == "local_estimate"
+                    else "unknown"
+                ),
+                "observed_usage": observed_usage,
+                "duration_ms": max(0, int(metadata.get("duration_ms") or 0)),
+                "diagnostics": diagnostics,
+            })
+
+        try:
+            text, invocation_usage = await generate_content(
+                request.api_key,
+                semantic_review_model,
+                prompt,
+                max_output_tokens=max_output_tokens,
+                json_mode=True,
+                response_schema=response_schema,
+                thinking_config=types.ThinkingConfig(include_thoughts=False),
+                request_timeout_ms=timeout_ms,
+                on_provider_telemetry=capture,
+            )
+            semantic_usage = combine_usage(semantic_usage, invocation_usage)
+            return text
+        finally:
+            if invocation_dispatched and not invocation_usage_complete:
+                semantic_usage_complete = False
+
+    # The durable caller has its own request deadline. End generation before
+    # that boundary so timeout handling can still build and return the
+    # deterministic fallback over the same HTTP request.
+    generation_budget_ms = max(
+        1,
+        request.remaining_workflow_budget_ms
+        - ORCHESTRATION_V2_UNIT_FALLBACK_RESPONSE_HEADROOM_MS,
+    )
     try:
         value, usage = await asyncio.wait_for(generate_staged_lesson_author_proposal(
             adapted, context, source_outline, source_coverage, source_rows=source_rows,
             source_coverage_manifest=manifest, checkpoint_unit_index=0,
-            remaining_workflow_budget_ms=request.remaining_workflow_budget_ms,
-        ), request.remaining_workflow_budget_ms / 1000)
+            remaining_workflow_budget_ms=generation_budget_ms,
+            checkpoint_component_fallback_unit=source_locked_fallback_unit,
+            on_provider_dispatch=mark_provider_dispatched,
+            attempt_trace_sink=attempt_trace,
+        ), generation_budget_ms / 1000)
         unit = value.get("unit") if isinstance(value, dict) else None
         if not isinstance(unit, dict) or unit.get("title") != contract.unit_title:
             raise LessonAuthorProposalValidationError("ORCHESTRATION_V2_UNIT_IDENTITY_CHANGED")
         provider_usage_complete = value.pop("provider_usage_complete", False) is True
         if not provider_usage_complete:
-            return deterministic_fallback("PROVIDER_USAGE_INCOMPLETE", provider_dispatched=True)
+            return deterministic_fallback("PROVIDER_USAGE_INCOMPLETE", provider_dispatched=provider_dispatched)
+        fallback_component_indices = value.pop("fallback_component_indices", [])
+        partial_fallback = bool(fallback_component_indices)
+        content_origin = "structured_fallback" if partial_fallback else "provider_validated"
+        semantic_summary: dict[str, Any] | None = None
+        semantic_outcome: SemanticReviewRunOutcome | None = None
+        if semantic_review_mode != "off":
+            reviewer_invocation_index = 0
+            allowed_review_fact_ids = {
+                fact.fact_key for fact in contract.source_facts
+            }
+
+            async def semantic_reviewer(
+                candidate: dict[str, Any],
+                component_indices: tuple[int, ...],
+            ) -> SemanticReviewResponse:
+                nonlocal reviewer_invocation_index
+                reviewer_invocation_index += 1
+                prompt = build_semantic_review_prompt(
+                    unit=candidate,
+                    expected=expected,
+                    manifest=manifest,
+                    component_indices=component_indices,
+                    locale=request.locale,
+                )
+                text = await call_semantic_provider(
+                    prompt=prompt,
+                    response_schema=SemanticReviewResponse,
+                    invocation_kind="evaluator",
+                    invocation_index=reviewer_invocation_index,
+                    max_output_tokens=settings.semantic_review_max_output_tokens,
+                )
+                parsed = SemanticReviewResponse.model_validate_json(text)
+                return validate_semantic_review_response(
+                    parsed,
+                    component_count=len(candidate.get("components", [])),
+                    allowed_source_fact_ids=allowed_review_fact_ids,
+                    requested_component_indices=component_indices,
+                )
+
+            async def semantic_repairer(
+                candidate: dict[str, Any],
+                component_indices: tuple[int, ...],
+                findings: tuple[Any, ...],
+            ) -> dict[str, Any]:
+                prompt = build_semantic_repair_prompt(
+                    unit=candidate,
+                    expected=expected,
+                    manifest=manifest,
+                    component_indices=component_indices,
+                    findings=findings,
+                    locale=request.locale,
+                )
+                response_model = build_staged_multi_repair_model(
+                    candidate, list(component_indices), [],
+                )
+                text = await call_semantic_provider(
+                    prompt=prompt,
+                    response_schema=response_model,
+                    invocation_kind="repair",
+                    invocation_index=1,
+                    max_output_tokens=min(
+                        max(settings.semantic_review_max_output_tokens, 8_192),
+                        request.max_output_tokens,
+                        16_384,
+                    ),
+                )
+                diagnostics: dict[str, Any] = {}
+                delta = decode_staged_multi_repair(
+                    text, candidate, list(component_indices), [], diagnostics,
+                )
+                return merge_staged_component_payload_delta(
+                    candidate, delta, list(component_indices), coverage_targets=[],
+                )
+
+            def deterministic_semantic_recheck(candidate: dict[str, Any]) -> str | None:
+                finding = validate_staged_unit_content(candidate, expected, strict_payload=True)
+                return str(finding) if finding is not None else None
+
+            semantic_outcome = await run_bounded_semantic_review(
+                unit,
+                reviewer=semantic_reviewer,
+                repairer=semantic_repairer,
+                deterministic_validate=deterministic_semantic_recheck,
+                allow_repair=semantic_review_mode == "repair",
+            )
+            unit = semantic_outcome.unit
+            semantic_summary = safe_semantic_review_summary(
+                semantic_outcome,
+                config_hash=semantic_config_hash,
+            )
+        # Component fallback passes the same instructional validator as the
+        # provider-authored components, so provenance does not reduce its
+        # publication readiness.
+        quality_state = evidence_quality_state
+        if (
+            semantic_review_mode == "repair"
+            and semantic_outcome is not None
+            and semantic_outcome.quality_state == "review_required"
+        ):
+            quality_state = "review_required"
+        combined_usage = combine_usage(usage, semantic_usage)
+        combined_usage_complete = provider_usage_complete and semantic_usage_complete
         logger.info("lesson_author_orchestration_v2 %s", json.dumps({
             "event": "unit_ready", "correlation_id": request.correlation_id,
             "source_snapshot_hash": contract.source_snapshot_hash, "chapter_key": contract.chapter_key,
             "unit_path": contract.unit_path, "source_fact_count": len(contract.source_facts),
             "component_count": len(unit.get("components", [])),
             "provider_usage_complete": provider_usage_complete,
+            "fallback_component_indices": fallback_component_indices,
+            "content_origin": content_origin,
+            "quality_state": quality_state,
+            "semantic_review_mode": semantic_review_mode,
+            "semantic_provider_dispatched": semantic_provider_dispatched,
+            **({"semantic_review": semantic_summary} if semantic_summary is not None else {}),
         }, sort_keys=True))
         return {"contract_version": 2, "source_snapshot_hash": contract.source_snapshot_hash,
-                "unit_path": contract.unit_path, "unit": unit, "usage": usage.model_dump(),
-                "usage_complete": True, "usage_source": "provider"}
+                "unit_path": contract.unit_path, "unit": unit, "usage": combined_usage.model_dump(),
+                "usage_complete": combined_usage_complete,
+                "usage_source": "provider" if combined_usage_complete else "reserved_upper_bound",
+                "content_origin": content_origin, "quality_state": quality_state,
+                "attempt_trace": attempt_trace,
+                **({"semantic_review": semantic_summary} if semantic_summary is not None else {})}
     except asyncio.TimeoutError:
-        return deterministic_fallback("AI_STAGED_LESSON_WORKFLOW_TIMEOUT", provider_dispatched=True)
+        return deterministic_fallback("AI_STAGED_LESSON_WORKFLOW_TIMEOUT", provider_dispatched=provider_dispatched)
     except WorkflowFailure as error:
-        return deterministic_fallback(error.internal_code or error.code, provider_dispatched=True)
-    except (LessonAuthorProposalValidationError, ValidationError, ValueError):
-        return deterministic_fallback("ORCHESTRATION_V2_UNIT_INVALID", provider_dispatched=True)
+        logger.warning("lesson_author_orchestration_v2 %s", json.dumps({
+            "event": "unit_generation_failed",
+            "correlation_id": request.correlation_id,
+            "chapter_key": contract.chapter_key,
+            "unit_path": contract.unit_path,
+            "failure_stage": error.failure_stage,
+            "failure_code": error.internal_code or error.code,
+            "provider_dispatched": provider_dispatched,
+        }, sort_keys=True))
+        return deterministic_fallback(error.internal_code or error.code, provider_dispatched=provider_dispatched)
+    except (LessonAuthorProposalValidationError, ValidationError, ValueError) as error:
+        validation_errors = ([{"loc": list(item.get("loc", ())), "type": item.get("type")}
+                              for item in error.errors()[:16]] if isinstance(error, ValidationError) else [])
+        logger.warning("lesson_author_orchestration_v2 %s", json.dumps({
+            "event": "unit_generation_invalid",
+            "correlation_id": request.correlation_id,
+            "chapter_key": contract.chapter_key,
+            "unit_path": contract.unit_path,
+            "exception_type": type(error).__name__,
+            "validation_errors": validation_errors,
+            "provider_dispatched": provider_dispatched,
+        }, sort_keys=True))
+        return deterministic_fallback("ORCHESTRATION_V2_UNIT_INVALID", provider_dispatched=provider_dispatched)
 
 
 @app.post("/v1/lesson-author/blueprint", dependencies=[Depends(require_internal_token)])

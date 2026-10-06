@@ -780,11 +780,14 @@ class LessonAuthorBlueprintContractTests(unittest.TestCase):
         unit["components"].append({
             "type": "problem",
             "source_fact_ids": ["p3-f1", "p9-f1"],
-            "question": "Ý chính là gì?",
+            "problem_type": "multiple_choice",
+            "question": "Phát biểu nào phản ánh đúng mục tiêu an toàn lao động?",
             "choices": [
                 {"text": "Bảo vệ người lao động", "correct": True},
-                {"text": "Không liên quan", "correct": False},
+                {"text": "Không liên quan đến công việc", "correct": False},
+                {"text": "Chỉ xử lý sau sự cố", "correct": False},
             ],
+            "explanation": "Phân tích an toàn lao động nhằm bảo vệ người lao động trước khi thực hiện công việc.",
         })
         reason = validate_staged_unit_content(unit, expected)
         self.assertIn("outside", reason or "")
@@ -855,7 +858,8 @@ class LessonAuthorBlueprintContractTests(unittest.TestCase):
             },
         )
 
-        self.assertIn("mục nguồn src-002", coverage)
+        self.assertIn("[src-002-f1] The office area is neat", coverage)
+        self.assertNotIn("mục nguồn", coverage)
         self.assertIn("The office area is neat", source_context)
         self.assertNotIn("Perform cleaning", source_context)
         self.assertNotIn("every chapter", source_context)
@@ -914,12 +918,12 @@ class LessonAuthorBlueprintContractTests(unittest.TestCase):
         html = unit["components"][0]["html"]
         self.assertIn("<h3>Khái niệm và Mục tiêu ATSKNN</h3>", html)
         self.assertIn("<strong>An toàn lao động:</strong>", html)
-        self.assertIn("<h4>An toàn lao động và Sức khỏe nghề nghiệp</h4>", html)
+        self.assertIn("<h3>An toàn lao động và Sức khỏe nghề nghiệp</h3>", html)
         self.assertIn("<ul><li>Phòng ngừa thương tích", html)
         self.assertNotIn("<p>Phòng ngừa thương tích", html)
         self.assertIsNone(validate_staged_unit_content(unit, expected))
 
-    def test_source_locked_fallback_rebuilds_grounded_short_text_problem(self) -> None:
+    def test_source_locked_fallback_rebuilds_grounded_single_choice_problem(self) -> None:
         unit = build_source_locked_html_unit(
             {
                 "unit_title": "Bài kiểm tra",
@@ -930,17 +934,22 @@ class LessonAuthorBlueprintContractTests(unittest.TestCase):
                 "facts": [{
                     "fact_id": "p1-f1",
                     "text": (
-                        "Nội dung nguồn mô tả rõ các yêu cầu kiểm tra khu vực làm việc trước khi bắt đầu, "
-                        "cách ghi nhận mối nguy, biện pháp kiểm soát cần áp dụng, và trách nhiệm báo cáo "
-                        "ngay khi phát hiện điều kiện không an toàn trong quá trình thực hiện công việc."
+                        "Câu hỏi: Hành động nào cần thực hiện ngay khi phát hiện điều kiện không an toàn? "
+                        "A. Ghi nhận mối nguy và báo cáo theo quy định. "
+                        "B. Tiếp tục công việc mà không kiểm tra. "
+                        "C. Bỏ qua điều kiện vì chưa có tai nạn.\n"
+                        "Đáp án: A\nGiải thích: Nội dung nguồn mô tả rõ trách nhiệm ghi nhận và báo cáo "
+                        "ngay khi phát hiện điều kiện không an toàn."
                     ),
                 }],
             },
         )
         self.assertIsNotNone(unit)
         self.assertEqual([component["type"] for component in unit["components"]], ["html", "problem"])
-        self.assertEqual(unit["components"][1]["problem_type"], "short_text")
-        self.assertIn("Nội dung nguồn mô tả rõ", unit["components"][1]["answer"])
+        problem = unit["components"][1]
+        self.assertEqual(problem["problem_type"], "multiple_choice")
+        self.assertEqual(sum(choice["correct"] for choice in problem["choices"]), 1)
+        self.assertIn("Nội dung nguồn mô tả rõ", problem["explanation"])
         self.assertIsNone(validate_staged_unit_content(unit, {
             "component_types": ["html", "problem"],
             "source_fact_ids": ["p1-f1"],
@@ -1016,15 +1025,15 @@ class LessonAuthorBlueprintContractTests(unittest.TestCase):
         recovered, dropped = prepare_source_locked_expected(expected, manifest)
         unit = build_source_locked_html_unit(recovered, manifest)
 
-        self.assertEqual(recovered["component_types"], ["html", "la_sortable", "la_faq"])
-        self.assertEqual(dropped, [])
+        self.assertEqual(recovered["component_types"], ["html", "la_sortable"])
+        self.assertEqual(dropped, ["la_faq"])
         self.assertIsNotNone(unit)
         self.assertEqual(
             [component["type"] for component in unit["components"]],
-            ["html", "la_sortable", "la_faq"],
+            ["html", "la_sortable"],
         )
         self.assertEqual(len(unit["components"][1]["items"]), 5)
-        self.assertIsNone(validate_staged_unit_content(unit, expected))
+        self.assertIsNone(validate_staged_unit_content(unit, recovered))
 
     def test_blueprint_expands_one_unit_source_chapter_and_allocates_all_facts(self) -> None:
         blueprint = {
@@ -1180,7 +1189,7 @@ class LessonAuthorBlueprintContractTests(unittest.TestCase):
         self.assertEqual(unit["components"][2]["items"][0], "Prepare the approved cleaning supplies and protect nearby equipment before work begins.")
         self.assertIsNone(validate_staged_unit_content(unit, expected))
 
-    def test_source_locked_recovery_never_mutates_the_approved_component_plan(self) -> None:
+    def test_source_locked_recovery_drops_only_formats_without_deterministic_source_evidence(self) -> None:
         expected, dropped = prepare_source_locked_expected(
             {
                 "unit_title": "Tiêu chuẩn yêu cầu",
@@ -1203,11 +1212,11 @@ class LessonAuthorBlueprintContractTests(unittest.TestCase):
             }]},
         )
 
-        self.assertEqual(expected["component_types"], ["html", "la_faq", "la_crossword"])
-        self.assertEqual(dropped, [])
+        self.assertEqual(expected["component_types"], ["html"])
+        self.assertEqual(dropped, ["la_faq", "la_crossword"])
         self.assertEqual(
             [item["type"] for item in expected["component_plan"]],
-            ["html", "la_faq", "la_crossword"],
+            ["html"],
         )
 
     def test_source_locked_skeleton_preserves_blueprint_lesson_titles_for_docx(self) -> None:

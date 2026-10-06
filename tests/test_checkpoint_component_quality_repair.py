@@ -140,6 +140,51 @@ class CheckpointComponentQualityRepairTests(unittest.TestCase):
         for phrase in ("must NEVER contain an FAQ", "Câu hỏi thường gặp", "only a selected la_faq component"):
             self.assertIn(phrase, contract)
 
+    def test_density_v3_repairs_only_oversized_html_and_legacy_scope_is_unchanged(self):
+        _, valid, scope, _ = fixture()
+        oversized = deepcopy(valid)
+        oversized["components"][0]["semantic_content"] = {"version": 2, "sections": [{
+            "heading": "Bounded treatment",
+            "blocks": [
+                {"kind": "paragraph", "text": (f"Section {index} " + "instruction " * 150)[:1900]}
+                for index in range(4)
+            ],
+        }]}
+        self.assertIsNone(main.validate_staged_unit_content(oversized, scope, strict_payload=True))
+        scope["instructional_output_budget"] = {
+            "policy_version": "unit-content-v3-density-1",
+            "source_content_chars": 80,
+            "source_estimated_words": 12,
+            "max_visible_chars": 4_000,
+            "max_words": 600,
+        }
+
+        finding = main.validate_staged_unit_content(oversized, scope, strict_payload=True)
+        self.assertEqual(finding.code, "HTML_INSTRUCTIONAL_DENSITY_EXCEEDED")
+        self.assertEqual(main.staged_component_repair_targets(oversized, scope), [0])
+
+        scope["instructional_output_budget"]["max_words"] = 0
+        invalid = main.validate_staged_unit_content(valid, scope, strict_payload=True)
+        self.assertEqual(invalid.code, "INSTRUCTIONAL_OUTPUT_BUDGET_INVALID")
+        self.assertEqual(main.staged_component_repair_targets(valid, scope), [])
+
+    def test_required_source_artifact_must_survive_semantic_rendering(self):
+        _, valid, scope, _ = fixture()
+        scope["component_plan"][0]["required_artifacts"] = [{"type": "table", "minimum_items": 2}]
+        finding = main.validate_staged_unit_content(valid, scope, strict_payload=True)
+        self.assertEqual(finding.code, "REQUIRED_ARTIFACT_NOT_PRESERVED")
+        self.assertEqual(main.staged_component_repair_targets(valid, scope), [0])
+
+        preserved = deepcopy(valid)
+        preserved["components"][0]["semantic_content"]["sections"][0]["blocks"].append({
+            "kind": "table",
+            "rows": [
+                {"label": "Hazard", "value": "Approved control"},
+                {"label": "Verification", "value": "Recorded result"},
+            ],
+        })
+        self.assertIsNone(main.validate_staged_unit_content(preserved, scope, strict_payload=True))
+
     def test_sortable_shape_metadata_is_bounded_and_redacted(self):
         cases = [(None, "ARRAY_REQUIRED"), ([], "CARDINALITY"),
                  ([{"PRIVATE_KEY": "PRIVATE_VALUE"}] * 3, "FIELD_REQUIRED"),
@@ -183,7 +228,8 @@ class CheckpointComponentQualityRepairTests(unittest.TestCase):
             self.assertEqual(failure.exception.internal_code, "CHAPTER_COMPONENT_REPAIR_EXHAUSTED")
             self.assertEqual(failure.exception.failure_stage, "chapter_component_repair_revalidation")
             self.assertIn(failure.exception.diagnostics["repair_failure_code"], {
-                "COMPONENT_REPAIR_PROTECTED_FIELD_EMITTED", "COMPONENT_REPAIR_TARGET_INVALID", "COMPONENT_PAYLOAD_SCHEMA_INVALID"})
+                "COMPONENT_REPAIR_PROTECTED_FIELD_EMITTED", "COMPONENT_REPAIR_TARGET_INVALID",
+                "COMPONENT_PAYLOAD_SCHEMA_INVALID", "COMPONENT_REPAIR_SLOTS_REQUIRED"})
             self.assertEqual(provider.await_count, 2)
             fallback.assert_not_called()
             self.assertEqual(broken, baseline)

@@ -7,6 +7,26 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from app.instructional_density import (
+    DEFAULT_INSTRUCTIONAL_DENSITY_BUDGET,
+    INSTRUCTIONAL_DENSITY_POLICY_VERSION,
+    evaluate_instructional_density,
+    instructional_output_budget,
+    profile_instructional_texts,
+)
+from app.instructional_quality import (
+    build_source_locked_single_choice,
+    clean_source_facts,
+    ordered_source_steps,
+    parse_structured_table_rows,
+    source_clarification_signals,
+    source_term_definitions,
+)
+from app.source_evidence_bundle import (
+    build_degraded_source_evidence_bundle,
+    build_source_evidence_bundle,
+)
+
 from app.lesson_author_orchestration_v2 import (
     ArchitectureComponentAuthorReviewV2,
     ArchitectureComponentPlanV2,
@@ -23,6 +43,7 @@ from app.lesson_author_orchestration_v2 import (
 MAX_SOURCE_PAGE_FACTS = 500
 MAX_SOURCE_SCOPES = 4096
 MAX_SHARD_SOURCE_CHARS = 400_000
+MAX_V3_ARCHITECTURE_SHARD_SOURCE_CHARS = 60_000
 MAX_UNIT_SOURCE_FACTS = 32_768
 COMPONENT_PLAN_ID_PATTERN = r"^cp2_[a-f0-9]{32}$"
 ORCHESTRATION_V2_PROVIDER_SCHEMA_PROJECTION_VERSION = "orchestration-v2-google-wire-2"
@@ -377,7 +398,10 @@ def fallback_chapter_shard_draft_v2(
                              f"chapter '{chapter.title}'."))
         lessons.append(LessonArchitectureV2(
             title=lesson_title[:180],
-            objective=lesson_objective[:2000],
+            # LessonArchitectureV2 owns this boundary (max_length=500). Keep
+            # deterministic fallback inside the same contract as provider
+            # output so a provider outage can never turn fallback into ASGI 500.
+            objective=lesson_objective[:500],
             learning_objectives=learning_objectives,
             learning_activities=[("Đọc nội dung, đối chiếu tình huống và thực hành áp dụng."
                                   if vi else "Study the content, compare scenarios, and practice applying it.")],
@@ -416,7 +440,7 @@ class UnitComponentPlanV2(BaseModel):
     title: str = Field(min_length=1, max_length=180)
     rationale: str = Field(min_length=1, max_length=500)
     purpose: Literal["explain", "assess", "sequence", "relationship", "terminology", "clarify"]
-    source_fact_ids: list[str] = Field(min_length=1, max_length=MAX_UNIT_SOURCE_FACTS)
+    source_fact_ids: list[str] = Field(max_length=MAX_UNIT_SOURCE_FACTS)
     supporting_evidence_fact_ids: list[str] = Field(max_length=MAX_UNIT_SOURCE_FACTS)
     learning_objective_refs: list[str] = Field(min_length=1, max_length=24)
     source_scope_ids: list[str] = Field(min_length=1, max_length=4096)
@@ -458,18 +482,31 @@ class UnitGenerationContractV2(BaseModel):
         if len(plan_ids) != len(set(plan_ids)) or self.component_plan[0].type != "html":
             raise ValueError("ORCHESTRATION_V2_UNIT_PLAN_INVALID")
         fact_set = set(fact_ids)
-        for plan in self.component_plan:
+        v3_markers = [
+            fact.locator.get("instructional_density_policy_version") == INSTRUCTIONAL_DENSITY_POLICY_VERSION
+            for fact in self.source_facts
+        ]
+        if any(v3_markers) and not all(v3_markers):
+            raise ValueError("ORCHESTRATION_V2_UNIT_PLAN_INVALID")
+        uses_unit_content_v3 = bool(v3_markers) and all(v3_markers)
+        for index, plan in enumerate(self.component_plan):
             expected_fact_ids = [fact.fact_key for fact in self.source_facts
                                  if fact.scope_key in set(plan.source_scope_ids)]
+            expected_owned_fact_ids = expected_fact_ids if not uses_unit_content_v3 or index == 0 else []
+            expected_supporting_fact_ids = [] if not uses_unit_content_v3 or index == 0 else expected_fact_ids
             if (len(plan.source_fact_ids) != len(set(plan.source_fact_ids))
+                    or len(plan.supporting_evidence_fact_ids) != len(set(plan.supporting_evidence_fact_ids))
                     or len(plan.source_scope_ids) != len(set(plan.source_scope_ids))
                     or not set(plan.source_fact_ids).issubset(fact_set)
-                    or plan.supporting_evidence_fact_ids
+                    or not set(plan.supporting_evidence_fact_ids).issubset(fact_set)
+                    or set(plan.source_fact_ids) & set(plan.supporting_evidence_fact_ids)
                     or not set(plan.source_scope_ids).issubset(scopes)
-                    or plan.source_fact_ids != expected_fact_ids
+                    or plan.source_fact_ids != expected_owned_fact_ids
+                    or plan.supporting_evidence_fact_ids != expected_supporting_fact_ids
                     or plan.learning_objective_refs != self.unit_learning_objective_refs):
                 raise ValueError("ORCHESTRATION_V2_UNIT_PLAN_INVALID")
-        if set(self.component_plan[0].source_fact_ids) != fact_set:
+        if (set(self.component_plan[0].source_fact_ids) != fact_set
+                or self.component_plan[0].supporting_evidence_fact_ids):
             raise ValueError("ORCHESTRATION_V2_UNIT_PLAN_INVALID")
         base = self.model_dump(exclude={"contract_hash"})
         if canonical_hash(base) != self.contract_hash:
@@ -477,16 +514,46 @@ class UnitGenerationContractV2(BaseModel):
         return self
 
 
-def unit_contract_manifest_v2(contract: UnitGenerationContractV2) -> dict[str, Any]:
+def unit_contract_manifest_v2(
+    contract: UnitGenerationContractV2,
+    *,
+    locale: Literal["vi", "en"] = "vi",
+) -> dict[str, Any]:
     facts = [{"fact_id": fact.fact_key, "text": fact.fact_text, "document_id": fact.document_id,
               "source_ref": fact.source_ref, "source_page": fact.source_page,
-              "source_chunk": fact.source_chunk} for fact in contract.source_facts]
+              "source_chunk": fact.source_chunk, "locator": fact.locator} for fact in contract.source_facts]
+    try:
+        evidence_bundle = build_source_evidence_bundle(
+            source_snapshot_hash=contract.source_snapshot_hash,
+            source_facts=contract.source_facts,
+            locale=locale,
+        )
+    except (TypeError, ValueError):
+        # Structured enrichment is additive. If malformed optional locator
+        # metadata slips through an older snapshot, preserve the generated
+        # draft and force review instead of failing the entire writer request.
+        evidence_bundle = build_degraded_source_evidence_bundle(
+            source_snapshot_hash=contract.source_snapshot_hash,
+            source_facts=contract.source_facts,
+            locale=locale,
+        )
     return {"facts": facts, "supporting_evidence_facts": [], "total_fact_count": len(facts),
-            "represented_fact_count": len(facts), "fact_scope_complete": True, "truncated": False}
+            "represented_fact_count": len(facts), "fact_scope_complete": True, "truncated": False,
+            "source_evidence_bundle": evidence_bundle.model_dump(mode="json")}
 
 
 def unit_contract_v5_architecture_v2(contract: UnitGenerationContractV2) -> dict[str, Any]:
     source_refs = list(dict.fromkeys(fact.source_ref for fact in contract.source_facts if fact.source_ref))
+    profile = profile_instructional_texts(
+        [fact.fact_text for fact in contract.source_facts],
+        learning_objective_count=len(contract.unit_learning_objective_refs),
+        independent_topic_count=len(contract.unit_source_scope_ids),
+    )
+    output_budget = instructional_output_budget(profile)
+    uses_density_v3 = all(
+        fact.locator.get("instructional_density_policy_version") == INSTRUCTIONAL_DENSITY_POLICY_VERSION
+        for fact in contract.source_facts
+    )
     plans = [{"component_plan_id": plan.component_plan_id, "learning_objective_refs": plan.learning_objective_refs,
               "type": plan.type, "title": plan.title, "rationale": plan.rationale, "purpose": plan.purpose,
               "source_fact_ids": plan.source_fact_ids,
@@ -494,6 +561,11 @@ def unit_contract_v5_architecture_v2(contract: UnitGenerationContractV2) -> dict
               "content_requirements": plan.content_requirements, "reason_code": "orchestration_v2_approved",
               "learning_block_ids": plan.learning_block_ids, "required_artifacts": plan.required_artifacts}
              for plan in contract.component_plan]
+    unit_supporting_evidence_fact_ids = list(dict.fromkeys(
+        fact_id
+        for plan in contract.component_plan
+        for fact_id in plan.supporting_evidence_fact_ids
+    ))
     return {"component_capabilities": {"version": 2, "max_components_per_unit": 4,
                                         "max_assessments_per_unit": 3,
                                         "assessment_enabled": any(plan.type == "problem" for plan in contract.component_plan)},
@@ -510,7 +582,15 @@ def unit_contract_v5_architecture_v2(contract: UnitGenerationContractV2) -> dict
                     "supporting_evidence_scope_ids": [],
                     "learning_objective_refs": contract.unit_learning_objective_refs,
                     "source_refs": source_refs, "source_fact_ids": contract.unit_source_fact_ids,
-                    "supporting_evidence_fact_ids": [], "learning_blocks": [], "component_plan": plans}]}]}
+                    "supporting_evidence_fact_ids": unit_supporting_evidence_fact_ids,
+                    "learning_blocks": [], "component_plan": plans,
+                    "instructional_density_policy_version": (
+                        INSTRUCTIONAL_DENSITY_POLICY_VERSION if uses_density_v3 else None
+                    ),
+                    "source_content_chars": profile.source_chars,
+                    "source_estimated_words": profile.estimated_words,
+                    "max_generated_visible_chars": output_budget.max_visible_chars,
+                    "max_generated_words": output_budget.max_words}]}]}
 
 
 def build_source_snapshot_payload_v2(
@@ -614,21 +694,26 @@ def bind_course_skeleton_v2(
 
 def plan_chapter_shards_v2(
     skeleton: CourseSkeletonV2, scope_catalog: list[SourceScopeCatalogEntryV2],
-    *, max_source_chars: int = MAX_SHARD_SOURCE_CHARS,
+    *, max_source_chars: int | None = None,
 ) -> list[ChapterShardPlanV2]:
-    if max_source_chars < 1 or max_source_chars > MAX_SHARD_SOURCE_CHARS:
+    if max_source_chars is not None and (max_source_chars < 1 or max_source_chars > MAX_SHARD_SOURCE_CHARS):
         raise OrchestrationContractError("ARCHITECTURE_SHARD_BUDGET_INVALID")
     by_scope = {scope.scope_key: scope for scope in scope_catalog}
     plans: list[ChapterShardPlanV2] = []
     for chapter in sorted(skeleton.chapters, key=lambda value: value.order):
+        chapter_limit = max_source_chars or (
+            MAX_V3_ARCHITECTURE_SHARD_SOURCE_CHARS
+            if all(scope_id.startswith("scope3_") for scope_id in chapter.source_scope_ids)
+            else MAX_SHARD_SOURCE_CHARS
+        )
         groups: list[list[SourceScopeCatalogEntryV2]] = []
         current: list[SourceScopeCatalogEntryV2] = []
         current_chars = 0
         for scope_id in chapter.source_scope_ids:
             scope = by_scope.get(scope_id)
-            if scope is None or scope.content_chars > max_source_chars:
+            if scope is None or scope.content_chars > chapter_limit:
                 raise OrchestrationContractError("ARCHITECTURE_SCOPE_EXCEEDS_SHARD_CAPACITY")
-            if current and current_chars + scope.content_chars > max_source_chars:
+            if current and current_chars + scope.content_chars > chapter_limit:
                 groups.append(current)
                 current, current_chars = [], 0
             current.append(scope)
@@ -647,6 +732,7 @@ def plan_chapter_shards_v2(
 
 def bind_chapter_shard_v2(
     draft: ChapterShardDraftV2, *, skeleton: CourseSkeletonV2, plan: ChapterShardPlanV2,
+    source_facts: list[SourceSnapshotFactV2] | None = None,
 ) -> ChapterBlueprintShardV2:
     chapter = next((item for item in skeleton.chapters if item.chapter_key == plan.chapter_key), None)
     if chapter is None or chapter.order != plan.order:
@@ -656,11 +742,137 @@ def bind_chapter_shard_v2(
         raise OrchestrationContractError("ARCHITECTURE_SHARD_UNIT_ALLOCATION_INCOMPLETE")
     if sum(len(lesson.units) for lesson in draft.lessons) > 4096:
         raise OrchestrationContractError("ARCHITECTURE_SHARD_UNIT_LIMIT_EXCEEDED")
+    if source_facts is not None:
+        fact_scopes = {fact.scope_key for fact in source_facts}
+        if fact_scopes != set(plan.source_scope_ids):
+            raise OrchestrationContractError("ARCHITECTURE_SHARD_CONTEXT_MISMATCH")
+        v3_markers = [
+            fact.locator.get("instructional_density_policy_version") == INSTRUCTIONAL_DENSITY_POLICY_VERSION
+            for fact in source_facts
+        ]
+        # A mixed snapshot is invalid. V3 snapshots additionally receive the
+        # density gate, while every snapshot receives the component evidence
+        # gate so a legacy/unmarked run cannot revive fabricated assessments.
+        if any(v3_markers) and not all(v3_markers):
+            raise OrchestrationContractError("ARCHITECTURE_DENSITY_CONTRACT_MIXED")
+        if not any(v3_markers) or all(v3_markers):
+            facts_by_scope: dict[str, list[SourceSnapshotFactV2]] = {}
+            for fact in source_facts:
+                facts_by_scope.setdefault(fact.scope_key, []).append(fact)
+            normalized_lessons: list[LessonArchitectureV2] = []
+            assessment_obligations: list[dict[str, Any]] = []
+            for lesson_index, lesson in enumerate(draft.lessons, start=1):
+                normalized_units: list[UnitArchitectureV2] = []
+                for unit_index, unit in enumerate(lesson.units, start=1):
+                    unit_facts = [
+                        fact
+                        for scope_id in unit.source_scope_ids
+                        for fact in facts_by_scope.get(scope_id, [])
+                    ]
+                    if all(v3_markers):
+                        decision = evaluate_instructional_density(profile_instructional_texts(
+                            [fact.fact_text for fact in unit_facts],
+                            learning_objective_count=len(unit.learning_objective_refs),
+                            independent_topic_count=len(unit.source_scope_ids),
+                        ))
+                        if decision.split_required:
+                            raise OrchestrationContractError("ARCHITECTURE_UNIT_DENSITY_EXCEEDED")
+                    fact_texts = clean_source_facts(
+                        [fact.fact_text for fact in unit_facts],
+                        preserve_table_numeric=True,
+                    )
+                    substantive = [
+                        text for text in fact_texts
+                        if len(text) >= 24 and not text.lower().startswith("row ")
+                    ]
+                    definition_count = len(source_term_definitions(fact_texts))
+                    has_relationship = bool(parse_structured_table_rows(fact_texts)) or any(
+                        marker in text.casefold()
+                        for text in substantive
+                        for marker in (
+                            "bao gồm", "gồm", "phân loại", "mối quan hệ", "quy trình",
+                            "includes", "consists of", "relationship", "hierarchy", "process",
+                        )
+                    )
+
+                    def interaction_supported(component_type: str) -> bool:
+                        if component_type == "html":
+                            return True
+                        if component_type == "problem":
+                            return build_source_locked_single_choice(
+                                unit.title,
+                                fact_texts,
+                                locale=skeleton.locale,
+                            ) is not None
+                        if component_type == "la_sortable":
+                            return len(ordered_source_steps(fact_texts, locale=skeleton.locale)) >= 3
+                        if component_type == "la_faq":
+                            return len(source_clarification_signals(fact_texts)) >= 2
+                        if component_type == "la_crossword":
+                            return definition_count >= 3
+                        if component_type == "la_diagram":
+                            return has_relationship and len(substantive) + len(parse_structured_table_rows(fact_texts)) >= 2
+                        return False
+
+                    admitted_plan = []
+                    for component_index, component in enumerate(unit.component_plan, start=1):
+                        if interaction_supported(component.type):
+                            admitted_plan.append(component)
+                            continue
+                        if component.type == "problem":
+                            component_scope_ids = list(component.source_scope_ids)
+                            relevant_fact_ids = [
+                                fact.fact_key
+                                for fact in unit_facts
+                                if fact.scope_key in set(component_scope_ids)
+                            ]
+                            slot_key = "ao2_" + canonical_hash({
+                                "source_snapshot_hash": skeleton.source_snapshot_hash,
+                                "chapter_key": chapter.chapter_key,
+                                "shard_index": plan.shard_index,
+                                "lesson_index": lesson_index,
+                                "unit_index": unit_index,
+                                "component_index": component_index,
+                            })[:32]
+                            assessment_obligations.append({
+                                "planned_slot_key": slot_key,
+                                "lesson_index": lesson_index,
+                                "unit_index": unit_index,
+                                "component_index": component_index,
+                                "learning_objective_refs": list(unit.learning_objective_refs),
+                                "required_assessment_kind": "single_choice",
+                                "relevant_scope_ids": component_scope_ids,
+                                "relevant_evidence_fact_ids": relevant_fact_ids,
+                                "unresolved_reason": "ASSESSMENT_SOURCE_CHECK_REQUIRED",
+                                "status": "open",
+                            })
+                    # The explanatory owner is mandatory and already first by
+                    # contract. Optional interactions are admitted only when
+                    # deterministic fallback can produce the same type without
+                    # inventing a pedagogical relationship.
+                    if not admitted_plan or admitted_plan[0].type != "html":
+                        raise OrchestrationContractError("ARCHITECTURE_COMPONENT_EVIDENCE_INVALID")
+                    normalized_units.append(UnitArchitectureV2.model_validate({
+                        **unit.model_dump(mode="python"),
+                        "component_plan": [component.model_dump(mode="python") for component in admitted_plan],
+                    }))
+                normalized_lessons.append(LessonArchitectureV2.model_validate({
+                    **lesson.model_dump(mode="python"),
+                    "units": [unit.model_dump(mode="python") for unit in normalized_units],
+                }))
+            draft = ChapterShardDraftV2.model_validate({
+                "lessons": [lesson.model_dump(mode="python") for lesson in normalized_lessons],
+            })
+        else:
+            assessment_obligations = []
+    else:
+        assessment_obligations = []
     return ChapterBlueprintShardV2(
         contract_version=2, source_snapshot_hash=skeleton.source_snapshot_hash,
         chapter_key=chapter.chapter_key, order=chapter.order, shard_index=plan.shard_index,
         shard_count=plan.shard_count, source_scope_ids=plan.source_scope_ids,
         title=chapter.title, objective=chapter.objective, lessons=draft.lessons,
+        assessment_obligations=assessment_obligations,
     )
 
 
@@ -695,6 +907,14 @@ def chapter_shard_prompt_v2(
     chapter = next(item for item in skeleton.chapters if item.chapter_key == plan.chapter_key)
     payload = {"chapter": chapter.model_dump(), "shard": plan.model_dump(),
                "facts": [fact.model_dump() for fact in facts]}
+    density_budget = {
+        "policy_version": INSTRUCTIONAL_DENSITY_POLICY_VERSION,
+        "max_canonical_facts": DEFAULT_INSTRUCTIONAL_DENSITY_BUDGET.max_canonical_facts,
+        "max_source_chars": DEFAULT_INSTRUCTIONAL_DENSITY_BUDGET.max_source_chars,
+        "max_estimated_words": DEFAULT_INSTRUCTIONAL_DENSITY_BUDGET.max_estimated_words,
+        "max_learning_objectives": DEFAULT_INSTRUCTIONAL_DENSITY_BUDGET.max_learning_objectives,
+        "max_source_scopes": DEFAULT_INSTRUCTIONAL_DENSITY_BUDGET.max_independent_topics,
+    }
     return (
         "Design strict lesson, unit, and component-plan architecture only for this immutable chapter shard. "
         "Maintain an explicit pedagogical chain: every lesson objective must operationalize one or more chapter learning_outcomes; "
@@ -702,13 +922,22 @@ def chapter_shard_prompt_v2(
         "what the learner will achieve and must align with its local learning_objective_refs; every component rationale and author_review "
         "must explain how that block supports the containing unit rather than repeat generic chapter copy. "
         "Allocate every supplied source_scope_id to exactly one unit. Every unit must reference valid local learning objectives "
+        "Keep every unit within UNIT_DENSITY_BUDGET; split oversized or multi-topic material into consecutive coherent units "
+        "instead of producing one long HTML block. "
         "(lo_1, lo_2, ...), start component_plan with one html component covering all unit scopes, use at most one additional "
         "interactive component, and place la_faq last when present. Component scopes must remain inside their unit. "
+        "Select problem only for an assessable source claim; it will be rendered exclusively as one-answer multiple choice. "
+        "Select la_sortable only when the source explicitly contains at least three ordered procedure steps. Select la_crossword "
+        "only when at least three term-definition pairs are explicit. Select la_diagram only for an explicit relationship, table, "
+        "hierarchy, or flow. Select la_faq only when at least two explicit source conditions, exceptions, cautions, or misconception boundaries support useful anticipated questions. "
+        "Never select an interaction merely to increase component count. "
         "For every component return author_review with optional purpose, example_scenario, visual_asset, and "
         "user_behavior_navigation. These explain the proposed block to the author and are not editable component data. "
         "For every unit, explicitly return media_brief as either null or one concrete video/static_infographic brief with "
         "a title, bullet-ready content_points, context_description, and rationale; it is a production brief, not generated media. "
         "Do not change chapter identity/title/objective and do not emit raw source text outside learner-facing plans. "
         "Output valid JSON matching the response schema. "
-        f"Output language: {locale}. SHARD_CONTEXT={json.dumps(payload, ensure_ascii=False, separators=(',', ':'))}"
+        f"Output language: {locale}. UNIT_DENSITY_BUDGET="
+        f"{json.dumps(density_budget, ensure_ascii=False, separators=(',', ':'))}. "
+        f"SHARD_CONTEXT={json.dumps(payload, ensure_ascii=False, separators=(',', ':'))}"
     )

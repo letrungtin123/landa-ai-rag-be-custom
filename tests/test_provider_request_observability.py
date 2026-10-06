@@ -36,9 +36,28 @@ class ProviderRequestObservabilityTests(unittest.TestCase):
                 on_provider_diagnostic=events.append))
         self.assertEqual(run.call_count, 1)
         self.assertEqual(raised.exception.detail['code'], 'AI_PROVIDER_TIMEOUT')
-        self.assertEqual(events[0]['internal_failure_code'], 'AI_PROVIDER_TIMEOUT')
-        self.assertIsNone(events[0]['provider_http_status'])
-        self.assertEqual(events[0]['usage_source'], 'unavailable')
+        self.assertEqual([event['event'] for event in events],
+                         ['provider_http_attempt_started', 'provider_timeout'])
+        timeout = events[-1]
+        self.assertEqual(timeout['internal_failure_code'], 'AI_PROVIDER_TIMEOUT')
+        self.assertIsNone(timeout['provider_http_status'])
+        self.assertEqual(timeout['usage_source'], 'unavailable')
+        self.assertEqual(timeout['provider_attempt'], 1)
+
+    def test_success_records_exact_attempt_and_provider_reported_usage(self):
+        events = []
+        usage = SimpleNamespace(prompt_token_count=7, candidates_token_count=3, total_token_count=10)
+        response = SimpleNamespace(text='{}', parsed=None, candidates=[], usage_metadata=usage, prompt_feedback=None)
+        client = MagicMock()
+        client.models.generate_content.return_value = response
+        with patch('app.main.genai.Client', return_value=client):
+            asyncio.run(generate_content('secret-key', 'test-model', 'PRIVATE_SOURCE_SENTINEL',
+                max_output_tokens=100, request_timeout_ms=300000, on_provider_telemetry=events.append))
+        received = next(event for event in events if event.get('event') == 'provider_response_received')
+        self.assertEqual(received['provider_attempt'], 1)
+        self.assertEqual(received['usage_source'], 'provider')
+        self.assertEqual(received['provider_total_tokens'], 10)
+        self.assertNotIn('PRIVATE_SOURCE_SENTINEL', json.dumps(events))
 
     def test_telemetry_sink_failure_does_not_change_generation(self):
         client = MagicMock()

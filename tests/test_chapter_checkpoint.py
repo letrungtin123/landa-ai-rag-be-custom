@@ -307,8 +307,14 @@ class ChapterCheckpointTests(unittest.TestCase):
         scope["component_plan"] = [{"type": "problem", "title": "Check", "rationale": "Check taught evidence.",
                                     "source_fact_ids": [], "supporting_evidence_fact_ids": ["fixture-fact-0"]}]
         units[1].update(source_fact_ids=[], supporting_evidence_fact_ids=["fixture-fact-0"], components=[{
-            "type": "problem", "problem_type": "short_text", "question": "What is inspected before work?",
-            "answer": "Equipment condition.", "explanation": "The evidence calls for inspecting equipment before work.",
+            "type": "problem", "problem_type": "multiple_choice",
+            "question": "What must be inspected before work begins?",
+            "choices": [
+                {"text": "The equipment condition.", "correct": True},
+                {"text": "Only the final incident report.", "correct": False},
+                {"text": "An unrelated administrative record.", "correct": False},
+            ],
+            "explanation": "The evidence calls for inspecting the equipment condition before work begins.",
             "source_fact_ids": [], "covered_source_fact_ids": [], "supporting_evidence_fact_ids": ["fixture-fact-0"],
         }])
         manifest["facts"] = manifest["facts"][:1]
