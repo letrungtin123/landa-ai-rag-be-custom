@@ -68,12 +68,16 @@ class CheckpointProviderSDKTests(unittest.TestCase):
         with patch("app.main.genai.Client", Client), patch.object(main.settings, "gemini_38_thinking_level", "medium"):
             asyncio.run(main.generate_content("offline-key", "gemini-3.8-flash", "prompt", max_output_tokens=1024,
                                               thinking_config={"include_thoughts": False}))
+            asyncio.run(main.generate_content("offline-key", "gemini-3.8-flash", "prompt", max_output_tokens=1024,
+                                              thinking_level="high"))
             asyncio.run(main.generate_content("offline-key", "gemini-3.5-flash", "prompt", max_output_tokens=1024,
-                                              thinking_config={"include_thoughts": False}))
+                                              thinking_config={"include_thoughts": False}, thinking_level="high"))
         modern = calls[0]["config"]
-        legacy = calls[1]["config"]
+        explicit = calls[1]["config"]
+        legacy = calls[2]["config"]
         self.assertNotIn("temperature", modern)
         self.assertEqual(modern["thinking_config"], {"thinking_level": "medium"})
+        self.assertEqual(explicit["thinking_config"], {"thinking_level": "high"})
         self.assertEqual(legacy["temperature"], main.settings.generation_temperature)
         self.assertEqual(legacy["thinking_config"], {"include_thoughts": False})
 

@@ -19,6 +19,13 @@ from app.ordered_learning_content import flatten_ordered_content
 
 EXPLANATORY_TYPES = {"html", "la_faq"}
 PRACTICE_OR_CHECK_TYPES = {"problem", "la_sortable", "la_crossword"}
+INSTRUCTIONAL_TYPES = {"html", "la_diagram", "la_sortable", "la_crossword"}
+INSTRUCTIONAL_MIN_TOKENS = {
+    "html": 12,
+    "la_diagram": 4,
+    "la_sortable": 6,
+    "la_crossword": 6,
+}
 ACTION_OBJECTIVE = re.compile(
     r"\b(?:apply|analyse|analyze|evaluate|perform|demonstrate|use|"
     r"áp\s+dụng|phan\s+tich|phân\s+tích|đánh\s+giá|thực\s+hiện|vận\s+dụng)\b",
@@ -206,7 +213,45 @@ def _component_text(component: dict[str, Any]) -> str:
         sortable = _nested_component_data(component, "sortable_data")
         items = sortable.get("items") if isinstance(sortable.get("items"), list) else component.get("items")
         return " ".join(str(_record(item).get("text") or item or "") for item in items or [])
+    if component_type == "la_diagram":
+        diagram = _nested_component_data(component, "diagram_data")
+        nodes = diagram.get("nodes") if isinstance(diagram.get("nodes"), list) else component.get("nodes")
+        edges = diagram.get("edges") if isinstance(diagram.get("edges"), list) else component.get("edges")
+        return " ".join(
+            text.strip()
+            for values, keys in ((nodes or [], ("label", "tooltip")), (edges or [], ("label",)))
+            for value in values
+            for row in [_record(value)]
+            for key in keys
+            for text in [row.get(key)]
+            if isinstance(text, str) and text.strip()
+        )
     return ""
+
+
+def _is_substantive_instruction(item: dict[str, Any]) -> bool:
+    threshold = INSTRUCTIONAL_MIN_TOKENS.get(item["type"])
+    return threshold is not None and len(_tokens(item["text"])) >= threshold
+
+
+def _matches_approved_instructional_plan(
+    item: dict[str, Any],
+    expected_unit: dict[str, Any],
+    teaching_block_ids: set[str] | None = None,
+) -> bool:
+    plans = [_record(value) for value in expected_unit.get("component_plan") or []]
+    if not plans:
+        return item["type"] in INSTRUCTIONAL_TYPES
+    matching = [plan for plan in plans if str(plan.get("type") or "").strip() == item["type"]]
+    if not matching:
+        return False
+    if not teaching_block_ids:
+        return True
+    return any(
+        not (bindings := set(_text_list(plan.get("learning_block_ids"), max_items=12, max_length=80)))
+        or bool(bindings & teaching_block_ids)
+        for plan in matching
+    )
 
 
 def _html_artifact_item_count(component: dict[str, Any], artifact_type: str) -> int:
@@ -437,16 +482,16 @@ def instructional_plan_validation_result(architecture: dict[str, Any]) -> Workfl
                         for value in unit.get("learning_blocks") or [] for block in [_record(value)]
                         if block.get("intent") != "knowledge_check"
                         and ref in _text_list(block.get("learning_objective_refs"), max_items=12, max_length=16)} - {""}
-            html_bindings = {block_id for _, unit in mapped
-                             for value in unit.get("component_plan") or [] for plan in [_record(value)]
-                             if plan.get("type") == "html"
-                             for block_id in _text_list(plan.get("learning_block_ids"), max_items=12, max_length=80)}
-            if html_bindings and not html_bindings.intersection(teaching):
+            instructional_bindings = {block_id for _, unit in mapped
+                                      for value in unit.get("component_plan") or [] for plan in [_record(value)]
+                                      if str(plan.get("type") or "").strip() in INSTRUCTIONAL_TYPES
+                                      for block_id in _text_list(plan.get("learning_block_ids"), max_items=12, max_length=80)}
+            if instructional_bindings and not instructional_bindings.intersection(teaching):
                 path = f"chapter_1.lesson_{lesson_index}"
                 if len(mapped) == 1:
                     path += f".unit_{mapped[0][0]}"
                 findings.append(_issue("OBJECTIVE_INSTRUCTION_PLAN_MISMATCH",
-                                       "Explicit HTML bindings omit the objective's teaching blocks.",
+                                       "Explicit instructional component bindings omit the objective's teaching blocks.",
                                        path=path, objective_ids=[ref], learning_block_ids=sorted(teaching)))
     return WorkflowValidationResult(findings)
 
@@ -496,21 +541,14 @@ def validate_lesson_pedagogical_quality(
                     if block_id:
                         teaching_block_ids.add(block_id)
                     teaching_block_facts.update(_text_list(block.get("source_fact_ids"), max_length=96))
-            expected_html_plan_blocks = {
-                block_id
-                for unit_index in mapped_units
-                for plan_value in (_record(units[unit_index - 1]).get("component_plan") or [])
-                for plan in [_record(plan_value)]
-                if str(plan.get("type") or "").strip() == "html"
-                for block_id in _text_list(plan.get("learning_block_ids"), max_items=12, max_length=80)
-            }
             taught = any(
                 item["unit_index"] in mapped_units
-                and item["type"] == "html"
-                # A plan may omit block IDs on an old Blueprint. For a new V5
-                # plan, an explicit mapping must point at a teaching block.
-                and (not expected_html_plan_blocks or bool(expected_html_plan_blocks & teaching_block_ids))
-                and len(_tokens(item["text"])) >= 18
+                and _is_substantive_instruction(item)
+                and _matches_approved_instructional_plan(
+                    item,
+                    _record(units[item["unit_index"] - 1]),
+                    teaching_block_ids,
+                )
                 and (not teaching_block_facts or bool(set(item["evidence_fact_ids"]) & teaching_block_facts))
                 for item in lesson_components
             )
@@ -613,13 +651,19 @@ def validate_lesson_pedagogical_quality(
             if complexity >= 3:
                 depth_total += 1
                 explanatory_words = sum(len(_tokens(item["text"])) for item in actual_components if item["type"] == "html")
+                structured_instruction = any(
+                    item["type"] in INSTRUCTIONAL_TYPES - {"html"}
+                    and len(_tokens(item["text"])) >= 12
+                    and _matches_approved_instructional_plan(item, expected_unit)
+                    for item in actual_components
+                )
                 block_count = len(expected_unit.get("learning_blocks") or [])
-                if explanatory_words >= 45 or (block_count <= 1 and explanatory_words >= 28):
+                if explanatory_words >= 45 or (block_count <= 1 and explanatory_words >= 28) or structured_instruction:
                     depth_covered += 1
                 else:
                     findings.append(_issue(
                         "INSUFFICIENT_INSTRUCTIONAL_DEPTH",
-                        "A complex unit has too little explanatory treatment for its approved concepts/facts/objectives.",
+                        "A complex unit has too little substantive instructional treatment for its approved concepts/facts/objectives.",
                         path=unit_path,
                         learning_block_ids=[str(_record(block).get("id") or "") for block in expected_unit.get("learning_blocks") or [] if str(_record(block).get("id") or "")],
                         source_fact_ids=expected_facts,
@@ -627,27 +671,27 @@ def validate_lesson_pedagogical_quality(
 
         if expected_lesson.get("assessment_required") is True:
             assessment_total += 1
-            explained_facts = {
-                fact_id for item in lesson_components if item["type"] == "html" for fact_id in item["evidence_fact_ids"]
-            }
+            instructional_items = [item for item in lesson_components if _is_substantive_instruction(item)]
             assessment_objectives = set(_text_list(expected_lesson.get("assessment_objective_refs"), max_items=12, max_length=80))
             taught_objectives = {
                 objective_ref
                 for objective_ref in assessment_objectives
                 if any(
-                    item["type"] == "html"
-                    and len(_tokens(item["text"])) >= 18
-                    and item["unit_index"] == unit_index
+                    item["unit_index"] == unit_index
+                    and _matches_approved_instructional_plan(item, _record(unit_value))
                     for unit_index, unit_value in enumerate(units, start=1)
                     if objective_ref in _text_list(_record(unit_value).get("learning_objective_refs"), max_items=12, max_length=16)
-                    for item in lesson_components
-                    if item["type"] == "html"
-                    and len(_tokens(item["text"])) >= 18
+                    for item in instructional_items
                 )
             }
             aligned = bool(assessment_objectives & taught_objectives) and any(
                 item["type"] == "problem"
-                and bool(set(item["evidence_fact_ids"]) & explained_facts)
+                and any(
+                    (instruction["unit_index"], instruction["component_index"])
+                    < (item["unit_index"], item["component_index"])
+                    and bool(set(item["evidence_fact_ids"]) & set(instruction["evidence_fact_ids"]))
+                    for instruction in instructional_items
+                )
                 for item in lesson_components
             )
             if aligned:
@@ -655,11 +699,13 @@ def validate_lesson_pedagogical_quality(
             else:
                 findings.append(_issue(
                     "ASSESSMENT_NOT_ALIGNED",
-                    "An assessment-required lesson needs a source-linked problem after explanatory teaching.",
+                    "An assessment-required lesson needs a source-linked problem after substantive instruction.",
                     path=lesson_path,
                     objective_ids=_text_list(expected_lesson.get("assessment_objective_refs"), max_items=12, max_length=80),
                 ))
-        if any(ACTION_OBJECTIVE.search(objective) for objective in objectives) and lesson_components and all(item["type"] == "html" for item in lesson_components):
+        if (any(ACTION_OBJECTIVE.search(objective) for objective in objectives)
+                and lesson_components
+                and not any(item["type"] in PRACTICE_OR_CHECK_TYPES for item in lesson_components)):
             findings.append(_issue(
                 "COGNITIVE_TREATMENT_WEAK",
                 "An apply/analyze objective currently has explanation only; review whether a supported learner action is needed.",

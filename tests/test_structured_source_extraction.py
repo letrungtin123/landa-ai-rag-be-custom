@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 import tempfile
 import unittest
+from unittest.mock import patch
 
 from app.main import (
     ExtractedSection,
@@ -13,11 +14,56 @@ from app.main import (
     extract_pdf,
     extract_pptx,
     extract_xlsx,
+    split_text,
 )
 from app.source_structure import analyze_source_structure
 
 
 class StructuredSourceExtractionTests(unittest.TestCase):
+    def test_oversized_table_splits_only_between_complete_rows(self) -> None:
+        table = "[TABLE]\n" + "\n".join(
+            f"Row {index}: Bậc {index:02d} | Năng lực {index} | Mô tả vận hành {index}"
+            for index in range(1, 9)
+        )
+
+        chunks = split_text(table, max_chars=150, overlap_chars=20)
+
+        self.assertGreater(len(chunks), 1)
+        self.assertTrue(all(chunk.startswith("[TABLE]\nRow ") for chunk in chunks))
+        rows = [line for chunk in chunks for line in chunk.splitlines() if line.startswith("Row ")]
+        self.assertEqual(len(rows), 8)
+        self.assertTrue(all(" | " in row for row in rows))
+
+    def test_chunk_metadata_marks_only_the_chunk_that_contains_a_table(self) -> None:
+        section = ExtractedSection(
+            text=("Giới thiệu ngắn.\n\n[TABLE]\nRow 1: Bậc | Năng lực\n"
+                  "Row 2: Bậc 04 | Vietnam Know-how\n\nKết luận ngắn."),
+            page=1,
+            metadata={
+                "extraction_version": STRUCTURED_EXTRACTION_VERSION,
+                "content_kinds": ["text", "table"],
+                "table_count": 1,
+            },
+        )
+
+        with patch("app.main.settings.chunk_max_chars", 80), \
+                patch("app.main.settings.chunk_overlap_chars", 0):
+            chunks = build_chunks([section])
+        table_chunks = [chunk for chunk in chunks if "[TABLE]" in chunk["content"]]
+        non_table_chunks = [chunk for chunk in chunks if "[TABLE]" not in chunk["content"]]
+
+        self.assertEqual(len(table_chunks), 1)
+        self.assertEqual(table_chunks[0]["metadata"]["table_count"], 1)
+        self.assertIn("table", table_chunks[0]["metadata"]["content_kinds"])
+        self.assertTrue(all(chunk["metadata"]["table_count"] == 0 for chunk in non_table_chunks))
+        self.assertTrue(all("table" not in chunk["metadata"]["content_kinds"] for chunk in non_table_chunks))
+        revisions = {chunk["metadata"]["source_evidence_revision"] for chunk in chunks}
+        self.assertEqual(len(revisions), 1)
+        self.assertTrue(all(
+            chunk["metadata"]["structured_evidence_contract_version"] == "source-evidence-propagation-v1"
+            for chunk in chunks
+        ))
+
     def test_table_renderer_preserves_sparse_spreadsheet_coordinates(self) -> None:
         rendered = _render_structured_table(
             [["Control", None, "Owner"], ["Isolation", "", "Supervisor"]],

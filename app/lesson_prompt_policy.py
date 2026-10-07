@@ -7,7 +7,7 @@ from app.workflows.contracts import WorkflowFailure
 
 ARCHITECT_POLICY_MAX_CHARS = 12_000
 LESSON_LANGUAGE_POLICY_VERSION = "lesson-language-1"
-LESSON_INSTRUCTIONAL_POLICY_VERSION = "evidence-teaching-5"
+LESSON_INSTRUCTIONAL_POLICY_VERSION = "evidence-teaching-6"
 
 
 def lesson_instructional_quality_policy() -> str:
@@ -91,14 +91,19 @@ def component_instructional_brief(expected: dict[str, Any]) -> dict[str, Any]:
             "unresolved_objective_ref_count": sum(ref not in valid_refs for ref in refs),
             "owned_fact_count": len(_ids(plan.get("source_fact_ids"))),
             "supporting_fact_count": len(_ids(plan.get("supporting_evidence_fact_ids"))),
-            "instructional_role": "teach" if kind == "html" else "check" if kind == "problem" else "reinforce",
+            "instructional_role": (
+                "teach" if kind in {"html", "la_diagram"}
+                else "check" if kind == "problem"
+                else "practice" if kind in {"la_sortable", "la_crossword"}
+                else "clarify"
+            ),
             "checklist": _COMPONENT_PURPOSES.get(kind, "Follow the selected component contract; do not invent evidence."),
         })
     return {"version": LESSON_INSTRUCTIONAL_POLICY_VERSION,
             "authority": "read_only_approved_plan",
             "unit_action_hints": instructional_action_intents(str(expected.get("unit_title") or "") + " " + str(expected.get("unit_purpose") or "")),
             "objective_reference_rule": "lo_N addresses item N in lesson_learning_objectives; never assign missing links yourself.",
-            "coverage_rule": "Canonical ownership and declared coverage are contract metadata, not proof of semantic completeness. Keep them unchanged; actually teach the owned facts. Reinforcement does not replace HTML teaching.",
+            "coverage_rule": "Canonical ownership and declared coverage are contract metadata, not proof of semantic completeness. Keep them unchanged. Every owning component must represent its facts through the selected treatment; supporting evidence alone never proves coverage.",
             "components": components}
 
 
@@ -116,8 +121,6 @@ def instructional_contract_review_signals(expected: dict[str, Any]) -> dict[str,
             codes.append("OBJECTIVE_BINDING_UNRESOLVED_REVIEW")
         if component["type"] == "problem" and not component["local_objective_refs"]:
             codes.append("ASSESSMENT_OBJECTIVE_BINDING_MISSING_REVIEW")
-        if component["type"] in {"la_crossword", "la_diagram", "la_sortable", "la_faq"} and component["owned_fact_count"]:
-            codes.append("INTERACTION_OWNERSHIP_SEMANTIC_COVERAGE_REVIEW")
         for code in codes:
             findings.append({"code": code, "severity": "review", "component_index": component["component_index"],
                              "path": f"components[{component['component_index']}]",

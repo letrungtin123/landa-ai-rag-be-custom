@@ -95,6 +95,40 @@ class ContentObservationTests(unittest.TestCase):
         expected["component_plan"].extend([{"type": "problem"}, {"type": "la_faq"}])
         self.assertIn("FACT_TEACHING_NOT_LOCATED", codes(observe_lesson_content(unit, expected, manifest)))
 
+    def test_authorized_interaction_payload_can_supply_its_owned_fact_witness(self):
+        source = "Verify isolation before starting maintenance work."
+        manifest = {"facts": [{"fact_id": "f1", "text": source}]}
+        cases = [
+            ("la_diagram", {"nodes": [{"label": source}, {"label": "Maintenance"}],
+                            "edges": [{"source": 0, "target": 1, "label": "before"}]}),
+            ("la_sortable", {"question_text": "Put the source steps in order.",
+                             "items": [{"text": source}, {"text": "Start maintenance work."}, {"text": "Close the permit."}]}),
+            ("la_crossword", {"words": [{"answer": "ISOLATION", "clue": source},
+                                          {"answer": "PERMIT", "clue": "Approval before work"},
+                                          {"answer": "CHECK", "clue": "A verification action"}]}),
+        ]
+        for component_type, payload in cases:
+            with self.subTest(component_type=component_type):
+                component = {"type": component_type, "source_fact_ids": ["f1"], **payload}
+                unit = {"components": [component]}
+                expected = {"source_fact_ids": ["f1"], "component_plan": [
+                    {"type": component_type, "source_fact_ids": ["f1"]}
+                ], "learning_objectives": [], "learning_objective_refs": []}
+                report = observe_lesson_content(unit, expected, manifest)
+                self.assertEqual(report["fact_state_counts"]["LEXICAL_WITNESS"], 1)
+                self.assertNotIn("FACT_TEACHING_NOT_LOCATED", codes(report))
+
+    def test_interaction_cannot_witness_a_fact_owned_by_another_plan(self):
+        source = "Verify isolation before starting maintenance work."
+        unit = {"components": [{"type": "la_sortable", "items": [
+            {"text": source}, {"text": "Start work"}, {"text": "Close permit"}
+        ]}]}
+        expected = {"source_fact_ids": ["f1"], "component_plan": [
+            {"type": "la_sortable", "source_fact_ids": ["different-fact"]}
+        ], "learning_objectives": [], "learning_objective_refs": []}
+        manifest = {"facts": [{"fact_id": "f1", "text": source}]}
+        self.assertIn("FACT_TEACHING_NOT_LOCATED", codes(observe_lesson_content(unit, expected, manifest)))
+
     def test_other_component_source_owner_does_not_supply_witness(self):
         unit, expected, manifest = fixture()
         expected["component_plan"][0]["source_fact_ids"] = ["different-fact"]

@@ -1,4 +1,5 @@
 import asyncio
+from copy import deepcopy
 import json
 import unittest
 from unittest.mock import AsyncMock, patch
@@ -8,10 +9,12 @@ from fastapi import HTTPException
 from app.main import (
     AiUsage,
     ORCHESTRATION_V2_UNIT_FALLBACK_RESPONSE_HEADROOM_MS,
+    STAGED_COMPONENT_PAYLOAD_FIELDS,
     RagLessonAuthorChapterShardV2Request,
     RagLessonAuthorCourseSkeletonV2Request,
     RagLessonAuthorSourceSnapshotV2Request,
     RagLessonAuthorUnitV2Request,
+    validate_staged_unit_content,
     lesson_author_orchestration_v2_chapter_shard,
     lesson_author_orchestration_v2_course_skeleton,
     lesson_author_orchestration_v2_source_snapshot,
@@ -113,7 +116,200 @@ def unit_contract_wire() -> dict:
     return {**base, "contract_hash": canonical_hash(base)}
 
 
+def relationship_unit_contract_wire(*, include_html: bool) -> dict:
+    base = unit_contract_wire()
+    base["unit_content_policy_version"] = "unit-content-v4-alignment-1"
+    fact_ids = ["fact-1", "fact-2", "fact-3"]
+    base["unit_source_fact_ids"] = fact_ids
+    base["source_facts"] = [{
+        "document_id": "00000000-0000-4000-8000-000000000005",
+        "fact_key": fact_id,
+        "scope_key": "scope-1",
+        "fact_text": text,
+        "source_ref": "Bảng nguồn nội bộ",
+        "source_page": 4,
+        "source_chunk": index,
+        "locator": {},
+    } for index, (fact_id, text) in enumerate(zip(fact_ids, (
+        "Row 1: Chu trình | Công cụ BiC",
+        "Row 2: PLAN | Change Mindset + BQS/BMQ",
+        "Row 3: DO | SPD (Standard Product Dev)",
+    )))]
+    diagram = {
+        **base["component_plan"][0],
+        "component_plan_id": "cp2_" + "d" * 32,
+        "type": "la_diagram",
+        "title": "Quan hệ chu trình và công cụ",
+        "purpose": "relationship",
+        "source_fact_ids": [] if include_html else fact_ids,
+        "supporting_evidence_fact_ids": fact_ids if include_html else [],
+        "required_artifacts": [],
+    }
+    if include_html:
+        html = {
+            **base["component_plan"][0],
+            "source_fact_ids": fact_ids,
+            "required_artifacts": [{"type": "table", "minimum_items": 2}],
+        }
+        base["component_plan"] = [html, diagram]
+    else:
+        base["component_plan"] = [diagram]
+    base["contract_hash"] = canonical_hash({
+        key: value for key, value in base.items() if key != "contract_hash"
+    })
+    return base
+
+
 class LessonAuthorOrchestrationV2EndpointTests(unittest.IsolatedAsyncioTestCase):
+    async def test_multi_component_unit_reaches_provider_with_supporting_evidence(self) -> None:
+        contract = relationship_unit_contract_wire(include_html=True)
+        request_payload = {
+            **common(),
+            "source_documents": [{
+                "document_id": "00000000-0000-4000-8000-000000000005",
+                "kb_id": KB_ID, "name": "Nguồn.pdf", "type": "pdf", "status": "learned",
+            }],
+            "unit_contract": contract,
+            "max_attempts": 1,
+            "remaining_workflow_budget_ms": 60_000,
+        }
+        fallback = await lesson_author_orchestration_v2_unit(
+            RagLessonAuthorUnitV2Request.model_validate({**request_payload, "fallback_only": True}),
+        )
+        slots = {}
+        for index, component in enumerate(fallback["unit"]["components"]):
+            fields = STAGED_COMPONENT_PAYLOAD_FIELDS[component["type"]] | {
+                "title", "selection_rationale", "covered_source_fact_ids",
+            }
+            slots[f"c{index}"] = {key: deepcopy(value) for key, value in component.items() if key in fields}
+        slots["c0"]["html"] = (
+            "<h2>Giải thích mối quan hệ</h2>"
+            "<p>Bảng dữ liệu nguồn ghép từng giai đoạn trong chu trình với đúng công cụ BiC tương ứng. "
+            "Ở hàng thứ nhất, giai đoạn PLAN đi cùng Change Mindset và BQS/BMQ. Ở hàng thứ hai, "
+            "giai đoạn DO đi cùng SPD, tức Standard Product Dev.</p>"
+            "<table><thead><tr><th>Chu trình</th><th>Công cụ BiC</th></tr></thead><tbody>"
+            "<tr><td>PLAN</td><td>Change Mindset + BQS/BMQ</td></tr>"
+            "<tr><td>DO</td><td>SPD (Standard Product Dev)</td></tr></tbody></table>"
+            "<h3>Cách đọc</h3><p>Đọc theo từng hàng để giữ nguyên cặp quan hệ mà tài liệu nguồn đã nêu, "
+            "sau đó đối chiếu với sơ đồ ở phần tiếp theo.</p>"
+        )
+        async def generate(*_args, **kwargs):
+            telemetry = kwargs.get("on_provider_telemetry")
+            if telemetry:
+                telemetry({
+                    "event": "provider_response_received",
+                    "provider_attempt": 1,
+                    "provider_http_status": 200,
+                    "provider_finish_reason": "FinishReason.STOP",
+                    "usage_source": "provider",
+                    "provider_input_tokens": 20,
+                    "provider_output_tokens": 30,
+                    "provider_total_tokens": 50,
+                })
+            return json.dumps({"components": slots}), AiUsage(
+                inputTokens=20, outputTokens=30, totalTokens=50,
+            )
+
+        provider = AsyncMock(side_effect=generate)
+
+        with patch("app.main.generate_content", provider):
+            response = await lesson_author_orchestration_v2_unit(
+                RagLessonAuthorUnitV2Request.model_validate(request_payload),
+            )
+
+        self.assertGreaterEqual(provider.await_count, 1)
+        self.assertEqual(response["content_origin"], "provider_validated")
+        self.assertEqual([item["type"] for item in response["unit"]["components"]], ["html", "la_diagram"])
+
+    async def test_relationship_fallback_preserves_table_html_and_exact_diagram_pairs(self) -> None:
+        contract = relationship_unit_contract_wire(include_html=True)
+        request = RagLessonAuthorUnitV2Request.model_validate({
+            **common(),
+            "source_documents": [{
+                "document_id": "00000000-0000-4000-8000-000000000005",
+                "kb_id": KB_ID, "name": "Nguồn.pdf", "type": "pdf", "status": "learned",
+            }],
+            "unit_contract": contract,
+            "max_attempts": 1,
+            "remaining_workflow_budget_ms": 60_000,
+            "fallback_only": True,
+        })
+
+        response = await lesson_author_orchestration_v2_unit(request)
+
+        html, diagram = response["unit"]["components"]
+        self.assertEqual([html["type"], diagram["type"]], ["html", "la_diagram"])
+        self.assertIn("<table>", html["html"])
+        self.assertNotIn("Nguồn.pdf", html["html"])
+        self.assertNotIn("Bảng nguồn nội bộ", html["html"])
+        labels = [node["label"] for node in diagram["nodes"]]
+        pairs = {(labels[edge["source"]], labels[edge["target"]]) for edge in diagram["edges"]}
+        self.assertEqual(pairs, {
+            ("PLAN", "Change Mindset + BQS/BMQ"),
+            ("DO", "SPD (Standard Product Dev)"),
+        })
+        self.assertEqual(response["quality_state"], "review_required")
+
+    async def test_interaction_led_relationship_unit_does_not_require_html(self) -> None:
+        contract = relationship_unit_contract_wire(include_html=False)
+        request = RagLessonAuthorUnitV2Request.model_validate({
+            **common(),
+            "source_documents": [{
+                "document_id": "00000000-0000-4000-8000-000000000005",
+                "kb_id": KB_ID, "name": "Nguồn.pdf", "type": "pdf", "status": "learned",
+            }],
+            "unit_contract": contract,
+            "max_attempts": 1,
+            "remaining_workflow_budget_ms": 60_000,
+            "fallback_only": True,
+        })
+
+        response = await lesson_author_orchestration_v2_unit(request)
+
+        self.assertEqual([item["type"] for item in response["unit"]["components"]], ["la_diagram"])
+        self.assertEqual(response["unit"]["components"][0]["source_fact_ids"], contract["unit_source_fact_ids"])
+        self.assertEqual(response["quality_state"], "review_required")
+
+    async def test_diagram_validator_rejects_a_missing_locked_source_relation(self) -> None:
+        contract = relationship_unit_contract_wire(include_html=False)
+        request = RagLessonAuthorUnitV2Request.model_validate({
+            **common(),
+            "source_documents": [{
+                "document_id": "00000000-0000-4000-8000-000000000005",
+                "kb_id": KB_ID, "name": "Nguồn.pdf", "type": "pdf", "status": "learned",
+            }],
+            "unit_contract": contract,
+            "max_attempts": 1,
+            "remaining_workflow_budget_ms": 60_000,
+            "fallback_only": True,
+        })
+        response = await lesson_author_orchestration_v2_unit(request)
+        unit = deepcopy(response["unit"])
+        first_edge = unit["components"][0]["edges"][0]
+        unit["components"][0]["edges"] = [
+            first_edge,
+            {"source": 1, "target": 2, "label": "Liên quan"},
+            {"source": 1, "target": 3, "label": "Sai quan hệ"},
+        ]
+        expected = {
+            "component_types": ["la_diagram"],
+            "component_plan": contract["component_plan"],
+            "source_fact_ids": contract["unit_source_fact_ids"],
+            "supporting_evidence_fact_ids": [],
+            "diagram_relationships_by_plan_id": {
+                contract["component_plan"][0]["component_plan_id"]: [
+                    ["PLAN", "Change Mindset + BQS/BMQ", "Công cụ BiC"],
+                    ["DO", "SPD (Standard Product Dev)", "Công cụ BiC"],
+                ],
+            },
+        }
+
+        finding = validate_staged_unit_content(unit, expected, strict_payload=True)
+
+        self.assertIsNotNone(finding)
+        assert finding is not None
+        self.assertEqual(finding.code, "DIAGRAM_SOURCE_RELATION_MISSING")
+
     async def test_unit_fallback_only_preserves_every_supported_component_without_provider_call(self) -> None:
         component_types = ["html", "problem", "la_faq", "la_sortable", "la_crossword", "la_diagram"]
         for component_type in component_types:
@@ -489,14 +685,25 @@ class LessonAuthorOrchestrationV2EndpointTests(unittest.IsolatedAsyncioTestCase)
             "chunk_count": 2,
             "embedding_model": "test-embedding",
             "embedding_dimensions": 768,
+            "source_evidence_status": "legacy_review_required",
         }]))
         # Missing parser evidence is not proof that the document has no
         # structure. Current-parser NONE evidence is model-designed; an absent
         # structure row fails closed for review.
         self.assertEqual(response["source_authority"]["mode"], "needs_review")
+        self.assertIn(
+            "STRUCTURED_EVIDENCE_REVISION_MISSING",
+            response["source_authority"]["reason_codes"],
+        )
         self.assertEqual(len(response["facts"]), 1)
-        self.assertEqual(response["facts"][0]["locator"]["content_kinds"], ["table", "text"])
-        self.assertEqual(response["facts"][0]["locator"]["table_count"], 1)
+        # Chunk-level table metadata must not leak into a prose-only density
+        # lane; otherwise the unit contract requires an unreconstructable table.
+        self.assertEqual(response["facts"][0]["locator"]["content_kinds"], ["text"])
+        self.assertEqual(response["facts"][0]["locator"]["table_count"], 0)
+        self.assertEqual(
+            response["facts"][0]["locator"]["source_evidence_status"],
+            "legacy_review_required",
+        )
         self.assertTrue(response["has_more"])
         self.assertEqual(final["facts"][0]["fact_key"], "d1-c2-f1")
         self.assertNotEqual(response["facts"][0]["scope_key"], final["facts"][0]["scope_key"])
@@ -559,11 +766,55 @@ class LessonAuthorOrchestrationV2EndpointTests(unittest.IsolatedAsyncioTestCase)
             "chunk_count": 1,
             "embedding_model": "test-embedding",
             "embedding_dimensions": 768,
+            "source_evidence_status": "ready",
             "source_evidence_revision": evidence_revision,
         }]))
         self.assertEqual(
             response["facts"][0]["locator"]["source_evidence_revision"],
             evidence_revision,
+        )
+        self.assertEqual(response["facts"][0]["locator"]["source_evidence_status"], "ready")
+        self.assertNotIn(
+            "STRUCTURED_EVIDENCE_REVISION_MISSING",
+            response["source_authority"]["reason_codes"],
+        )
+
+    async def test_source_snapshot_rejects_a_mixed_evidence_revision_index(self) -> None:
+        request_data = common()
+        request_data["source_snapshot_hash"] = SOURCE_HASH
+        request_data.pop("api_key")
+        request_data["source_documents"] = [{
+            "document_id": "00000000-0000-4000-8000-000000000005",
+            "kb_id": KB_ID, "name": "Nguồn.pdf", "type": "pdf", "status": "learned",
+        }]
+        request = RagLessonAuthorSourceSnapshotV2Request.model_validate(request_data)
+        document_id = request.source_documents[0].document_id
+        index_row = {
+            "index_id": "00000000-0000-4000-8000-000000000006",
+            "document_id": document_id, "content_sha256": "content", "chunk_count": 2,
+            "embedding_model": "test-embedding", "embedding_dimensions": 768,
+        }
+
+        class Pool:
+            async def fetch(self, sql: str, *_args: object) -> list[dict[str, object]]:
+                if "FROM rag_document_indexes" in sql:
+                    return [index_row]
+                if "metadata->'source_structure'" in sql:
+                    return [{
+                        "document_id": document_id, "source_structure": None,
+                        "source_evidence_revision": "e" * 64,
+                        "actual_chunk_count": 2,
+                        "evidence_revision_chunk_count": 1,
+                        "evidence_revision_distinct_count": 1,
+                    }]
+                raise AssertionError("chunk fetch must not run for a mixed evidence revision")
+
+        with self.assertRaises(HTTPException) as rejected:
+            await lesson_author_orchestration_v2_source_snapshot(request, pool=Pool())
+        self.assertEqual(rejected.exception.status_code, 409)
+        self.assertEqual(
+            rejected.exception.detail["code"],
+            "SOURCE_EVIDENCE_REVISION_INCONSISTENT",
         )
 
     async def test_course_skeleton_binds_exact_scope_catalog(self) -> None:
@@ -672,6 +923,84 @@ class LessonAuthorOrchestrationV2EndpointTests(unittest.IsolatedAsyncioTestCase)
         provider.assert_awaited_once()
         self.assertEqual(response["shard"]["source_scope_ids"], ["scope-1"])
         self.assertEqual(response["shard"]["lessons"][0]["units"][0]["source_scope_ids"], ["scope-1"])
+
+    async def test_chapter_shard_salvages_valid_provider_unit_before_scope_fallback(self) -> None:
+        skeleton = skeleton_wire()
+        skeleton["chapters"][0]["source_scope_ids"] = ["scope-1", "scope-2"]
+        request = RagLessonAuthorChapterShardV2Request.model_validate({
+            **common(), "skeleton": skeleton,
+            "shard_plan": {"chapter_key": "chapter-1", "order": 0, "shard_index": 0, "shard_count": 1,
+                           "source_scope_ids": ["scope-1", "scope-2"], "source_fact_count": 2,
+                           "source_content_chars": 20},
+            "source_facts": [
+                {"document_id": "document-1", "fact_key": f"fact-{index}", "scope_key": scope_id,
+                 "fact_text": f"Nội dung nguồn đủ dài cho {scope_id}.", "source_ref": None,
+                 "source_page": 1, "source_chunk": index - 1, "locator": {}}
+                for index, scope_id in enumerate(("scope-1", "scope-2"), start=1)
+            ],
+            "max_attempts": 1,
+        })
+        provider_lesson = lesson_wire(["scope-1"])
+        provider_lesson["title"] = "Bài provider được giữ"
+        invalid_unit = json.loads(json.dumps(provider_lesson["units"][0]))
+        invalid_unit["source_scope_ids"] = ["scope-2"]
+        invalid_unit["component_plan"][0]["source_scope_ids"] = ["scope-2"]
+        invalid_unit.pop("purpose")
+        provider_lesson["units"].append(invalid_unit)
+        with patch("app.main.generate_content", AsyncMock(return_value=(
+            json.dumps({"lessons": [provider_lesson]}, ensure_ascii=False), AiUsage(outputTokens=20),
+        ))) as provider:
+            response = await lesson_author_orchestration_v2_chapter_shard(request)
+
+        provider.assert_awaited_once()
+        self.assertEqual(response["content_origin"], "structured_fallback")
+        self.assertEqual(response["quality_state"], "review_required")
+        self.assertEqual(response["shard"]["lessons"][0]["title"], "Bài provider được giữ")
+        self.assertEqual(
+            [scope_id for item in response["shard"]["lessons"]
+             for unit in item["units"] for scope_id in unit["source_scope_ids"]],
+            ["scope-1", "scope-2"],
+        )
+
+    async def test_chapter_shard_keeps_best_partial_salvage_across_repair_attempts(self) -> None:
+        skeleton = skeleton_wire()
+        skeleton["chapters"][0]["source_scope_ids"] = ["scope-1", "scope-2"]
+        request = RagLessonAuthorChapterShardV2Request.model_validate({
+            **common(), "skeleton": skeleton,
+            "shard_plan": {"chapter_key": "chapter-1", "order": 0, "shard_index": 0, "shard_count": 1,
+                           "source_scope_ids": ["scope-1", "scope-2"], "source_fact_count": 2,
+                           "source_content_chars": 20},
+            "source_facts": [
+                {"document_id": "document-1", "fact_key": f"fact-{index}", "scope_key": scope_id,
+                 "fact_text": f"Nội dung nguồn đủ dài cho {scope_id}.", "source_ref": None,
+                 "source_page": 1, "source_chunk": index - 1, "locator": {}}
+                for index, scope_id in enumerate(("scope-1", "scope-2"), start=1)
+            ],
+            "max_attempts": 2,
+        })
+        provider_lesson = lesson_wire(["scope-1"])
+        provider_lesson["title"] = "Bài provider tốt nhất"
+        invalid_unit = json.loads(json.dumps(provider_lesson["units"][0]))
+        invalid_unit["source_scope_ids"] = ["scope-2"]
+        invalid_unit["component_plan"][0]["source_scope_ids"] = ["scope-2"]
+        invalid_unit.pop("purpose")
+        provider_lesson["units"].append(invalid_unit)
+        responses = [
+            (json.dumps({"lessons": [provider_lesson]}, ensure_ascii=False), AiUsage(outputTokens=20)),
+            (json.dumps({"lessons": [{"invalid": True}]}), AiUsage(outputTokens=10)),
+        ]
+        with patch("app.main.generate_content", AsyncMock(side_effect=responses)) as provider:
+            response = await lesson_author_orchestration_v2_chapter_shard(request)
+
+        self.assertEqual(provider.await_count, 2)
+        self.assertEqual(response["content_origin"], "structured_fallback")
+        self.assertEqual(response["quality_state"], "review_required")
+        self.assertEqual(response["shard"]["lessons"][0]["title"], "Bài provider tốt nhất")
+        self.assertEqual(
+            [scope_id for item in response["shard"]["lessons"]
+             for unit in item["units"] for scope_id in unit["source_scope_ids"]],
+            ["scope-1", "scope-2"],
+        )
 
     async def test_chapter_shard_provider_unavailable_returns_bounded_reviewable_fallback(self) -> None:
         request = RagLessonAuthorChapterShardV2Request.model_validate({

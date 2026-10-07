@@ -31,6 +31,16 @@ def problem(facts: list[str], question: str = "Thiết bị nào cần kiểm tr
     }
 
 
+def diagram(facts: list[str], text: str = "Thiết bị bảo hộ giảm tiếp xúc với rủi ro trước công việc") -> dict:
+    return {
+        "type": "la_diagram",
+        "nodes": [{"label": "Thiết bị bảo hộ", "tooltip": text}, {"label": "Kiểm soát rủi ro"}],
+        "edges": [{"source": 0, "target": 1, "label": "giảm tiếp xúc"}],
+        "source_fact_ids": facts,
+        "covered_source_fact_ids": facts,
+    }
+
+
 def unit(components: list[dict], facts: list[str] | None = None) -> dict:
     return {"title": "Thiết bị bảo hộ", "source_fact_ids": facts or ["fact-1", "fact-2"], "components": components}
 
@@ -117,6 +127,31 @@ class LessonQualityFixturesTests(unittest.TestCase):
         ], assessment=False)
         report = validate_lesson_pedagogical_quality(proposal([unit([html(["fact-1", "fact-2"]), diagram])]), contract)
         self.assertEqual(report.status, "PASS")
+
+    def test_relationship_diagram_can_be_the_approved_instruction_without_html(self):
+        contract = blueprint(plan=[
+            {"type": "la_diagram", "reason_code": "RELATIONSHIP_VISUALIZATION", "learning_block_ids": ["lb-explain"]},
+            {"type": "problem", "reason_code": "ASSESS_OBJECTIVE", "learning_block_ids": ["lb-check"]},
+        ])
+        report = validate_lesson_pedagogical_quality(
+            proposal([unit([diagram(["fact-1", "fact-2"]), problem(["fact-1"])])]),
+            contract,
+        )
+        self.assertEqual(report.status, "PASS")
+        self.assertEqual(report.metrics["objective_coverage"], 1.0)
+        self.assertEqual(report.metrics["assessment_alignment"], 1.0)
+
+    def test_problem_or_faq_alone_cannot_substitute_for_instruction(self):
+        contract = blueprint(plan=[
+            {"type": "problem", "reason_code": "ASSESS_OBJECTIVE", "learning_block_ids": ["lb-check"]},
+            {"type": "la_faq", "reason_code": "FAQ_ANTICIPATED_QUESTIONS", "learning_block_ids": ["lb-explain"]},
+        ])
+        faq = {"type": "la_faq", "items": [{"question": "PPE là gì?", "answer": LONG_EXPLANATION}],
+               "source_fact_ids": ["fact-2"]}
+        report = validate_lesson_pedagogical_quality(proposal([unit([problem(["fact-1"]), faq])]), contract)
+        result_codes = {issue["code"] for issue in report.findings}
+        self.assertIn("OBJECTIVE_NOT_TAUGHT", result_codes)
+        self.assertIn("ASSESSMENT_NOT_ALIGNED", result_codes)
 
     def test_knowledge_check_fixture_requires_teach_then_check_alignment(self):
         report = validate_lesson_pedagogical_quality(proposal([unit([html(["fact-1", "fact-2"]), problem(["fact-1"])])]), blueprint())

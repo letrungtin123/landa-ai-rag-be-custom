@@ -111,13 +111,13 @@ class LessonPromptPolicyTests(unittest.TestCase):
         self.assertEqual({f["code"] for f in signals["findings"]}, {
             "OBJECTIVE_BINDING_UNRESOLVED_REVIEW", "ASSESSMENT_OBJECTIVE_BINDING_MISSING_REVIEW"})
 
-    def test_interaction_ownership_review_is_not_a_false_semantic_coverage_score(self):
+    def test_interaction_ownership_is_valid_but_not_a_false_semantic_coverage_score(self):
         expected = {"component_plan": [{"type": "la_crossword", "source_fact_ids": [f"f{i}" for i in range(23)]}]}
         signals = instructional_contract_review_signals(expected)
         self.assertEqual(signals["semantic_coverage"], "not_measured")
         self.assertEqual(signals["semantic_fidelity"], "not_measured")
-        self.assertEqual(signals["findings"][0]["owned_fact_count"], 23)
-        self.assertEqual(signals["findings"][0]["code"], "INTERACTION_OWNERSHIP_SEMANTIC_COVERAGE_REVIEW")
+        self.assertEqual(signals["findings"], [])
+        self.assertEqual(component_instructional_brief(expected)["components"][0]["instructional_role"], "practice")
         expected["component_plan"][0] = {"type": "la_crossword", "supporting_evidence_fact_ids": ["f1"]}
         self.assertEqual(instructional_contract_review_signals(expected)["findings"], [])
 
@@ -147,7 +147,7 @@ class LessonPromptPolicyTests(unittest.TestCase):
         self.assertEqual(len(entries), 1)
         self.assertEqual(entries[0]["correlation_id"], request.correlation_id)
         self.assertEqual(entries[0]["conversation_id"], request.conversation_id)
-        self.assertGreater(entries[0]["review_signal_count"], 0)
+        self.assertEqual(entries[0]["review_signal_count"], 0)
         self.assertNotIn("PRIVATE_SOURCE", json.dumps(entries))
         self.assertNotIn("Locked source unit", json.dumps(entries))
         self.assertFalse(entries[0]["blocking"])

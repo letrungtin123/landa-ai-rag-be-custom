@@ -1,0 +1,99 @@
+{
+  "contract_version": "ai-id-cp7-bic-quality-oracle-v1",
+  "label_notice": "Production regression oracle reviewed against the user-supplied 12-page BiC source. It is a document-specific acceptance fixture, not a universal parser claim.",
+  "source": {
+    "file_name": "Executive Training Playbook - BiC Modun 1_ Change Mindset.pdf",
+    "sha256": "ca0d92fd3c47ef8ccfe9d27795b2db641bca3b2ce814b7211887928fa8f48775",
+    "page_count": 12
+  },
+  "reviewed_relations": [
+    {
+      "case_id": "bic_pdca_full_cycle",
+      "page": 4,
+      "kind": "ordered_table",
+      "required_pairs": [
+        ["PLAN", "Change Mindset + BQS/BMQ"],
+        ["DO", "SPD (Standard Product Dev)"],
+        ["CHECK", "PQA & DQI"],
+        ["ACTION", "G8D & KILL CRR"],
+        ["ADVANCED", "LEAN / TPS & SIX SIGMA"]
+      ],
+      "required_terms": ["CHU TRÌNH", "CẤU PHẦN CÔNG CỤ BIC", "ADVANCED"]
+    },
+    {
+      "case_id": "bic_made_in_world_ladder",
+      "page": 6,
+      "kind": "ordered_table",
+      "required_pairs": [
+        ["Bậc 04", "Vietnam Know-how"],
+        ["Bậc 05", "Vietnam Innovation"],
+        ["Bậc 06", "Vietnam Brand"],
+        ["ĐỈNH CAO", "MADE-IN-WORLD"]
+      ],
+      "required_terms": ["NẤC THANG", "TÊN GỌI NĂNG LỰC", "ĐẶC TRƯNG VẬN HÀNH"]
+    },
+    {
+      "case_id": "bic_era5_resource_network",
+      "page": 10,
+      "kind": "relationship_visual",
+      "required_pairs": [
+        ["SME", "Expert"],
+        ["Expert", "Technology"],
+        ["Technology", "AI/Data"],
+        ["AI/Data", "Capital"],
+        ["Capital", "Market"],
+        ["Market", "University"],
+        ["University", "Global Network"]
+      ],
+      "required_terms": ["ERA5.0", "MÔ THỨC SIÊU KẾT NỐI NGUỒN LỰC"]
+    }
+  ],
+  "audited_course_baseline": {
+    "course_id": "course-v1:nesso+346546+2026",
+    "workspace_id": "74bff7b2-c879-49d5-8273-4bd831a03e35",
+    "run_id": "973e5fbd-e478-4d10-be9d-614b6df6001f",
+    "correlation_id": "dd3c663d-097c-4e8f-af99-30b4326a6e4d",
+    "quality_score_percent": 61,
+    "chapter_count": 7,
+    "lesson_count": 7,
+    "unit_count": 25,
+    "component_counts": {
+      "html": 25,
+      "la_diagram": 2,
+      "problem": 0,
+      "la_sortable": 0,
+      "la_crossword": 0,
+      "la_faq": 0
+    },
+    "open_single_choice_obligations": 8,
+    "architecture_shard_invalid_count": 9,
+    "capacity_deferral_count": 135,
+    "deadlock_requeue_count": 2,
+    "quality_state": "needs_action"
+  },
+  "release_gates": {
+    "source_relationships": {
+      "all_reviewed_pairs_preserved": true,
+      "unsupported_pairs_allowed": false
+    },
+    "learner_content": {
+      "source_citations_allowed": false,
+      "source_file_names_allowed": false,
+      "internal_ids_allowed": false,
+      "generic_titles_allowed": false,
+      "literal_newline_tokens_allowed": false
+    },
+    "components": {
+      "interaction_quota_required": false,
+      "every_detected_opportunity_requires_component_or_obligation": true,
+      "problem_type": "single_choice",
+      "html_first_when_present": true,
+      "faq_last_when_present": true
+    },
+    "quality_state": {
+      "validated_with_open_obligations_allowed": false,
+      "validated_with_serious_semantic_findings_allowed": false,
+      "review_required_draft_must_remain_visible": true
+    }
+  }
+}

@@ -25,6 +25,22 @@ def fact(key: str, text: str, *, locator: dict | None = None) -> dict:
 
 
 class SourceEvidenceBundleTests(unittest.TestCase):
+    def test_legacy_source_revision_remains_visible_but_requires_review(self) -> None:
+        bundle = build_source_evidence_bundle(
+            source_snapshot_hash=SNAPSHOT,
+            source_facts=[fact(
+                "f1",
+                "Nội dung từ chỉ mục cũ vẫn phải hiển thị cho người duyệt.",
+                locator={"source_evidence_status": "legacy_review_required"},
+            )],
+            locale="vi",
+        )
+
+        self.assertEqual(bundle.status, "review_required")
+        self.assertFalse(bundle.blocking)
+        self.assertEqual(bundle.draft_visibility, "preserved")
+        self.assertIn("STRUCTURED_EVIDENCE_REVISION_MISSING", bundle.review_requirements)
+
     def test_bundle_is_deterministic_and_preserves_table_positions(self) -> None:
         facts = [
             fact("f1", "Row 1: Hazard | Control | Owner"),

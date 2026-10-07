@@ -21,7 +21,7 @@ MAX_BLUEPRINT_PREREQUISITES = 10
 MAX_BLUEPRINT_ASSUMPTIONS = 8
 MAX_BLUEPRINT_ACTIVITIES_PER_LESSON = 3
 MAX_BLUEPRINT_UNITS_PER_LESSON = 3
-MAX_BLUEPRINT_COMPONENTS_PER_UNIT = 3
+MAX_BLUEPRINT_COMPONENTS_PER_UNIT = 4
 MAX_BLUEPRINT_TOTAL_LESSONS = 24
 MAX_BLUEPRINT_TOTAL_UNITS = 24
 MAX_BLUEPRINT_TOTAL_COMPONENTS = 72
@@ -1416,12 +1416,21 @@ def validate_lesson_author_blueprint(
                             "content_requirements": _require_text_array(plan.get("content_requirements") or [], "component_plan.content_requirements", min_items=0, max_items=8, item_max_length=500),
                             **({"required_artifacts": artifacts[:6]} if artifacts else {}),
                         })
-                    if "html" not in seen_component_types:
-                        raise LessonAuthorBlueprintValidationError("BLUEPRINT_INVALID_SCHEMA", "lesson.units.component_plan must include one html explanation component.")
-                    if sum(component_type != "la_faq" for component_type in seen_component_types) > 2:
+                    ordered_types = [plan["type"] for plan in component_plan]
+                    if "html" in seen_component_types and ordered_types[0] != "html":
                         raise LessonAuthorBlueprintValidationError(
                             "BLUEPRINT_INVALID_SCHEMA",
-                            "lesson.units.component_plan may contain html and at most one additional interactive component before FAQ.",
+                            "lesson.units.component_plan must place html first when html is selected.",
+                        )
+                    if "la_faq" in seen_component_types and ordered_types[-1] != "la_faq":
+                        raise LessonAuthorBlueprintValidationError(
+                            "BLUEPRINT_INVALID_SCHEMA",
+                            "lesson.units.component_plan must place FAQ last when FAQ is selected.",
+                        )
+                    if not seen_component_types.intersection({"html", "la_diagram", "la_sortable", "la_crossword"}):
+                        raise LessonAuthorBlueprintValidationError(
+                            "BLUEPRINT_INVALID_SCHEMA",
+                            "lesson.units.component_plan must include a substantive instructional component.",
                         )
                 learning_blocks = _validate_semantic_learning_blocks(
                     unit.get("learning_blocks"),

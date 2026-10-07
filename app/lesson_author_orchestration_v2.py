@@ -145,7 +145,7 @@ class UnitArchitectureV2(BaseModel):
     purpose: str = Field(min_length=1, max_length=500)
     learning_objective_refs: list[str] = Field(min_length=1, max_length=24)
     source_scope_ids: list[str] = Field(min_length=1, max_length=4096)
-    component_plan: list[ArchitectureComponentPlanV2] = Field(min_length=1, max_length=3)
+    component_plan: list[ArchitectureComponentPlanV2] = Field(min_length=1, max_length=4)
     media_brief: ArchitectureMediaBriefV2 | None
 
     @model_validator(mode="after")
@@ -157,15 +157,22 @@ class UnitArchitectureV2(BaseModel):
                 not OBJECTIVE_REF_PATTERN.fullmatch(item) for item in self.learning_objective_refs):
             raise ValueError("unit learning objective references are invalid")
         component_types = [component.type for component in self.component_plan]
-        if component_types[0] != "html" or len(set(component_types)) != len(component_types):
-            raise ValueError("component plan requires one leading html and unique component types")
+        if len(set(component_types)) != len(component_types):
+            raise ValueError("component plan requires unique component types")
+        if "html" in component_types and component_types[0] != "html":
+            raise ValueError("HTML must be the first component when present")
         if "la_faq" in component_types and component_types[-1] != "la_faq":
             raise ValueError("FAQ must be the final component")
         allowed_scopes = set(self.source_scope_ids)
         if any(not set(component.source_scope_ids).issubset(allowed_scopes) for component in self.component_plan):
             raise ValueError("component scope exceeds its unit")
-        if set(self.component_plan[0].source_scope_ids) != allowed_scopes:
-            raise ValueError("the leading html component must teach every unit scope")
+        represented_scopes = {
+            scope_id
+            for component in self.component_plan
+            for scope_id in component.source_scope_ids
+        }
+        if represented_scopes != allowed_scopes:
+            raise ValueError("component plan must represent every unit scope")
         return self
 
 

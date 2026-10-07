@@ -12,6 +12,7 @@ from app.instructional_quality import ordered_source_steps
 
 SOURCE_EVIDENCE_BUNDLE_VERSION = "source-evidence-bundle-v1"
 SOURCE_EVIDENCE_ASSEMBLER_VERSION = "source-evidence-assembler-v1"
+LEGACY_SOURCE_EVIDENCE_REVIEW_CODE = "STRUCTURED_EVIDENCE_REVISION_MISSING"
 SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 TABLE_ROW_RE = re.compile(r"^Row\s+(\d+)\s*:\s*(.+)$", re.IGNORECASE)
 STEP_RE = re.compile(
@@ -616,6 +617,12 @@ def build_source_evidence_bundle(
         for key in sorted(unique_elements)
     )
     raw_review_requirements = list(dict.fromkeys(visual_requirements))
+    if any(
+        str(_locator_for_fact(fact).get("source_evidence_status") or "").strip().casefold()
+        == "legacy_review_required"
+        for fact in facts
+    ):
+        raw_review_requirements.append(LEGACY_SOURCE_EVIDENCE_REVIEW_CODE)
     if len(elements) > 256:
         raw_review_requirements.append("EVIDENCE_ELEMENT_LIMIT_REACHED")
     ordered_elements = ordered_elements[:256]

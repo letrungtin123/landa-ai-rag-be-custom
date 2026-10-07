@@ -29,6 +29,7 @@ from app.lesson_author_orchestration_v2_provider import (
     fallback_course_skeleton_draft_v2,
     parse_chapter_shard_draft_v2,
     plan_chapter_shards_v2,
+    salvage_chapter_shard_draft_v2,
     skeleton_prompt_v2,
     unit_contract_manifest_v2,
     unit_contract_v5_architecture_v2,
@@ -82,6 +83,199 @@ def skeleton_draft() -> CourseSkeletonDraftV2:
 
 
 class LessonAuthorOrchestrationV2ProviderTests(unittest.TestCase):
+    def test_ready_evidence_compiler_adds_only_grounded_treatments(self) -> None:
+        catalog = [scope("scope-1", 3, 300)]
+        skeleton = bind_course_skeleton_v2(
+            skeleton_draft().model_copy(update={
+                "chapters": [skeleton_draft().chapters[0].model_copy(update={
+                    "source_scope_ids": ["scope-1"],
+                })],
+            }), source_snapshot_hash=SOURCE_HASH, locale="vi", scope_catalog=catalog,
+        )
+        plan = plan_chapter_shards_v2(skeleton, catalog)[0]
+        facts = [SourceSnapshotFactV2(
+            document_id="document-1",
+            fact_key=f"fact-{index}",
+            scope_key="scope-1",
+            fact_text=text,
+            locator={
+                "instructional_density_policy_version": "unit-content-v3-density-1",
+                "source_evidence_status": "ready",
+                "source_evidence_revision": "b" * 64,
+            },
+        ) for index, text in enumerate((
+            "Bước 1: Nhận diện mối nguy tại khu vực làm việc trước khi bắt đầu.",
+            "Bước 2: Đánh giá khả năng xảy ra và mức hậu quả theo tiêu chí.",
+            "Bước 3: Chọn biện pháp kiểm soát và xác nhận kết quả thực hiện.",
+        ), start=1)]
+        diagnostics: list[dict] = []
+        bound = bind_chapter_shard_v2(
+            ChapterShardDraftV2(lessons=[lesson(["scope-1"])]),
+            skeleton=skeleton,
+            plan=plan,
+            source_facts=facts,
+            compiler_diagnostics=diagnostics,
+        )
+        self.assertEqual(
+            [component.type for component in bound.lessons[0].units[0].component_plan],
+            ["html", "la_sortable"],
+        )
+        self.assertEqual(diagnostics[0]["added_types"], ["la_sortable"])
+
+        legacy = [fact.model_copy(update={"locator": {
+            "instructional_density_policy_version": "unit-content-v3-density-1",
+            "source_evidence_status": "legacy_review_required",
+        }}) for fact in facts]
+        legacy_bound = bind_chapter_shard_v2(
+            ChapterShardDraftV2(lessons=[lesson(["scope-1"])]),
+            skeleton=skeleton,
+            plan=plan,
+            source_facts=legacy,
+        )
+        self.assertEqual(
+            [component.type for component in legacy_bound.lessons[0].units[0].component_plan],
+            ["html"],
+        )
+
+    def test_ready_evidence_compiler_is_opportunity_driven_not_quota_driven(self) -> None:
+        catalog = [scope("scope-1", 3, 300)]
+        skeleton = bind_course_skeleton_v2(
+            skeleton_draft().model_copy(update={
+                "chapters": [skeleton_draft().chapters[0].model_copy(update={
+                    "source_scope_ids": ["scope-1"],
+                })],
+            }), source_snapshot_hash=SOURCE_HASH, locale="vi", scope_catalog=catalog,
+        )
+        plan = plan_chapter_shards_v2(skeleton, catalog)[0]
+
+        def compile_types(texts: tuple[str, ...], *, table: bool = False) -> tuple[list[str], dict]:
+            facts = [SourceSnapshotFactV2(
+                document_id="document-1",
+                fact_key=f"fact-{index}",
+                scope_key="scope-1",
+                fact_text=text,
+                locator={
+                    "instructional_density_policy_version": "unit-content-v3-density-1",
+                    "source_evidence_status": "ready",
+                    "source_evidence_revision": "c" * 64,
+                    "content_kinds": ["table", "text"] if table else ["text"],
+                    "table_count": 1 if table else 0,
+                },
+            ) for index, text in enumerate(texts, start=1)]
+            diagnostics: list[dict] = []
+            bound = bind_chapter_shard_v2(
+                ChapterShardDraftV2(lessons=[lesson(["scope-1"])]),
+                skeleton=skeleton,
+                plan=plan,
+                source_facts=facts,
+                compiler_diagnostics=diagnostics,
+            )
+            return (
+                [component.type for component in bound.lessons[0].units[0].component_plan],
+                diagnostics[0],
+            )
+
+        prose_types, prose_diagnostics = compile_types((
+            "Văn hóa an toàn hình thành từ cam kết nhất quán của lãnh đạo và người lao động.",
+            "Hoạt động trao đổi giúp các bên hiểu trách nhiệm trong công việc hằng ngày.",
+            "Việc theo dõi kết quả hỗ trợ cải tiến cách tổ chức công việc theo thời gian.",
+        ))
+        self.assertEqual(prose_types, ["html"])
+        self.assertEqual(prose_diagnostics["opportunity_types"], [])
+        self.assertEqual(prose_diagnostics["added_types"], [])
+
+        diagram_types, diagram_diagnostics = compile_types((
+            "Row 1: Cấp quản trị | Vai trò",
+            "Row 2: Lãnh đạo | Phê duyệt định hướng và nguồn lực",
+            "Row 3: Quản lý trực tiếp | Điều phối và xác nhận thực hiện",
+        ), table=True)
+        self.assertEqual(diagram_types, ["html", "la_diagram"])
+        self.assertEqual(diagram_diagnostics["added_types"], ["la_diagram"])
+
+        incomplete_faq_types, incomplete_faq_diagnostics = compile_types((
+            "Lưu ý: Dừng lại.",
+            "nếu thiếu dữ liệu, người thực hiện phải hỏi người phụ trách trước khi tiếp tục công việc.",
+            "Nội dung nền vẫn được giữ làm phần giải thích cho người học.",
+        ))
+        self.assertEqual(incomplete_faq_types, ["html"])
+        self.assertNotIn("la_faq", incomplete_faq_diagnostics["opportunity_types"])
+
+        complete_faq_types, complete_faq_diagnostics = compile_types((
+            "Nếu phát hiện điều kiện không an toàn, người lao động phải dừng công việc và báo người phụ trách.",
+            "Khi biện pháp kiểm soát chưa có hiệu lực, công việc chỉ được tiếp tục sau khi đánh giá lại.",
+            "Nội dung nền vẫn được giữ làm phần giải thích cho người học.",
+        ))
+        self.assertEqual(complete_faq_types, ["html", "la_faq"])
+        self.assertEqual(complete_faq_diagnostics["added_types"], ["la_faq"])
+
+    def test_partial_salvage_keeps_proven_provider_unit_and_falls_back_only_missing_scope(self) -> None:
+        catalog = [scope("scope-1", 1, 80), scope("scope-2", 1, 80)]
+        skeleton = bind_course_skeleton_v2(
+            skeleton_draft().model_copy(update={
+                "chapters": [skeleton_draft().chapters[0].model_copy(update={
+                    "source_scope_ids": ["scope-1", "scope-2"],
+                })],
+            }), source_snapshot_hash=SOURCE_HASH, locale="vi", scope_catalog=catalog,
+        )
+        plan = plan_chapter_shards_v2(skeleton, catalog)[0]
+        raw_lesson = lesson(["scope-1"], "Bài provider đạt")
+        invalid = deepcopy(raw_lesson["units"][0])
+        invalid["source_scope_ids"] = ["scope-2"]
+        invalid["component_plan"][0]["source_scope_ids"] = ["scope-2"]
+        invalid.pop("purpose")
+        raw_lesson["units"].append(invalid)
+        facts = [SourceSnapshotFactV2(
+            document_id="document-1", fact_key=f"fact-{index}", scope_key=scope_id,
+            fact_text=f"Nội dung nguồn đủ dài và có ý nghĩa cho {scope_id}.", locator={},
+        ) for index, scope_id in enumerate(("scope-1", "scope-2"), start=1)]
+
+        result = salvage_chapter_shard_draft_v2(
+            json.dumps({"lessons": [raw_lesson]}, ensure_ascii=False),
+            skeleton=skeleton,
+            plan=plan,
+            source_facts=facts,
+        )
+        self.assertIsNotNone(result)
+        shard, diagnostics = result  # type: ignore[misc]
+        self.assertEqual(diagnostics["accepted_provider_unit_count"], 1)
+        self.assertEqual(diagnostics["fallback_scope_count"], 1)
+        self.assertEqual(shard.lessons[0].title, "Bài provider đạt")
+        self.assertEqual(
+            [scope_id for item in shard.lessons for unit in item.units for scope_id in unit.source_scope_ids],
+            ["scope-1", "scope-2"],
+        )
+
+    def test_unit_architecture_allows_interaction_led_plan_and_enforces_display_order(self) -> None:
+        payload = lesson(["scope-1"])
+        unit = payload["units"][0]
+        base = unit["component_plan"][0]
+        unit["component_plan"] = [
+            {**deepcopy(base), "type": "la_diagram", "title": "Quan hệ"},
+            {**deepcopy(base), "type": "problem", "title": "Kiểm tra"},
+            {**deepcopy(base), "type": "la_faq", "title": "Câu hỏi thường gặp"},
+        ]
+        parsed = ChapterShardDraftV2.model_validate({"lessons": [payload]})
+        self.assertEqual(
+            [component.type for component in parsed.lessons[0].units[0].component_plan],
+            ["la_diagram", "problem", "la_faq"],
+        )
+
+        html_late = deepcopy(payload)
+        html_late["units"][0]["component_plan"] = [
+            {**deepcopy(base), "type": "la_diagram"},
+            {**deepcopy(base), "type": "html"},
+        ]
+        with self.assertRaises(ValidationError):
+            ChapterShardDraftV2.model_validate({"lessons": [html_late]})
+
+        faq_early = deepcopy(payload)
+        faq_early["units"][0]["component_plan"] = [
+            {**deepcopy(base), "type": "la_faq"},
+            {**deepcopy(base), "type": "problem"},
+        ]
+        with self.assertRaises(ValidationError):
+            ChapterShardDraftV2.model_validate({"lessons": [faq_early]})
+
     def test_chapter_wire_normalizes_nullable_review_fields_and_component_aliases(self) -> None:
         payload = lesson(["scope-1"])
         unit = payload["units"][0]
@@ -657,6 +851,44 @@ class LessonAuthorOrchestrationV2ProviderTests(unittest.TestCase):
         self.assertEqual(obligation.learning_objective_refs, ["lo_1"])
         self.assertEqual(obligation.relevant_evidence_fact_ids, ["fact-1"])
         self.assertEqual(obligation.status, "open")
+
+    def test_assessment_obligation_is_bounded_to_persistable_slots(self) -> None:
+        catalog = [scope("scope-1", 1, 80)]
+        draft = skeleton_draft().model_copy(update={
+            "chapters": [skeleton_draft().chapters[0].model_copy(update={
+                "source_scope_ids": ["scope-1"],
+            })],
+        })
+        skeleton = bind_course_skeleton_v2(
+            draft, source_snapshot_hash=SOURCE_HASH, locale="vi", scope_catalog=catalog,
+        )
+        plan = plan_chapter_shards_v2(skeleton, catalog)[0]
+        facts = [SourceSnapshotFactV2(
+            document_id="document-1", fact_key="fact-1", scope_key="scope-1",
+            fact_text="Người thực hiện phải kiểm tra điều kiện an toàn trước khi bắt đầu công việc.",
+            locator={"instructional_density_policy_version": "unit-content-v3-density-1"},
+        )]
+
+        def bind_with_problem_at(slot: int) -> tuple[object, list[dict]]:
+            payload = lesson(["scope-1"])
+            base = payload["units"][0]["component_plan"][0]
+            component_types = ["html", "la_diagram", "la_sortable", "problem"][:slot]
+            payload["units"][0]["component_plan"] = [
+                {**deepcopy(base), "type": component_type, "title": component_type}
+                for component_type in component_types[:-1]
+            ] + [{**deepcopy(base), "type": "problem", "title": "Kiểm tra"}]
+            diagnostics: list[dict] = []
+            bound = bind_chapter_shard_v2(
+                ChapterShardDraftV2(lessons=[payload]), skeleton=skeleton, plan=plan,
+                source_facts=facts, compiler_diagnostics=diagnostics,
+            )
+            return bound, diagnostics
+
+        slot_three, _ = bind_with_problem_at(3)
+        self.assertEqual(slot_three.assessment_obligations[0].component_index, 3)
+        slot_four, diagnostics = bind_with_problem_at(4)
+        self.assertEqual(slot_four.assessment_obligations, [])
+        self.assertEqual(diagnostics[0]["obligation_omitted_component_indices"], [4])
 
     def test_rejects_indivisible_scope_above_shard_capacity(self) -> None:
         catalog = [scope("scope-1", 1, 101), scope("scope-2", 1, 1), scope("scope-3", 1, 1)]

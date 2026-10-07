@@ -18,7 +18,7 @@ from typing import Any
 from app.lesson_prompt_policy import component_instructional_brief, instructional_action_intents
 from app.ordered_learning_content import ordered_content_fields
 
-VERSION = "lesson-content-observation-2"
+VERSION = "lesson-content-observation-3"
 MAX_FACTS = 1200
 MAX_MANIFEST_FACTS = 20000
 MAX_COMPONENTS = 32
@@ -31,6 +31,7 @@ _NEGATION = re.compile(r"\b(?:not|never|no|without|khong|cam|chua)\b")
 _NUMBERS = re.compile(r"(?<!\w)\d+(?:[.,]\d+)?(?!\w)")
 _INTERNAL_ID = re.compile(r"\bp\d+-f\d+\b|\bcp2_[a-f0-9]+\b")
 _MULTIPLICATION = re.compile(r"(?<![\w.,-])(\d{1,6}(?:\.\d{1,6})?)\s*[x×*]\s*(\d{1,6}(?:\.\d{1,6})?)\s*=\s*(\d{1,12}(?:\.\d{1,12})?)(?![\w,]|\.\d)")
+_INSTRUCTIONAL_TYPES = {"html", "la_diagram", "la_sortable", "la_crossword"}
 
 
 def _record(value: Any) -> dict:
@@ -63,7 +64,7 @@ class TextSpan:
 def _learner_fields(component: dict) -> list[tuple[str, str]]:
     """Only explicit display fields. Never stringify metadata/ownership arrays."""
     result = []
-    for field in ("title", "question", "explanation", "answer", "html", "content"):
+    for field in ("title", "question", "question_text", "explanation", "answer", "html", "content", "name"):
         if isinstance(component.get(field), str):
             result.append((field, component[field]))
     semantic = _record(component.get("semantic_content"))
@@ -78,8 +79,13 @@ def _learner_fields(component: dict) -> list[tuple[str, str]]:
         row = _record(item)
         result.append((f"semantic_content.comparison_rows[{i}]",
                        " ".join(row[k] for k in ("label", "value") if isinstance(row.get(k), str))))
+    for field in ("ordered_items", "steps"):
+        for i, item in enumerate(_list(component.get(field))):
+            if isinstance(item, str):
+                result.append((f"{field}[{i}]", item))
     for field, keys in (("items", ("question", "answer", "text")), ("choices", ("text",)),
-                        ("words", ("answer", "clue", "hint")), ("nodes", ("label",))):
+                        ("words", ("answer", "clue", "hint")),
+                        ("nodes", ("label", "tooltip")), ("edges", ("label",))):
         for i, item in enumerate(_list(component.get(field))):
             if isinstance(item, str):
                 result.append((f"{field}[{i}]", item))
@@ -89,10 +95,28 @@ def _learner_fields(component: dict) -> list[tuple[str, str]]:
 
 
 def _teaching_fields(component: dict) -> list[tuple[str, str]]:
-    # Titles, questions, distractors and FAQ answers cannot prove HTML teaching.
+    """Return only fields authorized to carry canonical instructional facts.
+
+    Questions, distractors, FAQ answers and titles remain learner-facing, but
+    cannot substitute for teaching.  A selected relationship diagram, ordered
+    practice or terminology exercise can teach the exact fact assigned to its
+    plan, so their semantic payload is observable alongside HTML.
+    """
     fields = _learner_fields(component)
-    return [(path, text) for path, text in fields
-            if path in {"html", "content"} or (path.startswith("semantic_content.") and not path.endswith(".heading"))]
+    component_type = str(component.get("type") or "").strip()
+    if component_type == "html":
+        return [(path, text) for path, text in fields
+                if path in {"html", "content"}
+                or (path.startswith("semantic_content.") and not path.endswith(".heading"))]
+    if component_type == "la_diagram":
+        return [(path, text) for path, text in fields
+                if path.startswith("nodes[") or path.startswith("edges[")]
+    if component_type == "la_sortable":
+        return [(path, text) for path, text in fields
+                if path.startswith("items[") or path.startswith("ordered_items[") or path.startswith("steps[")]
+    if component_type == "la_crossword":
+        return [(path, text) for path, text in fields if path.startswith("words[")]
+    return []
 
 
 def observe_lesson_content(unit: dict, expected: dict, manifest: dict | None) -> dict:
@@ -138,18 +162,20 @@ def observe_lesson_content(unit: dict, expected: dict, manifest: dict | None) ->
             if isolated:
                 finding("DIAGRAM_ISOLATED_NODES_REVIEW", f"components[{i}].nodes", isolated_node_count=len(isolated))
             # Connectivity is structural only, never evidence that the edges are true.
-        if component.get("type") != "html" or plan.get("type") != "html":
-            continue
-        semantic = _record(component.get("semantic_content"))
-        if semantic.get("version") == 2:
-            sections = _list(semantic.get("sections"))[:12]
-            ordered_section_count += len(sections)
-            practice_task_count += sum(_record(b).get("kind") == "task" for s in sections for b in _list(_record(s).get("blocks"))[:12])
-            declared = {ref for s in sections for ref in _ids(_record(s).get("learning_block_ids"))}
-            missing = set(_ids(plan.get("learning_block_ids"))) - declared
-            if missing:
-                finding("HTML_TEACHING_GROUP_NOT_PRESENT", f"components[{i}].semantic_content.sections", missing_group_count=len(missing))
         owned_by_component[i] = set(_ids(plan.get("source_fact_ids")))
+        component_type = str(component.get("type") or "").strip()
+        if component_type == "html" and plan.get("type") == "html":
+            semantic = _record(component.get("semantic_content"))
+            if semantic.get("version") == 2:
+                sections = _list(semantic.get("sections"))[:12]
+                ordered_section_count += len(sections)
+                practice_task_count += sum(_record(b).get("kind") == "task" for s in sections for b in _list(_record(s).get("blocks"))[:12])
+                declared = {ref for s in sections for ref in _ids(_record(s).get("learning_block_ids"))}
+                missing = set(_ids(plan.get("learning_block_ids"))) - declared
+                if missing:
+                    finding("HTML_TEACHING_GROUP_NOT_PRESENT", f"components[{i}].semantic_content.sections", missing_group_count=len(missing))
+        if component_type not in _INSTRUCTIONAL_TYPES or plan.get("type") != component_type:
+            continue
         fields = _teaching_fields(component)
         for path, text in fields:
             if len(spans) >= MAX_SEGMENTS:

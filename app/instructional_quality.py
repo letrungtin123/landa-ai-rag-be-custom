@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import html
 import re
 import unicodedata
@@ -17,7 +18,14 @@ ORDERED_STEP_RE = re.compile(
     r"^(?:(?:step|bước|buoc)\s*)?(\d{1,3})\s*[:.)-]\s*(.+)$",
     re.IGNORECASE,
 )
+CHECKLIST_ITEM_RE = re.compile(r"^(?:☐|☑|\[\s*[x ]?\s*\])\s*(\S.*)$", re.IGNORECASE)
+CALLOUT_RE = re.compile(
+    r"^(warning|caution|cảnh báo|lưu ý|requirement|yêu cầu|bắt buộc|exception|ngoại lệ)\s*:\s*(.+)$",
+    re.IGNORECASE,
+)
 TERM_DEFINITION_RE = re.compile(r"^([^:]{2,80})\s*:\s*(.{20,})$")
+MIN_FAQ_QUESTION_CHARS = 14
+MIN_FAQ_ANSWER_CHARS = 40
 
 _URL_ONLY_RE = re.compile(r"^(?:https?://|www\.)\S+$", re.IGNORECASE)
 _EMAIL_ONLY_RE = re.compile(r"^[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}$")
@@ -49,7 +57,18 @@ _GENERIC_REVIEW_PHRASES = (
 
 
 def normalize_visible_text(value: Any) -> str:
-    return re.sub(r"\s+", " ", str(value or "")).strip()
+    text = str(value or "")
+    # OCR and model wires sometimes contain visible newline escape tokens
+    # instead of actual control characters. They are never learner content.
+    text = re.sub(r"(?:\\r\\n|\\n|\\r|(?<![A-Za-z0-9])/n(?![A-Za-z0-9]))", " ", text, flags=re.IGNORECASE)
+    return re.sub(r"\s+", " ", text).strip()
+
+
+def faq_answer_is_complete(value: Any) -> bool:
+    """Match the learner-facing FAQ validator before admitting an opportunity."""
+
+    answer = normalize_visible_text(value)
+    return len(answer) >= MIN_FAQ_ANSWER_CHARS and not answer[:1].islower()
 
 
 def _fold(value: str) -> str:
@@ -121,6 +140,68 @@ def parse_structured_table_rows(values: Iterable[Any]) -> list[list[str]]:
     return [cells for _index, cells in rows[:40]]
 
 
+def source_relationship_pairs(values: Iterable[Any]) -> list[tuple[str, str, str | None]]:
+    """Recover only explicit source relationships suitable for a diagram.
+
+    A table row, an arrow chain, or an explicit ``includes`` statement proves a
+    relationship. Nearby prose does not. This conservative representation is
+    shared by architecture selection, writer validation, and deterministic
+    recovery so a diagram cannot be admitted by one layer and invented by the
+    next one.
+    """
+
+    facts = clean_source_facts(values, preserve_table_numeric=True)
+    result: list[tuple[str, str, str | None]] = []
+    seen: set[tuple[str, str]] = set()
+
+    def add(left: Any, right: Any, relation: str | None = None) -> None:
+        source = normalize_visible_text(left).strip(" -:;,.|")[:500]
+        target = normalize_visible_text(right).strip(" -:;,.|")[:500]
+        source_key = _semantic_line_key(source)
+        target_key = _semantic_line_key(target)
+        if (not source_key or not target_key or source_key == target_key
+                or (source_key, target_key) in seen or len(result) >= 10):
+            return
+        seen.add((source_key, target_key))
+        relation_text = normalize_visible_text(relation)[:120] if relation else None
+        result.append((source, target, relation_text or None))
+
+    rows = parse_structured_table_rows(facts)
+    if len(rows) >= 2 and len(rows[0]) >= 2:
+        relation = rows[0][1]
+        for row in rows[1:]:
+            if len(row) >= 2:
+                add(row[0], row[1], relation)
+
+    arrow_splitter = re.compile(r"\s*(↔|<->|→|->|=>)\s*")
+    includes_pattern = re.compile(
+        r"^(.{2,120}?)\s+(?:bao\s+gồm|gồm|includes|consists\s+of)\s*:?[ ]*(.+)$",
+        re.IGNORECASE,
+    )
+    for fact in facts:
+        if TABLE_ROW_RE.match(fact):
+            continue
+        arrow_parts = arrow_splitter.split(fact)
+        if len(arrow_parts) >= 3:
+            nodes = arrow_parts[0::2]
+            relations = arrow_parts[1::2]
+            for index in range(min(len(nodes) - 1, len(relations))):
+                add(nodes[index], nodes[index + 1], relations[index])
+            continue
+        includes = includes_pattern.match(fact)
+        if includes:
+            parent, raw_children = includes.groups()
+            children = [
+                child.strip()
+                for child in re.split(r"\s*(?:[,;•]|\band\b|\bvà\b)\s*", raw_children, flags=re.IGNORECASE)
+                if child.strip()
+            ]
+            if len(children) >= 2:
+                for child in children:
+                    add(parent, child, "includes" if "include" in _fold(fact) else "bao gồm")
+    return result
+
+
 def _semantic_line_key(value: str) -> str:
     return re.sub(r"[^\w\d]+", " ", _fold(value)).strip()
 
@@ -176,26 +257,32 @@ def render_source_locked_html(
         return result
 
     lines = [part for value in prose for part in split_inline_steps(value)]
-    parts = [f"<h3>{html.escape(title)}</h3>"]
+    parts = [f"<h2>{html.escape(title)}</h2>"]
     index = 0
     while index < len(lines):
         line = lines[index]
         ordered_match = ORDERED_STEP_RE.match(line)
         bullet_match = re.match(r"^[•●▪◦*-]\s+(.+)$", line)
-        if ordered_match or bullet_match:
-            tag = "ol" if ordered_match else "ul"
+        checklist_match = CHECKLIST_ITEM_RE.match(line)
+        if ordered_match or bullet_match or checklist_match:
+            mode = "ordered" if ordered_match else "checklist" if checklist_match else "bullet"
+            tag = "ol" if mode == "ordered" else "ul"
             items: list[str] = []
             while index < len(lines):
-                match = (
-                    ORDERED_STEP_RE.match(lines[index])
-                    if tag == "ol"
-                    else re.match(r"^[•●▪◦*-]\s+(.+)$", lines[index])
-                )
+                match = (ORDERED_STEP_RE.match(lines[index]) if mode == "ordered"
+                         else CHECKLIST_ITEM_RE.match(lines[index]) if mode == "checklist"
+                         else re.match(r"^[•●▪◦*-]\s+(.+)$", lines[index]))
                 if not match:
                     break
-                items.append(f"<li>{_inline(match.group(2 if tag == 'ol' else 1).strip())}</li>")
+                items.append(f"<li>{_inline(match.group(2 if mode == 'ordered' else 1).strip())}</li>")
                 index += 1
             parts.append(f"<{tag}>{''.join(items)}</{tag}>")
+            continue
+
+        callout_match = CALLOUT_RE.match(line)
+        if callout_match:
+            parts.append(f"<blockquote>{_inline(line)}</blockquote>")
+            index += 1
             continue
 
         word_count = len(line.split())
@@ -257,6 +344,11 @@ def render_source_locked_html(
 def ordered_source_steps(values: Iterable[Any], *, locale: str) -> list[str]:
     discovered: list[tuple[int, str]] = []
     for value in clean_source_facts(values, preserve_table_numeric=True):
+        # ``Row 1:`` is a table coordinate, not an instructional procedure.
+        # Treating table row numbers as steps used to add meaningless sortable
+        # blocks next to otherwise valid relationship diagrams.
+        if TABLE_ROW_RE.match(value):
+            continue
         candidates = re.split(r"(?=(?<!\w)(?:step|bước|buoc)?\s*\d{1,3}\s*[:.)-]\s+)", value, flags=re.IGNORECASE)
         for candidate in candidates:
             match = ORDERED_STEP_RE.match(candidate.strip())
@@ -317,6 +409,11 @@ def source_clarification_signals(values: Iterable[Any]) -> list[str]:
     result: list[str] = []
     seen: set[str] = set()
     for value in clean_source_facts(values, preserve_table_numeric=True):
+        # Do not publish a FAQ obligation that deterministic recovery cannot
+        # satisfy. Short fragments and lower-case continuations are useful as
+        # prose evidence, but are not complete learner-facing answers.
+        if not faq_answer_is_complete(value):
+            continue
         folded = _fold(value).strip().lstrip("•*- ")
         if not re.match(
             r"^(?:neu|khi|tru khi|chi khi|khong duoc|luu y|canh bao|ngoai le|"
@@ -411,6 +508,97 @@ def build_source_locked_single_choice(
         ],
         "explanation": explanation,
     }
+
+
+def build_source_grounded_single_choice(
+    title: str,
+    values: Iterable[Any],
+    *,
+    locale: str,
+) -> dict[str, Any] | None:
+    """Build one verifiable MCQ without inventing a false source statement.
+
+    Prefer an explicit source-authored question. If none exists, derive only
+    from source structures whose alternatives are mutually distinguishable:
+    a term-definition set, a keyed table, or an ordered procedure. Arbitrary
+    prose is deliberately ineligible because it cannot yield safe distractors.
+    """
+
+    authored = build_source_locked_single_choice(title, values, locale=locale)
+    if authored is not None:
+        return authored
+
+    def grounded_choices(options: list[str], correct: str, seed: str) -> list[dict[str, Any]]:
+        bounded = [normalize_visible_text(option)[:500] for option in options]
+        if len(bounded) < 3:
+            return []
+        # Keep output reproducible while avoiding a systematic "A is correct"
+        # pattern in every deterministic recovery question.
+        offset = 1 + int.from_bytes(hashlib.sha256(seed.encode("utf-8")).digest()[:2], "big") % (len(bounded) - 1)
+        ordered = bounded[offset:] + bounded[:offset]
+        correct_key = _semantic_line_key(correct)
+        return [
+            {"text": option, "correct": _semantic_line_key(option) == correct_key}
+            for option in ordered
+        ]
+
+    facts = clean_source_facts(values, preserve_table_numeric=True)
+    definitions = source_term_definitions(facts)
+    if len(definitions) >= 3:
+        term, correct = definitions[0]
+        choices = [definition for _candidate, definition in definitions[:6]]
+        if len({_semantic_line_key(choice) for choice in choices}) >= 3:
+            return {
+                "problem_type": "multiple_choice",
+                "question": (
+                    f"Which description correctly matches the term {term}?"
+                    if locale == "en" else f"Mô tả nào phù hợp nhất với thuật ngữ {term}?"
+                ),
+                "choices": grounded_choices(choices, correct, f"definition:{title}:{term}"),
+                "explanation": (
+                    f"{term} is defined as: {correct}"
+                    if locale == "en" else f"{term} được xác định là: {correct}"
+                )[:1000],
+            }
+
+    rows = parse_structured_table_rows(facts)
+    if len(rows) >= 4 and len(rows[0]) >= 2:
+        header, body = rows[0], [row for row in rows[1:] if len(row) >= 2]
+        if len(body) >= 3:
+            key, correct = body[0][0], body[0][1]
+            choices = [row[1] for row in body[:6]]
+            if len({_semantic_line_key(choice) for choice in choices}) >= 3:
+                return {
+                    "problem_type": "multiple_choice",
+                    "question": (
+                        f"According to {header[0]}, which {header[1]} corresponds to {key}?"
+                        if locale == "en"
+                        else f"Theo {header[0]}, {header[1]} nào tương ứng với {key}?"
+                    )[:500],
+                    "choices": grounded_choices(choices, correct, f"table:{title}:{key}"),
+                    "explanation": (
+                        f"{key} corresponds to {correct}."
+                        if locale == "en" else f"{key} tương ứng với {correct}."
+                    )[:1000],
+                }
+
+    steps = ordered_source_steps(facts, locale=locale)
+    if len(steps) >= 3:
+        actions = [re.sub(r"^(?:Step|Bước)\s+\d+\s*:\s*", "", step, flags=re.IGNORECASE) for step in steps]
+        correct = actions[0]
+        return {
+            "problem_type": "multiple_choice",
+            "question": (
+                "Which action comes first in the procedure?"
+                if locale == "en" else "Hoạt động nào được thực hiện đầu tiên trong quy trình?"
+            ),
+            "choices": grounded_choices(actions[:6], correct, f"procedure:{title}"),
+            "explanation": (
+                f"The procedure begins with: {correct}"
+                if locale == "en" else f"Quy trình bắt đầu bằng: {correct}"
+            )[:1000],
+        }
+    return None
 
 
 def contains_generic_review_language(value: Any) -> bool:

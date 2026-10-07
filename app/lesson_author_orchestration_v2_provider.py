@@ -3,9 +3,10 @@ from __future__ import annotations
 from collections import Counter
 from copy import deepcopy
 import json
+import re
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 
 from app.instructional_density import (
     DEFAULT_INSTRUCTIONAL_DENSITY_BUDGET,
@@ -15,11 +16,11 @@ from app.instructional_density import (
     profile_instructional_texts,
 )
 from app.instructional_quality import (
-    build_source_locked_single_choice,
+    build_source_grounded_single_choice,
     clean_source_facts,
     ordered_source_steps,
-    parse_structured_table_rows,
     source_clarification_signals,
+    source_relationship_pairs,
     source_term_definitions,
 )
 from app.source_evidence_bundle import (
@@ -328,6 +329,158 @@ def parse_chapter_shard_draft_v2(text: str) -> ChapterShardDraftV2:
     return ChapterShardDraftV2.model_validate(payload)
 
 
+def _safe_architecture_failure_code(error: Exception) -> str:
+    if isinstance(error, OrchestrationContractError):
+        return error.code
+    if isinstance(error, ValidationError):
+        first = error.errors(include_url=False, include_input=False)[:1]
+        return str(first[0].get("type") or "VALIDATION_ERROR") if first else "VALIDATION_ERROR"
+    if isinstance(error, json.JSONDecodeError):
+        return "JSON_INVALID"
+    return type(error).__name__[:80]
+
+
+def _subplan_for_scopes(
+    plan: "ChapterShardPlanV2",
+    scope_ids: list[str],
+    facts: list[SourceSnapshotFactV2],
+) -> "ChapterShardPlanV2":
+    selected = [fact for fact in facts if fact.scope_key in set(scope_ids)]
+    return ChapterShardPlanV2(
+        chapter_key=plan.chapter_key,
+        order=plan.order,
+        shard_index=plan.shard_index,
+        shard_count=plan.shard_count,
+        source_scope_ids=scope_ids,
+        source_fact_count=len(selected),
+        source_content_chars=sum(len(fact.fact_text) for fact in selected),
+    )
+
+
+def salvage_chapter_shard_draft_v2(
+    text: str,
+    *,
+    skeleton: CourseSkeletonV2,
+    plan: "ChapterShardPlanV2",
+    source_facts: list[SourceSnapshotFactV2],
+) -> tuple[ChapterBlueprintShardV2, dict[str, Any]] | None:
+    """Keep only independently proven provider units and fill their missing scopes.
+
+    A provider lesson or unit is never repaired by guessing fields. Each unit is
+    parsed with its original lesson metadata and then passed through the exact
+    same evidence/density compiler as a complete shard. Units that fail any
+    boundary are discarded as a whole; deterministic fallback owns only their
+    still-unclaimed immutable scopes.
+    """
+
+    try:
+        payload = json.loads(text)
+    except json.JSONDecodeError:
+        return None
+    raw_lessons = payload.get("lessons") if isinstance(payload, dict) else None
+    if not isinstance(raw_lessons, list):
+        return None
+
+    allowed_scopes = set(plan.source_scope_ids)
+    claimed_scopes: set[str] = set()
+    provider_lessons: list[tuple[int, LessonArchitectureV2]] = []
+    rejection_codes: Counter[str] = Counter()
+    candidate_unit_count = 0
+
+    for lesson_index, raw_lesson in enumerate(raw_lessons):
+        raw_units = raw_lesson.get("units") if isinstance(raw_lesson, dict) else None
+        if not isinstance(raw_lesson, dict) or not isinstance(raw_units, list):
+            rejection_codes["LESSON_SHAPE_INVALID"] += 1
+            continue
+        accepted_units: list[UnitArchitectureV2] = []
+        lesson_first_scope_index = len(plan.source_scope_ids)
+        for raw_unit in raw_units:
+            candidate_unit_count += 1
+            try:
+                single = parse_chapter_shard_draft_v2(json.dumps({
+                    "lessons": [{**raw_lesson, "units": [raw_unit]}],
+                }, ensure_ascii=False))
+                lesson = single.lessons[0]
+                unit = lesson.units[0]
+                unit_scopes = list(unit.source_scope_ids)
+                unit_scope_set = set(unit_scopes)
+                if (not unit_scope_set or not unit_scope_set.issubset(allowed_scopes)
+                        or unit_scope_set & claimed_scopes):
+                    raise OrchestrationContractError("ARCHITECTURE_SALVAGE_SCOPE_CONFLICT")
+                unit_plan = _subplan_for_scopes(plan, unit_scopes, source_facts)
+                unit_facts = [fact for fact in source_facts if fact.scope_key in unit_scope_set]
+                if {fact.scope_key for fact in unit_facts} != unit_scope_set:
+                    raise OrchestrationContractError("ARCHITECTURE_SHARD_CONTEXT_MISMATCH")
+                # This call is the authority check. Keep the parsed provider
+                # unit only when its normalized result is independently valid;
+                # the final full-shard bind repeats the same deterministic pass
+                # and materializes obligations with final lesson/unit indices.
+                bind_chapter_shard_v2(
+                    single,
+                    skeleton=skeleton,
+                    plan=unit_plan,
+                    source_facts=unit_facts,
+                )
+                accepted_units.append(unit)
+                claimed_scopes.update(unit_scope_set)
+                lesson_first_scope_index = min(
+                    lesson_first_scope_index,
+                    *(plan.source_scope_ids.index(scope_id) for scope_id in unit_scopes),
+                )
+            except (OrchestrationContractError, ValidationError, ValueError, json.JSONDecodeError) as error:
+                rejection_codes[_safe_architecture_failure_code(error)] += 1
+        if accepted_units:
+            # Re-validate the original lesson metadata with exactly the proven
+            # provider units. No title/objective/activity field is synthesized.
+            try:
+                normalized = LessonArchitectureV2.model_validate({
+                    **{key: value for key, value in raw_lesson.items() if key != "units"},
+                    "units": [unit.model_dump(mode="python") for unit in accepted_units],
+                })
+                provider_lessons.append((lesson_first_scope_index, normalized))
+            except ValidationError as error:
+                rejection_codes[_safe_architecture_failure_code(error)] += len(accepted_units)
+                claimed_scopes.difference_update(
+                    scope_id for unit in accepted_units for scope_id in unit.source_scope_ids
+                )
+
+    if not provider_lessons:
+        return None
+
+    missing_scopes = [scope_id for scope_id in plan.source_scope_ids if scope_id not in claimed_scopes]
+    lesson_segments: list[tuple[int, LessonArchitectureV2]] = list(provider_lessons)
+    if missing_scopes:
+        missing_plan = _subplan_for_scopes(plan, missing_scopes, source_facts)
+        missing_facts = [fact for fact in source_facts if fact.scope_key in set(missing_scopes)]
+        fallback = fallback_chapter_shard_draft_v2(skeleton, missing_plan, missing_facts)
+        for fallback_lesson in fallback.lessons:
+            position = min(
+                plan.source_scope_ids.index(scope_id)
+                for unit in fallback_lesson.units
+                for scope_id in unit.source_scope_ids
+            )
+            lesson_segments.append((position, fallback_lesson))
+
+    combined = ChapterShardDraftV2(
+        lessons=[lesson for _position, lesson in sorted(lesson_segments, key=lambda item: item[0])],
+    )
+    compiler_diagnostics: list[dict[str, Any]] = []
+    shard = bind_chapter_shard_v2(
+        combined,
+        skeleton=skeleton,
+        plan=plan,
+        source_facts=source_facts,
+        compiler_diagnostics=compiler_diagnostics,
+    )
+    return shard, {
+        "candidate_unit_count": candidate_unit_count,
+        "accepted_provider_unit_count": sum(len(lesson.units) for _position, lesson in provider_lessons),
+        "fallback_scope_count": len(missing_scopes),
+        "rejection_codes": dict(sorted(rejection_codes.items())),
+        "component_decisions": compiler_diagnostics,
+    }
+
+
 def _fallback_scope_title(scope_key: str, facts: list[SourceSnapshotFactV2]) -> str:
     scoped = [fact for fact in facts if fact.scope_key == scope_key]
     source_ref = next((fact.source_ref for fact in scoped if fact.source_ref), None)
@@ -453,6 +606,7 @@ class UnitGenerationContractV2(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
 
     contract_version: Literal[2]
+    unit_content_policy_version: Literal["unit-content-v4-alignment-1"] | None = None
     source_snapshot_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
     assembly_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
     chapter_key: str
@@ -479,7 +633,10 @@ class UnitGenerationContractV2(BaseModel):
                 or sum(len(fact.fact_text) for fact in self.source_facts) > MAX_SHARD_SOURCE_CHARS):
             raise ValueError("ORCHESTRATION_V2_UNIT_CONTEXT_INVALID")
         plan_ids = [plan.component_plan_id for plan in self.component_plan]
-        if len(plan_ids) != len(set(plan_ids)) or self.component_plan[0].type != "html":
+        component_types = [plan.type for plan in self.component_plan]
+        if (len(plan_ids) != len(set(plan_ids))
+                or ("html" in component_types and component_types[0] != "html")
+                or ("la_faq" in component_types and component_types[-1] != "la_faq")):
             raise ValueError("ORCHESTRATION_V2_UNIT_PLAN_INVALID")
         fact_set = set(fact_ids)
         v3_markers = [
@@ -489,11 +646,18 @@ class UnitGenerationContractV2(BaseModel):
         if any(v3_markers) and not all(v3_markers):
             raise ValueError("ORCHESTRATION_V2_UNIT_PLAN_INVALID")
         uses_unit_content_v3 = bool(v3_markers) and all(v3_markers)
+        owned_fact_ids: set[str] = set()
+        uses_alignment_v4 = self.unit_content_policy_version == "unit-content-v4-alignment-1"
         for index, plan in enumerate(self.component_plan):
             expected_fact_ids = [fact.fact_key for fact in self.source_facts
                                  if fact.scope_key in set(plan.source_scope_ids)]
-            expected_owned_fact_ids = expected_fact_ids if not uses_unit_content_v3 or index == 0 else []
-            expected_supporting_fact_ids = [] if not uses_unit_content_v3 or index == 0 else expected_fact_ids
+            if uses_alignment_v4:
+                expected_owned_fact_ids = [fact_id for fact_id in expected_fact_ids if fact_id not in owned_fact_ids]
+                expected_supporting_fact_ids = [fact_id for fact_id in expected_fact_ids if fact_id in owned_fact_ids]
+                owned_fact_ids.update(expected_owned_fact_ids)
+            else:
+                expected_owned_fact_ids = expected_fact_ids if not uses_unit_content_v3 or index == 0 else []
+                expected_supporting_fact_ids = [] if not uses_unit_content_v3 or index == 0 else expected_fact_ids
             if (len(plan.source_fact_ids) != len(set(plan.source_fact_ids))
                     or len(plan.supporting_evidence_fact_ids) != len(set(plan.supporting_evidence_fact_ids))
                     or len(plan.source_scope_ids) != len(set(plan.source_scope_ids))
@@ -505,10 +669,18 @@ class UnitGenerationContractV2(BaseModel):
                     or plan.supporting_evidence_fact_ids != expected_supporting_fact_ids
                     or plan.learning_objective_refs != self.unit_learning_objective_refs):
                 raise ValueError("ORCHESTRATION_V2_UNIT_PLAN_INVALID")
-        if (set(self.component_plan[0].source_fact_ids) != fact_set
-                or self.component_plan[0].supporting_evidence_fact_ids):
+        if uses_alignment_v4:
+            if owned_fact_ids != fact_set:
+                raise ValueError("ORCHESTRATION_V2_UNIT_PLAN_INVALID")
+        elif (set(self.component_plan[0].source_fact_ids) != fact_set
+              or self.component_plan[0].supporting_evidence_fact_ids):
             raise ValueError("ORCHESTRATION_V2_UNIT_PLAN_INVALID")
+        # Keep nested ``None`` values because they were already part of the
+        # canonical V2 wire hash.  Only omit the newly introduced, optional
+        # top-level policy marker for legacy contracts.
         base = self.model_dump(exclude={"contract_hash"})
+        if self.unit_content_policy_version is None:
+            base.pop("unit_content_policy_version", None)
         if canonical_hash(base) != self.contract_hash:
             raise ValueError("ORCHESTRATION_V2_UNIT_CONTRACT_HASH_INVALID")
         return self
@@ -522,6 +694,12 @@ def unit_contract_manifest_v2(
     facts = [{"fact_id": fact.fact_key, "text": fact.fact_text, "document_id": fact.document_id,
               "source_ref": fact.source_ref, "source_page": fact.source_page,
               "source_chunk": fact.source_chunk, "locator": fact.locator} for fact in contract.source_facts]
+    supporting_fact_ids = {
+        fact_id
+        for plan in contract.component_plan
+        for fact_id in plan.supporting_evidence_fact_ids
+    }
+    supporting_facts = [fact for fact in facts if fact["fact_id"] in supporting_fact_ids]
     try:
         evidence_bundle = build_source_evidence_bundle(
             source_snapshot_hash=contract.source_snapshot_hash,
@@ -537,7 +715,7 @@ def unit_contract_manifest_v2(
             source_facts=contract.source_facts,
             locale=locale,
         )
-    return {"facts": facts, "supporting_evidence_facts": [], "total_fact_count": len(facts),
+    return {"facts": facts, "supporting_evidence_facts": supporting_facts, "total_fact_count": len(facts),
             "represented_fact_count": len(facts), "fact_scope_complete": True, "truncated": False,
             "source_evidence_bundle": evidence_bundle.model_dump(mode="json")}
 
@@ -730,9 +908,275 @@ def plan_chapter_shards_v2(
     return plans
 
 
+def _component_review_v2(component_type: str, locale: str) -> ArchitectureComponentAuthorReviewV2:
+    vi = locale == "vi"
+    purpose = {
+        "problem": "Kiểm tra khả năng phân biệt và vận dụng thông tin đã học." if vi else
+                   "Check the learner's ability to distinguish and apply the taught information.",
+        "la_sortable": "Luyện tập tái lập đúng trình tự đã được nguồn mô tả." if vi else
+                       "Practice reconstructing the source-defined sequence.",
+        "la_crossword": "Củng cố các thuật ngữ có định nghĩa rõ trong tài liệu." if vi else
+                        "Reinforce terms that have explicit source definitions.",
+        "la_diagram": "Trực quan hóa quan hệ, cấu trúc hoặc luồng đã có trong nguồn." if vi else
+                      "Visualize a relationship, structure, or flow present in the source.",
+        "la_faq": "Làm rõ điều kiện, ngoại lệ và cảnh báo dễ gây hiểu sai." if vi else
+                  "Clarify source conditions, exceptions, and cautions that may be misunderstood.",
+    }[component_type]
+    navigation = {
+        "problem": "Chọn một đáp án rồi xem phản hồi." if vi else "Choose one answer and review feedback.",
+        "la_sortable": "Kéo thả các bước về đúng thứ tự." if vi else "Drag the steps into the correct order.",
+        "la_crossword": "Điền thuật ngữ dựa trên định nghĩa." if vi else "Enter terms from their definitions.",
+        "la_diagram": "Theo dõi các node và đường nối để hiểu quan hệ." if vi else
+                      "Follow nodes and edges to understand the relationship.",
+        "la_faq": "Mở từng câu hỏi để xem phần giải thích." if vi else
+                  "Open each question to review the clarification.",
+    }[component_type]
+    return ArchitectureComponentAuthorReviewV2(
+        purpose=purpose,
+        example_scenario=None,
+        visual_asset=("Sơ đồ dùng node và edge tách biệt, dễ đọc." if vi else
+                      "A readable diagram with separated nodes and edges.") if component_type == "la_diagram" else None,
+        user_behavior_navigation=navigation,
+    )
+
+
+def _compiled_component_v2(
+    component_type: str,
+    *,
+    locale: str,
+    unit_title: str,
+    scope_ids: list[str],
+) -> ArchitectureComponentPlanV2:
+    vi = locale == "vi"
+    title = {
+        "problem": "Kiểm tra nhanh" if vi else "Knowledge check",
+        "la_sortable": "Sắp xếp đúng trình tự" if vi else "Order the sequence",
+        "la_crossword": "Ôn tập thuật ngữ" if vi else "Terminology review",
+        "la_diagram": "Sơ đồ nội dung" if vi else "Content diagram",
+        "la_faq": "Câu hỏi thường gặp" if vi else "Frequently asked questions",
+    }[component_type]
+    rationale = {
+        "problem": "Evidence nguồn cho phép tạo một câu hỏi trắc nghiệm một đáp án có thể kiểm chứng." if vi else
+                   "Source evidence supports a verifiable one-answer multiple-choice question.",
+        "la_sortable": "Nguồn chứa ít nhất ba bước có thứ tự rõ ràng và mục tiêu yêu cầu vận dụng." if vi else
+                       "The source contains at least three ordered steps and the objective requires application.",
+        "la_crossword": "Nguồn chứa ít nhất ba cặp thuật ngữ và định nghĩa rõ ràng." if vi else
+                        "The source contains at least three explicit term-definition pairs.",
+        "la_diagram": "Nguồn chứa quan hệ, bảng, phân cấp hoặc luồng cần trực quan hóa." if vi else
+                      "The source contains a relationship, table, hierarchy, or flow worth visualizing.",
+        "la_faq": "Nguồn chứa nhiều điều kiện, ngoại lệ hoặc cảnh báo cần làm rõ." if vi else
+                  "The source contains multiple conditions, exceptions, or cautions that need clarification.",
+    }[component_type]
+    return ArchitectureComponentPlanV2(
+        type=component_type,
+        title=f"{title}: {unit_title}"[:180],
+        rationale=rationale,
+        author_review=_component_review_v2(component_type, locale),
+        source_scope_ids=scope_ids,
+    )
+
+
+def _compile_unit_components_v2(
+    unit: UnitArchitectureV2,
+    lesson: LessonArchitectureV2,
+    *,
+    facts_by_scope: dict[str, list[SourceSnapshotFactV2]],
+    skeleton: CourseSkeletonV2,
+    chapter: CourseSkeletonChapterV2,
+    plan: ChapterShardPlanV2,
+    lesson_index: int,
+    unit_index: int,
+) -> tuple[UnitArchitectureV2, list[dict[str, Any]], dict[str, Any]]:
+    unit_facts = [
+        fact
+        for scope_id in unit.source_scope_ids
+        for fact in facts_by_scope.get(scope_id, [])
+    ]
+    v3_markers = [
+        fact.locator.get("instructional_density_policy_version") == INSTRUCTIONAL_DENSITY_POLICY_VERSION
+        for fact in unit_facts
+    ]
+    if any(v3_markers) and not all(v3_markers):
+        raise OrchestrationContractError("ARCHITECTURE_DENSITY_CONTRACT_MIXED")
+    if v3_markers and all(v3_markers):
+        decision = evaluate_instructional_density(profile_instructional_texts(
+            [fact.fact_text for fact in unit_facts],
+            learning_objective_count=len(unit.learning_objective_refs),
+            independent_topic_count=len(unit.source_scope_ids),
+        ))
+        if decision.split_required:
+            raise OrchestrationContractError("ARCHITECTURE_UNIT_DENSITY_EXCEEDED")
+
+    def scope_facts(scope_ids: list[str]) -> list[SourceSnapshotFactV2]:
+        selected = set(scope_ids)
+        return [fact for fact in unit_facts if fact.scope_key in selected]
+
+    def source_profile(scope_ids: list[str]) -> dict[str, Any]:
+        selected = scope_facts(scope_ids)
+        texts = clean_source_facts([fact.fact_text for fact in selected], preserve_table_numeric=True)
+        relationships = source_relationship_pairs(texts)
+        return {
+            "texts": texts,
+            "sortable": len(ordered_source_steps(texts, locale=skeleton.locale)) >= 3,
+            "crossword": len(source_term_definitions(texts)) >= 3,
+            "faq": len(source_clarification_signals(texts)) >= 2,
+            "diagram": bool(relationships),
+            "problem": build_source_grounded_single_choice(unit.title, texts, locale=skeleton.locale) is not None,
+        }
+
+    def interaction_supported(component: ArchitectureComponentPlanV2) -> bool:
+        if component.type == "html":
+            return True
+        profile = source_profile(list(component.source_scope_ids))
+        return bool(profile[{
+            "problem": "problem",
+            "la_sortable": "sortable",
+            "la_faq": "faq",
+            "la_crossword": "crossword",
+            "la_diagram": "diagram",
+        }.get(component.type, "")]) if component.type != "html" else True
+
+    admitted_plan: list[ArchitectureComponentPlanV2] = []
+    obligations: list[dict[str, Any]] = []
+    removed_types: list[str] = []
+    for component_index, component in enumerate(unit.component_plan, start=1):
+        if interaction_supported(component):
+            admitted_plan.append(component)
+            continue
+        removed_types.append(component.type)
+        if component.type == "problem" and component_index <= 3:
+            component_scope_ids = list(component.source_scope_ids)
+            relevant_fact_ids = [
+                fact.fact_key for fact in unit_facts if fact.scope_key in set(component_scope_ids)
+            ]
+            slot_key = "ao2_" + canonical_hash({
+                "source_snapshot_hash": skeleton.source_snapshot_hash,
+                "chapter_key": chapter.chapter_key,
+                "shard_index": plan.shard_index,
+                "lesson_index": lesson_index,
+                "unit_index": unit_index,
+                "component_index": component_index,
+            })[:32]
+            obligations.append({
+                "planned_slot_key": slot_key,
+                "lesson_index": lesson_index,
+                "unit_index": unit_index,
+                "component_index": component_index,
+                "learning_objective_refs": list(unit.learning_objective_refs),
+                "required_assessment_kind": "single_choice",
+                "relevant_scope_ids": component_scope_ids,
+                "relevant_evidence_fact_ids": relevant_fact_ids,
+                "unresolved_reason": "ASSESSMENT_SOURCE_CHECK_REQUIRED",
+                "status": "open",
+            })
+
+    # Only CP8-ready evidence may cause the server to add a new treatment.
+    # Legacy evidence can validate a provider proposal conservatively, but it
+    # cannot silently claim table/relation fidelity it never persisted.
+    evidence_ready = bool(unit_facts) and all(
+        fact.locator.get("source_evidence_status") == "ready"
+        and isinstance(fact.locator.get("source_evidence_revision"), str)
+        and re.fullmatch(r"[0-9a-f]{64}", fact.locator["source_evidence_revision"]) is not None
+        for fact in unit_facts
+    )
+    present_types = {component.type for component in admitted_plan}
+    opportunities: dict[str, list[str]] = {}
+    if evidence_ready:
+        for scope_id in unit.source_scope_ids:
+            profile = source_profile([scope_id])
+            for component_type, key in (
+                ("la_sortable", "sortable"),
+                ("la_diagram", "diagram"),
+                ("la_crossword", "crossword"),
+                ("problem", "problem"),
+                ("la_faq", "faq"),
+            ):
+                if profile[key]:
+                    opportunities.setdefault(component_type, []).append(scope_id)
+
+    objective_text = " ".join(
+        lesson.learning_objectives[int(reference[3:]) - 1]
+        for reference in unit.learning_objective_refs
+        if reference.startswith("lo_") and int(reference[3:]) <= len(lesson.learning_objectives)
+    ).casefold()
+    ordering_objective = any(marker in objective_text for marker in (
+        "áp dụng", "thực hiện", "sắp xếp", "trình tự", "quy trình", "vận hành",
+        "apply", "perform", "execute", "order", "sequence", "implement",
+    ))
+    if not ordering_objective:
+        opportunities.pop("la_sortable", None)
+
+    # Preserve the provider's FAQ as the final component while compiling the
+    # bounded evidence-backed treatments before it.
+    faq = next((component for component in admitted_plan if component.type == "la_faq"), None)
+    if faq is not None:
+        admitted_plan = [component for component in admitted_plan if component.type != "la_faq"]
+    added_types: list[str] = []
+    omitted_types: list[str] = []
+    non_faq_candidates = ["la_sortable", "la_diagram", "la_crossword"]
+    # A derived MCQ is selected only when no richer practice/visual/vocabulary
+    # treatment exists for the same unit. Provider-requested grounded problems
+    # were already admitted above.
+    if not any(component_type in opportunities for component_type in non_faq_candidates):
+        non_faq_candidates.append("problem")
+    for component_type in non_faq_candidates:
+        scope_ids = opportunities.get(component_type, [])
+        if component_type in present_types or not scope_ids:
+            continue
+        if len(admitted_plan) + (1 if faq else 0) >= 4:
+            omitted_types.append(component_type)
+            continue
+        admitted_plan.append(_compiled_component_v2(
+            component_type,
+            locale=skeleton.locale,
+            unit_title=unit.title,
+            scope_ids=scope_ids,
+        ))
+        present_types.add(component_type)
+        added_types.append(component_type)
+    if faq is None and opportunities.get("la_faq"):
+        if len(admitted_plan) < 4:
+            faq = _compiled_component_v2(
+                "la_faq",
+                locale=skeleton.locale,
+                unit_title=unit.title,
+                scope_ids=opportunities["la_faq"],
+            )
+            added_types.append("la_faq")
+        else:
+            omitted_types.append("la_faq")
+    if faq is not None:
+        admitted_plan.append(faq)
+
+    represented_scopes = {
+        scope_id for component in admitted_plan for scope_id in component.source_scope_ids
+    }
+    if not admitted_plan or represented_scopes != set(unit.source_scope_ids):
+        raise OrchestrationContractError("ARCHITECTURE_COMPONENT_EVIDENCE_INVALID")
+    normalized = UnitArchitectureV2.model_validate({
+        **unit.model_dump(mode="python"),
+        "component_plan": [component.model_dump(mode="python") for component in admitted_plan],
+    })
+    return normalized, obligations, {
+        "lesson_index": lesson_index,
+        "unit_index": unit_index,
+        "evidence_status": "ready" if evidence_ready else "legacy_review_required",
+        "added_types": added_types,
+        "removed_types": removed_types,
+        "omitted_types": omitted_types,
+        "obligation_omitted_component_indices": [
+            component_index
+            for component_index, component in enumerate(unit.component_plan, start=1)
+            if component.type == "problem" and component_index > 3 and not interaction_supported(component)
+        ],
+        "opportunity_types": sorted(opportunities),
+    }
+
+
 def bind_chapter_shard_v2(
     draft: ChapterShardDraftV2, *, skeleton: CourseSkeletonV2, plan: ChapterShardPlanV2,
     source_facts: list[SourceSnapshotFactV2] | None = None,
+    compiler_diagnostics: list[dict[str, Any]] | None = None,
 ) -> ChapterBlueprintShardV2:
     chapter = next((item for item in skeleton.chapters if item.chapter_key == plan.chapter_key), None)
     if chapter is None or chapter.order != plan.order:
@@ -755,116 +1199,35 @@ def bind_chapter_shard_v2(
         # gate so a legacy/unmarked run cannot revive fabricated assessments.
         if any(v3_markers) and not all(v3_markers):
             raise OrchestrationContractError("ARCHITECTURE_DENSITY_CONTRACT_MIXED")
-        if not any(v3_markers) or all(v3_markers):
-            facts_by_scope: dict[str, list[SourceSnapshotFactV2]] = {}
-            for fact in source_facts:
-                facts_by_scope.setdefault(fact.scope_key, []).append(fact)
-            normalized_lessons: list[LessonArchitectureV2] = []
-            assessment_obligations: list[dict[str, Any]] = []
-            for lesson_index, lesson in enumerate(draft.lessons, start=1):
-                normalized_units: list[UnitArchitectureV2] = []
-                for unit_index, unit in enumerate(lesson.units, start=1):
-                    unit_facts = [
-                        fact
-                        for scope_id in unit.source_scope_ids
-                        for fact in facts_by_scope.get(scope_id, [])
-                    ]
-                    if all(v3_markers):
-                        decision = evaluate_instructional_density(profile_instructional_texts(
-                            [fact.fact_text for fact in unit_facts],
-                            learning_objective_count=len(unit.learning_objective_refs),
-                            independent_topic_count=len(unit.source_scope_ids),
-                        ))
-                        if decision.split_required:
-                            raise OrchestrationContractError("ARCHITECTURE_UNIT_DENSITY_EXCEEDED")
-                    fact_texts = clean_source_facts(
-                        [fact.fact_text for fact in unit_facts],
-                        preserve_table_numeric=True,
-                    )
-                    substantive = [
-                        text for text in fact_texts
-                        if len(text) >= 24 and not text.lower().startswith("row ")
-                    ]
-                    definition_count = len(source_term_definitions(fact_texts))
-                    has_relationship = bool(parse_structured_table_rows(fact_texts)) or any(
-                        marker in text.casefold()
-                        for text in substantive
-                        for marker in (
-                            "bao gồm", "gồm", "phân loại", "mối quan hệ", "quy trình",
-                            "includes", "consists of", "relationship", "hierarchy", "process",
-                        )
-                    )
-
-                    def interaction_supported(component_type: str) -> bool:
-                        if component_type == "html":
-                            return True
-                        if component_type == "problem":
-                            return build_source_locked_single_choice(
-                                unit.title,
-                                fact_texts,
-                                locale=skeleton.locale,
-                            ) is not None
-                        if component_type == "la_sortable":
-                            return len(ordered_source_steps(fact_texts, locale=skeleton.locale)) >= 3
-                        if component_type == "la_faq":
-                            return len(source_clarification_signals(fact_texts)) >= 2
-                        if component_type == "la_crossword":
-                            return definition_count >= 3
-                        if component_type == "la_diagram":
-                            return has_relationship and len(substantive) + len(parse_structured_table_rows(fact_texts)) >= 2
-                        return False
-
-                    admitted_plan = []
-                    for component_index, component in enumerate(unit.component_plan, start=1):
-                        if interaction_supported(component.type):
-                            admitted_plan.append(component)
-                            continue
-                        if component.type == "problem":
-                            component_scope_ids = list(component.source_scope_ids)
-                            relevant_fact_ids = [
-                                fact.fact_key
-                                for fact in unit_facts
-                                if fact.scope_key in set(component_scope_ids)
-                            ]
-                            slot_key = "ao2_" + canonical_hash({
-                                "source_snapshot_hash": skeleton.source_snapshot_hash,
-                                "chapter_key": chapter.chapter_key,
-                                "shard_index": plan.shard_index,
-                                "lesson_index": lesson_index,
-                                "unit_index": unit_index,
-                                "component_index": component_index,
-                            })[:32]
-                            assessment_obligations.append({
-                                "planned_slot_key": slot_key,
-                                "lesson_index": lesson_index,
-                                "unit_index": unit_index,
-                                "component_index": component_index,
-                                "learning_objective_refs": list(unit.learning_objective_refs),
-                                "required_assessment_kind": "single_choice",
-                                "relevant_scope_ids": component_scope_ids,
-                                "relevant_evidence_fact_ids": relevant_fact_ids,
-                                "unresolved_reason": "ASSESSMENT_SOURCE_CHECK_REQUIRED",
-                                "status": "open",
-                            })
-                    # The explanatory owner is mandatory and already first by
-                    # contract. Optional interactions are admitted only when
-                    # deterministic fallback can produce the same type without
-                    # inventing a pedagogical relationship.
-                    if not admitted_plan or admitted_plan[0].type != "html":
-                        raise OrchestrationContractError("ARCHITECTURE_COMPONENT_EVIDENCE_INVALID")
-                    normalized_units.append(UnitArchitectureV2.model_validate({
-                        **unit.model_dump(mode="python"),
-                        "component_plan": [component.model_dump(mode="python") for component in admitted_plan],
-                    }))
-                normalized_lessons.append(LessonArchitectureV2.model_validate({
-                    **lesson.model_dump(mode="python"),
-                    "units": [unit.model_dump(mode="python") for unit in normalized_units],
-                }))
-            draft = ChapterShardDraftV2.model_validate({
-                "lessons": [lesson.model_dump(mode="python") for lesson in normalized_lessons],
-            })
-        else:
-            assessment_obligations = []
+        facts_by_scope: dict[str, list[SourceSnapshotFactV2]] = {}
+        for fact in source_facts:
+            facts_by_scope.setdefault(fact.scope_key, []).append(fact)
+        normalized_lessons: list[LessonArchitectureV2] = []
+        assessment_obligations: list[dict[str, Any]] = []
+        for lesson_index, lesson in enumerate(draft.lessons, start=1):
+            normalized_units: list[UnitArchitectureV2] = []
+            for unit_index, unit in enumerate(lesson.units, start=1):
+                normalized, obligations, diagnostics = _compile_unit_components_v2(
+                    unit,
+                    lesson,
+                    facts_by_scope=facts_by_scope,
+                    skeleton=skeleton,
+                    chapter=chapter,
+                    plan=plan,
+                    lesson_index=lesson_index,
+                    unit_index=unit_index,
+                )
+                normalized_units.append(normalized)
+                assessment_obligations.extend(obligations)
+                if compiler_diagnostics is not None:
+                    compiler_diagnostics.append(diagnostics)
+            normalized_lessons.append(LessonArchitectureV2.model_validate({
+                **lesson.model_dump(mode="python"),
+                "units": [unit.model_dump(mode="python") for unit in normalized_units],
+            }))
+        draft = ChapterShardDraftV2.model_validate({
+            "lessons": [lesson.model_dump(mode="python") for lesson in normalized_lessons],
+        })
     else:
         assessment_obligations = []
     return ChapterBlueprintShardV2(
@@ -924,9 +1287,12 @@ def chapter_shard_prompt_v2(
         "Allocate every supplied source_scope_id to exactly one unit. Every unit must reference valid local learning objectives "
         "Keep every unit within UNIT_DENSITY_BUDGET; split oversized or multi-topic material into consecutive coherent units "
         "instead of producing one long HTML block. "
-        "(lo_1, lo_2, ...), start component_plan with one html component covering all unit scopes, use at most one additional "
-        "interactive component, and place la_faq last when present. Component scopes must remain inside their unit. "
-        "Select problem only for an assessable source claim; it will be rendered exclusively as one-answer multiple choice. "
+        "(lo_1, lo_2, ...). Select the smallest useful set of up to four components. HTML is optional; when selected it MUST be "
+        "the first component. FAQ is optional; when selected it MUST be the final component. Order the remaining treatments as "
+        "relationship/sequence/terminology practice, then problem assessment, then FAQ. Together the selected components "
+        "must cover every unit scope, and each component scope must remain inside its unit. "
+        "Select problem only when one correct answer and grounded distractors can be verified from an explicit source-authored "
+        "question, term-definition set, keyed table, or ordered procedure; it is rendered exclusively as one-answer multiple choice. "
         "Select la_sortable only when the source explicitly contains at least three ordered procedure steps. Select la_crossword "
         "only when at least three term-definition pairs are explicit. Select la_diagram only for an explicit relationship, table, "
         "hierarchy, or flow. Select la_faq only when at least two explicit source conditions, exceptions, cautions, or misconception boundaries support useful anticipated questions. "
@@ -935,7 +1301,8 @@ def chapter_shard_prompt_v2(
         "user_behavior_navigation. These explain the proposed block to the author and are not editable component data. "
         "For every unit, explicitly return media_brief as either null or one concrete video/static_infographic brief with "
         "a title, bullet-ready content_points, context_description, and rationale; it is a production brief, not generated media. "
-        "Do not change chapter identity/title/objective and do not emit raw source text outside learner-facing plans. "
+        "Do not change chapter identity/title/objective and do not emit raw source text outside learner-facing plans. Never place "
+        "source filenames, citations, page/slide/chunk locators, internal IDs, or source-attribution phrases in learner-facing content. "
         "Output valid JSON matching the response schema. "
         f"Output language: {locale}. UNIT_DENSITY_BUDGET="
         f"{json.dumps(density_budget, ensure_ascii=False, separators=(',', ':'))}. "

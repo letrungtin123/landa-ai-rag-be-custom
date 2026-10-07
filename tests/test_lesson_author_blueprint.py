@@ -916,7 +916,7 @@ class LessonAuthorBlueprintContractTests(unittest.TestCase):
         unit = build_source_locked_html_unit(expected, manifest)
         self.assertIsNotNone(unit)
         html = unit["components"][0]["html"]
-        self.assertIn("<h3>Khái niệm và Mục tiêu ATSKNN</h3>", html)
+        self.assertIn("<h2>Khái niệm và Mục tiêu ATSKNN</h2>", html)
         self.assertIn("<strong>An toàn lao động:</strong>", html)
         self.assertIn("<h3>An toàn lao động và Sức khỏe nghề nghiệp</h3>", html)
         self.assertIn("<ul><li>Phòng ngừa thương tích", html)
@@ -1460,7 +1460,7 @@ class LessonAuthorBlueprintContractTests(unittest.TestCase):
 
         self.assertIn("media_plan.type", str(raised.exception))
 
-    def test_blueprint_rejects_unit_plan_without_html_explanation(self) -> None:
+    def test_blueprint_rejects_unit_plan_with_only_a_check(self) -> None:
         candidate = valid_blueprint()
         unit = candidate["chapters"][0]["lessons"][0]["units"][0]
         unit["component_plan"] = [{
@@ -1470,7 +1470,23 @@ class LessonAuthorBlueprintContractTests(unittest.TestCase):
         }]
         with self.assertRaises(LessonAuthorBlueprintValidationError) as raised:
             parse_and_validate_lesson_author_blueprint(json.dumps(candidate, ensure_ascii=False))
-        self.assertIn("html explanation", str(raised.exception))
+        self.assertIn("substantive instructional component", str(raised.exception))
+
+    def test_blueprint_accepts_source_supported_instruction_without_html(self) -> None:
+        candidate = valid_blueprint()
+        unit = candidate["chapters"][0]["lessons"][0]["units"][0]
+        unit["component_plan"] = [{
+            "type": "la_diagram",
+            "title": "Mối quan hệ giữa các nhóm rủi ro",
+            "rationale": "Trực quan hóa đúng các quan hệ được tài liệu nguồn mô tả.",
+        }, {
+            "type": "problem",
+            "title": "Kiểm tra nhận diện",
+            "rationale": "Kiểm tra khả năng phân biệt rủi ro trong tình huống nguồn.",
+        }]
+        parsed = parse_and_validate_lesson_author_blueprint(json.dumps(candidate, ensure_ascii=False))
+        parsed_plan = parsed["chapters"][0]["lessons"][0]["units"][0]["component_plan"]
+        self.assertEqual([item["type"] for item in parsed_plan], ["la_diagram", "problem"])
 
     def test_blueprint_accepts_six_distinct_lessons_in_one_inferred_chapter(self) -> None:
         candidate = valid_blueprint()
