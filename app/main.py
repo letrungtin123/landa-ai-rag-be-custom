@@ -5,10 +5,8 @@ from copy import deepcopy
 import hashlib
 import html
 import json
-import logging
 import re
 import shutil
-import subprocess
 import tempfile
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -21,17 +19,30 @@ from uuid import UUID
 import asyncpg
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import JSONResponse
 from google import genai
 from google.genai import errors as genai_errors, types
-from pydantic import BaseModel, Field, ValidationError, create_model, field_validator, model_validator
+from pydantic import BaseModel, Field, SecretStr, ValidationError, create_model, field_validator, model_validator
 from supabase import create_client
 
-from app.core.config import settings
+from app.core.config import settings, validate_startup_settings
+from app.core.document_limits import (
+    assert_document_size,
+    assert_tenant_storage_path,
+    run_limited_subprocess,
+    validate_ooxml_archive,
+)
+from app.core.errors import (
+    AppError,
+    DocumentLimitError,
+    app_error_handler,
+    request_validation_error_handler,
+    unhandled_error_handler,
+)
+from app.core.logging import configure_application_logging
+from app.core.middleware import RequestBodyLimitMiddleware
 from app.core.security import (
-    redact_secret_like_values,
-    require_configured_service_token,
-    require_internal_token as verify_internal_token,
+    require_configured_service_auth,
+    require_internal_auth as verify_internal_auth,
 )
 from app.lesson_author_blueprint import (
     ACTION_OBJECTIVE_REPAIR_INTENTS,
@@ -56,7 +67,6 @@ from app.source_structure import (
     PARSER_VERSION,
     chunk_structure_metadata,
     analyze_source_structure,
-    compact_structure,
     strip_source_range_suffix,
     structure_outline,
 )
@@ -96,7 +106,6 @@ from app.instructional_quality import (
     faq_answer_is_complete,
     is_non_instructional_source_line,
     ordered_source_steps,
-    parse_structured_table_rows,
     render_source_locked_html,
     source_clarification_signals,
     source_relationship_pairs,
@@ -135,7 +144,6 @@ from app.lesson_author_orchestration_v2 import (
 from app.lesson_author_orchestration_v2_provider import (
     CHAPTER_SHARD_PROVIDER_SCHEMA_METADATA,
     COURSE_SKELETON_PROVIDER_SCHEMA_METADATA,
-    ChapterShardDraftV2,
     ChapterShardProviderWireV2,
     ChapterShardPlanV2,
     CourseSkeletonDraftV2,
@@ -177,53 +185,24 @@ from app.workflows.lesson_generation import (
     run_lesson_generation_workflow,
 )
 
-app = FastAPI(title="Internal AI RAG Service", version="0.1.0")
+app = FastAPI(
+    title="Internal AI RAG Service",
+    version="0.1.0",
+    docs_url="/docs" if settings.is_development else None,
+    redoc_url="/redoc" if settings.is_development else None,
+    openapi_url="/openapi.json" if settings.is_development else None,
+)
+app.add_middleware(
+    RequestBodyLimitMiddleware,
+    max_request_bytes=settings.max_request_bytes,
+    idm_max_request_bytes=settings.idm_max_request_bytes,
+)
+app.add_exception_handler(AppError, app_error_handler)
+app.add_exception_handler(Exception, unhandled_error_handler)
+app.add_exception_handler(RequestValidationError, request_validation_error_handler)
 
 
-@app.exception_handler(RequestValidationError)
-async def safe_checkpoint_request_validation(request: Request, error: RequestValidationError):
-    if request.url.path == "/v1/lesson-author/chapter-checkpoint":
-        # Pydantic's model-level errors otherwise echo the whole input, including
-        # the Node-supplied provider key and private checkpoint content.
-        return JSONResponse(status_code=422, content={"detail": {
-            "code": "CHAPTER_CHECKPOINT_CONTRACT_INVALID", "message": "Invalid chapter checkpoint request.",
-        }})
-    if request.url.path.startswith("/v1/lesson-author/orchestration-v2/"):
-        # These requests contain provider credentials and private source facts.
-        # Never let FastAPI echo the rejected input in a validation response.
-        return JSONResponse(status_code=422, content={"detail": {
-            "code": "ORCHESTRATION_V2_CONTRACT_INVALID", "message": "Invalid orchestration request.",
-        }})
-    # FastAPI's default validation handler includes rejected values and can
-    # therefore echo provider credentials or private source content. Keep the
-    # public error envelope useful while never reflecting request input.
-    return JSONResponse(status_code=422, content={"detail": {
-        "code": "REQUEST_VALIDATION_FAILED", "message": "Invalid request.",
-    }})
-
-
-def configure_application_logger() -> logging.Logger:
-    """Keep safe, structured service diagnostics visible under Uvicorn/PM2.
-
-    Uvicorn configures its own loggers but does not install a root handler for
-    application loggers.  Without this local handler, ``app.main`` inherits
-    Python's WARNING default and silently drops the INFO-level, JSON-safe
-    workflow diagnostics used to trace a Blueprint request.
-    """
-
-    application_logger = logging.getLogger(__name__)
-    application_logger.setLevel(logging.INFO)
-    if not application_logger.handlers:
-        handler = logging.StreamHandler()
-        handler.setLevel(logging.INFO)
-        application_logger.addHandler(handler)
-    # A dedicated handler prevents Uvicorn/root configuration changes from
-    # suppressing or duplicating the request-correlated diagnostics.
-    application_logger.propagate = False
-    return application_logger
-
-
-logger = configure_application_logger()
+logger = configure_application_logging(__name__)
 db_pool: asyncpg.Pool | None = None
 supabase_client: Any | None = None
 DEFAULT_EMBEDDING_MODEL = "gemini-embedding-001"
@@ -516,8 +495,8 @@ def validate_uuid_string(value: str | None, field_name: str) -> str | None:
     return text
 
 
-def require_provider_api_key(api_key: str) -> str:
-    value = api_key.strip()
+def require_provider_api_key(api_key: str | SecretStr) -> str:
+    value = api_key.get_secret_value().strip() if isinstance(api_key, SecretStr) else api_key.strip()
     if not value:
         raise ValueError("Google AI Studio API key chưa được cấu hình.")
     return value
@@ -569,7 +548,7 @@ class RagChatRequest(BaseModel):
     # Correlation is generated by Node once per Course Blueprint execution.
     # It is operational metadata only; it never influences generation.
     correlation_id: str | None = None
-    api_key: str = Field(repr=False)
+    api_key: SecretStr = Field(repr=False)
 
     @field_validator("tenant_id", "conversation_id")
     @classmethod
@@ -728,7 +707,7 @@ class RagLessonAuthorSourceSnapshotV2Request(RagChatRequest):
     model_config = {"extra": "forbid"}
     # Source paging is deterministic database work. It deliberately carries no
     # tenant provider secret because this endpoint cannot call Gemini.
-    api_key: str = Field(default="source-snapshot-no-provider", repr=False)
+    api_key: SecretStr = Field(default="source-snapshot-no-provider", repr=False)
     contract_version: Literal[2] = 2
     source_snapshot_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
     cursor: dict[str, Any] | None = None
@@ -813,7 +792,7 @@ class RagIndexRequest(BaseModel):
     document_id: str
     embedding_model: str
     embedding_dimensions: int = 768
-    api_key: str = Field(repr=False)
+    api_key: SecretStr = Field(repr=False)
 
     @field_validator("tenant_id", "kb_id", "document_id")
     @classmethod
@@ -957,22 +936,23 @@ def emit_safe_provider_telemetry(
 
 
 def require_settings() -> None:
-    missing = [
-        name
-        for name, value in {
-            "DATABASE_URL": settings.database_url,
-            "SUPABASE_URL": settings.supabase_url,
-            "SUPABASE_SERVICE_KEY": settings.supabase_service_key,
-        }.items()
-        if not value
-    ]
-    if missing:
-        raise RuntimeError(f"Missing required environment variables: {', '.join(missing)}")
-    require_configured_service_token(settings.service_token, is_production=settings.is_production)
+    validate_startup_settings(settings)
+    require_configured_service_auth(
+        auth_mode=settings.auth_mode,
+        service_token=settings.service_token,
+        hmac_secrets=settings.service_hmac_secrets,
+    )
 
 
 async def require_internal_token(request: Request) -> None:
-    await verify_internal_token(request, settings.service_token)
+    await verify_internal_auth(
+        request,
+        auth_mode=settings.auth_mode,
+        service_token=settings.service_token,
+        hmac_secrets=settings.service_hmac_secrets,
+        clock_skew_seconds=settings.auth_clock_skew_seconds,
+        replay_ttl_seconds=settings.auth_replay_ttl_seconds,
+    )
 
 
 async def get_db() -> asyncpg.Pool:
@@ -1173,6 +1153,8 @@ def extract_pdf(path: Path) -> list[ExtractedSection]:
 
         sections: list[ExtractedSection] = []
         with pymupdf.open(str(path)) as document:
+            if document.page_count > settings.max_document_pages:
+                raise DocumentLimitError()
             visual_regions_by_page = collect_pdf_visual_regions(document)
             for index, page in enumerate(document, start=1):
                 text, metadata = _pdf_page_content(page)
@@ -1193,6 +1175,8 @@ def extract_pdf(path: Path) -> list[ExtractedSection]:
     from pypdf import PdfReader
 
     reader = PdfReader(str(path))
+    if len(reader.pages) > settings.max_document_pages:
+        raise DocumentLimitError()
     sections: list[ExtractedSection] = []
     for index, page in enumerate(reader.pages, start=1):
         text = clean_text(page.extract_text() or "")
@@ -1253,6 +1237,8 @@ def extract_pptx(path: Path) -> list[ExtractedSection]:
     from pptx import Presentation
 
     presentation = Presentation(str(path))
+    if len(presentation.slides) > settings.max_document_pages:
+        raise DocumentLimitError()
     sections: list[ExtractedSection] = []
     for index, slide in enumerate(presentation.slides, start=1):
         parts: list[str] = []
@@ -1305,9 +1291,16 @@ def extract_xlsx(path: Path) -> list[ExtractedSection]:
 
     workbook = load_workbook(str(path), read_only=True, data_only=False)
     sections: list[ExtractedSection] = []
+    cell_count = 0
     try:
         for sheet in workbook.worksheets:
-            values = [list(row) for row in sheet.iter_rows(values_only=True)]
+            values: list[list[Any]] = []
+            for row in sheet.iter_rows(values_only=True):
+                row_values = list(row)
+                cell_count += len(row_values)
+                if cell_count > settings.max_xlsx_cells:
+                    raise DocumentLimitError()
+                values.append(row_values)
             text = clean_text(_render_structured_table(values, coordinate_labels=True))
             if text:
                 sections.append(ExtractedSection(
@@ -1331,7 +1324,11 @@ def extract_xls(path: Path) -> list[ExtractedSection]:
 
     workbook = xlrd.open_workbook(str(path))
     sections: list[ExtractedSection] = []
+    cell_count = 0
     for sheet in workbook.sheets():
+        cell_count += sheet.nrows * sheet.ncols
+        if cell_count > settings.max_xlsx_cells:
+            raise DocumentLimitError()
         values = [sheet.row_values(row_index) for row_index in range(sheet.nrows)]
         text = clean_text(_render_structured_table(values, coordinate_labels=True))
         if text:
@@ -1353,11 +1350,19 @@ def extract_doc(path: Path) -> list[ExtractedSection]:
     soffice = shutil.which("soffice") or shutil.which("libreoffice")
     if soffice:
         with tempfile.TemporaryDirectory() as temp_dir:
-            subprocess.run(
-                [soffice, "--headless", "--convert-to", "docx", "--outdir", temp_dir, str(path)],
-                check=True,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
+            profile = (Path(temp_dir) / "libreoffice-profile").resolve()
+            run_limited_subprocess(
+                [
+                    soffice,
+                    "--headless",
+                    f"-env:UserInstallation={profile.as_uri()}",
+                    "--convert-to",
+                    "docx",
+                    "--outdir",
+                    temp_dir,
+                    str(path),
+                ],
+                timeout_seconds=settings.libreoffice_timeout_seconds,
             )
             converted = Path(temp_dir) / f"{path.stem}.docx"
             if converted.exists():
@@ -1389,6 +1394,13 @@ def index_document_temp_path(temp_dir: str, document_id: str, original_name: str
 
 def extract_sections(path: Path, file_name: str) -> list[ExtractedSection]:
     ext = Path(file_name).suffix.lower()
+    assert_document_size(path.stat().st_size, maximum=settings.max_document_bytes)
+    validate_ooxml_archive(
+        path,
+        max_uncompressed_bytes=settings.max_ooxml_uncompressed_bytes,
+        max_entries=settings.max_ooxml_entries,
+        max_compression_ratio=settings.max_ooxml_compression_ratio,
+    )
     if ext == ".pdf":
         sections = extract_pdf(path)
     elif ext == ".docx":
@@ -2258,27 +2270,35 @@ async def index_document(request: RagIndexRequest, pool: asyncpg.Pool = Depends(
     raw_bytes: int | None = None
     effective_embedding_model = normalize_embedding_model(request.embedding_model)
     try:
-        print(
-            f"[RAG] index start tenant={request.tenant_id} kb={request.kb_id} document={request.document_id}",
-            flush=True,
+        logger.info(
+            "rag_index_started",
+            extra={"event": "rag_index_started", "tenant_id": request.tenant_id,
+                   "kb_id": request.kb_id, "document_id": request.document_id},
         )
         index_id = await start_index_row(pool, row, effective_embedding_model)
         if row["file_path"]:
+            assert_tenant_storage_path(str(row["file_path"]), request.tenant_id)
             raw = await asyncio.to_thread(download_storage_object, row["file_path"])
             raw_bytes = len(raw)
-            print(
-                f"[RAG] index downloaded tenant={request.tenant_id} document={request.document_id} bytes={len(raw)}",
-                flush=True,
+            assert_document_size(raw_bytes, maximum=settings.max_document_bytes)
+            logger.info(
+                "rag_index_downloaded",
+                extra={"event": "rag_index_downloaded", "tenant_id": request.tenant_id,
+                       "document_id": request.document_id, "bytes": raw_bytes},
             )
             with tempfile.TemporaryDirectory() as temp_dir:
                 file_path = index_document_temp_path(temp_dir, str(row["id"]), row["name"])
                 file_path.write_bytes(raw)
                 sections = await asyncio.to_thread(extract_sections, file_path, file_path.name)
         else:
+            content_bytes = len(str(row["content"] or "").encode("utf-8"))
+            assert_document_size(content_bytes, maximum=settings.max_document_bytes)
+            raw_bytes = content_bytes
             sections = [ExtractedSection(text=clean_text(row["content"] or ""))]
-        print(
-            f"[RAG] index extracted tenant={request.tenant_id} document={request.document_id} sections={len(sections)}",
-            flush=True,
+        logger.info(
+            "rag_index_extracted",
+            extra={"event": "rag_index_extracted", "tenant_id": request.tenant_id,
+                   "document_id": request.document_id, "section_count": len(sections)},
         )
         structure = await asyncio.to_thread(analyze_source_structure, sections)
         chunks = build_chunks(sections, structure)
@@ -2290,9 +2310,10 @@ async def index_document(request: RagIndexRequest, pool: asyncpg.Pool = Depends(
             raw_bytes=raw_bytes,
             file_name=row["name"] or None,
         )
-        print(
-            f"[RAG] index chunked tenant={request.tenant_id} document={request.document_id} chunks={len(chunks)}",
-            flush=True,
+        logger.info(
+            "rag_index_chunked",
+            extra={"event": "rag_index_chunked", "tenant_id": request.tenant_id,
+                   "document_id": request.document_id, "chunk_count": len(chunks)},
         )
 
         embeddings, embedding_usage = await embed_texts(
@@ -2304,9 +2325,10 @@ async def index_document(request: RagIndexRequest, pool: asyncpg.Pool = Depends(
         )
         if len(embeddings) != len(chunks):
             raise ValueError("Số lượng embedding không khớp số đoạn kiến thức.")
-        print(
-            f"[RAG] index embedded tenant={request.tenant_id} document={request.document_id} embeddings={len(embeddings)}",
-            flush=True,
+        logger.info(
+            "rag_index_embedded",
+            extra={"event": "rag_index_embedded", "tenant_id": request.tenant_id,
+                   "document_id": request.document_id, "embedding_count": len(embeddings)},
         )
 
         content_sha = hashlib.sha256("\n\n".join(chunk["content"] for chunk in chunks).encode("utf-8")).hexdigest()
@@ -2399,13 +2421,10 @@ async def index_document(request: RagIndexRequest, pool: asyncpg.Pool = Depends(
                     index_id,
                 )
 
-        print(
-            f"[RAG] index committed tenant={request.tenant_id} document={request.document_id} chunks={len(chunks)}",
-            flush=True,
-        )
-        print(
-            f"[RAG] index learned tenant={request.tenant_id} document={request.document_id} chunks={len(chunks)}",
-            flush=True,
+        logger.info(
+            "rag_index_completed",
+            extra={"event": "rag_index_completed", "tenant_id": request.tenant_id,
+                   "document_id": request.document_id, "chunk_count": len(chunks)},
         )
         return {
             "status": "learned",
@@ -2417,17 +2436,21 @@ async def index_document(request: RagIndexRequest, pool: asyncpg.Pool = Depends(
             "usage": embedding_usage.model_dump(),
         }
     except Exception as exc:
-        safe_reason = redact_secret_like_values(exc)
-        await mark_index_error(pool, index_id, safe_reason)
-        print(
-            f"[RAG] index error tenant={request.tenant_id} document={request.document_id}: {safe_reason[:300]}",
-            flush=True,
+        error_code = exc.code if isinstance(exc, AppError) else "INDEX_DOCUMENT_FAILED"
+        await mark_index_error(pool, index_id, error_code)
+        logger.exception(
+            "rag_index_failed",
+            extra={"event": "rag_index_failed", "tenant_id": request.tenant_id,
+                   "document_id": request.document_id, "error_code": error_code,
+                   "error_type": type(exc).__name__},
         )
+        if isinstance(exc, DocumentLimitError):
+            raise
         return {
             "status": "error",
             "chunk_count": 0,
             "usage": AiUsage().model_dump(),
-            "error_reason": safe_reason,
+            "error_reason": error_code,
         }
 
 
@@ -3395,13 +3418,13 @@ async def retrieve_chunks(
         and any(str(row.get("document_id") or "") == str(scope.get("document_id") or "") for row in scope_rows)
     )
     structure_context["covered_source_refs"] = covered_refs
-    print(
-        "[RAG] retrieve "
-        f"tenant={request.tenant_id} kb={request.kb_id} "
-        f"queries={len(query_texts)} vector={len(vector_rows)} keyword={len(keyword_rows)} "
-        f"scope={len(scope_rows)} "
-        f"merged={len(merged_rows)} accepted={len(rows)}",
-        flush=True,
+    logger.info(
+        "rag_retrieve_completed",
+        extra={"event": "rag_retrieve_completed", "tenant_id": request.tenant_id,
+               "kb_id": request.kb_id, "query_count": len(query_texts),
+               "vector_count": len(vector_rows), "keyword_count": len(keyword_rows),
+               "scope_count": len(scope_rows), "merged_count": len(merged_rows),
+               "accepted_count": len(rows)},
     )
     return rows, usage, structure_context
 
@@ -6716,22 +6739,22 @@ def semantic_learning_visible_text(value: Any) -> tuple[str, str | None]:
         ("ordered_steps", value.get("ordered_steps", value.get("steps"))),
         ("warnings", value.get("warnings", value.get("warning"))),
     ]
-    for field, raw_items in fields:
+    for field_name, raw_items in fields:
         if raw_items is None:
             continue
         if not isinstance(raw_items, list):
-            return "", f"Semantic {field} must be an array."
-        max_items, max_characters = SEMANTIC_LEARNING_HTML_LIMITS[field]
+            return "", f"Semantic {field_name} must be an array."
+        max_items, max_characters = SEMANTIC_LEARNING_HTML_LIMITS[field_name]
         if len(raw_items) > max_items:
-            return "", f"Semantic {field} exceeds the {max_items}-item renderer limit."
+            return "", f"Semantic {field_name} exceeds the {max_items}-item renderer limit."
         for raw_item in raw_items:
             if not isinstance(raw_item, str):
-                return "", f"Semantic {field} contains a non-string item."
+                return "", f"Semantic {field_name} contains a non-string item."
             if not raw_item.strip():
-                return "", f"Semantic {field} contains an empty text value."
+                return "", f"Semantic {field_name} contains an empty text value."
             item = raw_item.strip()
             if len(item) > max_characters:
-                return "", f"Semantic {field} contains text exceeding the renderer character limit."
+                return "", f"Semantic {field_name} contains text exceeding the renderer character limit."
             visible.append(item)
     raw_rows = value.get("comparison_rows", value.get("table_rows"))
     if raw_rows is not None:
@@ -10664,12 +10687,12 @@ def staged_fact_membership_equal(actual: Any, approved: Any) -> bool:
 def staged_diagram_shape_diagnostics(component: dict[str, Any]) -> list[dict[str, Any]]:
     """Bounded, validator-owned paths/codes only; exclude values and messages."""
     findings: list[dict[str, Any]] = []
-    for field, model, minimum, maximum in (("nodes", StagedDiagramNode, 2, 20), ("edges", StagedDiagramEdge, 1, 40)):
-        values = component.get(field)
+    for field_name, model, minimum, maximum in (("nodes", StagedDiagramNode, 2, 20), ("edges", StagedDiagramEdge, 1, 40)):
+        values = component.get(field_name)
         if not isinstance(values, list):
-            findings.append({"path": field, "reason": "ARRAY_REQUIRED"})
+            findings.append({"path": field_name, "reason": "ARRAY_REQUIRED"})
         elif not minimum <= len(values) <= maximum:
-            findings.append({"path": field, "reason": "CARDINALITY", "actual_count": len(values), "minimum": minimum, "maximum": maximum})
+            findings.append({"path": field_name, "reason": "CARDINALITY", "actual_count": len(values), "minimum": minimum, "maximum": maximum})
         else:
             for index, value in enumerate(values):
                 try:
@@ -10680,7 +10703,7 @@ def staged_diagram_shape_diagnostics(component: dict[str, Any]) -> list[dict[str
                         leaf = loc[0] if loc and loc[0] in model.model_fields else None
                         reasons = {"missing": "FIELD_REQUIRED", "literal_error": "INVALID_ENUM", "string_too_long": "TEXT_TOO_LONG",
                                    "string_too_short": "TEXT_TOO_SHORT", "greater_than_equal": "NEGATIVE_INDEX"}
-                        findings.append({"path": f"{field}[{index}]" + (f".{leaf}" if leaf else ""),
+                        findings.append({"path": f"{field_name}[{index}]" + (f".{leaf}" if leaf else ""),
                                          "reason": reasons.get(detail["type"], "FIELD_TYPE_INVALID")})
                         if len(findings) >= 8:
                             return findings
@@ -10748,13 +10771,13 @@ def staged_evidence_scope_diagnostics(unit: Any, expected: dict[str, Any]) -> li
                   if isinstance(c, dict) and isinstance(p, dict)]
     findings = []
     for path, actual, approved in pairs:
-        for field in ("source_fact_ids", "supporting_evidence_fact_ids"):
-            value, required = actual.get(field, []), approved.get(field, [])
+        for field_name in ("source_fact_ids", "supporting_evidence_fact_ids"):
+            value, required = actual.get(field_name, []), approved.get(field_name, [])
             if not isinstance(value, list) or any(not isinstance(x, str) for x in value):
-                findings.append({"path": f"{path}.{field}", "reason": "INVALID_ID_ARRAY"})
+                findings.append({"path": f"{path}.{field_name}", "reason": "INVALID_ID_ARRAY"})
             elif value != required:
                 got, want = set(value), set(required)
-                findings.append({"path": f"{path}.{field}", "reason": "ORDER_ONLY" if got == want and len(value) == len(required) else "MEMBERSHIP_MISMATCH",
+                findings.append({"path": f"{path}.{field_name}", "reason": "ORDER_ONLY" if got == want and len(value) == len(required) else "MEMBERSHIP_MISMATCH",
                                  "expected_count": len(required), "actual_count": len(value),
                                  "missing_count": len(want - got), "unexpected_count": len(got - want),
                                  "duplicate_count": len(value) - len(got)})
@@ -17434,22 +17457,10 @@ async def lesson_author_proposal(
             payload = parse_lesson_author_json(text, "lesson repair")
             repaired = apply_lesson_generation_repair_patches(candidate, targets, payload)
         except WorkflowFailure as error:
-            if error.internal_code == "ARCH_REPAIR_PATCH_SCHEMA_INVALID":
-                # Only contract metadata is emitted; never the provider patch
-                # value or candidate Blueprint. The workflow graph will retain
-                # the pre-repair candidate and fail this coherence repair
-                # instead of attempting a schema-repair ping-pong.
-                emit_blueprint_diagnostic({
-                    "stage": "architecture_repair_patch_domain_validation",
-                    "event": "rejected",
-                    "repair_pass_number": repair_pass_number,
-                    "repair_layer": repair_layer,
-                    "layer_attempt_number": layer_attempt_number,
-                    "total_repair_provider_calls": total_repair_provider_calls,
-                    "internal_failure_code": error.internal_code,
-                    "external_failure_code": error.code,
-                    **error.diagnostics,
-                })
+            logger.warning(
+                "lesson_author_lesson_repair_patch_rejected failure_code=%s",
+                error.internal_code or error.code,
+            )
             raise
         except HTTPException as error:
             raise WorkflowFailure(
@@ -19023,7 +19034,7 @@ async def lesson_author_blueprint(
             result = WorkflowValidationResult([issue])
             emit_layer("schema_failed", result.issues)
             return mark_repair_layer(result, "SCHEMA")
-        except LessonAuthorProposalValidationError as error:
+        except LessonAuthorProposalValidationError:
             result = WorkflowValidationResult([{
                 "code": "INVALID_SOURCE_REF",
                 "severity": "error",

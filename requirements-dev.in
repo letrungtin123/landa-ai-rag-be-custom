@@ -1,0 +1,10 @@
+-r requirements.in
+
+pip-tools
+pip-audit
+pytest
+pytest-cov
+pytest-timeout
+ruff
+mypy
+types-python-dateutil

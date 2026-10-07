@@ -1,17 +1,32 @@
 from __future__ import annotations
 
+import logging
 import os
-import sys
-from io import StringIO
 from pathlib import Path
 from typing import Literal
 
 from dotenv import load_dotenv
-from pydantic import BaseModel, Field
-
+from pydantic import Field
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 APP_ROOT = Path(__file__).resolve().parents[2]
-REPO_ROOT = APP_ROOT.parent
+logger = logging.getLogger(__name__)
+
+Environment = Literal["development", "test", "production"]
+AuthMode = Literal["token", "hmac", "token_or_hmac"]
+
+
+def _read_environment(*, emit_legacy_warning: bool = True) -> Environment:
+    explicit = os.getenv("AI_RAG_ENV", "").strip().lower()
+    legacy = os.getenv("NODE_ENV", "").strip().lower()
+    value = explicit or legacy or "development"
+    if not explicit and legacy and emit_legacy_warning:
+        logger.warning(
+            "ai_rag_legacy_environment_variable variable=NODE_ENV replacement=AI_RAG_ENV"
+        )
+    if value not in {"development", "test", "production"}:
+        raise RuntimeError("AI_RAG_ENV must be development, test, or production.")
+    return value  # type: ignore[return-value]
 
 
 def load_runtime_dotenv(
@@ -20,141 +35,274 @@ def load_runtime_dotenv(
     override: bool = False,
     allow_nul_sanitization: bool = False,
 ) -> bool:
-    """Load dotenv without ever logging values; local NUL corruption is sanitized in memory only."""
-    try:
-        return load_dotenv(path, override=override)
-    except ValueError as error:
-        if not allow_nul_sanitization or "embedded null character" not in str(error):
-            raise
-        raw = path.read_bytes()
-        nul_count = raw.count(b"\x00")
-        if nul_count == 0:
-            raise
-        sanitized = raw.replace(b"\x00", b"").decode("utf-8-sig")
-        loaded = load_dotenv(stream=StringIO(sanitized), override=override)
-        print(
-            "[Config] Loaded local backend dotenv after in-memory NUL sanitization "
-            f"path={path.name} nul_bytes={nul_count}",
-            file=sys.stderr,
-        )
-        return loaded
+    """Load a local dotenv file without ever logging values."""
+    if allow_nul_sanitization:
+        raise RuntimeError("NUL sanitization is no longer supported for AI RAG config.")
+    return load_dotenv(path, override=override)
 
 
-def load_runtime_environment(*, app_root: Path = APP_ROOT, repo_root: Path = REPO_ROOT) -> str:
-    """Load the environment without allowing local development values into production."""
-    environment = os.getenv("NODE_ENV", "development").strip().lower() or "development"
+def load_runtime_environment(
+    *,
+    app_root: Path = APP_ROOT,
+    repo_root: Path | None = None,
+) -> Environment:
+    """Load only this service's local dotenv; production uses process env only."""
+    del repo_root  # Compatibility argument; no external repository is read.
+    initial = _read_environment()
+    if initial in {"production", "test"}:
+        return initial
 
-    if environment == "production":
-        # PM2 marks production explicitly. Keep process-level variables authoritative,
-        # then fill missing values from the backend's production source of truth. The
-        # AI service's local .env may contain stale development credentials and must
-        # never participate in this path.
-        load_runtime_dotenv(
-            repo_root / "landa-backend" / ".env.production",
-            override=False,
-            allow_nul_sanitization=False,
-        )
-        return environment
-
-    load_runtime_dotenv(app_root / ".env")
-    environment = os.getenv("NODE_ENV", "development").strip().lower() or "development"
-    if environment == "production":
-        raise RuntimeError("NODE_ENV=production must be supplied by the process environment.")
-    load_runtime_dotenv(
-        repo_root / "landa-backend" / ".env",
-        override=False,
-        # The shared local Node dotenv currently contains invalid NUL bytes.
-        # Sanitization remains a development-only compatibility path.
-        allow_nul_sanitization=True,
-    )
-    return environment
+    load_runtime_dotenv(app_root / ".env", override=False)
+    loaded = _read_environment(emit_legacy_warning=False)
+    if loaded == "production":
+        raise RuntimeError("AI_RAG_ENV=production must be supplied by the process environment.")
+    return loaded
 
 
 _environment = load_runtime_environment()
 
 
-class Settings(BaseModel):
-    environment: str = Field(default_factory=lambda: os.getenv("NODE_ENV", "development").strip().lower() or "development")
-    port: int = Field(default_factory=lambda: int(os.getenv("PORT", "8010")))
-    database_url: str = Field(default_factory=lambda: os.getenv("DATABASE_URL", "").strip())
-    supabase_url: str = Field(default_factory=lambda: os.getenv("SUPABASE_URL", "").strip())
-    supabase_service_key: str = Field(default_factory=lambda: os.getenv("SUPABASE_SERVICE_KEY", "").strip())
-    supabase_storage_bucket: str = Field(default_factory=lambda: os.getenv("SUPABASE_STORAGE_BUCKET", "landa-storage").strip())
-    service_token: str = Field(default_factory=lambda: os.getenv("AI_RAG_SERVICE_TOKEN", "").strip())
-    chunk_max_chars: int = Field(default_factory=lambda: int(os.getenv("AI_RAG_CHUNK_MAX_CHARS", "3200")))
-    chunk_overlap_chars: int = Field(default_factory=lambda: int(os.getenv("AI_RAG_CHUNK_OVERLAP_CHARS", "350")))
-    embedding_batch_size: int = Field(default_factory=lambda: int(os.getenv("AI_RAG_EMBEDDING_BATCH_SIZE", "32")))
-    provider_request_timeout_ms: int = Field(default_factory=lambda: int(os.getenv("AI_RAG_PROVIDER_REQUEST_TIMEOUT_MS", "60000")))
-    blueprint_provider_request_timeout_ms: int = Field(default_factory=lambda: int(os.getenv("AI_RAG_BLUEPRINT_PROVIDER_REQUEST_TIMEOUT_MS", "300000")))
-    # Stage 2 can legitimately produce a much larger structured lesson unit
-    # than ordinary chat. Keep this isolated from the general provider timeout
-    # and below the dedicated Course Blueprint provider window.
+class Settings(BaseSettings):
+    """Validated process configuration for the standalone AI RAG service."""
+
+    model_config = SettingsConfigDict(
+        env_file=None,
+        extra="ignore",
+        case_sensitive=False,
+        validate_default=True,
+        populate_by_name=True,
+    )
+
+    environment: Environment = Field(default=_environment, validation_alias="AI_RAG_ENV")
+    host: str = Field(default="127.0.0.1", validation_alias="AI_RAG_HOST", min_length=1, max_length=255)
+    port: int = Field(default=8010, validation_alias="AI_RAG_PORT", ge=1, le=65_535)
+    workers: int = Field(default=1, validation_alias="AI_RAG_WORKERS", ge=1, le=64)
+    proxy_headers: bool = Field(default=True, validation_alias="AI_RAG_PROXY_HEADERS")
+    forwarded_allow_ips: str = Field(default="127.0.0.1", validation_alias="AI_RAG_FORWARDED_ALLOW_IPS")
+    shutdown_grace_seconds: int = Field(
+        default=60,
+        validation_alias="AI_RAG_SHUTDOWN_GRACE_SECONDS",
+        ge=1,
+        le=600,
+    )
+
+    database_url: str = Field(default="", validation_alias="DATABASE_URL")
+    supabase_url: str = Field(default="", validation_alias="SUPABASE_URL")
+    supabase_service_key: str = Field(default="", validation_alias="SUPABASE_SERVICE_KEY")
+    supabase_storage_bucket: str = Field(
+        default="landa-storage",
+        validation_alias="SUPABASE_STORAGE_BUCKET",
+        min_length=1,
+        max_length=255,
+    )
+
+    auth_mode: AuthMode = Field(default="token_or_hmac", validation_alias="AI_RAG_AUTH_MODE")
+    service_token: str = Field(default="", validation_alias="AI_RAG_SERVICE_TOKEN")
+    service_hmac_secrets: str = Field(default="", validation_alias="AI_RAG_SERVICE_HMAC_SECRETS")
+    auth_clock_skew_seconds: int = Field(
+        default=300,
+        validation_alias="AI_RAG_AUTH_CLOCK_SKEW_SECONDS",
+        ge=30,
+        le=900,
+    )
+    auth_replay_ttl_seconds: int = Field(
+        default=600,
+        validation_alias="AI_RAG_AUTH_REPLAY_TTL_SECONDS",
+        ge=60,
+        le=3_600,
+    )
+
+    max_request_bytes: int = Field(
+        default=16 * 1024 * 1024,
+        validation_alias="AI_RAG_MAX_REQUEST_BYTES",
+        ge=1_024,
+        le=64 * 1024 * 1024,
+    )
+    idm_max_request_bytes: int = Field(
+        default=24 * 1024 * 1024,
+        validation_alias="AI_RAG_IDM_MAX_REQUEST_BYTES",
+        ge=1_024,
+        le=64 * 1024 * 1024,
+    )
+    max_document_bytes: int = Field(
+        default=50 * 1024 * 1024,
+        validation_alias="AI_RAG_MAX_DOCUMENT_BYTES",
+        ge=1_024,
+        le=512 * 1024 * 1024,
+    )
+    max_document_pages: int = Field(
+        default=1_000,
+        validation_alias="AI_RAG_MAX_DOCUMENT_PAGES",
+        ge=1,
+        le=10_000,
+    )
+    max_ooxml_uncompressed_bytes: int = Field(
+        default=200 * 1024 * 1024,
+        validation_alias="AI_RAG_MAX_OOXML_UNCOMPRESSED_BYTES",
+        ge=1_024,
+        le=2 * 1024 * 1024 * 1024,
+    )
+    max_ooxml_entries: int = Field(
+        default=10_000,
+        validation_alias="AI_RAG_MAX_OOXML_ENTRIES",
+        ge=1,
+        le=100_000,
+    )
+    max_ooxml_compression_ratio: float = Field(
+        default=100.0,
+        validation_alias="AI_RAG_MAX_OOXML_COMPRESSION_RATIO",
+        ge=1.0,
+        le=1_000.0,
+    )
+    max_xlsx_cells: int = Field(
+        default=200_000,
+        validation_alias="AI_RAG_MAX_XLSX_CELLS",
+        ge=1,
+        le=5_000_000,
+    )
+    libreoffice_timeout_seconds: int = Field(
+        default=120,
+        validation_alias="AI_RAG_LIBREOFFICE_TIMEOUT_SECONDS",
+        ge=5,
+        le=600,
+    )
+
+    chunk_max_chars: int = Field(default=3_200, validation_alias="AI_RAG_CHUNK_MAX_CHARS")
+    chunk_overlap_chars: int = Field(default=350, validation_alias="AI_RAG_CHUNK_OVERLAP_CHARS")
+    embedding_batch_size: int = Field(default=32, validation_alias="AI_RAG_EMBEDDING_BATCH_SIZE")
+    provider_request_timeout_ms: int = Field(default=60_000, validation_alias="AI_RAG_PROVIDER_REQUEST_TIMEOUT_MS")
+    blueprint_provider_request_timeout_ms: int = Field(
+        default=300_000,
+        validation_alias="AI_RAG_BLUEPRINT_PROVIDER_REQUEST_TIMEOUT_MS",
+    )
     staged_lesson_content_provider_timeout_ms: int = Field(
-        default_factory=lambda: int(os.getenv("AI_RAG_STAGED_LESSON_CONTENT_PROVIDER_TIMEOUT_MS", "180000")),
+        default=180_000,
+        validation_alias="AI_RAG_STAGED_LESSON_CONTENT_PROVIDER_TIMEOUT_MS",
         gt=60_000,
         le=300_000,
     )
-    # The Node -> Python request envelope remains 600 seconds. This deadline
-    # is deliberately lower, so a multi-batch staged lesson fails safely in
-    # Python before Node closes the request.
     staged_lesson_workflow_timeout_ms: int = Field(
-        default_factory=lambda: int(os.getenv("AI_RAG_STAGED_LESSON_WORKFLOW_TIMEOUT_MS", "480000")),
+        default=480_000,
+        validation_alias="AI_RAG_STAGED_LESSON_WORKFLOW_TIMEOUT_MS",
         gt=0,
         le=480_000,
     )
-    course_workflow_max_repair_attempts: int = Field(default_factory=lambda: int(os.getenv("AI_RAG_COURSE_WORKFLOW_MAX_REPAIR_ATTEMPTS", "2")))
-    lesson_workflow_max_repair_attempts: int = Field(default_factory=lambda: int(os.getenv("AI_RAG_LESSON_WORKFLOW_MAX_REPAIR_ATTEMPTS", "2")))
-    # CP4 remains opt-in until a human-labelled live benchmark is approved.
-    # `observe` measures without changing the quality envelope; `repair` may
-    # perform one bounded component repair and otherwise keeps the draft visible.
+    course_workflow_max_repair_attempts: int = Field(
+        default=2,
+        validation_alias="AI_RAG_COURSE_WORKFLOW_MAX_REPAIR_ATTEMPTS",
+    )
+    lesson_workflow_max_repair_attempts: int = Field(
+        default=2,
+        validation_alias="AI_RAG_LESSON_WORKFLOW_MAX_REPAIR_ATTEMPTS",
+    )
     semantic_review_mode: Literal["off", "observe", "repair"] = Field(
-        default_factory=lambda: os.getenv("AI_RAG_SEMANTIC_REVIEW_MODE", "off").strip().lower(),
+        default="off",
+        validation_alias="AI_RAG_SEMANTIC_REVIEW_MODE",
     )
-    semantic_review_model: str = Field(
-        default_factory=lambda: os.getenv("AI_RAG_SEMANTIC_REVIEW_MODEL", "").strip(),
-        max_length=255,
-    )
+    semantic_review_model: str = Field(default="", validation_alias="AI_RAG_SEMANTIC_REVIEW_MODEL", max_length=255)
     semantic_review_timeout_ms: int = Field(
-        default_factory=lambda: int(os.getenv("AI_RAG_SEMANTIC_REVIEW_TIMEOUT_MS", "60000")),
+        default=60_000,
+        validation_alias="AI_RAG_SEMANTIC_REVIEW_TIMEOUT_MS",
         ge=1_000,
         le=120_000,
     )
     semantic_review_max_output_tokens: int = Field(
-        default_factory=lambda: int(os.getenv("AI_RAG_SEMANTIC_REVIEW_MAX_OUTPUT_TOKENS", "4096")),
+        default=4_096,
+        validation_alias="AI_RAG_SEMANTIC_REVIEW_MAX_OUTPUT_TOKENS",
         ge=512,
         le=8_192,
     )
     semantic_review_provider_attempt_cap: int = Field(
-        default_factory=lambda: int(os.getenv("AI_RAG_SEMANTIC_REVIEW_PROVIDER_ATTEMPT_CAP", "8")),
+        default=8,
+        validation_alias="AI_RAG_SEMANTIC_REVIEW_PROVIDER_ATTEMPT_CAP",
         ge=2,
         le=8,
     )
-    database_command_timeout_seconds: int = Field(default_factory=lambda: int(os.getenv("AI_RAG_DATABASE_COMMAND_TIMEOUT_SECONDS", "600")))
-    top_k: int = Field(default_factory=lambda: int(os.getenv("AI_RAG_TOP_K", "8")))
-    max_context_chars: int = Field(default_factory=lambda: int(os.getenv("AI_RAG_MAX_CONTEXT_CHARS", "18000")))
-    # Authoring needs broader evidence than conversational Q&A. Keep these
-    # separate so improving lesson completeness does not increase every chat
-    # request's latency and token cost.
-    lesson_author_top_k: int = Field(default_factory=lambda: int(os.getenv("AI_RAG_LESSON_AUTHOR_TOP_K", "24")))
-    lesson_author_max_context_chars: int = Field(default_factory=lambda: int(os.getenv("AI_RAG_LESSON_AUTHOR_MAX_CONTEXT_CHARS", "32000")))
-    lesson_author_max_chunks_per_document: int = Field(default_factory=lambda: int(os.getenv("AI_RAG_LESSON_AUTHOR_MAX_CHUNKS_PER_DOCUMENT", "12")))
-    lesson_author_scope_max_chunks: int = Field(default_factory=lambda: int(os.getenv("AI_RAG_LESSON_AUTHOR_SCOPE_MAX_CHUNKS", "48")))
-    # Canonical source-fact provenance has its own bounded memory budget. It
-    # is intentionally independent from the smaller architect prompt budget.
-    source_coverage_canonical_max_chars: int = Field(default_factory=lambda: int(os.getenv("AI_RAG_SOURCE_COVERAGE_CANONICAL_MAX_CHARS", "1000000")))
-    source_map_architect_context_max_chars: int = Field(default_factory=lambda: int(os.getenv("AI_RAG_SOURCE_MAP_ARCHITECT_CONTEXT_MAX_CHARS", "48000")))
-    retrieval_candidate_multiplier: int = Field(default_factory=lambda: int(os.getenv("AI_RAG_RETRIEVAL_CANDIDATE_MULTIPLIER", "4")))
-    retrieval_min_score: float = Field(default_factory=lambda: float(os.getenv("AI_RAG_RETRIEVAL_MIN_SCORE", "0.25")))
-    retrieval_keyword_min_score: float = Field(default_factory=lambda: float(os.getenv("AI_RAG_RETRIEVAL_KEYWORD_MIN_SCORE", "0.50")))
-    retrieval_max_chunks_per_document: int = Field(default_factory=lambda: int(os.getenv("AI_RAG_RETRIEVAL_MAX_CHUNKS_PER_DOCUMENT", "4")))
-    max_user_message_chars: int = Field(default_factory=lambda: int(os.getenv("AI_RAG_MAX_USER_MESSAGE_CHARS", "20000")))
-    generation_temperature: float = Field(default_factory=lambda: float(os.getenv("AI_RAG_GENERATION_TEMPERATURE", "0.2")))
+    database_command_timeout_seconds: int = Field(
+        default=600,
+        validation_alias="AI_RAG_DATABASE_COMMAND_TIMEOUT_SECONDS",
+    )
+    top_k: int = Field(default=8, validation_alias="AI_RAG_TOP_K")
+    max_context_chars: int = Field(default=18_000, validation_alias="AI_RAG_MAX_CONTEXT_CHARS")
+    lesson_author_top_k: int = Field(default=24, validation_alias="AI_RAG_LESSON_AUTHOR_TOP_K")
+    lesson_author_max_context_chars: int = Field(
+        default=32_000,
+        validation_alias="AI_RAG_LESSON_AUTHOR_MAX_CONTEXT_CHARS",
+    )
+    lesson_author_max_chunks_per_document: int = Field(
+        default=12,
+        validation_alias="AI_RAG_LESSON_AUTHOR_MAX_CHUNKS_PER_DOCUMENT",
+    )
+    lesson_author_scope_max_chunks: int = Field(
+        default=48,
+        validation_alias="AI_RAG_LESSON_AUTHOR_SCOPE_MAX_CHUNKS",
+    )
+    source_coverage_canonical_max_chars: int = Field(
+        default=1_000_000,
+        validation_alias="AI_RAG_SOURCE_COVERAGE_CANONICAL_MAX_CHARS",
+    )
+    source_map_architect_context_max_chars: int = Field(
+        default=48_000,
+        validation_alias="AI_RAG_SOURCE_MAP_ARCHITECT_CONTEXT_MAX_CHARS",
+    )
+    retrieval_candidate_multiplier: int = Field(
+        default=4,
+        validation_alias="AI_RAG_RETRIEVAL_CANDIDATE_MULTIPLIER",
+    )
+    retrieval_min_score: float = Field(default=0.25, validation_alias="AI_RAG_RETRIEVAL_MIN_SCORE")
+    retrieval_keyword_min_score: float = Field(
+        default=0.50,
+        validation_alias="AI_RAG_RETRIEVAL_KEYWORD_MIN_SCORE",
+    )
+    retrieval_max_chunks_per_document: int = Field(
+        default=4,
+        validation_alias="AI_RAG_RETRIEVAL_MAX_CHUNKS_PER_DOCUMENT",
+    )
+    max_user_message_chars: int = Field(default=20_000, validation_alias="AI_RAG_MAX_USER_MESSAGE_CHARS")
+    generation_temperature: float = Field(default=0.2, validation_alias="AI_RAG_GENERATION_TEMPERATURE")
     gemini_38_thinking_level: Literal["low", "medium", "high"] = Field(
-        default_factory=lambda: os.getenv("AI_RAG_GEMINI_38_THINKING_LEVEL", "medium").strip().lower(),
+        default="medium",
+        validation_alias="AI_RAG_GEMINI_38_THINKING_LEVEL",
     )
 
     @property
     def is_production(self) -> bool:
         return self.environment == "production"
+
+    @property
+    def is_development(self) -> bool:
+        return self.environment == "development"
+
+
+def missing_required_setting_names(value: Settings) -> list[str]:
+    required = {
+        "DATABASE_URL": value.database_url,
+        "SUPABASE_URL": value.supabase_url,
+        "SUPABASE_SERVICE_KEY": value.supabase_service_key,
+    }
+    if (
+        value.auth_mode in {"token", "token_or_hmac"}
+        and not value.service_token
+        and (value.auth_mode == "token" or not value.service_hmac_secrets)
+    ):
+        required["AI_RAG_SERVICE_TOKEN"] = value.service_token
+    if (
+        value.auth_mode in {"hmac", "token_or_hmac"}
+        and not value.service_hmac_secrets
+        and (value.auth_mode == "hmac" or not value.service_token)
+    ):
+        required["AI_RAG_SERVICE_HMAC_SECRETS"] = value.service_hmac_secrets
+    return sorted(name for name, configured in required.items() if not configured)
+
+
+def validate_startup_settings(value: Settings) -> None:
+    missing = missing_required_setting_names(value)
+    if missing:
+        raise RuntimeError(f"Missing required environment variables: {', '.join(missing)}")
+    if value.host == "0.0.0.0" and value.auth_mode == "token":  # noqa: S104 - comparison, not a bind.
+        logger.warning(
+            "ai_rag_public_bind_without_hmac host=0.0.0.0 auth_mode=token"
+        )
+
 
 settings = Settings()

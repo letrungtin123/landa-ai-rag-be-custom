@@ -1,17 +1,1 @@
-fastapi==0.115.6
-uvicorn[standard]==0.34.0
-asyncpg==0.30.0
-supabase==2.31.0
-google-genai==2.22.0
-pydantic==2.12.5
-langgraph==0.2.74
-# Gemini 3.8 support requires google-genai >=2.22.0. Supabase 2.31.0 is the
-# first pinned stack in this service that can share its httpx 0.28 runtime.
-httpx==0.28.1
-python-dotenv==1.0.1
-PyMuPDF==1.28.2
-pypdf==5.1.0
-python-docx==1.1.2
-python-pptx==1.0.2
-openpyxl==3.1.5
-xlrd==2.0.1
+-r requirements.lock

@@ -290,7 +290,9 @@ class ChapterCheckpointTests(unittest.TestCase):
             main.app.dependency_overrides[main.get_db] = lambda: None
             try:
                 async with httpx.AsyncClient(transport=httpx.ASGITransport(app=main.app), base_url="http://test") as client:
-                    return await client.post("/v1/lesson-author/chapter-checkpoint", json=request.model_dump())
+                    payload = request.model_dump(mode="json")
+                    payload["api_key"] = request.api_key.get_secret_value()
+                    return await client.post("/v1/lesson-author/chapter-checkpoint", json=payload)
             finally:
                 main.app.dependency_overrides.pop(main.get_db, None)
         with patch.object(main.settings, "service_token", "test-only-internal-token"), patch("app.main.generate_content", AsyncMock()) as provider:

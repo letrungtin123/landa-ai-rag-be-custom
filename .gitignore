@@ -1,5 +1,6 @@
 # Python virtual environments and interpreter artifacts
 .venv/
+.venv-dev/
 venv/
 env/
 ENV/
