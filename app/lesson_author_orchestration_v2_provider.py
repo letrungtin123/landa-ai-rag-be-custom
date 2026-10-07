@@ -28,6 +28,7 @@ from app.source_evidence_bundle import (
     build_source_evidence_bundle,
 )
 
+from app.prompt_safety import UNTRUSTED_JSON_CONTEXT_RULE
 from app.lesson_author_orchestration_v2 import (
     ArchitectureComponentAuthorReviewV2,
     ArchitectureComponentPlanV2,
@@ -1254,6 +1255,7 @@ def skeleton_prompt_v2(
         "When SOURCE_OUTLINE_AUTHORITY.mode is locked, emit exactly the listed chapters in exact order, "
         "with exact titles and deterministic scope ownership by matching source_ref; never merge, split, rename, or reorder. "
         "Do not emit source fact IDs or lesson content. Output valid JSON matching the response schema. "
+        f"{UNTRUSTED_JSON_CONTEXT_RULE} "
         f"Output language: {locale}. SOURCE_OUTLINE_AUTHORITY="
         f"{source_authority.model_dump_json()}. SOURCE_SCOPE_CATALOG={scope_wire}"
     )
@@ -1304,6 +1306,7 @@ def chapter_shard_prompt_v2(
         "Do not change chapter identity/title/objective and do not emit raw source text outside learner-facing plans. Never place "
         "source filenames, citations, page/slide/chunk locators, internal IDs, or source-attribution phrases in learner-facing content. "
         "Output valid JSON matching the response schema. "
+        f"{UNTRUSTED_JSON_CONTEXT_RULE} "
         f"Output language: {locale}. UNIT_DENSITY_BUDGET="
         f"{json.dumps(density_budget, ensure_ascii=False, separators=(',', ':'))}. "
         f"SHARD_CONTEXT={json.dumps(payload, ensure_ascii=False, separators=(',', ':'))}"

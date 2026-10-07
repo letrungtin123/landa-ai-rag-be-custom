@@ -88,6 +88,16 @@ class CourseArchitectureWorkflowCallbacks:
     # None delegates to the existing bounded provider repair path.
     deterministic_repair: Callable[[dict[str, Any], list[RepairTarget], dict[str, Any]], Awaitable[WorkflowGenerationResult | None]] | None = None
     emit_diagnostic: Callable[[dict[str, Any]], None] | None = None
+    # Optional executor for CPU-heavy synchronous callbacks (Source Map build,
+    # layered Blueprint validation) so they never block the event loop.
+    run_blocking: Callable[..., Awaitable[Any]] | None = None
+
+
+async def _call_blocking(callbacks: "CourseArchitectureWorkflowCallbacks", func: Callable[..., Any], *args: Any) -> Any:
+    """Run a synchronous callback through the injected executor when one is configured."""
+    if callbacks.run_blocking is None:
+        return func(*args)
+    return await callbacks.run_blocking(func, *args)
 
 
 NON_REPAIRABLE_CODES = {
@@ -608,7 +618,7 @@ def build_course_architecture_graph(callbacks: CourseArchitectureWorkflowCallbac
     async def build_source_map(state: CourseWorkflowState) -> dict[str, Any]:
         started = perf_counter()
         try:
-            source_map = callbacks.build_source_map()
+            source_map = await _call_blocking(callbacks, callbacks.build_source_map)
         except WorkflowFailure as error:
             issue: WorkflowIssue = {"code": error.code, "severity": "error", "message": error.message}
             emit(
@@ -673,7 +683,9 @@ def build_course_architecture_graph(callbacks: CourseArchitectureWorkflowCallbac
             issue: WorkflowIssue = {"code": "ARCHITECTURE_VALIDATION_FAILED", "severity": "error", "message": "Blueprint or Source Map is unavailable."}
             validation = WorkflowValidationResult(issues=[issue])
         else:
-            validation = callbacks.validate_blueprint(state["blueprint"], state["source_map"])
+            validation = await _call_blocking(
+                callbacks, callbacks.validate_blueprint, state["blueprint"], state["source_map"],
+            )
         blocking = [issue for issue in validation.issues if issue.get("severity") == "error"]
         fingerprint = _validation_fingerprint(validation)
         is_revalidation = int(state.get("repair_attempts") or 0) > 0

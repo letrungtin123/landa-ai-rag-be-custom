@@ -4,7 +4,9 @@ import asyncio
 from copy import deepcopy
 import hashlib
 import html
+import io
 import json
+import random
 import re
 import shutil
 import tempfile
@@ -13,17 +15,23 @@ from datetime import datetime, timezone
 from enum import Enum
 from pathlib import Path
 from time import perf_counter
-from typing import Annotated, Any, Callable, ClassVar, Literal
+from collections.abc import Awaitable
+from typing import Annotated, Any, Callable, ClassVar, Literal, TypeVar
 from uuid import UUID
 
 import asyncpg
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
-from google import genai
+from fastapi.responses import JSONResponse, Response
+# Kept as the patch seam existing tests use (app.main.genai.Client); clients are
+# created through app.infra.gemini. PRD-2 moves test patches there.
+from google import genai  # noqa: F401
 from google.genai import errors as genai_errors, types
 from pydantic import BaseModel, Field, SecretStr, ValidationError, create_model, field_validator, model_validator
 from supabase import create_client
 
+from app.core import metrics
+from app.core.concurrency import ConcurrencyRuntime, deadline_seconds
 from app.core.config import settings, validate_startup_settings
 from app.core.document_limits import (
     assert_document_size,
@@ -35,15 +43,19 @@ from app.core.errors import (
     AppError,
     DocumentLimitError,
     app_error_handler,
+    error_payload,
     request_validation_error_handler,
     unhandled_error_handler,
 )
-from app.core.logging import configure_application_logging
+from app.core.lifespan import RuntimeState, build_lifespan
+from app.core.logging import configure_application_logging, redact_secret_like_values
 from app.core.middleware import RequestBodyLimitMiddleware
+from app.core.request_context import DisconnectCancellationMiddleware, RequestContextMiddleware
 from app.core.security import (
     require_configured_service_auth,
     require_internal_auth as verify_internal_auth,
 )
+from app.infra import gemini as gemini_infra
 from app.lesson_author_blueprint import (
     ACTION_OBJECTIVE_REPAIR_INTENTS,
     INSTRUCTIONAL_SUPPORT_REPAIR_INTENTS,
@@ -76,6 +88,7 @@ from app.lesson_prompt_policy import (
     component_instructional_brief, instructional_contract_review_signals,
 )
 from app.lesson_content_observation import observe_lesson_content
+from app.prompt_safety import untrusted_block, untrusted_content_rule
 from app.semantic_review import (
     SemanticReviewResponse,
     SemanticReviewRunOutcome,
@@ -185,29 +198,50 @@ from app.workflows.lesson_generation import (
     run_lesson_generation_workflow,
 )
 
+runtime_state = RuntimeState()
+concurrency = ConcurrencyRuntime(
+    provider_limit=settings.max_concurrent_provider_calls,
+    index_limit=settings.max_concurrent_index_jobs,
+    cpu_workers=settings.cpu_workers,
+    acquire_timeout_seconds=settings.limiter_acquire_timeout_ms / 1000,
+    extraction_executor=settings.extraction_executor,
+)
 app = FastAPI(
     title="Internal AI RAG Service",
     version="0.1.0",
     docs_url="/docs" if settings.is_development else None,
     redoc_url="/redoc" if settings.is_development else None,
     openapi_url="/openapi.json" if settings.is_development else None,
+    # Resolved at call time: startup/shutdown are defined further down.
+    lifespan=build_lifespan(
+        state=runtime_state,
+        startup=lambda: startup(),
+        shutdown=lambda: shutdown(),
+        grace_seconds=settings.shutdown_grace_seconds,
+    ),
 )
+# add_middleware wraps outward: request context (outermost) -> body limit ->
+# disconnect cancellation (buffers the already size-checked body) -> routes.
+app.add_middleware(DisconnectCancellationMiddleware)
 app.add_middleware(
     RequestBodyLimitMiddleware,
     max_request_bytes=settings.max_request_bytes,
     idm_max_request_bytes=settings.idm_max_request_bytes,
 )
+app.add_middleware(RequestContextMiddleware, state=runtime_state)
 app.add_exception_handler(AppError, app_error_handler)
 app.add_exception_handler(Exception, unhandled_error_handler)
 app.add_exception_handler(RequestValidationError, request_validation_error_handler)
 
 
 logger = configure_application_logging(__name__)
+T = TypeVar("T")
 db_pool: asyncpg.Pool | None = None
 supabase_client: Any | None = None
 DEFAULT_EMBEDDING_MODEL = "gemini-embedding-001"
-PROVIDER_TRANSIENT_MAX_ATTEMPTS = 2
-PROVIDER_TRANSIENT_RETRY_DELAY_SECONDS = 1.5
+PROVIDER_TRANSIENT_MAX_ATTEMPTS = settings.provider_max_attempts
+PROVIDER_TRANSIENT_RETRY_DELAY_SECONDS = settings.provider_retry_base_ms / 1000
+PROVIDER_RETRY_HINT_PATTERN = re.compile(r"^\s*(\d+(?:\.\d+)?)\s*s?\s*$")
 MAX_SOURCE_STRUCTURE_DOCUMENTS = 40
 MAX_SOURCE_OUTLINE_CHARS = 16000
 MAX_WORKFLOW_REPAIR_TARGET_CHARS = 24000
@@ -961,7 +995,6 @@ async def get_db() -> asyncpg.Pool:
     return db_pool
 
 
-@app.on_event("startup")
 async def startup() -> None:
     global db_pool, supabase_client
     require_settings()
@@ -974,15 +1007,61 @@ async def startup() -> None:
     supabase_client = create_client(settings.supabase_url, settings.supabase_service_key)
 
 
-@app.on_event("shutdown")
 async def shutdown() -> None:
+    global db_pool
     if db_pool is not None:
         await db_pool.close()
+        db_pool = None
+    gemini_infra.client_pool.clear()
+    concurrency.shutdown()
 
 
 @app.get("/healthz")
 async def healthz() -> dict[str, str]:
+    """Liveness only: the process is serving requests. Never touches dependencies."""
     return {"status": "ok"}
+
+
+@app.get("/readyz")
+async def readyz() -> JSONResponse:
+    """Readiness: started, not draining, configuration validated and database reachable."""
+    pool = db_pool
+    ready = runtime_state.started and not runtime_state.draining and pool is not None
+    if ready and pool is not None:
+        try:
+            async with asyncio.timeout(settings.readiness_db_timeout_ms / 1000):
+                await pool.fetchval("SELECT 1")
+        except Exception:
+            logger.warning("readiness_database_unavailable", extra={"event": "readiness_database_unavailable"})
+            ready = False
+    if not ready:
+        return JSONResponse(status_code=503, content=error_payload("NOT_READY", "The service is not ready."))
+    return JSONResponse(content={"status": "ready"})
+
+
+@app.get("/metrics", dependencies=[Depends(require_internal_token)])
+async def metrics_endpoint() -> Response:
+    body, content_type = metrics.render_metrics()
+    return Response(content=body, media_type=content_type)
+
+
+def record_fallback(stage: str, result: Any) -> None:
+    if isinstance(result, dict) and result.get("content_origin") == "structured_fallback":
+        metrics.FALLBACKS.labels(stage=stage).inc()
+
+
+async def run_with_deadline(route: str, deadline_ms: int, work: Awaitable[T]) -> T:
+    """Bound a whole route. Only the deadline's own expiry maps to 504."""
+    timeout = asyncio.timeout(deadline_seconds(deadline_ms))
+    try:
+        async with timeout:
+            return await work
+    except TimeoutError:
+        if not timeout.expired():
+            raise
+        metrics.DEADLINE_EXCEEDED.labels(route=route).inc()
+        logger.warning("request_deadline_exceeded", extra={"event": "request_deadline_exceeded", "route": route})
+        raise AppError("REQUEST_DEADLINE_EXCEEDED", 504, "The request exceeded its processing deadline.") from None
 
 
 def clean_text(value: str) -> str:
@@ -1148,11 +1227,15 @@ def _visual_prompt_text(page_text: str) -> str | None:
 
 
 def extract_pdf(path: Path) -> list[ExtractedSection]:
+    # Parse from memory: after a failed open PyMuPDF keeps the file handle alive on
+    # Windows, which blocks temp-dir cleanup, leaves the upload on disk and masks
+    # the real parser error. The size is already bounded by assert_document_size.
+    data = path.read_bytes()
     try:
         import pymupdf
 
         sections: list[ExtractedSection] = []
-        with pymupdf.open(str(path)) as document:
+        with pymupdf.open(stream=data, filetype="pdf") as document:
             if document.page_count > settings.max_document_pages:
                 raise DocumentLimitError()
             visual_regions_by_page = collect_pdf_visual_regions(document)
@@ -1174,7 +1257,7 @@ def extract_pdf(path: Path) -> list[ExtractedSection]:
 
     from pypdf import PdfReader
 
-    reader = PdfReader(str(path))
+    reader = PdfReader(io.BytesIO(data))
     if len(reader.pages) > settings.max_document_pages:
         raise DocumentLimitError()
     sections: list[ExtractedSection] = []
@@ -1722,12 +1805,45 @@ def safe_provider_error_diagnostics(error: Exception) -> dict[str, Any]:
     }
 
 
+def provider_retry_delay_seconds(attempt: int) -> float:
+    """Exponential backoff with +/-20% jitter, capped by the configured maximum."""
+    base = PROVIDER_TRANSIENT_RETRY_DELAY_SECONDS * (2 ** max(0, attempt))
+    jittered = base * random.uniform(0.8, 1.2)  # noqa: S311 - jitter, not security
+    return max(0.0, min(jittered, settings.provider_retry_max_ms / 1000))
+
+
+def provider_retry_hint_seconds(error: Exception) -> float | None:
+    """Read a server retry hint (google.rpc.RetryInfo or Retry-After) without logging content."""
+    details = getattr(error, "details", None)
+    envelope = details if isinstance(details, dict) else {}
+    body = envelope.get("error", envelope)
+    entries = body.get("details", []) if isinstance(body, dict) else []
+    for entry in entries if isinstance(entries, list) else []:
+        if isinstance(entry, dict) and str(entry.get("@type", "")).endswith("google.rpc.RetryInfo"):
+            match = PROVIDER_RETRY_HINT_PATTERN.match(str(entry.get("retryDelay", "")))
+            if match:
+                return float(match.group(1))
+    response = getattr(error, "response", None)
+    headers = getattr(response, "headers", None)
+    if headers is not None:
+        try:
+            value = headers.get("retry-after")
+        except Exception:
+            value = None
+        if isinstance(value, str):
+            match = PROVIDER_RETRY_HINT_PATTERN.match(value)
+            if match:
+                return float(match.group(1))
+    return None
+
+
 async def call_provider_with_timeout(
     run: Any,
     model: str,
     *,
     request_timeout_ms: int | None = None,
     on_provider_diagnostic: Callable[[dict[str, Any]], None] | None = None,
+    operation: Literal["generate", "embed"] = "generate",
 ) -> Any:
     """Bound provider calls and retry only transient 5xx responses once.
 
@@ -1738,18 +1854,23 @@ async def call_provider_with_timeout(
     not treat cancellation of this await as hard provider cancellation.
     """
     timeout_ms = max(1, request_timeout_ms or settings.provider_request_timeout_ms)
-    for attempt in range(PROVIDER_TRANSIENT_MAX_ATTEMPTS):
+    max_attempts = max(1, PROVIDER_TRANSIENT_MAX_ATTEMPTS)
+    for attempt in range(max_attempts):
         emit_safe_provider_telemetry(on_provider_diagnostic, {
             "event": "provider_http_attempt_started",
             "provider_attempt": attempt + 1,
             "model": model,
             "usage_source": "unavailable",
         })
+        attempt_started = perf_counter()
+        outcome = "error"
         try:
-            response = await asyncio.wait_for(
-                asyncio.to_thread(run),
-                timeout=timeout_ms / 1000,
-            )
+            async with concurrency.provider.slot(max_wait_seconds=timeout_ms / 1000):
+                response = await asyncio.wait_for(
+                    asyncio.to_thread(run),
+                    timeout=timeout_ms / 1000,
+                )
+            outcome = "success"
             emit_safe_provider_telemetry(on_provider_diagnostic, {
                 "event": "provider_http_attempt_succeeded",
                 "provider_attempt": attempt + 1,
@@ -1757,7 +1878,11 @@ async def call_provider_with_timeout(
                 "usage_source": "unavailable",
             })
             return response
+        except AppError:
+            outcome = "busy"
+            raise
         except asyncio.TimeoutError as error:
+            outcome = "timeout"
             if on_provider_diagnostic is not None:
                 emit_safe_provider_telemetry(on_provider_diagnostic, {
                     "event": "provider_timeout",
@@ -1785,6 +1910,26 @@ async def call_provider_with_timeout(
             status_code = provider_http_error_status(error)
             provider_error = str(error)
             if status_code == 429 or "RESOURCE_EXHAUSTED" in provider_error:
+                retry_hint = provider_retry_hint_seconds(error)
+                if (
+                    retry_hint is not None
+                    and retry_hint <= settings.provider_retry_max_ms / 1000
+                    and attempt + 1 < max_attempts
+                ):
+                    # Short per-minute rate limits clear quickly; a missing or long
+                    # hint means quota exhaustion and is surfaced immediately.
+                    outcome = "rate_limited_retry"
+                    emit_safe_provider_telemetry(on_provider_diagnostic, {
+                        "event": "provider_rate_limited_retry",
+                        "model": model,
+                        "provider_http_status": status_code,
+                        "provider_attempt": attempt + 1,
+                        "retry_after_ms": round(retry_hint * 1000),
+                        "usage_source": "unavailable",
+                    })
+                    await asyncio.sleep(retry_hint)
+                    continue
+                outcome = "quota_exhausted"
                 if on_provider_diagnostic is not None:
                     emit_safe_provider_telemetry(on_provider_diagnostic, {
                         "event": "provider_quota_exhausted",
@@ -1808,7 +1953,8 @@ async def call_provider_with_timeout(
                     },
                 ) from error
             is_transient = (isinstance(status_code, int) and status_code >= 500) or "UNAVAILABLE" in provider_error
-            if is_transient and attempt + 1 < PROVIDER_TRANSIENT_MAX_ATTEMPTS:
+            if is_transient and attempt + 1 < max_attempts:
+                outcome = "transient_retry"
                 if on_provider_diagnostic is not None:
                     emit_safe_provider_telemetry(on_provider_diagnostic, {
                         "event": "provider_transient_retry",
@@ -1825,9 +1971,10 @@ async def call_provider_with_timeout(
                         attempt + 1,
                         status_code,
                     )
-                await asyncio.sleep(PROVIDER_TRANSIENT_RETRY_DELAY_SECONDS)
+                await asyncio.sleep(provider_retry_delay_seconds(attempt))
                 continue
             if is_transient:
+                outcome = "unavailable"
                 if on_provider_diagnostic is not None:
                     emit_safe_provider_telemetry(on_provider_diagnostic, {
                         "event": "provider_unavailable",
@@ -1858,6 +2005,10 @@ async def call_provider_with_timeout(
                 **safe_provider_error_diagnostics(error),
             })
             raise
+        finally:
+            metrics.PROVIDER_CALLS.labels(operation=operation, outcome=outcome).inc()
+            metrics.PROVIDER_CALL_DURATION.labels(operation=operation).observe(perf_counter() - attempt_started)
+    raise RuntimeError("Provider retry loop exhausted without a result.")
 
 
 async def embed_text_batch(
@@ -1872,17 +2023,14 @@ async def embed_text_batch(
     safe_api_key = require_provider_api_key(api_key)
 
     def run() -> Any:
-        client = genai.Client(
-            api_key=safe_api_key,
-            http_options=types.HttpOptions(timeout=settings.provider_request_timeout_ms),
-        )
+        client = gemini_infra.gemini_client(safe_api_key, settings.provider_request_timeout_ms)
         config_args: dict[str, Any] = {"outputDimensionality": output_dimensionality}
         if effective_model == "gemini-embedding-001" and task_type:
             config_args["taskType"] = task_type
         config = types.EmbedContentConfig(**config_args)
         return client.models.embed_content(model=effective_model, contents=contents, config=config)
 
-    response = await call_provider_with_timeout(run, effective_model)
+    response = await call_provider_with_timeout(run, effective_model, operation="embed")
     raw_embeddings = getattr(response, "embeddings", None)
     if raw_embeddings is None and isinstance(response, dict):
         raw_embeddings = response.get("embeddings")
@@ -1890,6 +2038,7 @@ async def embed_text_batch(
         raw_embeddings = [response]
     embeddings = [get_embedding_values(item) for item in raw_embeddings]
     usage = normalize_usage(embedding_tokens=sum(estimate_tokens(content) for content in contents))
+    metrics.PROVIDER_TOKENS.labels(operation="embed", kind="embedding").inc(usage.embeddingTokens)
     return embeddings, usage
 
 
@@ -1943,10 +2092,7 @@ async def generate_content(
     gemini_38 = model_id == "gemini-3.8-flash"
 
     def run() -> Any:
-        client = genai.Client(
-            api_key=safe_api_key,
-            http_options=types.HttpOptions(timeout=provider_timeout_ms),
-        )
+        client = gemini_infra.gemini_client(safe_api_key, provider_timeout_ms)
         config: dict[str, Any] = {"max_output_tokens": max_output_tokens}
         if gemini_38:
             # Gemini 3.8 rejects legacy sampling parameters. Use its supported
@@ -2071,7 +2217,10 @@ async def generate_content(
             duration_ms=max(0, round((perf_counter() - provider_started) * 1000)),
         ),
     )
-    return text, usage_from_google_response(response, prompt, text)
+    usage = usage_from_google_response(response, prompt, text)
+    metrics.PROVIDER_TOKENS.labels(operation="generate", kind="input").inc(usage.inputTokens)
+    metrics.PROVIDER_TOKENS.labels(operation="generate", kind="output").inc(usage.outputTokens)
+    return text, usage
 
 
 def download_storage_object(storage_path: str) -> bytes:
@@ -2260,6 +2409,13 @@ async def delete_previous_structure_nodes_if_available(
 
 @app.post("/v1/kb/documents/index", dependencies=[Depends(require_internal_token)])
 async def index_document(request: RagIndexRequest, pool: asyncpg.Pool = Depends(get_db)) -> dict[str, Any]:
+    # Bounded concurrency: a saturated indexer answers SERVICE_BUSY (503) so the
+    # backend's durable KB worker retries later instead of piling up memory.
+    async with concurrency.index.slot():
+        return await _index_document(request, pool)
+
+
+async def _index_document(request: RagIndexRequest, pool: asyncpg.Pool) -> dict[str, Any]:
     if request.embedding_dimensions != 768:
         raise HTTPException(status_code=400, detail="RAG hiện chỉ hỗ trợ embedding 768 chiều.")
     row = await load_document(pool, request.tenant_id, request.kb_id, request.document_id)
@@ -2269,174 +2425,185 @@ async def index_document(request: RagIndexRequest, pool: asyncpg.Pool = Depends(
     index_id: str | None = None
     raw_bytes: int | None = None
     effective_embedding_model = normalize_embedding_model(request.embedding_model)
+    deadline = asyncio.timeout(deadline_seconds(settings.index_deadline_ms))
     try:
-        logger.info(
-            "rag_index_started",
-            extra={"event": "rag_index_started", "tenant_id": request.tenant_id,
-                   "kb_id": request.kb_id, "document_id": request.document_id},
-        )
-        index_id = await start_index_row(pool, row, effective_embedding_model)
-        if row["file_path"]:
-            assert_tenant_storage_path(str(row["file_path"]), request.tenant_id)
-            raw = await asyncio.to_thread(download_storage_object, row["file_path"])
-            raw_bytes = len(raw)
-            assert_document_size(raw_bytes, maximum=settings.max_document_bytes)
+        async with deadline:
             logger.info(
-                "rag_index_downloaded",
-                extra={"event": "rag_index_downloaded", "tenant_id": request.tenant_id,
-                       "document_id": request.document_id, "bytes": raw_bytes},
+                "rag_index_started",
+                extra={"event": "rag_index_started", "tenant_id": request.tenant_id,
+                       "kb_id": request.kb_id, "document_id": request.document_id},
             )
-            with tempfile.TemporaryDirectory() as temp_dir:
-                file_path = index_document_temp_path(temp_dir, str(row["id"]), row["name"])
-                file_path.write_bytes(raw)
-                sections = await asyncio.to_thread(extract_sections, file_path, file_path.name)
-        else:
-            content_bytes = len(str(row["content"] or "").encode("utf-8"))
-            assert_document_size(content_bytes, maximum=settings.max_document_bytes)
-            raw_bytes = content_bytes
-            sections = [ExtractedSection(text=clean_text(row["content"] or ""))]
-        logger.info(
-            "rag_index_extracted",
-            extra={"event": "rag_index_extracted", "tenant_id": request.tenant_id,
-                   "document_id": request.document_id, "section_count": len(sections)},
-        )
-        structure = await asyncio.to_thread(analyze_source_structure, sections)
-        chunks = build_chunks(sections, structure)
-        if not chunks:
-            raise ValueError("Không tạo được đoạn kiến thức nào từ tài liệu.")
-        index_diagnostics = build_index_diagnostics(
-            sections,
-            chunks,
-            raw_bytes=raw_bytes,
-            file_name=row["name"] or None,
-        )
-        logger.info(
-            "rag_index_chunked",
-            extra={"event": "rag_index_chunked", "tenant_id": request.tenant_id,
-                   "document_id": request.document_id, "chunk_count": len(chunks)},
-        )
-
-        embeddings, embedding_usage = await embed_texts(
-            request.api_key,
-            effective_embedding_model,
-            [chunk["content"] for chunk in chunks],
-            task_type="RETRIEVAL_DOCUMENT",
-            output_dimensionality=request.embedding_dimensions,
-        )
-        if len(embeddings) != len(chunks):
-            raise ValueError("Số lượng embedding không khớp số đoạn kiến thức.")
-        logger.info(
-            "rag_index_embedded",
-            extra={"event": "rag_index_embedded", "tenant_id": request.tenant_id,
-                   "document_id": request.document_id, "embedding_count": len(embeddings)},
-        )
-
-        content_sha = hashlib.sha256("\n\n".join(chunk["content"] for chunk in chunks).encode("utf-8")).hexdigest()
-        async with pool.acquire() as conn:
-            async with conn.transaction():
-                index_status = await conn.fetchval(
-                    """
-                    SELECT status
-                    FROM rag_document_indexes
-                    WHERE id = $1::uuid
-                      AND document_id = $2::uuid
-                    FOR UPDATE
-                    """,
-                    index_id,
-                    row["id"],
+            index_id = await start_index_row(pool, row, effective_embedding_model)
+            if row["file_path"]:
+                assert_tenant_storage_path(str(row["file_path"]), request.tenant_id)
+                raw = await asyncio.to_thread(download_storage_object, row["file_path"])
+                raw_bytes = len(raw)
+                assert_document_size(raw_bytes, maximum=settings.max_document_bytes)
+                logger.info(
+                    "rag_index_downloaded",
+                    extra={"event": "rag_index_downloaded", "tenant_id": request.tenant_id,
+                           "document_id": request.document_id, "bytes": raw_bytes},
                 )
-                if index_status != "running":
-                    raise ValueError("Phiên học tài liệu đã bị thay thế bởi phiên mới hơn.")
-                for chunk_no, (chunk, embedding) in enumerate(zip(chunks, embeddings)):
+                with tempfile.TemporaryDirectory() as temp_dir:
+                    file_path = index_document_temp_path(temp_dir, str(row["id"]), row["name"])
+                    file_path.write_bytes(raw)
+                    # The SDK returns the whole object; drop it once on disk so a
+                    # large document is not held twice while parsing.
+                    del raw
+                    sections = await concurrency.run_extraction(extract_sections, file_path, file_path.name)
+            else:
+                content_bytes = len(str(row["content"] or "").encode("utf-8"))
+                assert_document_size(content_bytes, maximum=settings.max_document_bytes)
+                raw_bytes = content_bytes
+                sections = [ExtractedSection(text=clean_text(row["content"] or ""))]
+            logger.info(
+                "rag_index_extracted",
+                extra={"event": "rag_index_extracted", "tenant_id": request.tenant_id,
+                       "document_id": request.document_id, "section_count": len(sections)},
+            )
+            structure = await concurrency.run_cpu(analyze_source_structure, sections)
+            chunks = await concurrency.run_cpu(build_chunks, sections, structure)
+            if not chunks:
+                raise ValueError("Không tạo được đoạn kiến thức nào từ tài liệu.")
+            index_diagnostics = build_index_diagnostics(
+                sections,
+                chunks,
+                raw_bytes=raw_bytes,
+                file_name=row["name"] or None,
+            )
+            logger.info(
+                "rag_index_chunked",
+                extra={"event": "rag_index_chunked", "tenant_id": request.tenant_id,
+                       "document_id": request.document_id, "chunk_count": len(chunks)},
+            )
+
+            embeddings, embedding_usage = await embed_texts(
+                request.api_key,
+                effective_embedding_model,
+                [chunk["content"] for chunk in chunks],
+                task_type="RETRIEVAL_DOCUMENT",
+                output_dimensionality=request.embedding_dimensions,
+            )
+            if len(embeddings) != len(chunks):
+                raise ValueError("Số lượng embedding không khớp số đoạn kiến thức.")
+            logger.info(
+                "rag_index_embedded",
+                extra={"event": "rag_index_embedded", "tenant_id": request.tenant_id,
+                       "document_id": request.document_id, "embedding_count": len(embeddings)},
+            )
+
+            content_sha = hashlib.sha256("\n\n".join(chunk["content"] for chunk in chunks).encode("utf-8")).hexdigest()
+            async with pool.acquire() as conn:
+                async with conn.transaction():
+                    index_status = await conn.fetchval(
+                        """
+                        SELECT status
+                        FROM rag_document_indexes
+                        WHERE id = $1::uuid
+                          AND document_id = $2::uuid
+                        FOR UPDATE
+                        """,
+                        index_id,
+                        row["id"],
+                    )
+                    if index_status != "running":
+                        raise ValueError("Phiên học tài liệu đã bị thay thế bởi phiên mới hơn.")
+                    for chunk_no, (chunk, embedding) in enumerate(zip(chunks, embeddings)):
+                        await conn.execute(
+                            """
+                            INSERT INTO rag_chunks (
+                              tenant_id, kb_id, document_id, index_id, chunk_no,
+                              content, content_hash, token_count, source_page,
+                              source_section, metadata, embedding
+                            )
+                            VALUES ($1::uuid, $2::uuid, $3::uuid, $4::uuid, $5::int,
+                                    $6, $7, $8::int, $9::int, $10, $11::jsonb, $12::vector)
+                            """,
+                            row["tenant_id"],
+                            row["kb_id"],
+                            row["id"],
+                            index_id,
+                            chunk_no,
+                            chunk["content"],
+                            chunk["content_hash"],
+                            chunk["token_count"],
+                            chunk["page"],
+                            chunk["section"],
+                            json.dumps(
+                                {
+                                    "source_name": row["name"],
+                                    "document_type": row["type"],
+                                    **(chunk.get("metadata") or {}),
+                                },
+                                ensure_ascii=False,
+                            ),
+                            vector_literal(embedding),
+                        )
+                    await persist_structure_nodes_if_available(conn, row, index_id, structure)
+                    await delete_previous_structure_nodes_if_available(conn, row, index_id)
                     await conn.execute(
                         """
-                        INSERT INTO rag_chunks (
-                          tenant_id, kb_id, document_id, index_id, chunk_no,
-                          content, content_hash, token_count, source_page,
-                          source_section, metadata, embedding
-                        )
-                        VALUES ($1::uuid, $2::uuid, $3::uuid, $4::uuid, $5::int,
-                                $6, $7, $8::int, $9::int, $10, $11::jsonb, $12::vector)
+                        UPDATE rag_document_indexes
+                        SET is_active = false
+                        WHERE document_id = $1::uuid
+                          AND engine = 'self_built_rag'
+                          AND id <> $2::uuid
                         """,
-                        row["tenant_id"],
-                        row["kb_id"],
                         row["id"],
                         index_id,
-                        chunk_no,
-                        chunk["content"],
-                        chunk["content_hash"],
-                        chunk["token_count"],
-                        chunk["page"],
-                        chunk["section"],
-                        json.dumps(
-                            {
-                                "source_name": row["name"],
-                                "document_type": row["type"],
-                                **(chunk.get("metadata") or {}),
-                            },
-                            ensure_ascii=False,
-                        ),
-                        vector_literal(embedding),
                     )
-                await persist_structure_nodes_if_available(conn, row, index_id, structure)
-                await delete_previous_structure_nodes_if_available(conn, row, index_id)
-                await conn.execute(
-                    """
-                    UPDATE rag_document_indexes
-                    SET is_active = false
-                    WHERE document_id = $1::uuid
-                      AND engine = 'self_built_rag'
-                      AND id <> $2::uuid
-                    """,
-                    row["id"],
-                    index_id,
-                )
-                await conn.execute(
-                    """
-                    UPDATE rag_document_indexes
-                    SET status = 'learned',
-                        is_active = true,
-                        content_sha256 = $3,
-                        chunk_count = $4::int,
-                        error_reason = NULL,
-                        completed_at = now(),
-                        updated_at = now()
-                    WHERE id = $1::uuid
-                      AND document_id = $2::uuid
-                    """,
-                    index_id,
-                    row["id"],
-                    content_sha,
-                    len(chunks),
-                )
-                await conn.execute(
-                    """
-                    DELETE FROM rag_document_indexes
-                    WHERE document_id = $1::uuid
-                      AND engine = 'self_built_rag'
-                      AND is_active = false
-                      AND id <> $2::uuid
-                    """,
-                    row["id"],
-                    index_id,
-                )
+                    await conn.execute(
+                        """
+                        UPDATE rag_document_indexes
+                        SET status = 'learned',
+                            is_active = true,
+                            content_sha256 = $3,
+                            chunk_count = $4::int,
+                            error_reason = NULL,
+                            completed_at = now(),
+                            updated_at = now()
+                        WHERE id = $1::uuid
+                          AND document_id = $2::uuid
+                        """,
+                        index_id,
+                        row["id"],
+                        content_sha,
+                        len(chunks),
+                    )
+                    await conn.execute(
+                        """
+                        DELETE FROM rag_document_indexes
+                        WHERE document_id = $1::uuid
+                          AND engine = 'self_built_rag'
+                          AND is_active = false
+                          AND id <> $2::uuid
+                        """,
+                        row["id"],
+                        index_id,
+                    )
 
-        logger.info(
-            "rag_index_completed",
-            extra={"event": "rag_index_completed", "tenant_id": request.tenant_id,
-                   "document_id": request.document_id, "chunk_count": len(chunks)},
-        )
-        return {
-            "status": "learned",
-            "chunk_count": len(chunks),
-            "structure_source": structure.get("structure_source"),
-            "structure_confidence": structure.get("confidence"),
-            "structure_node_count": len(structure.get("nodes", [])),
-            "diagnostics": index_diagnostics,
-            "usage": embedding_usage.model_dump(),
-        }
+            logger.info(
+                "rag_index_completed",
+                extra={"event": "rag_index_completed", "tenant_id": request.tenant_id,
+                       "document_id": request.document_id, "chunk_count": len(chunks)},
+            )
+            return {
+                "status": "learned",
+                "chunk_count": len(chunks),
+                "structure_source": structure.get("structure_source"),
+                "structure_confidence": structure.get("confidence"),
+                "structure_node_count": len(structure.get("nodes", [])),
+                "diagnostics": index_diagnostics,
+                "usage": embedding_usage.model_dump(),
+            }
     except Exception as exc:
-        error_code = exc.code if isinstance(exc, AppError) else "INDEX_DOCUMENT_FAILED"
+        if isinstance(exc, TimeoutError) and deadline.expired():
+            error_code = "INDEX_DEADLINE_EXCEEDED"
+            metrics.DEADLINE_EXCEEDED.labels(route="/v1/kb/documents/index").inc()
+        else:
+            error_code = exc.code if isinstance(exc, AppError) else "INDEX_DOCUMENT_FAILED"
+        if isinstance(exc, DocumentLimitError):
+            metrics.DOCUMENT_LIMIT_REJECTIONS.labels(code=exc.code).inc()
         await mark_index_error(pool, index_id, error_code)
         logger.exception(
             "rag_index_failed",
@@ -6217,6 +6384,23 @@ def build_no_context_answer(locale: Literal["vi", "en"]) -> str:
     )
 
 
+CHAT_UNTRUSTED_TAGS = ("SOURCE_DOCUMENTS", "SOURCE_OUTLINE", "COURSE_CONTEXT", "CONVERSATION_HISTORY", "USER_QUESTION")
+UNTRUSTED_CONTENT_RULE_VI = untrusted_content_rule(CHAT_UNTRUSTED_TAGS, "vi")
+UNTRUSTED_CONTENT_RULE_EN = untrusted_content_rule(CHAT_UNTRUSTED_TAGS, "en")
+SYSTEM_PROMPT_LEAK_MIN_CHARS = 80
+LESSON_AUTHOR_UNTRUSTED_TAGS = ("USER_REQUEST", "COURSE_CONTEXT", "OUTLINE_CONTEXT", "SOURCE_OUTLINE", "SOURCE_MATERIAL")
+STAGED_UNIT_UNTRUSTED_RULE = untrusted_content_rule(("MANDATORY_FACTS", "SOURCE_MATERIAL"), "en")
+
+
+def guard_chat_output(text: str, system_prompt: str) -> str:
+    """Never return provider keys/secrets or a verbatim copy of the tenant system prompt."""
+    guarded = redact_secret_like_values(text)
+    persona = (system_prompt or "").strip()
+    if len(persona) >= SYSTEM_PROMPT_LEAK_MIN_CHARS and persona in guarded:
+        guarded = guarded.replace(persona, "[…]")
+    return guarded
+
+
 def build_chat_prompt(
     request: RagChatRequest,
     context: str,
@@ -6240,11 +6424,15 @@ def build_chat_prompt(
             locale_rule,
             knowledge_rule,
             "Trả lời đầy đủ theo yêu cầu. Với câu hỏi đơn giản, trả lời gọn; với câu hỏi cần giải thích, trình bày đủ các ý chính hoặc từng bước. Không cắt bỏ điều kiện quan trọng.",
-            f"Lịch sử hội thoại gần đây:\n{format_history(request.history)}" if request.history else "",
-            f"Ngữ cảnh khóa học hiện tại:\n{request.course_context}" if request.course_context else "",
-            f"Cấu trúc mục lục/tiêu đề của tài liệu nguồn:\n{source_outline}" if source_outline else "",
-            f"Tài liệu/kiến thức liên quan:\n{context}" if context else no_context,
-            f"Câu hỏi hiện tại:\n{request.user_message}",
+            UNTRUSTED_CONTENT_RULE_VI if request.locale == "vi" else UNTRUSTED_CONTENT_RULE_EN,
+            f"Lịch sử hội thoại gần đây:\n{untrusted_block('CONVERSATION_HISTORY', format_history(request.history))}"
+            if request.history else "",
+            f"Ngữ cảnh khóa học hiện tại:\n{untrusted_block('COURSE_CONTEXT', request.course_context)}"
+            if request.course_context else "",
+            f"Cấu trúc mục lục/tiêu đề của tài liệu nguồn:\n{untrusted_block('SOURCE_OUTLINE', source_outline)}"
+            if source_outline else "",
+            f"Tài liệu/kiến thức liên quan:\n{untrusted_block('SOURCE_DOCUMENTS', context)}" if context else no_context,
+            f"Câu hỏi hiện tại:\n{untrusted_block('USER_QUESTION', request.user_message)}",
         ]
         if part
     )
@@ -6252,6 +6440,10 @@ def build_chat_prompt(
 
 @app.post("/v1/chat", dependencies=[Depends(require_internal_token)])
 async def chat(request: RagChatRequest, pool: asyncpg.Pool = Depends(get_db)) -> dict[str, Any]:
+    return await run_with_deadline("/v1/chat", settings.chat_deadline_ms, _chat(request, pool))
+
+
+async def _chat(request: RagChatRequest, pool: asyncpg.Pool) -> dict[str, Any]:
     rows, retrieval_usage, structure_context = await retrieve_chunks(pool, request)
     context, sources = format_sources(rows, max_context_chars=retrieval_limits(request)["max_context_chars"])
     retrieval = build_retrieval_diagnostics(request, rows, sources, structure_context)
@@ -6270,6 +6462,7 @@ async def chat(request: RagChatRequest, pool: asyncpg.Pool = Depends(get_db)) ->
         max_output_tokens=request.max_output_tokens,
     )
     usage = combine_usage(retrieval_usage, generation_usage)
+    text = guard_chat_output(text, request.system_prompt)
     return {"text": text, "usage": usage.model_dump(), "sources": sources, "retrieval": retrieval}
 
 
@@ -6364,14 +6557,15 @@ def build_lesson_author_prompt(
             "Khi vùng outline được máy chủ khóa, phải giữ nguyên tên và đường dẫn Chương/Mục/Bài học đã cung cấp, chỉ trả đúng chain nhỏ nhất cần cho phạm vi đó. Không sao chép nhánh không liên quan hoặc tự đổi tên node.",
             "Các thao tác đổi tên, xóa, di chuyển và quyền áp dụng do máy chủ xử lý; model chỉ tạo JSON proposal cho nội dung khi được yêu cầu.",
             no_context_rule,
-            f"Yêu cầu hiện tại:\n{request.user_message}",
-            f"Outline khóa học hiện tại:\n{request.course_context}" if request.course_context else "",
-            f"Vùng outline được chọn:\n{request.outline_context}" if request.outline_context else "",
+            untrusted_content_rule(LESSON_AUTHOR_UNTRUSTED_TAGS, request.locale),
+            f"Yêu cầu hiện tại:\n{untrusted_block('USER_REQUEST', request.user_message)}",
+            f"Outline khóa học hiện tại:\n{untrusted_block('COURSE_CONTEXT', request.course_context)}" if request.course_context else "",
+            f"Vùng outline được chọn:\n{untrusted_block('OUTLINE_CONTEXT', request.outline_context)}" if request.outline_context else "",
             request.target_scope_instruction,
             f"APPROVED LESSON ARCHITECTURE (hard scope; do not redesign it):\n{format_approved_lesson_quality_contract(request.blueprint_architecture)}" if request.blueprint_architecture else "",
-            f"Cấu trúc mục lục/tiêu đề của tài liệu nguồn (chỉ là dữ liệu tham chiếu):\n{source_outline}" if source_outline else "",
+            f"Cấu trúc mục lục/tiêu đề của tài liệu nguồn (chỉ là dữ liệu tham chiếu):\n{untrusted_block('SOURCE_OUTLINE', source_outline)}" if source_outline else "",
             f"{source_coverage}" if source_coverage else "",
-            f"Tài liệu/kiến thức liên quan:\n{context}" if context else "Chưa tìm thấy đoạn tài liệu liên quan trong kho kiến thức.",
+            f"Tài liệu/kiến thức liên quan:\n{untrusted_block('SOURCE_MATERIAL', context)}" if context else "Chưa tìm thấy đoạn tài liệu liên quan trong kho kiến thức.",
             "Schema output bắt buộc:",
             request.output_schema_hint,
             "Toàn vẹn cấu trúc là bắt buộc: mọi bài học phải có ít nhất một mục nội dung không rỗng; mọi mục phải có ít nhất một học liệu hợp lệ. Không được bỏ trường units, trả bài học rỗng, hoặc lược bỏ fact nguồn chỉ để rút ngắn câu chữ.",
@@ -11520,8 +11714,9 @@ async def generate_staged_lesson_author_proposal(
                 "SERVER STAGE 2: Generate complete content for exactly one unit.",
                 staged_component_contract_prompt(expected.get("component_types", [])),
                 unit_lines,
-                f"Mandatory facts for this unit:\n{unit_coverage}",
-                f"Relevant source material:\n{unit_context or context[:STAGED_LESSON_AUTHOR_UNIT_CONTEXT_CHARS]}",
+                STAGED_UNIT_UNTRUSTED_RULE,
+                f"Mandatory facts for this unit:\n{untrusted_block('MANDATORY_FACTS', unit_coverage)}",
+                f"Relevant source material:\n{untrusted_block('SOURCE_MATERIAL', unit_context or context[:STAGED_LESSON_AUTHOR_UNIT_CONTEXT_CHARS])}",
                 f"APPROVED INSTRUCTIONAL CONTRACT (hard scope; do not redesign):\n{instructional_contract}",
                 (
                     'OUTPUT CONTRACT component-instance-payload-1: Return {"components":{"c0":{...payload...},"c1":{...payload...}}}. '
@@ -11653,8 +11848,9 @@ async def generate_staged_lesson_author_proposal(
                         ),
                         f"Target unit: {expected_line}",
                         f"Approved instructional contract (read-only):\n{instructional_contract}",
-                        f"Mandatory facts for this unit:\n{unit_coverage}",
-                        f"Relevant source material:\n{unit_context or context[:STAGED_LESSON_AUTHOR_UNIT_CONTEXT_CHARS]}",
+                        STAGED_UNIT_UNTRUSTED_RULE,
+                        f"Mandatory facts for this unit:\n{untrusted_block('MANDATORY_FACTS', unit_coverage)}",
+                        f"Relevant source material:\n{untrusted_block('SOURCE_MATERIAL', unit_context or context[:STAGED_LESSON_AUTHOR_UNIT_CONTEXT_CHARS])}",
                         f"Validation feedback from the previous unit: {generated_validation_reason or 'The unit omitted mandatory source facts.'} Fix this exact issue.",
                         "Return exactly one JSON object, not an array. The title must exactly match the target unit title and no other unit may be returned.",
                         'The object must include exact source_fact_ids and supporting_evidence_fact_ids. Keep supporting evidence read-only: never copy it into canonical ownership or covered_source_fact_ids. Return only authorized failed instances for scoped repair, otherwise match the approved component plan exactly.',
@@ -11707,8 +11903,9 @@ async def generate_staged_lesson_author_proposal(
                             ))
                         ]),
                         f"Approved instructional contract (read-only):\n{instructional_contract}",
-                        f"Mandatory evidence:\n{unit_coverage}",
-                        f"Relevant source material:\n{unit_context or context[:STAGED_LESSON_AUTHOR_UNIT_CONTEXT_CHARS]}",
+                        STAGED_UNIT_UNTRUSTED_RULE,
+                        f"Mandatory evidence:\n{untrusted_block('MANDATORY_FACTS', unit_coverage)}",
+                        f"Relevant source material:\n{untrusted_block('SOURCE_MATERIAL', unit_context or context[:STAGED_LESSON_AUTHOR_UNIT_CONTEXT_CHARS])}",
                         "Repair the invalid payload shape while retaining instructional completeness and teaching/check alignment. "
                         "No new source claims or media assets. Remove all source filenames, citations, page/slide/chunk locators, internal IDs, and source-attribution phrases from learner-facing fields. Do not emit markdown or text outside the JSON object.",
                     ])
@@ -17174,6 +17371,17 @@ async def lesson_author_chapter_checkpoint(
     request: RagLessonAuthorCheckpointRequest,
     pool: asyncpg.Pool = Depends(get_db),
 ) -> dict[str, Any]:
+    return await run_with_deadline(
+        "/v1/lesson-author/chapter-checkpoint",
+        settings.lesson_author_deadline_ms,
+        _lesson_author_chapter_checkpoint(request, pool),
+    )
+
+
+async def _lesson_author_chapter_checkpoint(
+    request: RagLessonAuthorCheckpointRequest,
+    pool: asyncpg.Pool,
+) -> dict[str, Any]:
     started = perf_counter()
     try:
         # Covers retrieval and final validation too. Cancellation of a to_thread
@@ -17228,6 +17436,17 @@ async def lesson_author_chapter_checkpoint(
 async def lesson_author_proposal(
     request: RagLessonAuthorRequest,
     pool: asyncpg.Pool = Depends(get_db),
+) -> dict[str, Any]:
+    return await run_with_deadline(
+        "/v1/lesson-author/proposal",
+        settings.lesson_author_deadline_ms,
+        _lesson_author_proposal(request, pool),
+    )
+
+
+async def _lesson_author_proposal(
+    request: RagLessonAuthorRequest,
+    pool: asyncpg.Pool,
 ) -> dict[str, Any]:
     workflow_started = perf_counter()
 
@@ -17943,6 +18162,14 @@ async def lesson_author_orchestration_v2_source_snapshot(
 async def lesson_author_orchestration_v2_course_skeleton(
     request: RagLessonAuthorCourseSkeletonV2Request,
 ) -> dict[str, Any]:
+    result = await _lesson_author_orchestration_v2_course_skeleton(request=request)
+    record_fallback("course_skeleton", result)
+    return result
+
+
+async def _lesson_author_orchestration_v2_course_skeleton(
+    request: RagLessonAuthorCourseSkeletonV2Request,
+) -> dict[str, Any]:
     """Generate only global structure; chapter content is delegated to bounded shards."""
 
     prompt = skeleton_prompt_v2(request.locale, request.scope_catalog, request.source_authority)
@@ -18050,6 +18277,14 @@ async def lesson_author_orchestration_v2_course_skeleton(
 
 @app.post("/v1/lesson-author/orchestration-v2/chapter-shard", dependencies=[Depends(require_internal_token)])
 async def lesson_author_orchestration_v2_chapter_shard(
+    request: RagLessonAuthorChapterShardV2Request,
+) -> dict[str, Any]:
+    result = await _lesson_author_orchestration_v2_chapter_shard(request=request)
+    record_fallback("chapter_shard", result)
+    return result
+
+
+async def _lesson_author_orchestration_v2_chapter_shard(
     request: RagLessonAuthorChapterShardV2Request,
 ) -> dict[str, Any]:
     """Generate one independently retryable, source-bounded chapter shard."""
@@ -18225,6 +18460,14 @@ async def lesson_author_orchestration_v2_chapter_shard(
 
 @app.post("/v1/lesson-author/orchestration-v2/unit", dependencies=[Depends(require_internal_token)])
 async def lesson_author_orchestration_v2_unit(
+    request: RagLessonAuthorUnitV2Request,
+) -> dict[str, Any]:
+    result = await _lesson_author_orchestration_v2_unit(request=request)
+    record_fallback("unit", result)
+    return result
+
+
+async def _lesson_author_orchestration_v2_unit(
     request: RagLessonAuthorUnitV2Request,
 ) -> dict[str, Any]:
     """Generate exactly one immutable inventory unit with the proven Stage-2 writer."""
@@ -18738,6 +18981,17 @@ async def lesson_author_orchestration_v2_unit(
 async def lesson_author_blueprint(
     request: RagLessonAuthorBlueprintRequest,
     pool: asyncpg.Pool = Depends(get_db),
+) -> dict[str, Any]:
+    return await run_with_deadline(
+        "/v1/lesson-author/blueprint",
+        settings.lesson_author_deadline_ms,
+        _lesson_author_blueprint(request, pool),
+    )
+
+
+async def _lesson_author_blueprint(
+    request: RagLessonAuthorBlueprintRequest,
+    pool: asyncpg.Pool,
 ) -> dict[str, Any]:
     workflow_started = perf_counter()
 
@@ -19661,6 +19915,7 @@ async def lesson_author_blueprint(
                 prepare_repair_targets=prepare_course_repair_targets,
                 deterministic_repair=deterministic_repair_course,
                 emit_diagnostic=emit_blueprint_diagnostic,
+                run_blocking=concurrency.run_cpu,
             ),
             request_context={
                 "correlation_id": request.correlation_id,
@@ -19691,7 +19946,7 @@ async def lesson_author_blueprint(
         if not isinstance(source_map, dict):
             # The graph owns the map in state; recompute deterministically only
             # for its response contract, never from top-K retrieval.
-            source_map = build_global_source_map()
+            source_map = await concurrency.run_cpu(build_global_source_map)
         source_map_coverage = source_map.get("coverage") if isinstance(source_map.get("coverage"), dict) else {}
         retrieval.update({
             "source_map_version": source_map.get("version"),

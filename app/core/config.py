@@ -85,6 +85,90 @@ class Settings(BaseSettings):
         ge=1,
         le=600,
     )
+    keep_alive_timeout_seconds: int = Field(
+        default=5,
+        validation_alias="AI_RAG_KEEP_ALIVE_TIMEOUT_SECONDS",
+        ge=1,
+        le=600,
+    )
+    readiness_db_timeout_ms: int = Field(
+        default=1_000,
+        validation_alias="AI_RAG_READINESS_DB_TIMEOUT_MS",
+        ge=100,
+        le=10_000,
+    )
+
+    # Concurrency: bounded per workload so one heavy request cannot starve others.
+    max_concurrent_provider_calls: int = Field(
+        default=8,
+        validation_alias="AI_RAG_MAX_CONCURRENT_PROVIDER_CALLS",
+        ge=1,
+        le=256,
+    )
+    max_concurrent_index_jobs: int = Field(
+        default=2,
+        validation_alias="AI_RAG_MAX_CONCURRENT_INDEX_JOBS",
+        ge=1,
+        le=64,
+    )
+    # Python CPU work does not parallelise across threads; a small pool keeps
+    # the event loop responsive without oversubscribing the GIL.
+    cpu_workers: int = Field(
+        default_factory=lambda: max(1, min(4, (os.cpu_count() or 2) - 1)),
+        validation_alias="AI_RAG_CPU_WORKERS",
+        ge=1,
+        le=64,
+    )
+    limiter_acquire_timeout_ms: int = Field(
+        default=30_000,
+        validation_alias="AI_RAG_LIMITER_ACQUIRE_TIMEOUT_MS",
+        ge=100,
+        le=600_000,
+    )
+    extraction_executor: Literal["thread", "process"] = Field(
+        default="thread",
+        validation_alias="AI_RAG_EXTRACTION_EXECUTOR",
+    )
+
+    # Provider retry policy (5xx always; 429 only with a short server retry hint).
+    provider_max_attempts: int = Field(
+        default=2,
+        validation_alias="AI_RAG_PROVIDER_MAX_ATTEMPTS",
+        ge=1,
+        le=5,
+    )
+    provider_retry_base_ms: int = Field(
+        default=1_500,
+        validation_alias="AI_RAG_PROVIDER_RETRY_BASE_MS",
+        ge=0,
+        le=30_000,
+    )
+    provider_retry_max_ms: int = Field(
+        default=8_000,
+        validation_alias="AI_RAG_PROVIDER_RETRY_MAX_MS",
+        ge=0,
+        le=60_000,
+    )
+
+    # Overall per-request deadlines; keep them below the backend HTTP timeout.
+    chat_deadline_ms: int = Field(
+        default=180_000,
+        validation_alias="AI_RAG_CHAT_DEADLINE_MS",
+        ge=1_000,
+        le=3_600_000,
+    )
+    index_deadline_ms: int = Field(
+        default=585_000,
+        validation_alias="AI_RAG_INDEX_DEADLINE_MS",
+        ge=1_000,
+        le=3_600_000,
+    )
+    lesson_author_deadline_ms: int = Field(
+        default=585_000,
+        validation_alias="AI_RAG_LESSON_AUTHOR_DEADLINE_MS",
+        ge=1_000,
+        le=3_600_000,
+    )
 
     database_url: str = Field(default="", validation_alias="DATABASE_URL")
     supabase_url: str = Field(default="", validation_alias="SUPABASE_URL")
