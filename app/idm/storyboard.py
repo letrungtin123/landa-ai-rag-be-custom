@@ -1,0 +1,440 @@
+"""IDM ``generate_unit`` task: W5 storyboard writer + W6 judge (spec §7.7).
+
+The writer fills exactly the server-owned component slots of the unit contract.
+Acceptance reuses the shared staged validators (injected through
+:class:`IdmUnitDeps`, so ``app.idm`` never imports ``app.main``) and adds the IDM
+checks. A failing slot gets one scoped repair, then the source-locked fallback.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import json
+import re
+import time
+from collections.abc import Callable, Sequence
+from dataclasses import dataclass
+from typing import Any, Final, Protocol
+
+from pydantic import BaseModel, ValidationError
+
+from app.idm.contracts import IdmUnitBriefV1, brief_hash_of
+from app.idm.policy import (
+    EXTRA_WORDS_PER_MUST_KNOW_BLOCK,
+    IDM_UNIT_WRITER_MAX_OUTPUT_TOKENS,
+    MAX_GENERATED_WORDS,
+    MIN_GENERATED_WORDS,
+    SEGMENT_WORD_BUDGET,
+    THINKING_W5,
+    VISIBLE_CHARS_PER_WORD,
+)
+from app.idm.prompts import repair_suffix, unit_writer_prompt
+from app.idm.qa import (
+    JudgeMode,
+    JudgeOutcome,
+    blocking_count,
+    build_unit_author_note,
+    build_unit_quality,
+    deterministic_slot_findings,
+    repair_targets,
+    run_judge,
+)
+from app.idm.runtime import (
+    IdmBudgetError,
+    IdmProviderError,
+    IdmResponseInvalidError,
+    IdmRuntime,
+    IdmStageError,
+    idm_generate,
+    log_stage,
+    record_deterministic_fallback,
+)
+from app.instructional_density import INSTRUCTIONAL_DENSITY_POLICY_VERSION
+from app.instructional_quality import source_relationship_pairs
+from app.lesson_author_orchestration_v2_provider import UnitGenerationContractV2
+from app.ordered_learning_content import bind_provider_semantic_versions
+
+_SLOT_RE: Final = re.compile(r"components\[(\d+)\]")
+_COVERAGE_CODES: Final = frozenset({
+    "COMPONENT_COVERAGE_MISSING", "COMPONENT_COVERAGE_INCOMPLETE", "INVALID_FACT_ID_ARRAY",
+})
+_MS: Final = 1000
+
+
+class UnitFinding(Protocol):
+    code: str
+    path: str
+
+
+@dataclass(frozen=True)
+class IdmUnitDeps:
+    """Shared staged-writer helpers injected by the service layer."""
+
+    build_instance_model: Callable[[list[dict[str, Any]]], type[BaseModel]]
+    bind_instance_payload: Callable[[Any, dict[str, Any]], dict[str, Any]]
+    validate_unit: Callable[[dict[str, Any], dict[str, Any]], UnitFinding | None]
+    build_repair_model: Callable[[dict[str, Any], list[int], list[int]], type[BaseModel]]
+    decode_repair: Callable[[str, dict[str, Any], list[int], list[int], dict[str, Any]], dict[str, Any]]
+    merge_repair: Callable[[dict[str, Any], dict[str, Any], list[int], list[int]], dict[str, Any]]
+    source_locked_unit: dict[str, Any] | None
+    purity_context: dict[str, Any]
+    evidence_review_required: bool
+    judge_mode: JudgeMode
+    recoverable_errors: tuple[type[Exception], ...]
+
+
+def parse_brief(contract: UnitGenerationContractV2) -> IdmUnitBriefV1:
+    """Validate the brief and check it against the contract slots (spec §7.7.2 step 1)."""
+
+    raw = contract.idm_unit_brief
+    try:
+        brief = IdmUnitBriefV1.model_validate(raw)
+    except ValidationError as error:
+        raise IdmStageError("IDM_W5_BRIEF_CONTRACT_MISMATCH") from error
+    if not isinstance(raw, dict) or brief_hash_of(raw) != brief.brief_hash:
+        raise IdmStageError("IDM_W5_BRIEF_CONTRACT_MISMATCH")
+    plans = contract.component_plan
+    if len(brief.components) != len(plans) or any(
+            slot.component_plan_id != plan.component_plan_id or slot.type != plan.type
+            or slot.owned_fact_keys != plan.source_fact_ids
+            or slot.supporting_fact_keys != plan.supporting_evidence_fact_ids
+            for slot, plan in zip(brief.components, plans, strict=True)):
+        raise IdmStageError("IDM_W5_BRIEF_CONTRACT_MISMATCH")
+    return brief
+
+
+def output_budget(brief: IdmUnitBriefV1, contract: UnitGenerationContractV2) -> dict[str, Any]:
+    """Segment-based teaching budget (spec §7.7.3); never the 1.75x-source rule."""
+
+    blocks = {treatment.block_id for slot in brief.components for treatment in slot.treatments}
+    words = SEGMENT_WORD_BUDGET[brief.unit_segment] + EXTRA_WORDS_PER_MUST_KNOW_BLOCK * max(0, len(blocks) - 1)
+    words = max(MIN_GENERATED_WORDS, min(MAX_GENERATED_WORDS, words))
+    source_chars = sum(len(fact.fact_text) for fact in contract.source_facts)
+    return {"policy_version": INSTRUCTIONAL_DENSITY_POLICY_VERSION, "source_content_chars": source_chars,
+            "source_estimated_words": len(" ".join(fact.fact_text for fact in contract.source_facts).split()),
+            "max_visible_chars": words * VISIBLE_CHARS_PER_WORD, "max_words": words}
+
+
+def build_idm_expected(contract: UnitGenerationContractV2, brief: IdmUnitBriefV1, deps: IdmUnitDeps,
+                       locale: str) -> dict[str, Any]:
+    """The staged validator's ``expected`` dict with the IDM output budget."""
+
+    supporting = list(dict.fromkeys(fact_id for plan in contract.component_plan
+                                    for fact_id in plan.supporting_evidence_fact_ids))
+    text_by_id = {fact.fact_key: fact.fact_text for fact in contract.source_facts}
+    diagrams = {
+        plan.component_plan_id: [
+            [left, right, *([relation] if relation else [])]
+            for left, right, relation in source_relationship_pairs(
+                text_by_id[fact_id] for fact_id in dict.fromkeys([*plan.source_fact_ids,
+                                                                  *plan.supporting_evidence_fact_ids])
+                if fact_id in text_by_id)
+        ]
+        for plan in contract.component_plan if plan.type == "la_diagram"
+    }
+    return {
+        "unit_title": contract.unit_title, "unit_purpose": contract.unit_purpose,
+        "source_fact_ids": list(contract.unit_source_fact_ids), "supporting_evidence_fact_ids": supporting,
+        "component_types": [plan.type for plan in contract.component_plan],
+        "component_plan": [plan.model_dump(mode="json") for plan in contract.component_plan],
+        "diagram_relationships_by_plan_id": diagrams,
+        "learning_objectives": list(contract.lesson_learning_objectives),
+        "learning_objective_refs": list(contract.unit_learning_objective_refs), "locale": locale,
+        "learner_content_purity": deps.purity_context, "instructional_output_budget": output_budget(brief, contract),
+    }
+
+
+def _strip_learning_block_ids(value: Any) -> Any:
+    """Teaching-group ids are server-owned; V2 IDM plans carry none."""
+
+    slots = value.get("components") if isinstance(value, dict) else None
+    if isinstance(slots, dict):
+        for payload in slots.values():
+            semantic = payload.get("semantic_content") if isinstance(payload, dict) else None
+            for section in (semantic or {}).get("sections", []) if isinstance(semantic, dict) else []:
+                if isinstance(section, dict):
+                    section["learning_block_ids"] = []
+    return value
+
+
+def _slot_of(finding: UnitFinding | None) -> int | None:
+    match = _SLOT_RE.search(finding.path) if finding is not None else None
+    return int(match.group(1)) if match else None
+
+
+@dataclass
+class _Draft:
+    unit: dict[str, Any]
+    fallback_slots: list[int]
+    repair_applied: bool = False
+
+
+class IdmUnitWriter:
+    """State for one unit: contract, brief, deps, runtime and the evolving draft."""
+
+    def __init__(self, contract: UnitGenerationContractV2, brief: IdmUnitBriefV1, deps: IdmUnitDeps,
+                 runtime: IdmRuntime) -> None:
+        self.contract, self.brief, self.deps, self.runtime = contract, brief, deps, runtime
+        self.plans = [plan.model_dump(mode="json") for plan in contract.component_plan]
+        self.expected = build_idm_expected(contract, brief, deps, runtime.locale)
+        # Source-locked fallback content restates whole facts; the IDM teaching
+        # budget applies to authored content only, so fallback validation drops it.
+        self.expected_fallback = {**self.expected, "instructional_output_budget": None}
+        self.text_by_id = {fact.fact_key: fact.fact_text for fact in contract.source_facts}
+        self.owned_text = [" ".join(self.text_by_id[key] for key in slot.owned_fact_keys if key in self.text_by_id)
+                           for slot in brief.components]
+        self.codes: list[str] = []
+
+    # -- prompts ----------------------------------------------------------------------------
+    def writer_prompt(self) -> str:
+        brief = self.brief
+        slots = [{
+            "slot": f"c{index}", "type": slot.type, "role": slot.role, "title": slot.title,
+            "support_items": [item.model_dump(mode="json") for item in slot.support_items],
+            "practice": None if slot.practice is None else {
+                "sentence": slot.practice.sentence, "criteria": slot.practice.criteria_fact_keys,
+                "feedback_focus": slot.practice.feedback_focus.model_dump(mode="json"),
+                "scenario_origin": slot.practice.scenario_origin,
+            },
+            "treatments": [item.model_dump(mode="json") for item in slot.treatments],
+            "owned_fact_keys": slot.owned_fact_keys, "supporting_fact_keys": slot.supporting_fact_keys,
+        } for index, slot in enumerate(brief.components)]
+        return unit_writer_prompt(
+            self.runtime.locale, course_title=brief.course_title, audience=brief.target_audience,
+            lesson_title=brief.lesson_title, lesson_objective=brief.lesson_objective,
+            practice_sentences=brief.lesson_practice_sentences, previous_title=brief.previous_lesson_title,
+            next_title=brief.next_lesson_title,
+            unit_brief={"segment": brief.unit_segment, "purpose": brief.unit_purpose, "slots": slots,
+                        "job_aid_signpost": brief.job_aid_signpost},
+            facts=[(fact.fact_key, fact.fact_text, None) for fact in self.contract.source_facts],
+            context_facts=[(item.fact_key, item.fact_text, None) for item in brief.lesson_context_facts],
+        )
+
+    # -- acceptance --------------------------------------------------------------------------
+    def bind(self, text: str) -> dict[str, Any]:
+        try:
+            value = _strip_learning_block_ids(bind_provider_semantic_versions(json.loads(text)))
+            unit = self.deps.bind_instance_payload(value, self.expected)
+        except self.deps.recoverable_errors as error:
+            raise IdmResponseInvalidError("IDM_W5_INSTANCE_INVALID", []) from error
+        return {**unit, "component_plan": list(self.plans)}
+
+    def problems(self, draft: _Draft) -> tuple[UnitFinding | None, list[tuple[str, int]]]:
+        """First shared-validator finding plus IDM slot findings (fallback slots exempt)."""
+
+        expected = self.expected_fallback if draft.fallback_slots else self.expected
+        finding = self.deps.validate_unit(draft.unit, expected)
+        idm = [(item.code, item.component_index)
+               for item in deterministic_slot_findings(draft.unit, self.brief, self.owned_text)
+               if item.component_index not in draft.fallback_slots]
+        return finding, idm
+
+    # -- provider steps -----------------------------------------------------------------------
+    async def write(self, repair: str = "") -> dict[str, Any]:
+        return await idm_generate(
+            self.runtime, stage="idm_w5_writer", prompt=self.writer_prompt() + repair,
+            response_schema=self.deps.build_instance_model(self.plans), parse=self.bind,
+            max_output_tokens=IDM_UNIT_WRITER_MAX_OUTPUT_TOKENS, thinking_level=THINKING_W5,
+            invocation_kind="writer" if not repair else "repair",
+        )
+
+    async def repair_slots(self, draft: _Draft, issues: Sequence[tuple[str, int]]) -> _Draft:
+        targets = sorted({index for _code, index in issues})
+        coverage = sorted({index for code, index in issues if code in _COVERAGE_CODES})
+        model = self.deps.build_repair_model(draft.unit, targets, coverage)
+
+        def parse(text: str) -> dict[str, Any]:
+            try:
+                delta = self.deps.decode_repair(text, draft.unit, targets, coverage, {})
+                return self.deps.merge_repair(draft.unit, delta, targets, coverage)
+            except self.deps.recoverable_errors as error:
+                raise IdmResponseInvalidError("IDM_W5_REPAIR_INVALID", []) from error
+
+        prompt = self.writer_prompt() + repair_suffix([{"code": code, "path": f"components[{index}]"}
+                                                       for code, index in issues])
+        unit = await idm_generate(
+            self.runtime, stage="idm_w5_repair", prompt=prompt, response_schema=model, parse=parse,
+            max_output_tokens=IDM_UNIT_WRITER_MAX_OUTPUT_TOKENS, thinking_level=THINKING_W5,
+            invocation_kind="repair",
+        )
+        return _Draft({**unit, "component_plan": list(self.plans)}, list(draft.fallback_slots), True)
+
+    def fallback_slot(self, draft: _Draft, index: int) -> _Draft | None:
+        source = self.deps.source_locked_unit
+        if source is None or index >= len(source.get("components", [])):
+            return None
+        components = list(draft.unit["components"])
+        components[index] = dict(source["components"][index])
+        record_deterministic_fallback(self.runtime, stage="idm_w5_slot", code="IDM_W5_SLOT_FALLBACK")
+        return _Draft({**draft.unit, "components": components}, sorted({*draft.fallback_slots, index}),
+                      draft.repair_applied)
+
+    async def settle(self, draft: _Draft) -> _Draft | None:
+        """Repair once, then replace failing slots with the source-locked fallback."""
+
+        finding, idm = self.problems(draft)
+        if finding is None and not idm:
+            return draft
+        self.codes.extend([finding.code] if finding is not None else [])
+        self.codes.extend(code for code, _index in idm)
+        issues = list(idm)
+        slot = _slot_of(finding)
+        if finding is not None and slot is None:
+            return None
+        if finding is not None and slot is not None:
+            issues.append((finding.code, slot))
+        # A failed repair (budget, provider, invalid answer) falls through to slot fallback.
+        try:
+            draft = await self.repair_slots(draft, issues)
+        except (IdmBudgetError, IdmResponseInvalidError):
+            pass  # falls through to the per-slot fallback below
+        except IdmProviderError as error:
+            if error.terminal:
+                raise
+        for _ in range(len(self.plans) + 1):
+            finding, idm = self.problems(draft)
+            if finding is None and not idm:
+                return draft
+            bad = _slot_of(finding) if finding is not None else idm[0][1]
+            if bad is None or bad in draft.fallback_slots:
+                return None
+            replaced = self.fallback_slot(draft, bad)
+            if replaced is None:
+                return None
+            draft = replaced
+        return None
+
+
+def _whole_fallback(writer: IdmUnitWriter) -> dict[str, Any]:
+    source = writer.deps.source_locked_unit
+    if source is None or writer.deps.validate_unit(source, writer.expected_fallback) is not None:
+        raise IdmStageError("ORCHESTRATION_V2_UNIT_FALLBACK_INVALID")
+    record_deterministic_fallback(writer.runtime, stage="idm_w5_unit", code="IDM_W5_UNIT_FALLBACK")
+    return dict(source)
+
+
+async def run_idm_unit(
+    *,
+    contract: UnitGenerationContractV2,
+    runtime: IdmRuntime,
+    deps: IdmUnitDeps,
+    fallback_only: bool,
+) -> dict[str, Any]:
+    """Return the ``/unit`` response for an IDM unit in the legacy envelope shape."""
+
+    started = time.perf_counter()
+    brief = parse_brief(contract)
+    writer = IdmUnitWriter(contract, brief, deps, runtime)
+    ai_drafted = any(slot.practice is not None and slot.practice.scenario_origin == "ai_drafted"
+                     for slot in brief.components)
+    draft: _Draft | None = None
+    judge = JudgeOutcome("not_run")
+    if not fallback_only:
+        try:
+            async with asyncio.timeout(max(0.001, runtime.remaining_seconds())):
+                draft = await _provider_draft(writer)
+        except (TimeoutError, IdmBudgetError):
+            draft = None
+        except IdmProviderError as error:
+            # A definitive rejection (credentials, request) must reach Node's fast-fail path.
+            if error.terminal:
+                raise
+            draft = None
+        if draft is not None:
+            # QA runs on its own clock: running out of time never discards the accepted unit.
+            try:
+                async with asyncio.timeout(max(0.001, runtime.remaining_seconds())):
+                    draft, judge = await _judge_and_repair(writer, draft, deps.judge_mode)
+            except TimeoutError:
+                judge = JudgeOutcome("skipped_budget")
+    whole_fallback = draft is None
+    if draft is None:
+        draft = _Draft(_whole_fallback(writer), list(range(len(writer.plans))))
+    reviewable = (whole_fallback or bool(draft.fallback_slots) or deps.evidence_review_required
+                  or blocking_count(judge.findings) > 0
+                  or (ai_drafted and _q5(judge) != "pass"))
+    note = build_unit_author_note(locale=runtime.locale, judge=judge, deterministic_codes=writer.codes,
+                                  fallback_slots=draft.fallback_slots, ai_drafted=ai_drafted)
+    quality = build_unit_quality(mode=deps.judge_mode, judge=judge, repair_applied=draft.repair_applied,
+                                 deterministic_codes=writer.codes, author_note=note)
+    unit = {**draft.unit, "idm_quality": quality.model_dump(mode="json")}
+    usage_complete = runtime.usage.complete and runtime.provider_failure_code is None
+    if whole_fallback:
+        usage: dict[str, int] = {"inputTokens": 0, "outputTokens": 0, "embeddingTokens": 0, "totalTokens": 0}
+        usage_complete = fallback_only
+        usage_source = "deterministic_fallback" if fallback_only else "reserved_upper_bound"
+    else:
+        usage = runtime.usage.as_usage()
+        usage_source = "provider" if usage_complete else "reserved_upper_bound"
+    log_stage("idm_unit_quality", {
+        "correlation_id": runtime.correlation_id, "unit_path": contract.unit_path,
+        "judge_status": judge.status, "finding_counts": quality.finding_counts.model_dump(),
+        "repair_applied": draft.repair_applied, "fallback_slots": draft.fallback_slots,
+        "whole_fallback": whole_fallback, "codes": sorted(set(writer.codes)),
+        "call_count": runtime.usage.calls, "duration_ms": int((time.perf_counter() - started) * _MS),
+    })
+    return {
+        "contract_version": 2, "source_snapshot_hash": contract.source_snapshot_hash,
+        "unit_path": contract.unit_path, "unit": unit, "usage": usage, "usage_complete": usage_complete,
+        "usage_source": usage_source,
+        "content_origin": "structured_fallback" if whole_fallback or draft.fallback_slots else "provider_validated",
+        "quality_state": "review_required" if reviewable else "validated",
+        "attempt_trace": runtime.trace,
+    }
+
+
+def _q5(judge: JudgeOutcome) -> str:
+    severities = [finding.severity for finding in judge.findings if finding.criterion == "Q5_grounded_criteria"]
+    if judge.status in {"not_run", "skipped_budget", "failed"}:
+        return "unknown"
+    if not severities:
+        return "unknown"
+    return "pass" if all(severity == "pass" for severity in severities) else "fail"
+
+
+async def _provider_draft(writer: IdmUnitWriter) -> _Draft | None:
+    repair = ""
+    for _attempt in (1, 2):
+        try:
+            unit = await writer.write(repair)
+        except IdmResponseInvalidError as error:
+            writer.codes.append(error.code)
+            repair = repair_suffix([{"code": error.code, "path": "components"}])
+            continue
+        return await writer.settle(_Draft(unit, []))
+    return None
+
+
+async def _judge_and_repair(writer: IdmUnitWriter, draft: _Draft, mode: JudgeMode) -> tuple[_Draft, JudgeOutcome]:
+    facts = [(key, writer.text_by_id[key]) for key in writer.contract.unit_source_fact_ids
+             if key in writer.text_by_id]
+    criteria = {key for slot in writer.brief.components if slot.practice
+                for key in slot.practice.criteria_fact_keys}
+    facts.extend((item.fact_key, item.fact_text) for item in writer.brief.lesson_context_facts
+                 if item.fact_key in criteria)
+    summary = {
+        "segment": writer.brief.unit_segment, "purpose": writer.brief.unit_purpose,
+        "must_do": writer.brief.lesson_objective, "practices": writer.brief.lesson_practice_sentences,
+        "slots": [{"index": index, "type": slot.type, "role": slot.role, "title": slot.title,
+                   "treatments": [item.model_dump(mode="json") for item in slot.treatments]}
+                  for index, slot in enumerate(writer.brief.components)],
+    }
+    judge = await run_judge(writer.runtime, mode=mode, plan_summary=summary, facts=facts, unit=draft.unit)
+    targets = [index for index in repair_targets(judge.findings) if index not in draft.fallback_slots]
+    if mode != "repair" or not targets:
+        return draft, judge
+    issues = [(f"IDM_W6_{finding.criterion.split('_')[0]}", finding.component_index)
+              for finding in judge.findings
+              if finding.component_index in targets and finding.severity in {"major", "critical"}]
+    try:
+        repaired = await writer.repair_slots(draft, [(code, index) for code, index in issues if index is not None])
+    except (IdmBudgetError, IdmResponseInvalidError, IdmProviderError):
+        return draft, judge
+    finding, idm = writer.problems(repaired)
+    if finding is not None or idm:
+        return draft, judge
+    second = await run_judge(writer.runtime, mode=mode, plan_summary=summary, facts=facts, unit=repaired.unit)
+    if second.status in {"pass", "review_required", "reject"} and (
+            blocking_count(second.findings) < blocking_count(judge.findings)):
+        return repaired, second
+    return draft, judge

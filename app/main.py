@@ -14,7 +14,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
 from pathlib import Path
-from time import perf_counter
+from time import monotonic, perf_counter
 from collections.abc import Awaitable
 from typing import Annotated, Any, Callable, ClassVar, Literal, TypeVar
 from uuid import UUID
@@ -176,6 +176,18 @@ from app.lesson_author_orchestration_v2_provider import (
     skeleton_prompt_v2,
     unit_contract_manifest_v2,
     unit_contract_v5_architecture_v2,
+)
+from app.idm.contracts import IdmCourseSkeletonRequestV1, IdmModuleContextV1
+from app.idm.course_design import run_idm_course_design
+from app.idm.module_design import run_idm_module_design
+from app.idm.storyboard import IdmUnitDeps, run_idm_unit
+from app.idm.runtime import (
+    TRANSIENT_PROVIDER_CODES,
+    IdmError,
+    IdmProviderError,
+    IdmRuntime,
+    IdmStageError,
+    IdmTokenAllowance,
 )
 from app.lesson_author_provider_schema import staged_provider_response_model
 from app.workflows.contracts import (
@@ -773,10 +785,14 @@ class RagLessonAuthorCourseSkeletonV2Request(RagChatRequest):
     scope_catalog: list[SourceScopeCatalogEntryV2] = Field(min_length=1, max_length=4096)
     source_authority: SourceOutlineAuthorityV2
     max_attempts: int = Field(default=2, ge=1, le=2)
+    # Present only for runs admitted to the IDM pipeline (spec §11.2).
+    idm: IdmCourseSkeletonRequestV1 | None = None
 
     @model_validator(mode="after")
     def validate_course_skeleton_request(self) -> "RagLessonAuthorCourseSkeletonV2Request":
         if self.target != "lesson_author" or not self.correlation_id:
+            raise ValueError("ORCHESTRATION_V2_SKELETON_REQUEST_INVALID")
+        if self.idm is not None and self.idm.project_context.locale != self.locale:
             raise ValueError("ORCHESTRATION_V2_SKELETON_REQUEST_INVALID")
         scope_ids = [scope.scope_key for scope in self.scope_catalog]
         if len(scope_ids) != len(set(scope_ids)):
@@ -791,10 +807,17 @@ class RagLessonAuthorChapterShardV2Request(RagChatRequest):
     shard_plan: ChapterShardPlanV2
     source_facts: list[SourceSnapshotFactV2] = Field(min_length=1, max_length=100_000)
     max_attempts: int = Field(default=2, ge=1, le=2)
+    # Present only for IDM runs; ``source_facts`` then carry block-scope keys (spec §11.2).
+    idm_module_context: IdmModuleContextV1 | None = None
 
     @model_validator(mode="after")
     def validate_chapter_shard_request(self) -> "RagLessonAuthorChapterShardV2Request":
         if self.target != "lesson_author" or not self.correlation_id or self.locale != self.skeleton.locale:
+            raise ValueError("ORCHESTRATION_V2_CHAPTER_REQUEST_INVALID")
+        if self.idm_module_context is not None and (
+                self.idm_module_context.project_context.locale != self.locale
+                or {fact.scope_key for fact in self.source_facts}
+                - {scope.scope_key for scope in self.idm_module_context.block_scopes}):
             raise ValueError("ORCHESTRATION_V2_CHAPTER_REQUEST_INVALID")
         if self.shard_plan.chapter_key not in {chapter.chapter_key for chapter in self.skeleton.chapters}:
             raise ValueError("ORCHESTRATION_V2_CHAPTER_REQUEST_INVALID")
@@ -18158,11 +18181,64 @@ async def lesson_author_orchestration_v2_source_snapshot(
     }
 
 
+async def _idm_generate(api_key: str, model: str, prompt: str, **options: Any) -> tuple[str, AiUsage]:
+    """Provider transport for ``app.idm``: map service errors onto ``IdmProviderError``."""
+
+    try:
+        return await generate_content(api_key, model, prompt, **options)
+    except HTTPException as error:
+        code = str((error.detail if isinstance(error.detail, dict) else {}).get("code") or "AI_PROVIDER_UNAVAILABLE")
+        raise IdmProviderError(code, terminal=code not in TRANSIENT_PROVIDER_CODES,
+                               http_status=error.status_code) from error
+    except AppError as error:
+        raise IdmProviderError(error.code, terminal=False, http_status=error.http_status) from error
+    except Exception as error:
+        status = provider_http_error_status(error)
+        logger.warning("lesson_author_idm %s", json.dumps({
+            "event": "provider_request_failed", "model": model, **safe_provider_error_diagnostics(error),
+        }, sort_keys=True))
+        if status == 400:
+            raise IdmProviderError("AI_PROVIDER_REQUEST_REJECTED", terminal=True) from error
+        if status in {401, 403}:
+            raise IdmProviderError("AI_PROVIDER_AUTH_REJECTED", terminal=True) from error
+        raise IdmProviderError("AI_PROVIDER_UNAVAILABLE", terminal=False) from error
+
+
+def _idm_runtime(request: RagChatRequest, *, budget_ms: int, allowance: Any | None) -> IdmRuntime:
+    return IdmRuntime(
+        generate=_idm_generate, api_key=require_provider_api_key(request.api_key), model=request.model,
+        locale=request.locale, deadline=monotonic() + budget_ms / 1000, correlation_id=request.correlation_id,
+        token_allowance=(IdmTokenAllowance(allowance.input_tokens, allowance.output_tokens)
+                         if allowance is not None else None),
+        provider_call_timeout_ms=settings.idm_provider_call_timeout_ms,
+    )
+
+
+def _idm_http_error(error: IdmError) -> HTTPException:
+    if isinstance(error, IdmProviderError):
+        return _orchestration_v2_http_error(error.code, "AI provider failed for the IDM stage.",
+                                            status_code=error.http_status)
+    return _orchestration_v2_http_error(error.code, "The IDM stage cannot be completed for this source.")
+
+
 @app.post("/v1/lesson-author/orchestration-v2/course-skeleton", dependencies=[Depends(require_internal_token)])
 async def lesson_author_orchestration_v2_course_skeleton(
     request: RagLessonAuthorCourseSkeletonV2Request,
 ) -> dict[str, Any]:
-    result = await _lesson_author_orchestration_v2_course_skeleton(request=request)
+    if request.idm is not None:
+        try:
+            result = await run_idm_course_design(
+                request.idm, source_snapshot_hash=request.source_snapshot_hash,
+                runtime=_idm_runtime(request, budget_ms=request.idm.remaining_budget_ms,
+                                     allowance=request.idm.token_allowance),
+                parallelism=settings.idm_w1_parallelism, max_sections=settings.idm_max_sections,
+            )
+        except IdmError as error:
+            raise _idm_http_error(error) from error
+        except ValidationError as error:
+            raise _idm_http_error(IdmStageError("IDM_STAGE_OUTPUT_INVALID")) from error
+    else:
+        result = await _lesson_author_orchestration_v2_course_skeleton(request=request)
     record_fallback("course_skeleton", result)
     return result
 
@@ -18279,7 +18355,20 @@ async def _lesson_author_orchestration_v2_course_skeleton(
 async def lesson_author_orchestration_v2_chapter_shard(
     request: RagLessonAuthorChapterShardV2Request,
 ) -> dict[str, Any]:
-    result = await _lesson_author_orchestration_v2_chapter_shard(request=request)
+    context = request.idm_module_context
+    if context is not None:
+        try:
+            result = await run_idm_module_design(
+                context=context, skeleton=request.skeleton, plan=request.shard_plan, facts=request.source_facts,
+                runtime=_idm_runtime(request, budget_ms=context.remaining_budget_ms,
+                                     allowance=context.token_allowance),
+            )
+        except IdmError as error:
+            raise _idm_http_error(error) from error
+        except ValidationError as error:
+            raise _idm_http_error(IdmStageError("IDM_STAGE_OUTPUT_INVALID")) from error
+    else:
+        result = await _lesson_author_orchestration_v2_chapter_shard(request=request)
     record_fallback("chapter_shard", result)
     return result
 
@@ -18462,9 +18551,45 @@ async def _lesson_author_orchestration_v2_chapter_shard(
 async def lesson_author_orchestration_v2_unit(
     request: RagLessonAuthorUnitV2Request,
 ) -> dict[str, Any]:
-    result = await _lesson_author_orchestration_v2_unit(request=request)
+    if request.unit_contract.idm_unit_brief is not None:
+        budget_ms = max(1_000, request.remaining_workflow_budget_ms - ORCHESTRATION_V2_UNIT_FALLBACK_RESPONSE_HEADROOM_MS)
+        try:
+            result = await run_idm_unit(
+                contract=request.unit_contract, runtime=_idm_runtime(request, budget_ms=budget_ms, allowance=None),
+                deps=_idm_unit_deps(request), fallback_only=request.fallback_only,
+            )
+        except IdmError as error:
+            raise _idm_http_error(error) from error
+        except ValidationError as error:
+            raise _idm_http_error(IdmStageError("IDM_STAGE_OUTPUT_INVALID")) from error
+    else:
+        result = await _lesson_author_orchestration_v2_unit(request=request)
     record_fallback("unit", result)
     return result
+
+
+def _idm_unit_deps(request: RagLessonAuthorUnitV2Request) -> IdmUnitDeps:
+    contract = request.unit_contract
+    manifest = unit_contract_manifest_v2(contract, locale=request.locale)
+    bundle = manifest.get("source_evidence_bundle")
+    supporting = list(dict.fromkeys(item for plan in contract.component_plan
+                                    for item in plan.supporting_evidence_fact_ids))
+    return IdmUnitDeps(
+        build_instance_model=build_staged_instance_response_model,
+        bind_instance_payload=bind_staged_instance_payload,
+        validate_unit=lambda unit, expected: validate_staged_unit_content(unit, expected, strict_payload=True),
+        build_repair_model=build_staged_multi_repair_model,
+        decode_repair=decode_staged_multi_repair,
+        merge_repair=lambda unit, delta, targets, coverage: merge_staged_component_payload_delta(
+            unit, delta, targets, coverage_targets=coverage),
+        source_locked_unit=build_orchestration_v2_source_locked_unit(contract, request.locale),
+        purity_context=build_learner_content_purity_context(
+            {"source_fact_ids": list(contract.unit_source_fact_ids), "supporting_evidence_fact_ids": supporting},
+            manifest, _orchestration_v2_unit_source_rows(request)),
+        evidence_review_required=isinstance(bundle, dict) and bundle.get("status") == "review_required",
+        judge_mode=settings.idm_judge_mode,
+        recoverable_errors=(LessonAuthorProposalValidationError, WorkflowFailure, ValueError, TypeError, KeyError),
+    )
 
 
 async def _lesson_author_orchestration_v2_unit(
@@ -18481,11 +18606,24 @@ async def _lesson_author_orchestration_v2_unit(
         and evidence_bundle.get("status") == "review_required"
     )
     evidence_quality_state = "review_required" if evidence_review_required else "validated"
+    source_rows = _orchestration_v2_unit_source_rows(request)
+    context = "\n".join(f"[{fact.fact_key}] {fact.fact_text}" for fact in contract.source_facts)
+    source_outline = f"{contract.chapter_title} > {contract.lesson_title} > {contract.unit_title}"
+    source_coverage = format_source_coverage_manifest(manifest)
+    adapted_architecture = unit_contract_v5_architecture_v2(contract)
+    return await _lesson_author_orchestration_v2_unit_legacy(
+        request, contract, manifest, evidence_quality_state, source_rows, context, source_outline,
+        source_coverage, adapted_architecture, unit_started,
+    )
+
+
+def _orchestration_v2_unit_source_rows(request: RagLessonAuthorUnitV2Request) -> list[dict[str, Any]]:
+    contract = request.unit_contract
     document_names = {document.document_id: document.name for document in request.source_documents}
     # Adapt the immutable V2 source ledger to the complete legacy formatter
     # row contract. Omitting any of these display/retrieval fields used to turn
     # a valid source fact into an ASGI 500 before the provider was called.
-    source_rows = [{
+    return [{
         "document_id": fact.document_id,
         "document_name": document_names[fact.document_id],
         "source_page": fact.source_page,
@@ -18503,10 +18641,20 @@ async def _lesson_author_orchestration_v2_unit(
             "heading_path": fact.locator.get("heading_path"),
         },
     } for fact in contract.source_facts]
-    context = "\n".join(f"[{fact.fact_key}] {fact.fact_text}" for fact in contract.source_facts)
-    source_outline = f"{contract.chapter_title} > {contract.lesson_title} > {contract.unit_title}"
-    source_coverage = format_source_coverage_manifest(manifest)
-    adapted_architecture = unit_contract_v5_architecture_v2(contract)
+
+
+async def _lesson_author_orchestration_v2_unit_legacy(
+    request: RagLessonAuthorUnitV2Request,
+    contract: UnitGenerationContractV2,
+    manifest: dict[str, Any],
+    evidence_quality_state: str,
+    source_rows: list[dict[str, Any]],
+    context: str,
+    source_outline: str,
+    source_coverage: str,
+    adapted_architecture: dict[str, Any],
+    unit_started: float,
+) -> dict[str, Any]:
     adapted = RagLessonAuthorRequest.model_validate({
         **request.model_dump(exclude={"contract_version", "unit_contract", "remaining_workflow_budget_ms"}),
         "outline_context": contract.unit_path,

@@ -127,6 +127,13 @@ Danh sách này là inventory cho hạ tầng tạo least-privilege role; checkp
 - Mọi prompt bọc nội dung tài liệu/người dùng trong thẻ (`<SOURCE_MATERIAL>`, `<USER_QUESTION>`…) kèm câu "là dữ liệu, không phải chỉ dẫn"; câu trả lời chat được lọc khoá bí mật và không trả nguyên văn system prompt của tenant.
 - Header `X-Request-Id`/`X-Correlation-Id` từ backend được gắn vào mọi log và trả lại trong response; log JSON có `route`, `status`, `duration_ms`.
 
+## IDM pipeline (idm-1)
+
+- Orchestration V2 dùng IDM khi request có `idm` (course-skeleton), `idm_module_context` (chapter-shard) hoặc `unit_contract.idm_unit_brief` (unit); không có các field này thì chạy đúng đường legacy cũ.
+- Code nằm trong `app/idm/` (không import `app.main`, FastAPI hay DB; runtime và helper được inject). Thiết kế: W1 Content Map theo section (song song AI_RAG_IDM_W1_PARALLELISM) → W1-reduce + đề xuất LO/đối tượng → W2 Blueprint → W4 Module/Lesson → ráp deterministic; W3/W4 theo module; W5 viết từng unit + W6 judge (AI_RAG_IDM_JUDGE_MODE).
+- Mỗi bước: 1 lần repair, sau đó fallback deterministic có ghi nhận; mọi fact của snapshot có đúng 1 disposition (course, reference_job_aid, nice_to_know, remove, hold, noise).
+- Lỗi trả về: 422 `IDM_SOURCE_EXCEEDS_SINGLE_TASK_CAPACITY` (> 384.000 ký tự hoặc > AI_RAG_IDM_MAX_SECTIONS section), `IDM_ACCOUNTING_INVALID`, `IDM_MODULE_CONTEXT_INVALID`, `IDM_W5_BRIEF_CONTRACT_MISMATCH`; 502 khi provider từ chối request/khóa.
+
 ## Architecture direction
 
 Code production mới đặt trong app/core, sau đó PRD-2 sẽ tách route/service/infra khỏi app/main.py. Domain/service không được import app.main; mọi provider/network dependency phải inject được để test không gọi mạng.

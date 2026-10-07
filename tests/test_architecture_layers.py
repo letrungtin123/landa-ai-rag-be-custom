@@ -55,6 +55,19 @@ class ArchitectureLayerTests(unittest.TestCase):
                     offenders.append(f"{route}:{node.lineno}")
         self.assertEqual(offenders, [])
 
+    def test_idm_package_never_imports_web_framework_or_service_module(self) -> None:
+        # §19.2: app/idm receives its runtime by injection and stays framework free.
+        forbidden = ("fastapi", "starlette", "app.main", "app.api", "asyncpg", "httpx", "requests")
+        offenders = []
+        for path in (APP_ROOT / "idm").rglob("*.py"):
+            tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+            for node in ast.walk(tree):
+                names = ([alias.name for alias in node.names] if isinstance(node, ast.Import)
+                         else [node.module or ""] if isinstance(node, ast.ImportFrom) else [])
+                offenders.extend(f"{path.name}:{name}" for name in names
+                                 if any(name == item or name.startswith(item + ".") for item in forbidden))
+        self.assertEqual(offenders, [])
+
     def test_document_queries_keep_tenant_filter_and_safe_error_code(self) -> None:
         source = (APP_ROOT / "main.py").read_text(encoding="utf-8")
         load_document = re.search(

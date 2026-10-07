@@ -27,6 +27,21 @@ warn_unreachable = true
 show_error_codes = true
 plugins = ["pydantic.mypy"]
 
+# Legacy modules imported by strict code (app/idm). They keep the "no new errors"
+# baseline (STD-2) until PRD-2 moves and types them; strict modules still see
+# their signatures.
+[[tool.mypy.overrides]]
+module = [
+  "app.instructional_density",
+  "app.instructional_quality",
+  "app.learner_content_purity",
+  "app.lesson_author_orchestration_v2",
+  "app.lesson_author_orchestration_v2_provider",
+  "app.ordered_learning_content",
+  "app.source_evidence_bundle",
+]
+ignore_errors = true
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = ["--strict-config", "--strict-markers"]

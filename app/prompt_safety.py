@@ -9,13 +9,14 @@ output and server-side validation remain the primary controls.
 
 from __future__ import annotations
 
+import re
 from collections.abc import Iterable
 from typing import Literal
 
 
 def untrusted_block(tag: str, value: object) -> str:
     """Wrap untrusted text in <TAG>…</TAG>; neutralise an embedded closing tag."""
-    safe = str(value).replace(f"</{tag}>", f"</ {tag}>")
+    safe = re.sub(rf"<\s*/\s*{re.escape(tag)}\s*>", f"</ {tag}>", str(value), flags=re.IGNORECASE)
     return f"<{tag}>\n{safe}\n</{tag}>"
 
 

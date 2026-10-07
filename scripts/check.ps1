@@ -8,7 +8,7 @@ if (-not (Test-Path -LiteralPath $Python)) {
 
 # Code held to the full PRD standard (§19.3). Legacy app/main.py is held to
 # pyflakes (F) rules until it is split in PRD-2.
-$StrictPaths = @("app/core", "app/infra", "app/prompt_safety.py", "app/__main__.py")
+$StrictPaths = @("app/core", "app/infra", "app/idm", "app/prompt_safety.py", "app/__main__.py")
 $StrictTests = @(
     "tests/test_prd0_security.py",
     "tests/test_document_limits.py",
@@ -16,8 +16,16 @@ $StrictTests = @(
     "tests/test_prd1_runtime.py",
     "tests/test_prd1_endpoints.py",
     "tests/test_characterization_ingestion.py",
-    "tests/test_characterization_retrieval_chat.py"
+    "tests/test_characterization_retrieval_chat.py",
+    "tests/idm_golden.py",
+    "tests/idm_golden_module.py",
+    "tests/idm_golden_unit.py",
+    "tests/idm_test_support.py",
+    "tests/idm_contract_bridge.py"
 )
+# Every IDM test file is held to the strict lint profile.
+$StrictTests += @(Get-ChildItem -Path (Join-Path $RepoRoot "tests") -Filter "test_idm_*.py" |
+    Where-Object { $_.Name -ne "test_idm_foundation.py" } | ForEach-Object { "tests/" + $_.Name })
 
 # Windows PowerShell does not stop on a failing native command; check each exit code.
 function Invoke-Gate([string]$Name, [scriptblock]$Command) {

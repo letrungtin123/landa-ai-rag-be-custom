@@ -622,6 +622,9 @@ class UnitGenerationContractV2(BaseModel):
     unit_source_fact_ids: list[str] = Field(min_length=1, max_length=MAX_UNIT_SOURCE_FACTS)
     component_plan: list[UnitComponentPlanV2] = Field(min_length=1, max_length=4)
     source_facts: list[SourceSnapshotFactV2] = Field(min_length=1, max_length=MAX_UNIT_SOURCE_FACTS)
+    # IDM runs only (spec §8.3). Kept as raw JSON so the contract hash matches the
+    # Node builder byte for byte; ``app.idm.storyboard`` validates it strictly.
+    idm_unit_brief: dict[str, Any] | None = None
     contract_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
 
     @model_validator(mode="after")
@@ -682,6 +685,8 @@ class UnitGenerationContractV2(BaseModel):
         base = self.model_dump(exclude={"contract_hash"})
         if self.unit_content_policy_version is None:
             base.pop("unit_content_policy_version", None)
+        if self.idm_unit_brief is None:
+            base.pop("idm_unit_brief", None)
         if canonical_hash(base) != self.contract_hash:
             raise ValueError("ORCHESTRATION_V2_UNIT_CONTRACT_HASH_INVALID")
         return self

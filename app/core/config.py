@@ -170,6 +170,20 @@ class Settings(BaseSettings):
         le=3_600_000,
     )
 
+    # IDM pipeline (spec §11.5). The judge observes by default and never blocks.
+    idm_judge_mode: Literal["off", "observe", "repair"] = Field(
+        default="observe",
+        validation_alias="AI_RAG_IDM_JUDGE_MODE",
+    )
+    idm_w1_parallelism: int = Field(default=4, validation_alias="AI_RAG_IDM_W1_PARALLELISM", ge=1, le=8)
+    idm_max_sections: int = Field(default=16, validation_alias="AI_RAG_IDM_MAX_SECTIONS", ge=4, le=16)
+    idm_provider_call_timeout_ms: int = Field(
+        default=180_000,
+        validation_alias="AI_RAG_IDM_PROVIDER_CALL_TIMEOUT_MS",
+        ge=30_000,
+        le=300_000,
+    )
+
     database_url: str = Field(default="", validation_alias="DATABASE_URL")
     supabase_url: str = Field(default="", validation_alias="SUPABASE_URL")
     supabase_service_key: str = Field(default="", validation_alias="SUPABASE_SERVICE_KEY")
