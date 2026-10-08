@@ -227,6 +227,29 @@ class GenerateTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual([e["invocation_index"] for e in item.trace], [1, 2])
         assert_node_trace(self, item.trace)
 
+    async def test_answer_cut_at_max_tokens_is_truncated_not_schema_invalid(self) -> None:
+        # QC course 234653: W1-reduce/W2/W4 answers were cut at max_output_tokens (thinking "high"
+        # counts against the cap) and surfaced only as IDM_RESPONSE_SCHEMA_INVALID.
+        provider = Provider('{"value": "PRIVATE-SOURCE', '{"value": 1}',
+                            telemetry={"provider_finish_reason": "FinishReason.MAX_TOKENS",
+                                       "provider_output_tokens": 7, "provider_total_tokens": 8107})
+        item = runtime(provider)
+        with self.assertLogs("app.idm", "INFO") as logs, self.assertRaises(IdmResponseInvalidError) as caught:
+            await self.call(item)
+        self.assertEqual(caught.exception.code, "IDM_RESPONSE_TRUNCATED")
+        line = next(record.getMessage() for record in logs.records if "idm_call_rejected" in record.getMessage())
+        self.assertIn('"finish_reason": "FINISHREASON_MAX_TOKENS"', line)
+        self.assertIn("json_invalid@", line)
+        self.assertNotIn("PRIVATE-SOURCE", line)
+        provider.telemetry = {"provider_finish_reason": "STOP"}
+        with self.assertLogs("app.idm", "INFO") as logs, self.assertRaises(IdmResponseInvalidError) as caught:
+            await self.call(item)
+        self.assertEqual(caught.exception.code, "IDM_RESPONSE_SCHEMA_INVALID")
+        self.assertTrue(any("string_type@value" in record.getMessage() for record in logs.records))
+        self.assertEqual([e["failure_code"] for e in item.trace],
+                         ["IDM_RESPONSE_TRUNCATED", "IDM_RESPONSE_SCHEMA_INVALID"])
+        assert_node_trace(self, item.trace)
+
     async def test_parse_errors_from_custom_parsers(self) -> None:
         def reject(_text: str) -> Any:
             raise IdmResponseInvalidError("idm w5 instance-invalid", [])
@@ -237,11 +260,11 @@ class GenerateTests(unittest.IsolatedAsyncioTestCase):
         item = runtime(Provider("{}", "{}"))
         with self.assertRaises(IdmResponseInvalidError) as caught:
             await idm_generate(item, stage="idm_w5_writer", prompt="p", response_schema=Answer, parse=reject,
-                               max_output_tokens=10, thinking_level="low")
+                               max_output_tokens=1_000, thinking_level="low")
         self.assertEqual(caught.exception.code, "idm w5 instance-invalid")
         with self.assertRaises(IdmResponseInvalidError) as caught:
             await idm_generate(item, stage="idm_w5_writer", prompt="p", response_schema=Answer, parse=value_error,
-                               max_output_tokens=10, thinking_level="low")
+                               max_output_tokens=1_000, thinking_level="low")
         self.assertEqual(caught.exception.errors, [{"type": "ValueError", "loc": []}])
         self.assertEqual([e["failure_code"] for e in item.trace],
                          ["IDM_W5_INSTANCE_INVALID", "IDM_RESPONSE_SCHEMA_INVALID"])

@@ -95,6 +95,83 @@ def first_main_verb(statement: str) -> str:
     return " ".join(_after_lead_in(text).split())
 
 
+# Sentences the deterministic W1-reduce fallback writes (content_map.fallback_w1_reduce). The
+# topic (a cleaned source heading or chapter title) is the only part fit for a module or lesson
+# title (QC course 234653: every chapter was titled "Người học có thể áp dụng … trong công việc").
+# The pre-2026-10-08 templates are still recognised for designs written before the change.
+_FALLBACK_OBJECTIVE_VI: Final = "áp dụng các điểm chính của {topic} vào một tình huống công việc cụ thể"
+_FALLBACK_OBJECTIVE_EN: Final = "apply the key points of {topic} to a specific work situation"
+_FALLBACK_MUST_DO_VI: Final = "Áp dụng {topic} vào một tình huống công việc"
+_FALLBACK_MUST_DO_EN: Final = "Apply {topic} to a work situation"
+_FALLBACK_OBJECTIVE_RE: Final = re.compile(
+    r"^(?:áp dụng các điểm chính của (?P<vi>.+) vào một tình huống công việc cụ thể"
+    r"|apply the key points of (?P<en>.+) to a specific work situation"
+    r"|áp dụng (?P<vi_old>.+) trong công việc|apply (?P<en_old>.+) at work)\.?$",
+    re.IGNORECASE,
+)
+_FALLBACK_MUST_DO_RE: Final = re.compile(
+    r"^(?:Áp dụng (?P<vi>.+) vào một tình huống công việc|Apply (?P<en>.+) to a work situation"
+    r"|Thực hiện đúng (?P<vi_old>.+)|Correctly carry out (?P<en_old>.+))$",
+)
+
+
+def fallback_objective_statement(topic: str, locale: str) -> str:
+    """The deterministic objective for a source topic: one observable action (apply), not a title."""
+
+    if locale == "vi":
+        return "Người học có thể " + _FALLBACK_OBJECTIVE_VI.format(topic=topic)
+    return "The learner can " + _FALLBACK_OBJECTIVE_EN.format(topic=topic)
+
+
+def fallback_must_do_statement(topic: str, locale: str) -> str:
+    """The deterministic Must Do for a source topic (an action, never "Thực hiện đúng {topic}")."""
+
+    return (_FALLBACK_MUST_DO_VI if locale == "vi" else _FALLBACK_MUST_DO_EN).format(topic=topic)
+
+
+def _topic(match: re.Match[str]) -> str:
+    return next(value for value in match.groupdict().values() if value)
+
+
+def _capitalized(value: str) -> str:
+    value = value.strip(" .")
+    return value[:1].upper() + value[1:]
+
+
+def objective_title(statement: str) -> str:
+    """A module title from an objective: the action phrase, never "Người học có thể …".
+
+    "Người học có thể phân tích bốn lực đẩy …" → "Phân tích bốn lực đẩy …"; a fallback
+    objective ("… áp dụng các điểm chính của {topic} vào …") → "{topic}".
+    """
+
+    text = " ".join(unicodedata.normalize("NFC", statement).split())
+    lowered = text.lower()
+    start = 0
+    for subject in _LEARNER_SUBJECTS:
+        if lowered.startswith(subject + " "):
+            start = len(subject) + 1
+            break
+    for lead_in in (*CAPABILITY_LEAD_INS, "có thể"):
+        if lowered.startswith(lead_in + " ", start):
+            start += len(lead_in) + 1
+            break
+    remainder = text[start:] if len(lowered) == len(text) else text
+    fallback = _FALLBACK_OBJECTIVE_RE.fullmatch(remainder)
+    if fallback is not None:
+        remainder = _topic(fallback)
+    return _capitalized(remainder) or text
+
+
+def must_do_title(statement: str) -> str:
+    """A lesson title from a Must Do: a fallback Must Do ("Áp dụng {topic} vào …") becomes "{topic}";
+    a client objective copied as Must Do loses its learner lead-in ("Người học có thể …")."""
+
+    text = " ".join(unicodedata.normalize("NFC", statement).split())
+    fallback = _FALLBACK_MUST_DO_RE.fullmatch(text)
+    return _capitalized(_topic(fallback)) if fallback is not None else objective_title(text)
+
+
 def is_unmeasurable_objective(statement: str) -> bool:
     """True when the main verb of an objective is not observable (spec §7.3)."""
 

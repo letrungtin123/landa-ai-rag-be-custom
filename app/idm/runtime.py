@@ -15,18 +15,21 @@ import logging
 import math
 import re
 import time
+from collections import Counter
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from typing import Any, Final, Literal, Protocol
 
 from pydantic import BaseModel, ValidationError
 
+from app.idm.coerce import coerce_provider_answer
 from app.idm.policy import (
     IDM_CALL_HEADROOM_SECONDS,
     IDM_CHARS_PER_TOKEN_ESTIMATE,
     IDM_MAX_ATTEMPT_TRACE_EVENTS,
     IDM_MIN_CALL_REMAINING_SECONDS,
     IDM_PROVIDER_CALL_TIMEOUT_MS,
+    THINKING_AFTER_TRUNCATION,
 )
 from app.lesson_author_orchestration_v2_provider import _project_orchestration_v2_provider_schema
 
@@ -35,12 +38,21 @@ logger = logging.getLogger("app.idm")
 ThinkingLevel = Literal["low", "medium", "high"]
 InvocationKind = Literal["writer", "evaluator", "repair"]
 
-# Provider failures after which no further call in the same task can succeed.
+# Provider failures after which no further call in the same task can succeed; the stage
+# falls back deterministically and later calls of the task are skipped.
 TRANSIENT_PROVIDER_CODES: Final = frozenset({
-    "AI_PROVIDER_TIMEOUT", "AI_PROVIDER_UNAVAILABLE", "AI_PROVIDER_QUOTA_EXHAUSTED", "SERVICE_BUSY",
+    "AI_PROVIDER_TIMEOUT", "AI_PROVIDER_UNAVAILABLE", "SERVICE_BUSY",
 })
+# Provider failures that must reach Node instead of a deterministic course (QC course 234653,
+# defect D6): an exhausted key ends the run with a clear code; a rate limit that outlived the
+# bounded wait is retried by Node later. Neither may silently become fallback content.
+RUN_STOPPING_PROVIDER_CODES: Final = frozenset({"AI_PROVIDER_QUOTA_EXHAUSTED", "AI_PROVIDER_RATE_LIMITED"})
+TRUNCATED_CODE: Final = "IDM_RESPONSE_TRUNCATED"
+SCHEMA_INVALID_CODE: Final = "IDM_RESPONSE_SCHEMA_INVALID"
+_RATE_LIMITED_EVENT: Final = "provider_rate_limited_retry"
 _FAILURE_CODE_RE: Final = re.compile(r"[^A-Z0-9_]")
 _MAX_FAILURE_CODE_CHARS: Final = 100
+_MAX_FINISH_REASON_CHARS: Final = 40
 _MS_PER_SECOND: Final = 1000
 _MAX_INVOCATION_INDEX: Final = 64
 
@@ -64,6 +76,7 @@ class GenerateFn(Protocol):
         thinking_level: ThinkingLevel,
         request_timeout_ms: int,
         on_provider_telemetry: Callable[[dict[str, Any]], None] | None,
+        rate_limit_max_wait_ms: int | None,
     ) -> Awaitable[tuple[str, UsageLike]]: ...
 
 
@@ -135,7 +148,12 @@ class IdmRuntime:
     trace: list[dict[str, Any]] = field(default_factory=list)
     provider_failure_code: str | None = None
     provider_call_timeout_ms: int = IDM_PROVIDER_CALL_TIMEOUT_MS
+    # Upper bound the transport may wait on per-minute provider rate limits inside one call
+    # (AI_RAG_PROVIDER_RATE_LIMIT_MAX_WAIT_MS); 0 keeps the legacy single short retry.
+    rate_limit_max_wait_ms: int = 0
     clock: Callable[[], float] = time.monotonic
+    # Soft-bound adjustments made to provider answers before strict validation (coerce.py).
+    adjustments: Counter[str] = field(default_factory=Counter)
     _invocations: dict[str, int] = field(default_factory=dict)
 
     def remaining_seconds(self) -> float:
@@ -194,6 +212,23 @@ def estimate_prompt_tokens(prompt: str) -> int:
     return math.ceil(len(prompt) / IDM_CHARS_PER_TOKEN_ESTIMATE)
 
 
+def minimum_admitted_output(max_output_tokens: int) -> int:
+    """The smallest output cap a call is still started with (half its stage cap)."""
+
+    return max(1, max_output_tokens // 2)
+
+
+def idm_tail_reserve(*stage_caps: int) -> int:
+    """Output tokens kept free for later stages of the same task.
+
+    Each later stage is guaranteed only its minimum admissible cap: reserving full caps
+    (24k + 32k + 16k) would exceed the 131,072-token task allowance as soon as a few W1-map
+    calls run in parallel, while the runtime already shrinks a later call to what is left.
+    """
+
+    return sum(minimum_admitted_output(cap) for cap in stage_caps)
+
+
 def admitted_output_tokens(runtime: IdmRuntime, *, prompt: str, max_output_tokens: int,
                            reserve_after_tokens: int = 0) -> int:
     """Check deadline and allowance before a call; return the output cap to request.
@@ -214,10 +249,16 @@ def admitted_output_tokens(runtime: IdmRuntime, *, prompt: str, max_output_token
         raise IdmBudgetError("IDM_TASK_TOKEN_BUDGET_EXCEEDED")
     available = (allowance.output_tokens - ledger.output_tokens - ledger.reserved_output_tokens
                  - reserve_after_tokens)
-    minimum = max(1, max_output_tokens // 2)
+    minimum = minimum_admitted_output(max_output_tokens)
     if available < minimum:
         raise IdmBudgetError("IDM_TASK_TOKEN_BUDGET_EXCEEDED")
     return min(max_output_tokens, available)
+
+
+def repair_thinking(code: str, current: ThinkingLevel) -> ThinkingLevel:
+    """Thinking level of the repair call: lower after a truncated answer, else unchanged."""
+
+    return THINKING_AFTER_TRUNCATION if code == TRUNCATED_CODE else current
 
 
 def _trace(runtime: IdmRuntime, event: dict[str, Any]) -> None:
@@ -247,7 +288,10 @@ async def idm_generate[ResultT](
     Raises ``IdmBudgetError`` before dispatch, ``IdmProviderError`` for transport
     failures (transient ones also stop later calls of the task) and
     ``IdmResponseInvalidError`` when ``parse`` rejects the answer. ``parse`` may
-    raise ``ValidationError``/``ValueError`` or ``IdmResponseInvalidError``.
+    raise ``ValidationError``/``ValueError`` or ``IdmResponseInvalidError``. An answer
+    that spent the whole output cap (or that the provider reports as ``MAX_TOKENS``)
+    and does not parse is ``IDM_RESPONSE_TRUNCATED``: the caller must ask for a shorter
+    answer instead of re-sending the same prompt.
     """
 
     output_cap = admitted_output_tokens(runtime, prompt=prompt, max_output_tokens=max_output_tokens,
@@ -256,6 +300,8 @@ async def idm_generate[ResultT](
     timeout_ms = max(1, min(runtime.provider_call_timeout_ms, remaining_ms))
     invocation_index = min(runtime.next_invocation_index(invocation_kind), _MAX_INVOCATION_INDEX)
     observed: dict[str, int] = {}
+    finish: dict[str, str] = {}
+    rate_limited: list[bool] = []
     started = time.perf_counter()
 
     def capture(metadata: dict[str, Any]) -> None:
@@ -263,6 +309,11 @@ async def idm_generate[ResultT](
             value = metadata.get(key)
             if type(value) is int and value >= 0:
                 observed[key] = value
+        reason = metadata.get("provider_finish_reason")
+        if isinstance(reason, str) and reason.strip():
+            finish["reason"] = _FAILURE_CODE_RE.sub("_", reason.strip().upper())[:_MAX_FINISH_REASON_CHARS]
+        if metadata.get("event") == _RATE_LIMITED_EVENT:
+            rate_limited.append(True)
 
     def event(outcome: str, event_code: str, failure_code: str | None) -> dict[str, Any]:
         return {
@@ -279,6 +330,11 @@ async def idm_generate[ResultT](
     # The transport may wait for a provider slot and retry once; this outer bound keeps the
     # whole call inside the task deadline with headroom for the response to reach Node.
     outer_seconds = max(0.001, runtime.remaining_seconds() - IDM_CALL_HEADROOM_SECONDS)
+    # Waiting on a per-minute rate limit must leave time for the call itself; ``None`` (setting 0)
+    # keeps the transport's legacy single short retry.
+    rate_limit_wait_ms = (max(0, min(runtime.rate_limit_max_wait_ms,
+                                     int((outer_seconds - IDM_MIN_CALL_REMAINING_SECONDS) * _MS_PER_SECOND)))
+                          if runtime.rate_limit_max_wait_ms > 0 else None)
     try:
         try:
             async with asyncio.timeout(outer_seconds):
@@ -287,9 +343,12 @@ async def idm_generate[ResultT](
                     max_output_tokens=output_cap, json_mode=True,
                     response_schema=idm_provider_response_model(response_schema),
                     thinking_level=thinking_level, request_timeout_ms=timeout_ms,
-                    on_provider_telemetry=capture,
+                    on_provider_telemetry=capture, rate_limit_max_wait_ms=rate_limit_wait_ms,
                 )
         except TimeoutError as timeout:
+            if rate_limited:
+                # The deadline ran out while the provider was still rate limiting: Node retries later.
+                raise IdmProviderError("AI_PROVIDER_RATE_LIMITED", terminal=True, http_status=503) from timeout
             raise IdmProviderError("AI_PROVIDER_TIMEOUT", terminal=False, http_status=504) from timeout
     except IdmProviderError as error:
         if not error.terminal:
@@ -304,18 +363,42 @@ async def idm_generate[ResultT](
         runtime.usage.reserved_output_tokens -= output_cap
     input_tokens = max(0, int(usage.inputTokens))
     total_tokens = max(0, int(usage.totalTokens))
-    runtime.usage.input_tokens += input_tokens
     # Thinking tokens are billed as output but are not in the candidate count.
-    runtime.usage.output_tokens += max(int(usage.outputTokens), total_tokens - input_tokens, 0)
-    runtime.usage.total_tokens += max(0, int(usage.totalTokens))
+    billed_output = max(int(usage.outputTokens), total_tokens - input_tokens, 0)
+    runtime.usage.input_tokens += input_tokens
+    runtime.usage.output_tokens += billed_output
+    runtime.usage.total_tokens += total_tokens
+    spent_output = max(billed_output, observed.get("provider_output_tokens", 0),
+                       observed.get("provider_total_tokens", 0) - observed.get("provider_input_tokens", 0))
+    # A response cut at max_output_tokens (thinking tokens count against the cap) is not a schema
+    # problem: re-sending the same prompt is cut again, so it carries its own code.
+    truncated = finish.get("reason", "").endswith("MAX_TOKENS") or spent_output >= output_cap
+
+    def reject(code: str, details: list[dict[str, Any]]) -> None:
+        _trace(runtime, event("failed", "response_invalid", _failure_code(code)))
+        log_stage("idm_call_rejected", {
+            "correlation_id": runtime.correlation_id, "stage": stage, "invocation_kind": invocation_kind,
+            "code": code, "finish_reason": finish.get("reason"), "output_cap": output_cap,
+            "spent_output_tokens": spent_output, "thinking_level": thinking_level,
+            "observed_usage": dict(observed), "response_chars": len(text),
+            # Location and error type only (never provider content): enough to tell a bound
+            # violation (string_too_long@rows.3.rationale) from a cut answer (json_invalid@).
+            "errors": [f"{item['type']}@{'.'.join(str(part) for part in item['loc'])}" for item in details],
+        })
+
     try:
         result = parse(text)
     except IdmResponseInvalidError as error:
-        _trace(runtime, event("failed", "response_invalid", _failure_code(error.code)))
+        code = TRUNCATED_CODE if truncated else error.code
+        reject(code, error.errors)
+        if code != error.code:
+            raise IdmResponseInvalidError(code, error.errors) from error
         raise
     except (ValidationError, ValueError) as error:
-        _trace(runtime, event("failed", "response_invalid", "IDM_RESPONSE_SCHEMA_INVALID"))
-        raise IdmResponseInvalidError("IDM_RESPONSE_SCHEMA_INVALID", _safe_validation_errors(error)) from error
+        code = TRUNCATED_CODE if truncated else SCHEMA_INVALID_CODE
+        details = _safe_validation_errors(error)
+        reject(code, details)
+        raise IdmResponseInvalidError(code, details) from error
     _trace(runtime, event("succeeded", "provider_response_received", None))
     return result
 
@@ -331,11 +414,26 @@ async def idm_call[ModelT: BaseModel](
     invocation_kind: InvocationKind = "writer",
     reserve_after_tokens: int = 0,
 ) -> ModelT:
-    """``idm_generate`` that validates the answer strictly with ``response_model``."""
+    """``idm_generate`` that validates the answer strictly with ``response_model``.
+
+    Over-long author text and over-full annotation lists are first brought within their
+    bounds (``coerce.py``, counted in ``runtime.adjustments``); identifiers, enums and
+    structure are validated unchanged.
+    """
+
+    def parse(text: str) -> ModelT:
+        try:
+            value = json.loads(text)
+        except ValueError:
+            return response_model.model_validate_json(text)  # pydantic reports json_invalid@ with its location
+        adjusted, codes = coerce_provider_answer(response_model, value)
+        result = response_model.model_validate_json(json.dumps(adjusted, ensure_ascii=False))
+        runtime.adjustments.update(codes)
+        return result
 
     return await idm_generate(
         runtime, stage=stage, prompt=prompt, response_schema=response_model,
-        parse=response_model.model_validate_json, max_output_tokens=max_output_tokens,
+        parse=parse, max_output_tokens=max_output_tokens,
         thinking_level=thinking_level, invocation_kind=invocation_kind, reserve_after_tokens=reserve_after_tokens,
     )
 

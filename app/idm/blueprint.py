@@ -25,14 +25,16 @@ from app.idm.contracts import (
     Treatment,
 )
 from app.idm.policy import IDM_W2_MAX_OUTPUT_TOKENS, IDM_W2_SINGLE_CALL_MAX_BLOCKS, THINKING_W2
-from app.idm.prompts import repair_suffix, w2_blueprint_prompt
+from app.idm.prompts import COMPACT_W2, answer_repair, repair_suffix, w2_blueprint_prompt
 from app.idm.runtime import (
     IdmBudgetError,
     IdmProviderError,
     IdmResponseInvalidError,
     IdmRuntime,
+    ThinkingLevel,
     idm_call,
     record_deterministic_fallback,
+    repair_thinking,
 )
 from app.idm.text import single_line
 from app.idm.validation import IdmIssue, errors
@@ -339,11 +341,12 @@ async def run_w2(
         )
         accepted: list[IdmBlueprintRowV1] | None = None
         repair = ""
+        thinking: ThinkingLevel = THINKING_W2
         for attempt in (1, 2):
             try:
                 response = await idm_call(
                     runtime, stage="idm_w2", prompt=prompt + repair, response_model=IdmW2BlueprintResponseV1,
-                    max_output_tokens=IDM_W2_MAX_OUTPUT_TOKENS, thinking_level=THINKING_W2,
+                    max_output_tokens=IDM_W2_MAX_OUTPUT_TOKENS, thinking_level=thinking,
                     invocation_kind="writer" if attempt == 1 else "repair",
                     reserve_after_tokens=tail_reserve_tokens,
                 )
@@ -351,8 +354,8 @@ async def run_w2(
                 codes[error.code] += 1
                 if isinstance(error, IdmBudgetError):
                     break
-                repair = repair_suffix([{"code": item["type"], "path": ".".join(item["loc"])}
-                                        for item in error.errors])
+                repair = answer_repair(error.code, error.errors, COMPACT_W2)
+                thinking = repair_thinking(error.code, thinking)
                 continue
             except IdmProviderError as error:
                 if error.terminal:

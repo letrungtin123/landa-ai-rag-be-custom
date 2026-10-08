@@ -245,6 +245,26 @@ class FallbackW4Tests(unittest.TestCase):
         plan = self.fallback(reference=reference)
         self.assertEqual(self.valid(plan, reference=reference), [])
 
+    def test_fallback_titles_are_topics_not_objective_sentences(self) -> None:
+        # QC course 234653: every chapter was "Người học có thể áp dụng {heading} trong công việc" and every
+        # section "Thực hiện đúng {heading}" because fallback_w4 copied the fallback LO / Must Do sentences.
+        inputs = self.inputs
+        objectives = [objective.model_copy(update={
+            "statement": f"Người học có thể áp dụng Chủ đề {n} trong công việc"})
+            for n, objective in enumerate(inputs.state.objectives, start=1)]
+        must_dos = [must_do.model_copy(update={"statement": f"Thực hiện đúng Chủ đề {must_do.must_do_id}"})
+                    for must_do in inputs.state.must_dos]
+        plan = fallback_w4(context=inputs.state.context, objectives=objectives, must_dos=must_dos, rows=inputs.rows,
+                           course_blocks=inputs.course, reference_blocks=inputs.reference, blocked=inputs.blocked)
+        self.assertEqual([module.title for module in plan.modules], ["Chủ đề 1", "Chủ đề 2", "Chủ đề 3"])
+        self.assertEqual([module.performance_goal for module in plan.modules],
+                         [objective.statement for objective in objectives])
+        titles = [lesson.title for module in plan.modules for lesson in module.lessons]
+        self.assertFalse(any(title.startswith(("Thực hiện đúng", "Người học")) for title in titles))
+        self.assertEqual(titles[0], "Chủ đề md_1")
+        # D14: the fallback cannot promise a practice in every section.
+        self.assertIn("chưa có bài luyện tập được đánh dấu", plan.assessment_strategy)
+
 
 class RunW4Tests(unittest.IsolatedAsyncioTestCase):
     async def run_stage(self, provider: FakeIdmProvider, *, course: bool = True, seconds: float = 600.0) -> Any:

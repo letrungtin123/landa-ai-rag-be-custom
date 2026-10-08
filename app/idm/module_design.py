@@ -41,15 +41,17 @@ from app.idm.policy import (
     IDM_THEORY_RUN_MAX_COMPONENTS,
     THINKING_MODULE,
 )
-from app.idm.prompts import module_prompt, repair_suffix
+from app.idm.prompts import COMPACT_MODULE, answer_repair, module_prompt, repair_suffix
 from app.idm.runtime import (
     IdmBudgetError,
     IdmProviderError,
     IdmResponseInvalidError,
     IdmRuntime,
+    ThinkingLevel,
     idm_call,
     log_stage,
     record_deterministic_fallback,
+    repair_thinking,
 )
 from app.idm.signals import idm_has_ordered_steps, idm_relationship_pairs, idm_term_definitions
 from app.idm.text import idm_fold, sanitize_author_text, single_line
@@ -387,6 +389,7 @@ async def run_idm_module_design(
     seen_practices: dict[str, list[IdmPracticeTaskV1]] = {}
     codes: Counter[str] = Counter()
     repair = ""
+    thinking: ThinkingLevel = THINKING_MODULE
     for attempt in (1, 2):
         try:
             response = await idm_call(
@@ -395,14 +398,15 @@ async def run_idm_module_design(
                 prompt=prompt + repair,
                 response_model=IdmW3W4ModuleResponseV1,
                 max_output_tokens=IDM_MODULE_MAX_OUTPUT_TOKENS,
-                thinking_level=THINKING_MODULE,
+                thinking_level=thinking,
                 invocation_kind="writer" if attempt == 1 else "repair",
             )
         except (IdmBudgetError, IdmResponseInvalidError) as error:
             codes[error.code] += 1
             if isinstance(error, IdmBudgetError):
                 break
-            repair = repair_suffix([{"code": item["type"], "path": ".".join(item["loc"])} for item in error.errors])
+            repair = answer_repair(error.code, error.errors, COMPACT_MODULE)
+            thinking = repair_thinking(error.code, thinking)
             continue
         except IdmProviderError as error:
             if error.terminal:
@@ -463,6 +467,7 @@ async def run_idm_module_design(
             "duration_ms": int((time.perf_counter() - started) * _MS),
             "usage": runtime.usage.as_usage(),
             "error_codes": dict(sorted(codes.items())),
+            "response_adjustments": dict(sorted(runtime.adjustments.items())),
             "obligation_count": len(shard["assessment_obligations"]),
         },
     )

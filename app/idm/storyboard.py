@@ -28,7 +28,7 @@ from app.idm.policy import (
     THINKING_W5,
     VISIBLE_CHARS_PER_WORD,
 )
-from app.idm.prompts import repair_suffix, unit_writer_prompt
+from app.idm.prompts import COMPACT_UNIT, repair_suffix, truncation_suffix, unit_writer_prompt
 from app.idm.qa import (
     JudgeMode,
     JudgeOutcome,
@@ -45,9 +45,11 @@ from app.idm.runtime import (
     IdmResponseInvalidError,
     IdmRuntime,
     IdmStageError,
+    ThinkingLevel,
     idm_generate,
     log_stage,
     record_deterministic_fallback,
+    repair_thinking,
 )
 from app.instructional_density import INSTRUCTIONAL_DENSITY_POLICY_VERSION
 from app.instructional_quality import source_relationship_pairs
@@ -238,11 +240,11 @@ class IdmUnitWriter:
         return finding, idm
 
     # -- provider steps -----------------------------------------------------------------------
-    async def write(self, repair: str = "") -> dict[str, Any]:
+    async def write(self, repair: str = "", thinking: ThinkingLevel = THINKING_W5) -> dict[str, Any]:
         return await idm_generate(
             self.runtime, stage="idm_w5_writer", prompt=self.writer_prompt() + repair,
             response_schema=self.deps.build_instance_model(self.plans), parse=self.bind,
-            max_output_tokens=IDM_UNIT_WRITER_MAX_OUTPUT_TOKENS, thinking_level=THINKING_W5,
+            max_output_tokens=IDM_UNIT_WRITER_MAX_OUTPUT_TOKENS, thinking_level=thinking,
             invocation_kind="writer" if not repair else "repair",
         )
 
@@ -426,12 +428,16 @@ def _q5(judge: JudgeOutcome) -> str:
 
 async def _provider_draft(writer: IdmUnitWriter) -> _Draft | None:
     repair = ""
+    thinking: ThinkingLevel = THINKING_W5
     for _attempt in (1, 2):
         try:
-            unit = await writer.write(repair)
+            unit = await writer.write(repair, thinking)
         except IdmResponseInvalidError as error:
             writer.codes.append(error.code)
-            repair = repair_suffix([{"code": error.code, "path": "components"}])
+            # A cut answer is retried shorter and with less thinking, never with the same prompt.
+            repair = (truncation_suffix(COMPACT_UNIT) if error.code == "IDM_RESPONSE_TRUNCATED"
+                      else repair_suffix([{"code": error.code, "path": "components"}]))
+            thinking = repair_thinking(error.code, thinking)
             continue
         return await writer.settle(_Draft(unit, []))
     return None

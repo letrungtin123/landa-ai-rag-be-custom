@@ -376,6 +376,19 @@ def held_practice_obligations(
 
 # --- projection ---------------------------------------------------------------------------------
 def _activities(lesson: IdmLessonDesignV1, plan: IdmLessonPlanV1, locale: str) -> list[str]:
+    if plan.kind == "learning" and not lesson.practice_tasks:
+        # A learning lesson without practice is a gap to fix, not an on-the-job lookup
+        # ("Tra cứu Thực hiện đúng … khi thực hiện công việc").
+        return [
+            single_line(
+                _vi(
+                    locale,
+                    f"Chưa có bài luyện tập — cần thiết kế hoạt động thực hành cho: {lesson.title}",
+                    f"No practice yet — design a practice activity for: {lesson.title}",
+                ),
+                280,
+            )
+        ]
     if plan.kind == "job_aid" or not lesson.practice_tasks:
         return [
             single_line(

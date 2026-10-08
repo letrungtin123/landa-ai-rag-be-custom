@@ -10,6 +10,7 @@ from typing import Any
 from app.idm.content_map import (
     FactIndex,
     SectionMapResult,
+    _clean_heading,
     apply_client_context,
     apply_w1_reduce,
     fallback_w1_reduce,
@@ -34,6 +35,7 @@ from app.idm.contracts import (
 from app.idm.policy import IDM_LO_MIN_COUNT
 from app.idm.runtime import IdmProviderError, IdmRuntime
 from app.idm.signals import IdmSection, compute_fact_signals, plan_idm_sections
+from app.idm.text import objective_title
 from app.idm.validation import IdmIssue, code_counts, errors, warnings
 from app.lesson_author_orchestration_v2_provider import SourceSnapshotFactV2
 from tests.idm_golden import (
@@ -391,11 +393,13 @@ class FallbackReduceTests(unittest.TestCase):
         sections, blocks = self.sections_and_blocks(3)
         response = fallback_w1_reduce(blocks, sections, CONTEXT)
         self.assertEqual([item.statement for item in response.learning_objectives],
-                         [f"Người học có thể áp dụng Mục số {n} trong công việc" for n in (1, 2, 3)])
+                         [f"Người học có thể áp dụng các điểm chính của Mục số {n} vào một tình huống công việc cụ thể"
+                          for n in (1, 2, 3)])
         self.assertEqual({(item.bloom, item.origin) for item in response.learning_objectives},
                          {("apply", "ai_proposed")})
         self.assertEqual([(md.must_do_id, md.lo_id, md.statement) for md in response.must_dos],
-                         [(f"md_{n}", f"lo_{n}", f"Thực hiện đúng Mục số {n}") for n in (1, 2, 3)])
+                         [(f"md_{n}", f"lo_{n}", f"Áp dụng Mục số {n} vào một tình huống công việc")
+                          for n in (1, 2, 3)])
         self.assertEqual([(link.block_id, link.lo_id, link.relation) for link in response.lo_links],
                          [(f"cb_{n:04d}", f"lo_{n}", "direct") for n in (1, 2, 3)])
         self.assertEqual(response.target_audience.origin, "ai_proposed")
@@ -415,8 +419,9 @@ class FallbackReduceTests(unittest.TestCase):
         response = fallback_w1_reduce(blocks, sections, english)
         self.assertEqual((response.target_audience.description, response.target_audience.origin),
                          ("Front-line call centre agents", "client"))
-        self.assertEqual(response.learning_objectives[0].statement, "The learner can apply Mục số 1 at work")
-        self.assertEqual(response.must_dos[0].statement, "Correctly carry out Mục số 1")
+        self.assertEqual(response.learning_objectives[0].statement,
+                         "The learner can apply the key points of Mục số 1 to a specific work situation")
+        self.assertEqual(response.must_dos[0].statement, "Apply Mục số 1 to a work situation")
         no_audience = fallback_w1_reduce(blocks, sections, context(locale="en", course_title_hint=None))
         self.assertIn("quy-trinh-khieu-nai.pdf", no_audience.target_audience.description)
 
@@ -485,6 +490,94 @@ class RunReduceTests(unittest.IsolatedAsyncioTestCase):
         provider = FakeIdmProvider({"IdmW1ReduceResponseV1": [IdmProviderError("AI_KEY_INVALID", terminal=True)]})
         with self.assertRaises(IdmProviderError):
             await self.reduce(provider)
+
+
+class QcCourse234653FallbackTitleTests(unittest.TestCase):
+    """QC 2026-10-08 (course-v1:Nesso+234653+2026): the W1-reduce fallback named chapters after
+    "30 Ngày: SEE DIFFERENT" without its "30" and grouped by numbered sub-headings that restart in
+    every chapter, giving 1-fact chapters such as "Người học có thể áp dụng Ngày: SEE DIFFERENT …"."""
+
+    TEXTS: tuple[tuple[str, int], ...] = (
+        ("BEST-IN-CLASS", 1), ("Tài liệu cẩm nang tái kiến trúc hệ điều hành tư duy cho lãnh đạo SME.", 1),
+        ("CHƯƠNG 01", 3), ("WHY CHANGE? • BỐI CẢNH MỚI & KHOẢNH KHẮC CEO", 3),
+        ("1. Thế Giới Mới: Biến Động Là Trạng Thái Mặc Định", 3),
+        ("Môi trường kinh tế toàn cầu đã chấm dứt kỷ nguyên ổn định tương đối.", 3),
+        ("CHƯƠNG 05", 7), ("BIC 5 MINDSET SHIFTS • 5 BƯỚC CHUYỂN DỊCH TƯ DUY (1)", 7),
+        ("5 Chuyển Dịch Tư Duy Sống Còn Của Lãnh Đạo 5.0", 7),
+        ("Năm chuyển dịch sau đây là những yêu cầu tái cấu trúc nhận thức mang tính bắt buộc.", 7),
+        ("CHƯƠNG 05", 8), ("BIC 5 MINDSET SHIFTS • 5 BƯỚC CHUYỂN DỊCH TƯ DUY (2)", 8),
+        ("Quy luật chi phí: đầu tư 1 đồng cho phòng ngừa tiết kiệm 100 đồng đền bù.", 8),
+        ("CHƯƠNG 07", 11), ("ACTION ROADMAP • TỪ MINDSET SANG 90-DAY CHALLENGE", 11),
+        ("30 Ngày: SEE DIFFERENT", 11), ("30 Ngày: THINK DIFFERENT", 11), ("30 Ngày: ACT DIFFERENT", 11),
+        ("Kiểm toán thực trạng: audit lại hệ điều hành tư duy của doanh nghiệp.", 11),
+    )
+
+    def setUp(self) -> None:
+        self.facts = [SourceSnapshotFactV2(document_id=DOCUMENT_ID, fact_key=f"q-f{n}", scope_key="scope_q",
+                                           fact_text=text, source_ref="src-001", source_page=page, source_chunk=page,
+                                           locator={})
+                      for n, (text, page) in enumerate(self.TEXTS, start=1)]
+        signals = compute_fact_signals(self.facts)
+        self.index = FactIndex.build(self.facts, signals)
+        self.section = IdmSection("sec_001", DOCUMENT_ID, "BEST-IN-CLASS", tuple(f.fact_key for f in self.facts), 900)
+
+    def blocks(self, starts: list[int]) -> list[IdmContentBlockV1]:
+        bounds = [*starts, len(self.facts) + 1]
+        return [content_block(f"cb_{n:04d}", "sec_001", [f"q-f{k}" for k in range(bounds[n - 1], bounds[n])])
+                for n in range(1, len(starts) + 1)]
+
+    def test_heading_number_needs_a_delimiter(self) -> None:
+        self.assertEqual(_clean_heading("30 Ngày: SEE DIFFERENT"), "30 Ngày: SEE DIFFERENT")
+        self.assertEqual(_clean_heading("1. Thế Giới Mới"), "Thế Giới Mới")
+        self.assertEqual(_clean_heading("2.3 Quy trình"), "Quy trình")
+        self.assertEqual(_clean_heading("THAY ĐỔI CEO → NĂNG LỰC MADE-IN-WORLD"),
+                         "Thay đổi CEO → năng lực made-in-world")
+
+    def test_chapter_markers_are_the_top_level_and_titled_by_their_subtitle(self) -> None:
+        # Blocks start at: cover, ch01, "1. Thế giới mới", ch05 p7, ch05 p8, ch07, then the three "30 Ngày".
+        blocks = self.blocks([1, 3, 5, 7, 11, 14, 16, 17, 18])
+        response = fallback_w1_reduce(blocks, [self.section], CONTEXT, self.index)
+        statements = [item.statement for item in response.learning_objectives]
+        self.assertEqual([objective_title(statement) for statement in statements], [
+            "Why change? • bối cảnh mới & khoảnh khắc CEO",
+            "BIC 5 mindset shifts • 5 bước chuyển dịch tư duy",
+            "Action roadmap • từ mindset sang 90-DAY challenge",
+        ])
+        self.assertTrue(all(statement.startswith("Người học có thể áp dụng các điểm chính của ")
+                            for statement in statements))
+        owners = {link.block_id: link.lo_id for link in response.lo_links}
+        self.assertEqual([owners[block.block_id] for block in blocks],
+                         ["lo_1", "lo_1", "lo_1", "lo_2", "lo_2", "lo_3", "lo_3", "lo_3", "lo_3"])
+        self.assertFalse(any("Ngày: SEE" in statement for statement in statements))
+        self.assertEqual(validate_w1_reduce(response, blocks, CONTEXT), [])
+
+    def test_a_table_of_contents_listing_does_not_own_the_chapters(self) -> None:
+        texts = (("MỤC LỤC", 2), ("CHƯƠNG 01", 2), ("Why change", 2), ("CHƯƠNG 02", 2), ("The legacy", 2),
+                 ("CHƯƠNG 01", 3), ("WHY CHANGE? • BỐI CẢNH MỚI", 3), ("Nội dung chương một đầy đủ.", 3),
+                 ("CHƯƠNG 02", 4), ("THE BIC LEGACY • NỀN MÓNG", 4), ("Nội dung chương hai đầy đủ.", 4))
+        facts = [SourceSnapshotFactV2(document_id=DOCUMENT_ID, fact_key=f"t-f{n}", scope_key="scope_t",
+                                      fact_text=text, source_ref="src-001", source_page=page, source_chunk=page,
+                                      locator={})
+                 for n, (text, page) in enumerate(texts, start=1)]
+        index = FactIndex.build(facts, compute_fact_signals(facts))
+        section = IdmSection("sec_001", DOCUMENT_ID, "MỤC LỤC", tuple(f.fact_key for f in facts), 300)
+        blocks = [content_block(f"cb_{n:04d}", "sec_001", keys_) for n, keys_ in enumerate(
+            (["t-f1", "t-f2", "t-f3", "t-f4", "t-f5"], ["t-f6", "t-f7", "t-f8"], ["t-f9", "t-f10", "t-f11"]),
+            start=1)]
+        response = fallback_w1_reduce(blocks, [section], CONTEXT, index)
+        self.assertEqual([objective_title(item.statement) for item in response.learning_objectives],
+                         ["Why change? • bối cảnh mới", "The BIC legacy • nền móng"])
+        self.assertEqual([link.lo_id for link in response.lo_links], ["lo_1", "lo_1", "lo_2"])
+
+    def test_heading_only_runs_join_the_next_block(self) -> None:
+        # "30 Ngày: SEE/THINK/ACT DIFFERENT" were three card titles above their texts; the fallback
+        # made two 1-fact title-only units and gave both texts to "ACT DIFFERENT".
+        section = IdmSection("sec_009", DOCUMENT_ID, "CHƯƠNG 07", tuple(f"q-f{n}" for n in range(14, 20)), 300)
+        drafts, _noise = fallback_w1_section(section, self.index, set())
+        self.assertEqual([(draft.name, len(draft.fact_keys)) for draft in drafts], [
+            ("Action roadmap • từ mindset sang 90-DAY challenge · 30 Ngày: SEE DIFFERENT · 30 Ngày: THINK DIFFERENT"
+             " · 30 Ngày: ACT DIFFERENT", 6),
+        ])
 
 
 if __name__ == "__main__":

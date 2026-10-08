@@ -19,7 +19,7 @@ from app.idm.contracts import (
     design_hash_of,
 )
 from app.idm.module_design import PRACTICE_COMPONENT_TYPES, normalize_lesson, run_idm_module_design, validate_lesson
-from app.idm.module_layout import ModuleScope, build_module_scope, fallback_lesson
+from app.idm.module_layout import ModuleScope, build_module_scope, fallback_lesson, project_lesson
 from app.idm.policy import AI_DRAFTED_MARKER_EN, AI_DRAFTED_MARKER_VI
 from app.idm.runtime import IdmProviderError, IdmStageError
 from app.idm.validation import IdmIssue
@@ -370,6 +370,16 @@ class FallbackLessonTests(unittest.TestCase):
         self.assertEqual([c.type for c in lesson.units[-1].components], ["html", "problem"])
         self.assertEqual(lesson.practice_tasks[0].criteria_fact_keys, keys(5, 10, 13))
 
+    def test_learning_lesson_without_practice_is_flagged_not_a_lookup(self) -> None:
+        # QC course 234653: fallback learning lessons said "Tra cứu Thực hiện đúng … khi thực hiện công việc".
+        scope = scope_of(2)
+        plan = scope.lesson_plans[0]
+        lesson = fallback_lesson(plan, scope).model_copy(update={"practice_tasks": []})
+        activities = project_lesson(lesson, plan, scope)["learning_activities"]
+        self.assertEqual(len(activities), 1)
+        self.assertFalse(activities[0].startswith("Tra cứu"))
+        self.assertIn("Chưa có bài luyện tập", activities[0])
+
 
 class RunModuleDesignTests(unittest.IsolatedAsyncioTestCase):
     async def test_golden_modules_are_provider_validated(self) -> None:
@@ -386,7 +396,7 @@ class RunModuleDesignTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(design["stage_origin"], "provider")
             self.assertEqual(shard["assessment_obligations"], [])
             self.assertEqual(len(provider.calls), 1)
-            self.assertEqual(provider.calls[0]["thinking_level"], "high")
+            self.assertEqual(provider.calls[0]["thinking_level"], "medium")
             assert_node_trace(self, runtime.trace)
             plans = scope_of(chapter_index).lesson_plans
             for lesson, projected, plan in zip(design["lessons"], shard["lessons"], plans, strict=True):

@@ -39,17 +39,33 @@ from app.idm.policy import (
     THINKING_W1_MAP,
     THINKING_W1_REDUCE,
 )
-from app.idm.prompts import repair_suffix, w1_reduce_prompt, w1_section_prompt
+from app.idm.prompts import (
+    COMPACT_W1_MAP,
+    COMPACT_W1_REDUCE,
+    answer_repair,
+    repair_suffix,
+    w1_reduce_prompt,
+    w1_section_prompt,
+)
 from app.idm.runtime import (
     IdmBudgetError,
     IdmProviderError,
     IdmResponseInvalidError,
     IdmRuntime,
+    ThinkingLevel,
     idm_call,
     record_deterministic_fallback,
+    repair_thinking,
 )
 from app.idm.signals import IdmSection
-from app.idm.text import idm_fold, is_generic_title, is_unmeasurable_objective, single_line
+from app.idm.text import (
+    fallback_must_do_statement,
+    fallback_objective_statement,
+    idm_fold,
+    is_generic_title,
+    is_unmeasurable_objective,
+    single_line,
+)
 from app.idm.validation import IdmIssue, errors
 from app.lesson_author_orchestration_v2_provider import SourceSnapshotFactV2
 
@@ -57,14 +73,27 @@ _BROAD_SME_RE: Final = re.compile(BROAD_SME_QUESTION_PATTERN)
 _PAGE_NUMBER_RE: Final = re.compile(
     r"^(?:trang|page|tr\.?)\s*\d+(?:\s*(?:/|of|tren)\s*\d+)?$|^-?\s*\d+\s*-?$",
 )
-_HEADING_NUMBER_RE: Final = re.compile(r"^\s*(?:[0-9]+(?:\.[0-9]+)*\.?|[ivxlc]+\.)\s+", re.IGNORECASE)
+# A heading number needs its delimiter ("1. ", "2) ", "1.2 ", "IV. "). A bare leading number is
+# content: "30 Ngày: SEE DIFFERENT" lost "30" and became chapter "… áp dụng Ngày: SEE DIFFERENT".
+_HEADING_NUMBER_RE: Final = re.compile(r"^\s*(?:[0-9]+(?:\.[0-9]+)+\.?|[0-9]+[.)]|[ivxlc]+\.)\s+", re.IGNORECASE)
+# Tokens kept upper case when an ALL-CAPS heading is sentence-cased: anything with a digit
+# (ERA5.0, 5S) and common business acronyms. Bare ASCII words are not enough: many Vietnamese
+# words have no diacritics ("KHI", "TRONG", "SINH").
+_KEEP_CAPS_TOKEN_RE: Final = re.compile(
+    r"\W*(?:[A-Z]*\d[A-Z0-9.&/+-]*|CEO|CFO|COO|CTO|AI|SME|KPI|ROI|HR|IT|BIC|PDCA|ISO|SOP|R&D|CRM|ERP|QA|QC)\W*")
+# "CHƯƠNG 01", "Chapter 2", "PHẦN II": the source's own module boundaries (spec §7.1 flag H rule).
+_CHAPTER_MARKER_RE: Final = re.compile(r"^(?:chuong|phan|chapter|part)\s*(?:[0-9]{1,2}|[ivx]{1,5})\b")
+_MIN_CHAPTER_MARKERS: Final = 2
+# A bare marker is titled by a heading at most this many facts later ("CHƯƠNG 01" → its subtitle).
+_CHAPTER_SUBTITLE_MAX_DISTANCE: Final = 2
+_PART_COUNTER_RE: Final = re.compile(r"\s*\(\d{1,2}\)\s*$")
 _MAX_BLOCK_ISSUES: Final = 16
 _MAX_BLOCK_SME: Final = 8
 _MAX_REDUCE_LOS: Final = IDM_LO_MAX_COUNT
 _MIN_NAME_CHARS: Final = 3
 # Headers, footers and page numbers are short; long repeated lines are content.
 _FURNITURE_MAX_CHARS: Final = 100
-_TOP_NUMBERED_RE: Final = re.compile(r"^\d{1,2}[.)]?\s+\S")
+_TOP_NUMBERED_RE: Final = re.compile(r"^\d{1,2}[.)]\s+\S")
 
 StageOriginLiteral = Literal["provider", "deterministic_fallback"]
 
@@ -185,11 +214,18 @@ def normalize_w1_section(
     return blocks, list(response.noise)
 
 
+def _sentence_case_word(word: str) -> str:
+    # Lower-casing acronyms produced titles such as "Thay đổi ceo → … made-in-world".
+    return word if _KEEP_CAPS_TOKEN_RE.fullmatch(word) else word.lower()
+
+
 def _clean_heading(text: str) -> str:
     stripped = _HEADING_NUMBER_RE.sub("", " ".join(text.split())).strip(" .:-")
     letters = [char for char in stripped if char.isalpha()]
     if letters and all(char.isupper() for char in letters):
-        stripped = stripped[:1].upper() + stripped[1:].lower()
+        words = [_sentence_case_word(word) for word in stripped.split(" ")]
+        stripped = " ".join(words)
+        stripped = stripped[:1].upper() + stripped[1:]
     return stripped or " ".join(text.split())
 
 
@@ -199,19 +235,27 @@ def fallback_w1_section(
     """One block per heading run; page furniture becomes noise (spec §7.2)."""
 
     noise = [IdmNoiseDraftV1(fact_key=key, reason="page_furniture") for key in section.fact_keys if key in furniture]
-    runs: list[tuple[str | None, list[str]]] = []
+    runs: list[tuple[list[str], list[str]]] = []  # (heading chain, fact keys)
     for key in section.fact_keys:
         if key in furniture:
             continue
-        if "H" in index.flags.get(key, []) or not runs:
-            heading = index.text[key] if "H" in index.flags.get(key, []) else None
-            runs.append((heading, [key]))
+        is_heading = "H" in index.flags.get(key, [])
+        if is_heading and runs and runs[-1][0] and len(runs[-1][0]) == len(runs[-1][1]):
+            # The open run has only headings so far ("CHƯƠNG 01" + its subtitle, or three
+            # "30 Ngày: …" card titles printed above their texts): a title-only unit teaches
+            # nothing, so the heading joins the chain and the run waits for content.
+            runs[-1][0].append(index.text[key])
+            runs[-1][1].append(key)
+        elif is_heading or not runs:
+            runs.append(([index.text[key]] if is_heading else [], [key]))
         else:
             runs[-1][1].append(key)
     blocks: list[IdmW1BlockDraftV1] = []
-    for position, (heading, keys) in enumerate(runs, start=1):
+    for position, (chain, keys) in enumerate(runs, start=1):
         texts = [" ".join(index.text[key].split()) for key in keys]
-        raw_name = _clean_heading(heading) if heading else (texts[0][:IDM_FALLBACK_NAME_CHARS] or section.title_path)
+        named = [text for text in chain if not _CHAPTER_MARKER_RE.fullmatch(idm_fold(text).strip(" .:-"))] or chain
+        raw_name = (" · ".join(_clean_heading(text) for text in named) if named
+                    else (texts[0][:IDM_FALLBACK_NAME_CHARS] or section.title_path))
         if len(raw_name) < _MIN_NAME_CHARS:
             raw_name = f"{raw_name} {section.title_path}".strip()
         name = single_line(raw_name, 180).ljust(_MIN_NAME_CHARS, ".")
@@ -247,18 +291,20 @@ async def map_section(
                                section_title_path=section.title_path, facts=facts)
     issue_codes: Counter[str] = Counter()
     repair = ""
+    thinking: ThinkingLevel = THINKING_W1_MAP
     for attempt in (1, 2):
         try:
             response = await idm_call(
                 runtime, stage="idm_w1_map", prompt=prompt + repair, response_model=IdmW1SectionResponseV1,
-                max_output_tokens=IDM_W1_MAP_MAX_OUTPUT_TOKENS, thinking_level=THINKING_W1_MAP,
+                max_output_tokens=IDM_W1_MAP_MAX_OUTPUT_TOKENS, thinking_level=thinking,
                 invocation_kind="writer" if attempt == 1 else "repair", reserve_after_tokens=tail_reserve_tokens,
             )
         except (IdmBudgetError, IdmResponseInvalidError) as error:
             issue_codes[error.code] += 1
             if isinstance(error, IdmBudgetError):
                 break
-            repair = repair_suffix([{"code": item["type"], "path": ".".join(item["loc"])} for item in error.errors])
+            repair = answer_repair(error.code, error.errors, COMPACT_W1_MAP)
+            thinking = repair_thinking(error.code, thinking)
             continue
         except IdmProviderError as error:
             if error.terminal:
@@ -389,26 +435,58 @@ def _top_heading_groups(
 ) -> list[tuple[str, list[IdmContentBlockV1]]]:
     """Group blocks under the top-level heading that precedes them (spec §7.3 fallback).
 
-    Top-level headings are single-number headings ("1. …") when the source has
-    them, otherwise every heading. Without a fact index, sections stand in.
+    Top-level headings are the source's chapter markers ("CHƯƠNG 01", titled by the
+    heading that follows them) when there are at least two, else single-number
+    headings ("1. …"), otherwise every heading. Without a fact index, sections stand in.
     """
 
     if index is not None:
         headings = [key for key in sorted(index.order, key=index.order.__getitem__) if "H" in index.flags.get(key, [])]
+        titles = {key: index.text[key] for key in headings}
+        chapters = _chapter_marker_tops(headings, index, titles)
         numbered = [key for key in headings if _TOP_NUMBERED_RE.match(index.text[key].strip())]
-        tops = numbered or headings
+        tops = chapters or numbered or headings
         if tops:
             groups: dict[str, list[IdmContentBlockV1]] = {}
             for block in blocks:
                 first = index.order[block.fact_keys[0]]
                 owner = next((key for key in reversed(tops) if index.order[key] <= first), tops[0])
                 groups.setdefault(owner, []).append(block)
-            return [(index.text[key], groups[key]) for key in tops if key in groups]
+            return [(titles[key], groups[key]) for key in tops if key in groups]
     by_section: dict[str, list[IdmContentBlockV1]] = {}
     for block in blocks:
         by_section.setdefault(block.section_id, []).append(block)
     return [(section.title_path, by_section[section.section_id]) for section in sections
             if section.section_id in by_section]
+
+
+def _chapter_marker_tops(headings: Sequence[str], index: FactIndex, titles: dict[str, str]) -> list[str]:
+    """Chapter-marker headings; a marker repeated on the next page continues its chapter.
+
+    A bare marker ("CHƯƠNG 05") is titled by the heading right after it in the same
+    document ("BIC 5 MINDSET SHIFTS • …"); ``titles`` is updated in place.
+    """
+
+    runs: list[tuple[str, str]] = []  # (marker label, first heading of a run of the same marker)
+    for position, key in enumerate(headings):
+        marker = _CHAPTER_MARKER_RE.match(idm_fold(index.text[key]))
+        if marker is None:
+            continue
+        label = marker.group(0)
+        if runs and runs[-1][0] == label:
+            continue  # "CHƯƠNG 05" printed again on the second page of chapter 5
+        runs.append((label, key))
+        rest = idm_fold(index.text[key])[len(label):].strip(" .:-—•")
+        following = headings[position + 1] if position + 1 < len(headings) else None
+        if not rest and following is not None and index.document[following] == index.document[key] \
+                and index.order[following] - index.order[key] <= _CHAPTER_SUBTITLE_MAX_DISTANCE:
+            # "BIC 5 MINDSET SHIFTS • 5 BƯỚC CHUYỂN DỊCH TƯ DUY (1)": drop the page-part counter.
+            titles[key] = _PART_COUNTER_RE.sub("", index.text[following]) or index.text[following]
+    # A table of contents lists "CHƯƠNG 01 … 07" before the body repeats them: the later
+    # occurrence of a label owns the chapter, the listing joins the content before it.
+    owner = {label: key for label, key in runs}
+    tops = [key for label, key in runs if owner[label] == key]
+    return tops if len(tops) >= _MIN_CHAPTER_MARKERS else []
 
 
 def _merge_groups(
@@ -450,14 +528,15 @@ def fallback_w1_reduce(
                                         bloom="apply"))
     else:
         for position, (title, _items) in enumerate(groups, start=1):
+            # The topic stays recoverable (text.objective_title / must_do_title): W4 fallback titles
+            # modules and lessons with it, never with the objective sentence.
             heading = _clean_heading(title)[:200]
             objectives.append(IdmLearningObjectiveV1(
                 lo_id=f"lo_{position}", bloom="apply", origin="ai_proposed",
-                statement=single_line((f"Người học có thể áp dụng {heading} trong công việc" if vi
-                                       else f"The learner can apply {heading} at work"), 500)))
+                statement=single_line(fallback_objective_statement(heading, context.locale), 500)))
             must_dos.append(IdmMustDoV1(
                 must_do_id=f"md_{position}", lo_id=f"lo_{position}", kind="do", bloom="apply",
-                statement=single_line((f"Thực hiện đúng {heading}" if vi else f"Correctly carry out {heading}"), 280)))
+                statement=single_line(fallback_must_do_statement(heading, context.locale), 280)))
     links = [IdmBlockLoLinkV1(block_id=block.block_id, relation="direct",
                               lo_id=objectives[position * len(objectives) // max(1, len(groups))].lo_id)
              for position, (_title, items) in enumerate(groups) for block in items]
@@ -550,18 +629,20 @@ async def run_w1_reduce(
                               catalog=reduce_catalog(blocks))
     codes: Counter[str] = Counter()
     repair = ""
+    thinking: ThinkingLevel = THINKING_W1_REDUCE
     for attempt in (1, 2):
         try:
             response = await idm_call(
                 runtime, stage="idm_w1_reduce", prompt=prompt + repair, response_model=IdmW1ReduceResponseV1,
-                max_output_tokens=IDM_W1_REDUCE_MAX_OUTPUT_TOKENS, thinking_level=THINKING_W1_REDUCE,
+                max_output_tokens=IDM_W1_REDUCE_MAX_OUTPUT_TOKENS, thinking_level=thinking,
                 invocation_kind="writer" if attempt == 1 else "repair", reserve_after_tokens=tail_reserve_tokens,
             )
         except (IdmBudgetError, IdmResponseInvalidError) as error:
             codes[error.code] += 1
             if isinstance(error, IdmBudgetError):
                 break
-            repair = repair_suffix([{"code": item["type"], "path": ".".join(item["loc"])} for item in error.errors])
+            repair = answer_repair(error.code, error.errors, COMPACT_W1_REDUCE)
+            thinking = repair_thinking(error.code, thinking)
             continue
         except IdmProviderError as error:
             if error.terminal:

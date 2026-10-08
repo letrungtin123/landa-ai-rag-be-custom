@@ -15,6 +15,9 @@ from typing import Any, Final, Literal
 from app.idm.policy import IDM_PROMPT_POLICY_VERSION
 from app.prompt_safety import untrusted_block
 
+# Mirrors ``app.idm.runtime.TRUNCATED_CODE`` (prompts stay free of runtime imports).
+TRUNCATED_RESPONSE_CODE: Final = "IDM_RESPONSE_TRUNCATED"
+
 Locale = Literal["vi", "en"]
 
 PROMPT_POLICY_VERSION: Final = IDM_PROMPT_POLICY_VERSION
@@ -77,6 +80,41 @@ def repair_suffix(issues: Sequence[dict[str, str]]) -> str:
         "unchanged except where needed to fix these issues: "
         f"{_json(safe)}. Do not add new content beyond what fixes them.\n"
     )
+
+
+# What each stage may shorten when its answer was cut at the output limit (QC course 234653).
+COMPACT_W1_MAP: Final = ("Use fewer, larger blocks; summary at most 150 characters; at most 2 SME questions per "
+                         "block; record issues and gaps only when they change correctness.")
+COMPACT_W1_REDUCE: Final = ("List lo_links ONLY for relation direct (omit supporting, context, unrelated and "
+                            "unknown); list merges and conflicts only when essential; reasons and notes at most 120 "
+                            "characters; at most 3 Must Dos per objective.")
+COMPACT_W2: Final = "detail_level and rationale at most 100 characters each; hold only when correctness depends on it."
+COMPACT_W4: Final = ("ordering_rationale at most 80 characters; course_summary and assessment_strategy at most 300 "
+                     "characters; no prerequisites unless essential.")
+COMPACT_MODULE: Final = ("Use the fewest units that still respect the layout rules; every author_review field one "
+                         "short sentence or null; rationale, purpose and notes at most 200 characters; at most 2 "
+                         "support items per component; 1 practice task per lesson unless the Must Do needs more.")
+COMPACT_UNIT: Final = ("Write each slot at the low end of its length budget: short paragraphs, no repetition, "
+                       "feedback of 2-3 sentences per option at most.")
+
+
+def truncation_suffix(compact_hint: str) -> str:
+    """Repair after an answer cut at the output limit: same task, a much shorter answer."""
+
+    return (
+        "\nREPAIR_REQUIREMENTS: Your previous answer was cut off at the output limit and is not valid JSON. "
+        "Return the COMPLETE response again in far fewer tokens: keep every required field and every required item, "
+        f"write each free-text field as one short sentence, leave optional lists empty. {compact_hint}\n"
+    )
+
+
+def answer_repair(code: str, errors: Sequence[dict[str, Any]], compact_hint: str) -> str:
+    """The repair suffix for an invalid answer: shorter after truncation, else the failing locations."""
+
+    if code == TRUNCATED_RESPONSE_CODE:
+        return truncation_suffix(compact_hint)
+    return repair_suffix([{"code": str(item["type"]), "path": ".".join(str(part) for part in item["loc"])}
+                          for item in errors])
 
 
 def w1_section_prompt(
@@ -154,8 +192,9 @@ objectives and the Must Do list.
 4. Must Do (1-5 per objective): concrete actions or decisions performed at work ("Phân loại khiếu nại theo mức
    độ", "Quyết định tự xử lý hay escalate"). A Must Do is not a topic. kind: do | decide. Ids md_1, md_2, ...
    Every objective needs at least one Must Do.
-5. Link every block to objectives with relation direct | supporting | context | unrelated | unknown. A block with
-   no direct/supporting link is a candidate for Nice to Know/Remove later - do not delete it.
+5. lo_links: list a link ONLY when a block serves an objective, with relation direct (needed to perform it) or
+   supporting (helps). Do not list context, unrelated or unknown links: a block without a link is treated as
+   unrelated and becomes a Nice to Know/Remove candidate later - do not delete it.
 
 {untrusted_block("PLAN_CONTEXT", "PROJECT_CONTEXT=" + _json(project_context))}
 {untrusted_block("BLOCK_CATALOG", _json(catalog))}

@@ -149,6 +149,14 @@ class Settings(BaseSettings):
         ge=0,
         le=60_000,
     )
+    # Cumulative wait on per-minute provider rate limits inside one IDM provider call (429 with
+    # RetryInfo / RPM / TPM). Legacy calls keep the single short retry above.
+    provider_rate_limit_max_wait_ms: int = Field(
+        default=60_000,
+        validation_alias="AI_RAG_PROVIDER_RATE_LIMIT_MAX_WAIT_MS",
+        ge=0,
+        le=300_000,
+    )
 
     # Overall per-request deadlines; keep them below the backend HTTP timeout.
     chat_deadline_ms: int = Field(

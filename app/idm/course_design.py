@@ -26,7 +26,7 @@ from app.idm.policy import (
     IDM_W2_MAX_OUTPUT_TOKENS,
     IDM_W4_COURSE_MAX_OUTPUT_TOKENS,
 )
-from app.idm.runtime import IdmRuntime, IdmStageError, log_stage
+from app.idm.runtime import IdmRuntime, IdmStageError, idm_tail_reserve, log_stage
 from app.idm.signals import IdmCapacityError, SectionPlan, compute_fact_signals, plan_idm_sections
 from app.lesson_author_orchestration_v2_provider import SourceSnapshotFactV2
 
@@ -70,7 +70,9 @@ async def run_idm_course_design(
     log_stage("idm_stage_started", {"correlation_id": runtime.correlation_id, "stage": "idm_course_design",
                                     "section_count": len(section_plan.sections), "fact_count": len(facts)})
 
-    tail = IDM_W1_REDUCE_MAX_OUTPUT_TOKENS + IDM_W2_MAX_OUTPUT_TOKENS + IDM_W4_COURSE_MAX_OUTPUT_TOKENS
+    # Later stages keep their minimum admissible share of the task allowance (runtime.idm_tail_reserve).
+    tail = idm_tail_reserve(IDM_W1_REDUCE_MAX_OUTPUT_TOKENS, IDM_W2_MAX_OUTPUT_TOKENS,
+                            IDM_W4_COURSE_MAX_OUTPUT_TOKENS)
     section_results = await map_sections(
         runtime, section_plan.sections, index, context.model_dump(mode="json"), furniture,
         parallelism=parallelism, tail_reserve_tokens=tail,
@@ -87,7 +89,8 @@ async def run_idm_course_design(
 
     reduce_response, reduce_origin, reduce_codes = await run_w1_reduce(
         runtime, blocks, section_plan.sections, context,
-        tail_reserve_tokens=IDM_W2_MAX_OUTPUT_TOKENS + IDM_W4_COURSE_MAX_OUTPUT_TOKENS, index=index,
+        tail_reserve_tokens=idm_tail_reserve(IDM_W2_MAX_OUTPUT_TOKENS, IDM_W4_COURSE_MAX_OUTPUT_TOKENS),
+        index=index,
     )
     blocks, links = apply_w1_reduce(reduce_response, blocks, index, context.locale)
     objectives = list(reduce_response.learning_objectives)
@@ -95,7 +98,7 @@ async def run_idm_course_design(
 
     blueprint = await run_w2(
         runtime, context=context, blocks=blocks, links=links, objectives=objectives, must_dos=must_dos,
-        index=index, tail_reserve_tokens=IDM_W4_COURSE_MAX_OUTPUT_TOKENS,
+        index=index, tail_reserve_tokens=idm_tail_reserve(IDM_W4_COURSE_MAX_OUTPUT_TOKENS),
     )
     blocked = blocked_must_dos(blueprint.rows, must_dos)
     holds = hold_items(blueprint.rows, blueprint.blocks, blocked)
@@ -142,7 +145,7 @@ async def run_idm_course_design(
         "disposition_counts": counts, "section_warnings": section_plan.warnings,
         "error_codes": {"w1_reduce": reduce_codes, "w2": blueprint.codes, "w4": architecture.codes,
                         "w1_map": _merge([result.issue_codes for result in section_results])},
-        "warnings": architecture.warnings,
+        "warnings": architecture.warnings, "response_adjustments": dict(sorted(runtime.adjustments.items())),
     })
     return {
         "contract_version": 2,

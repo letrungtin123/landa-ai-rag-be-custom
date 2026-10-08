@@ -16,12 +16,16 @@ from app.idm.signals import (
 )
 from app.idm.text import (
     char_ngrams,
+    fallback_must_do_statement,
+    fallback_objective_statement,
     first_main_verb,
     idm_fold,
     is_generic_title,
     is_unmeasurable_objective,
     jaccard,
+    must_do_title,
     ngram_overlap,
+    objective_title,
     sanitize_author_text,
     single_line,
 )
@@ -356,6 +360,40 @@ class TermAndStepHelperTests(unittest.TestCase):
         self.assertEqual(idm_relationship_pairs(["Tiếp nhận → Phân loại → Xử lý"]),
                          [("Tiếp nhận", "Phân loại", "→"), ("Phân loại", "Xử lý", "→")])
         self.assertEqual(idm_relationship_pairs(["Nhân viên tiếp nhận khiếu nại."]), [])
+
+
+class TitleHelperTests(unittest.TestCase):
+    def test_objective_title_drops_learner_lead_in_and_fallback_template(self) -> None:
+        cases = {
+            "Người học có thể phân tích bốn lực đẩy của bối cảnh mới": "Phân tích bốn lực đẩy của bối cảnh mới",
+            "Người học có thể áp dụng Thế Giới Mới: Biến Động trong công việc": "Thế Giới Mới: Biến Động",
+            "The learner can apply Complaint triage at work": "Complaint triage",
+            "Learners will be able to classify complaints.": "Classify complaints",
+            "Phân loại khiếu nại theo nhóm": "Phân loại khiếu nại theo nhóm",
+        }
+        for statement, expected in cases.items():
+            with self.subTest(statement=statement):
+                self.assertEqual(objective_title(statement), expected)
+
+    def test_must_do_title_only_rewrites_the_fallback_template(self) -> None:
+        self.assertEqual(must_do_title("Thực hiện đúng Chu Trình PDCA"), "Chu Trình PDCA")
+        self.assertEqual(must_do_title("Correctly carry out the intake steps"), "The intake steps")
+        self.assertEqual(must_do_title("Quyết định tự xử lý hay escalate"), "Quyết định tự xử lý hay escalate")
+        # A client objective copied as the fallback Must Do loses its learner lead-in in the lesson title.
+        self.assertEqual(must_do_title("Người học có thể phân loại khiếu nại theo mức độ"),
+                         "Phân loại khiếu nại theo mức độ")
+
+    def test_fallback_statements_are_measurable_and_round_trip_to_their_topic(self) -> None:
+        for locale in ("vi", "en"):
+            with self.subTest(locale=locale):
+                objective = fallback_objective_statement("Chu trình PDCA", locale)
+                must_do = fallback_must_do_statement("Chu trình PDCA", locale)
+                self.assertFalse(is_unmeasurable_objective(objective))
+                self.assertNotIn("trong công việc", objective)
+                self.assertEqual((objective_title(objective), must_do_title(must_do)),
+                                 ("Chu trình PDCA", "Chu trình PDCA"))
+        self.assertEqual(fallback_objective_statement("X", "vi"),
+                         "Người học có thể áp dụng các điểm chính của X vào một tình huống công việc cụ thể")
 
 
 if __name__ == "__main__":

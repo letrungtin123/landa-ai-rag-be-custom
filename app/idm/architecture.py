@@ -45,17 +45,19 @@ from app.idm.policy import (
     IDM_W4_COURSE_MAX_OUTPUT_TOKENS,
     THINKING_W4_COURSE,
 )
-from app.idm.prompts import repair_suffix, w4_course_prompt
+from app.idm.prompts import COMPACT_W4, answer_repair, repair_suffix, w4_course_prompt
 from app.idm.runtime import (
     IdmBudgetError,
     IdmProviderError,
     IdmResponseInvalidError,
     IdmRuntime,
     IdmStageError,
+    ThinkingLevel,
     idm_call,
     record_deterministic_fallback,
+    repair_thinking,
 )
-from app.idm.text import is_generic_title, single_line
+from app.idm.text import is_generic_title, must_do_title, objective_title, single_line
 from app.idm.validation import IdmIssue, errors
 from app.lesson_author_orchestration_v2 import CourseSkeletonChapterV2, CourseSkeletonV2
 
@@ -232,7 +234,7 @@ def fallback_w4(
                 suffix = "" if part == 1 else (f" (phần {part})" if vi else f" (part {part})")
                 plans.append(IdmLessonPlanV1(
                     lesson_key=f"lsn_{lesson_number:03d}", kind="learning",
-                    title=(single_line(must_do.statement, 180 - len(suffix)) + suffix).ljust(3, "."),
+                    title=(single_line(must_do_title(must_do.statement), 180 - len(suffix)) + suffix).ljust(3, "."),
                     primary_must_do_id=must_do.must_do_id, secondary_must_do_ids=secondary if part == 1 else [],
                     block_ids=chunk, est_screens=IDM_FALLBACK_LESSON_SCREENS,
                     est_minutes=IDM_FALLBACK_LESSON_MINUTES,
@@ -240,7 +242,9 @@ def fallback_w4(
                 ))
         for start in range(0, len(plans), IDM_MAX_LESSONS_PER_MODULE):
             modules.append(IdmModulePlanV1(
-                module_key=f"mod_{len(modules) + 1:02d}", title=single_line(objective.statement, 500),
+                module_key=f"mod_{len(modules) + 1:02d}",
+                # A module title is a topic, not the objective sentence ("Người học có thể áp dụng …").
+                title=single_line(objective_title(objective.statement), 500).ljust(3, "."),
                 performance_goal=single_line(objective.statement, 2000).ljust(10, "."),
                 lo_ids=[objective.lo_id], lessons=plans[start:start + IDM_MAX_LESSONS_PER_MODULE],
             ))
@@ -271,8 +275,11 @@ def fallback_w4(
         course_summary=single_line((f"Khoá học giúp người học thực hiện đúng các công việc trong {topic}." if vi
                                     else f"This course helps learners correctly perform the work in {topic}."),
                                    2000).ljust(20, "."),
-        assessment_strategy=("Mỗi mục có bài luyện tập gắn với Must Do và phản hồi theo tiêu chí." if vi
-                             else "Each section has a practice tied to its Must Do with criterion-based feedback."),
+        # A promise ("every section has a practice") the fallback cannot check (QC 234653, D14).
+        assessment_strategy=("Bài luyện tập của từng mục được thiết kế ở bước thiết kế bài học; mục chưa có bài "
+                             "luyện tập được đánh dấu để tác giả bổ sung." if vi
+                             else "Each section's practice is designed with its lessons; a section without a "
+                                  "practice is flagged for the author to add one."),
         prerequisites=[], modules=modules,
     )
 
@@ -333,20 +340,21 @@ async def run_w4(
     )
     codes: Counter[str] = Counter()
     repair = ""
+    thinking: ThinkingLevel = THINKING_W4_COURSE
     if course_blocks:
         for attempt in (1, 2):
             try:
                 response = await idm_call(
                     runtime, stage="idm_w4", prompt=prompt + repair, response_model=IdmW4CourseResponseV1,
-                    max_output_tokens=IDM_W4_COURSE_MAX_OUTPUT_TOKENS, thinking_level=THINKING_W4_COURSE,
+                    max_output_tokens=IDM_W4_COURSE_MAX_OUTPUT_TOKENS, thinking_level=thinking,
                     invocation_kind="writer" if attempt == 1 else "repair",
                 )
             except (IdmBudgetError, IdmResponseInvalidError) as error:
                 codes[error.code] += 1
                 if isinstance(error, IdmBudgetError):
                     break
-                repair = repair_suffix([{"code": item["type"], "path": ".".join(item["loc"])}
-                                        for item in error.errors])
+                repair = answer_repair(error.code, error.errors, COMPACT_W4)
+                thinking = repair_thinking(error.code, thinking)
                 continue
             except IdmProviderError as error:
                 if error.terminal:

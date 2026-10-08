@@ -57,6 +57,7 @@ from app.core.security import (
     require_internal_auth as verify_internal_auth,
 )
 from app.infra import gemini as gemini_infra
+from app.infra.provider_limits import RATE_LIMITED_CODE, classify_provider_limit
 from app.lesson_author_blueprint import (
     ACTION_OBJECTIVE_REPAIR_INTENTS,
     INSTRUCTIONAL_SUPPORT_REPAIR_INTENTS,
@@ -114,6 +115,7 @@ from app.instructional_density import (
 from app.instructional_quality import (
     MIN_FAQ_ANSWER_CHARS,
     MIN_FAQ_QUESTION_CHARS,
+    TABLE_ROW_RE,
     build_source_grounded_single_choice,
     clean_source_facts,
     contains_generic_review_language,
@@ -182,8 +184,10 @@ from app.lesson_author_orchestration_v2_provider import (
 from app.idm.contracts import IdmCourseSkeletonRequestV1, IdmModuleContextV1
 from app.idm.course_design import run_idm_course_design
 from app.idm.module_design import run_idm_module_design
+from app.idm.source_locked import idm_source_grounded_single_choice, render_idm_source_locked_html
 from app.idm.storyboard import IdmUnitDeps, run_idm_unit
 from app.idm.runtime import (
+    RUN_STOPPING_PROVIDER_CODES,
     TRANSIENT_PROVIDER_CODES,
     IdmError,
     IdmProviderError,
@@ -258,6 +262,7 @@ supabase_client: Any | None = None
 DEFAULT_EMBEDDING_MODEL = "gemini-embedding-001"
 PROVIDER_TRANSIENT_MAX_ATTEMPTS = settings.provider_max_attempts
 PROVIDER_TRANSIENT_RETRY_DELAY_SECONDS = settings.provider_retry_base_ms / 1000
+PROVIDER_RATE_LIMIT_MIN_WAIT_SECONDS = 1.0
 PROVIDER_RETRY_HINT_PATTERN = re.compile(r"^\s*(\d+(?:\.\d+)?)\s*s?\s*$")
 MAX_SOURCE_STRUCTURE_DOCUMENTS = 40
 MAX_SOURCE_OUTLINE_CHARS = 16000
@@ -1872,6 +1877,7 @@ async def call_provider_with_timeout(
     request_timeout_ms: int | None = None,
     on_provider_diagnostic: Callable[[dict[str, Any]], None] | None = None,
     operation: Literal["generate", "embed"] = "generate",
+    rate_limit_max_wait_ms: int | None = None,
 ) -> Any:
     """Bound provider calls and retry only transient 5xx responses once.
 
@@ -1880,10 +1886,22 @@ async def call_provider_with_timeout(
     running in the worker thread was cancelled at HTTP level.  The provider
     client's ``HttpOptions(timeout=...)`` remains the request-level bound; do
     not treat cancellation of this await as hard provider cancellation.
+
+    A 429 is classified by ``classify_provider_limit``: an exhausted key raises
+    ``AI_PROVIDER_QUOTA_EXHAUSTED`` at once, a rate limit raises
+    ``AI_PROVIDER_RATE_LIMITED`` (both 503). By default a rate limit is retried
+    once when the server hint is short (legacy behaviour). A caller that passes
+    ``rate_limit_max_wait_ms`` (IDM) waits the server hint (or a backoff) as
+    often as the cumulative wait stays within that bound; those waits do not use
+    up the transient-retry attempts.
     """
     timeout_ms = max(1, request_timeout_ms or settings.provider_request_timeout_ms)
     max_attempts = max(1, PROVIDER_TRANSIENT_MAX_ATTEMPTS)
-    for attempt in range(max_attempts):
+    rate_limit_waited_seconds = 0.0
+    rate_limit_retries = 0
+    attempt = -1
+    while attempt + 1 < max_attempts:
+        attempt += 1
         emit_safe_provider_telemetry(on_provider_diagnostic, {
             "event": "provider_http_attempt_started",
             "provider_attempt": attempt + 1,
@@ -1939,40 +1957,78 @@ async def call_provider_with_timeout(
             provider_error = str(error)
             if status_code == 429 or "RESOURCE_EXHAUSTED" in provider_error:
                 retry_hint = provider_retry_hint_seconds(error)
-                if (
-                    retry_hint is not None
-                    and retry_hint <= settings.provider_retry_max_ms / 1000
-                    and attempt + 1 < max_attempts
-                ):
-                    # Short per-minute rate limits clear quickly; a missing or long
-                    # hint means quota exhaustion and is surfaced immediately.
+                # The provider message is classified in memory and never logged; only the
+                # category and the hint seconds leave this function.
+                limit = classify_provider_limit(error, retry_hint)
+                retry_after = limit.retry_after_seconds
+                wait_seconds: float | None = None
+                if limit.kind == "rate_limited":
+                    if rate_limit_max_wait_ms is not None:
+                        # The floor keeps a "retry in 0s" hint from looping without using the bound.
+                        candidate = max(PROVIDER_RATE_LIMIT_MIN_WAIT_SECONDS,
+                                        retry_after if retry_after is not None
+                                        else provider_retry_delay_seconds(rate_limit_retries))
+                        if rate_limit_waited_seconds + candidate <= rate_limit_max_wait_ms / 1000:
+                            wait_seconds = candidate
+                    elif (retry_after is not None and retry_after <= settings.provider_retry_max_ms / 1000
+                          and attempt + 1 < max_attempts):
+                        # Legacy: one retry when the per-minute limit clears quickly.
+                        wait_seconds = retry_after
+                if wait_seconds is not None:
                     outcome = "rate_limited_retry"
                     emit_safe_provider_telemetry(on_provider_diagnostic, {
                         "event": "provider_rate_limited_retry",
                         "model": model,
                         "provider_http_status": status_code,
                         "provider_attempt": attempt + 1,
-                        "retry_after_ms": round(retry_hint * 1000),
+                        "provider_limit_category": limit.kind,
+                        "retry_after_ms": round(wait_seconds * 1000),
                         "usage_source": "unavailable",
                     })
-                    await asyncio.sleep(retry_hint)
+                    logger.warning(
+                        "ai_provider_rate_limited category=%s retry_after_s=%.1f waited_s=%.1f model=%s",
+                        limit.kind,
+                        wait_seconds,
+                        rate_limit_waited_seconds,
+                        model,
+                    )
+                    await asyncio.sleep(wait_seconds)
+                    if rate_limit_max_wait_ms is not None:
+                        # Bounded by the cumulative wait, not by the transient attempts.
+                        rate_limit_waited_seconds += wait_seconds
+                        rate_limit_retries += 1
+                        attempt -= 1
                     continue
-                outcome = "quota_exhausted"
+                outcome = limit.kind
                 if on_provider_diagnostic is not None:
                     emit_safe_provider_telemetry(on_provider_diagnostic, {
-                        "event": "provider_quota_exhausted",
+                        "event": "provider_quota_exhausted" if limit.kind == "quota_exhausted"
+                        else "provider_rate_limited",
                         "model": model,
                         "provider_http_status": status_code,
                         "provider_attempt": attempt + 1,
                         "provider_error_type": type(error).__name__,
+                        "provider_limit_category": limit.kind,
+                        "retry_after_ms": round(retry_after * 1000) if retry_after is not None else None,
                         "usage_source": "unavailable",
                     })
                 else:
                     logger.error(
-                        "ai_provider_quota_exhausted model=%s error_type=%s",
+                        "ai_provider_%s model=%s error_type=%s retry_after_s=%s waited_s=%.1f",
+                        limit.kind,
                         model,
                         type(error).__name__,
+                        f"{retry_after:.1f}" if retry_after is not None else "none",
+                        rate_limit_waited_seconds,
                     )
+                if limit.kind == "rate_limited":
+                    raise HTTPException(
+                        status_code=503,
+                        detail={
+                            "code": RATE_LIMITED_CODE,
+                            "message": "AI provider đang giới hạn tần suất gọi. Vui lòng thử lại sau ít phút.",
+                        },
+                    ) from error
                 raise HTTPException(
                     status_code=503,
                     detail={
@@ -2110,6 +2166,7 @@ async def generate_content(
     thinking_level: Literal["low", "medium", "high"] | None = None,
     request_timeout_ms: int | None = None,
     on_provider_telemetry: Callable[[dict[str, Any]], None] | None = None,
+    rate_limit_max_wait_ms: int | None = None,
 ) -> tuple[str, AiUsage]:
     safe_api_key = require_provider_api_key(api_key)
     if response_schema is not None and not json_mode:
@@ -2188,6 +2245,7 @@ async def generate_content(
         model,
         request_timeout_ms=provider_timeout_ms,
         on_provider_diagnostic=on_provider_diagnostic if on_provider_telemetry is not None else None,
+        **({"rate_limit_max_wait_ms": rate_limit_max_wait_ms} if rate_limit_max_wait_ms is not None else {}),
     )
     # Capture real provider metadata before SDK response access/parsing can fail.
     # An HTTP success is not a validated lesson, nor permission to persist it.
@@ -3754,18 +3812,81 @@ def _merge_wrapped_source_lines(lines: list[str]) -> list[str]:
     return merged
 
 
+# Phrases that mark a chunk as carrying a table of contents (unchanged trigger), and the extra
+# title phrase recognised inside such a chunk.
+SOURCE_TOC_TRIGGER_PHRASES = ("nội dung chương trình", "table of contents", "table of content")
+SOURCE_TOC_TITLE_PHRASES = (*SOURCE_TOC_TRIGGER_PHRASES, "mục lục")
+# A table-of-contents title is a short line; a sentence that merely mentions the phrase is content.
+SOURCE_TOC_TITLE_MAX_WORDS = 8
+SOURCE_TOC_ENTRY_MAX_CHARS = 120
+SOURCE_TOC_LEADER_RE = re.compile(r"(?:\.{3,}|…{2,}|·{3,}|_{3,})\s*\d{1,4}\s*$")
+SOURCE_TOC_PAGE_SUFFIX_RE = re.compile(r"\S\s+\d{1,4}$")
+SOURCE_TOC_NUMBERED_ENTRY_RE = re.compile(
+    r"^(?:(?:chương|chuong|chapter|phần|phan|part|module|modun|bài|bai|lesson)\s*(?:\d{1,3}|[ivxlc]{1,6})\b"
+    r"|\d{1,3}(?:\.\d{1,3})*[.)]?\s)",
+    re.IGNORECASE,
+)
+SOURCE_TOC_CHAPTER_LABEL_RE = re.compile(
+    r"(?:chương|chuong|chapter|phần|phan|part|module|modun)\s*(?:\d{1,3}|[ivxlc]{1,6})[.:]?",
+    re.IGNORECASE,
+)
+
+
+def _is_source_toc_title(line: str) -> bool:
+    folded = line.casefold()
+    return (any(phrase in folded for phrase in SOURCE_TOC_TITLE_PHRASES)
+            and len(line.split()) <= SOURCE_TOC_TITLE_MAX_WORDS)
+
+
+def _is_source_toc_entry(line: str) -> bool:
+    if SOURCE_TOC_LEADER_RE.search(line):
+        return True
+    if len(line) > SOURCE_TOC_ENTRY_MAX_CHARS or re.search(r"[.!?;:]$", line):
+        return False  # a sentence is content, even inside a TOC page
+    return bool(line.isdigit() or SOURCE_TOC_NUMBERED_ENTRY_RE.match(line)
+                or SOURCE_TOC_PAGE_SUFFIX_RE.search(line)
+                or (TABLE_ROW_RE.match(line) and re.search(r"\|\s*\d{1,4}\s*$", line)))
+
+
+def _drop_source_toc_lines(lines: list[str]) -> list[str]:
+    """Remove a table of contents (title, entries, chapter labels) and keep the rest of the page.
+
+    Dropping the whole chunk lost every other fact printed on a TOC page (QC course 234653:
+    positioning statement, target learners and the six expected competencies of page 2).
+    The TOC region starts at a short title line containing a TOC phrase and continues while
+    lines look like entries (dot leaders, page numbers, numbered or chapter entries). After a
+    TOC title, dot-leader entries and bare chapter labels ("CHƯƠNG 02") are navigation wherever
+    they appear in the chunk; chapter titles and outcome sentences between them stay as content.
+    """
+
+    result: list[str] = []
+    in_toc = False
+    seen_title = False
+    for line in lines:
+        if _is_source_toc_title(line):
+            in_toc = seen_title = True
+            continue
+        if in_toc and _is_source_toc_entry(line):
+            continue
+        in_toc = False
+        if seen_title and (SOURCE_TOC_LEADER_RE.search(line) or SOURCE_TOC_CHAPTER_LABEL_RE.fullmatch(line)):
+            continue
+        result.append(line)
+    return result
+
+
 def extract_source_coverage_facts(text: str, *, preserve_table_numeric: bool = False) -> list[str]:
     """Extract bounded semantic facts while repairing visual PDF line wraps."""
     normalized = clean_text(text)
     if not normalized:
         return []
     folded = normalized.casefold()
-    if "nội dung chương trình" in folded or "table of contents" in folded or "table of content" in folded:
-        return []
+    lines = [re.sub(r"\s+", " ", raw_line).strip() for raw_line in normalized.splitlines()]
+    if any(phrase in folded for phrase in SOURCE_TOC_TRIGGER_PHRASES):
+        lines = _drop_source_toc_lines([line for line in lines if line])
     source_lines = [
         line
-        for raw_line in normalized.splitlines()
-        for line in [re.sub(r"\s+", " ", raw_line).strip()]
+        for line in lines
         if line
         and not SOURCE_COVERAGE_MARKER_ONLY_RE.fullmatch(line)
         and not is_non_instructional_source_line(line, preserve_table_numeric=preserve_table_numeric)
@@ -6911,6 +7032,8 @@ class LessonAuthorProposalValidationError(ValueError):
 
 NON_RETRYABLE_PROVIDER_ERROR_CODES = frozenset({
     "AI_PROVIDER_QUOTA_EXHAUSTED",
+    # Classified out of AI_PROVIDER_QUOTA_EXHAUSTED; legacy flows keep treating both alike.
+    "AI_PROVIDER_RATE_LIMITED",
     "AI_PROVIDER_UNAVAILABLE",
     "AI_PROVIDER_TIMEOUT",
     "AI_STAGED_LESSON_WORKFLOW_TIMEOUT",
@@ -10112,10 +10235,12 @@ def _orchestration_v2_source_locked_html(
     fact_texts: list[str],
     locale: str,
     required_artifacts: list[dict[str, Any]] | None = None,
+    *,
+    renderer: Callable[..., str] = render_source_locked_html,
 ) -> str:
     """Render source facts once, preserving semantic tables and lists."""
 
-    return render_source_locked_html(
+    return renderer(
         title,
         fact_texts,
         locale=locale,
@@ -10240,16 +10365,23 @@ def build_orchestration_v2_source_locked_unit(
 def build_orchestration_v2_source_locked_components(
     contract: UnitGenerationContractV2,
     locale: str,
+    *,
+    html_renderer: Callable[..., str] = render_source_locked_html,
+    single_choice_builder: Callable[..., dict[str, Any] | None] = build_source_grounded_single_choice,
 ) -> list[dict[str, Any] | None]:
     """One source-locked component per server-owned plan slot, in plan order.
 
     A slot is ``None`` when its locked evidence cannot rebuild that component
     type deterministically (for example a prose-only ``problem`` or a ``la_faq``
     without explicit source conditions). Other slots stay usable on their own.
+    The defaults are the legacy builders; IDM units inject their own variants
+    (``app.idm.source_locked``) so legacy output stays byte-identical.
     """
 
     fact_by_id = {fact.fact_key: fact.fact_text for fact in contract.source_facts}
-    return [_orchestration_v2_source_locked_component(contract, plan, fact_by_id, locale)
+    return [_orchestration_v2_source_locked_component(contract, plan, fact_by_id, locale,
+                                                      html_renderer=html_renderer,
+                                                      single_choice_builder=single_choice_builder)
             for plan in contract.component_plan]
 
 
@@ -10258,6 +10390,9 @@ def _orchestration_v2_source_locked_component(
     plan: UnitComponentPlanV2,
     fact_by_id: dict[str, str],
     locale: str,
+    *,
+    html_renderer: Callable[..., str] = render_source_locked_html,
+    single_choice_builder: Callable[..., dict[str, Any] | None] = build_source_grounded_single_choice,
 ) -> dict[str, Any] | None:
     evidence_fact_ids = list(dict.fromkeys([
         *plan.source_fact_ids,
@@ -10294,9 +10429,10 @@ def _orchestration_v2_source_locked_component(
             fact_texts,
             locale,
             plan.required_artifacts,
+            renderer=html_renderer,
         )
     elif plan.type == "problem":
-        problem = build_source_grounded_single_choice(title, fact_texts, locale=locale)
+        problem = single_choice_builder(title, fact_texts, locale=locale)
         if problem is None:
             return None
         component.update(problem)
@@ -17816,6 +17952,13 @@ async def _lesson_author_proposal(
     return {"proposal": proposal, "usage": usage.model_dump(), "sources": sources, "retrieval": retrieval, "workflow": workflow}
 
 
+# Legacy V2 skeleton/shard providers fall back on these codes; AI_PROVIDER_RATE_LIMITED was
+# reported as AI_PROVIDER_QUOTA_EXHAUSTED before the 429 classification and keeps that branch.
+ORCHESTRATION_V2_PROVIDER_FALLBACK_CODES = frozenset({
+    "AI_PROVIDER_TIMEOUT", "AI_PROVIDER_UNAVAILABLE", "AI_PROVIDER_QUOTA_EXHAUSTED", "AI_PROVIDER_RATE_LIMITED",
+})
+
+
 def _orchestration_v2_http_error(code: str, message: str, *, status_code: int = 422) -> HTTPException:
     return HTTPException(status_code=status_code, detail={"code": code, "message": message})
 
@@ -18214,12 +18357,19 @@ async def lesson_author_orchestration_v2_source_snapshot(
 
 
 async def _idm_generate(api_key: str, model: str, prompt: str, **options: Any) -> tuple[str, AiUsage]:
-    """Provider transport for ``app.idm``: map service errors onto ``IdmProviderError``."""
+    """Provider transport for ``app.idm``: map service errors onto ``IdmProviderError``.
+
+    An exhausted key or a rate limit that outlived the bounded wait is terminal for the
+    stage (``RUN_STOPPING_PROVIDER_CODES``): it reaches Node as a 503 with that code
+    instead of turning into deterministic course content.
+    """
 
     try:
         return await generate_content(api_key, model, prompt, **options)
     except HTTPException as error:
         code = str((error.detail if isinstance(error.detail, dict) else {}).get("code") or "AI_PROVIDER_UNAVAILABLE")
+        if code in RUN_STOPPING_PROVIDER_CODES:
+            raise IdmProviderError(code, terminal=True, http_status=503) from error
         raise IdmProviderError(code, terminal=code not in TRANSIENT_PROVIDER_CODES,
                                http_status=error.status_code) from error
     except AppError as error:
@@ -18243,6 +18393,7 @@ def _idm_runtime(request: RagChatRequest, *, budget_ms: int, allowance: Any | No
         token_allowance=(IdmTokenAllowance(allowance.input_tokens, allowance.output_tokens)
                          if allowance is not None else None),
         provider_call_timeout_ms=settings.idm_provider_call_timeout_ms,
+        rate_limit_max_wait_ms=settings.provider_rate_limit_max_wait_ms,
     )
 
 
@@ -18300,7 +18451,7 @@ async def _lesson_author_orchestration_v2_course_skeleton(
         except HTTPException as error:
             detail = error.detail if isinstance(error.detail, dict) else {}
             code = detail.get("code")
-            if code not in {"AI_PROVIDER_TIMEOUT", "AI_PROVIDER_UNAVAILABLE", "AI_PROVIDER_QUOTA_EXHAUSTED"}:
+            if code not in ORCHESTRATION_V2_PROVIDER_FALLBACK_CODES:
                 raise
             provider_failure_code = str(code)
             last_code = provider_failure_code
@@ -18440,7 +18591,7 @@ async def _lesson_author_orchestration_v2_chapter_shard(
         except HTTPException as error:
             detail = error.detail if isinstance(error.detail, dict) else {}
             code = detail.get("code")
-            if code not in {"AI_PROVIDER_TIMEOUT", "AI_PROVIDER_UNAVAILABLE", "AI_PROVIDER_QUOTA_EXHAUSTED"}:
+            if code not in ORCHESTRATION_V2_PROVIDER_FALLBACK_CODES:
                 raise
             provider_failure_code = str(code)
             last_code = provider_failure_code
@@ -18606,7 +18757,9 @@ def _idm_unit_deps(request: RagLessonAuthorUnitV2Request) -> IdmUnitDeps:
     bundle = manifest.get("source_evidence_bundle")
     supporting = list(dict.fromkeys(item for plan in contract.component_plan
                                     for item in plan.supporting_evidence_fact_ids))
-    source_locked_components = build_orchestration_v2_source_locked_components(contract, request.locale)
+    source_locked_components = build_orchestration_v2_source_locked_components(
+        contract, request.locale, html_renderer=render_idm_source_locked_html,
+        single_choice_builder=idm_source_grounded_single_choice)
     return IdmUnitDeps(
         build_instance_model=build_staged_instance_response_model,
         bind_instance_payload=bind_staged_instance_payload,

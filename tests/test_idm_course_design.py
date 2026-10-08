@@ -128,8 +128,8 @@ class GoldenCourseDesignTests(unittest.TestCase):
 
     def test_calls_use_stage_thinking_levels_and_output_caps(self) -> None:
         calls = self.provider.calls
-        self.assertEqual([call["thinking_level"] for call in calls], ["low", "high", "high", "high"])
-        self.assertEqual([call["max_output_tokens"] for call in calls], [6_000, 8_000, 12_000, 8_000])
+        self.assertEqual([call["thinking_level"] for call in calls], ["low", "medium", "medium", "medium"])
+        self.assertEqual([call["max_output_tokens"] for call in calls], [12_000, 24_000, 32_000, 16_000])
         self.assertTrue(all(call["json_mode"] for call in calls))
         self.assertTrue(all(0 < call["request_timeout_ms"] <= 180_000 for call in calls))
 
@@ -251,16 +251,18 @@ class DegradedCourseDesignTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(noise, set(keys(12, 1, 3)))
         self.assertTrue(design.notes.course)
 
-    async def test_quota_exhaustion_on_first_call_stops_every_later_call(self) -> None:
-        quota = IdmProviderError("AI_PROVIDER_QUOTA_EXHAUSTED", terminal=False)
-        provider = golden_provider({"IdmW1SectionResponseV1": [quota]})
+    async def test_transient_provider_failure_on_first_call_stops_every_later_call(self) -> None:
+        # An exhausted key is terminal since QC course 234653 (test_idm_p0_resilience); a transient
+        # outage still ends the task's provider calls and falls back.
+        unavailable = IdmProviderError("AI_PROVIDER_UNAVAILABLE", terminal=False)
+        provider = golden_provider({"IdmW1SectionResponseV1": [unavailable]})
         result, runtime = await run_design(provider)
         self.assert_valid_design(result)
         self.assertEqual(len(provider.calls), 1)
         self.assertFalse(result["usage_complete"])
         self.assertEqual(result["usage_source"], "reserved_upper_bound")
         self.assertEqual(result["content_origin"], "structured_fallback")
-        self.assertEqual(runtime.provider_failure_code, "AI_PROVIDER_QUOTA_EXHAUSTED")
+        self.assertEqual(runtime.provider_failure_code, "AI_PROVIDER_UNAVAILABLE")
 
     async def test_terminal_provider_error_reaches_the_caller(self) -> None:
         provider = golden_provider({"IdmW1ReduceResponseV1": [IdmProviderError("AI_PROVIDER_AUTH", terminal=True)]})

@@ -759,5 +759,60 @@ class DeleteEndpointTests(unittest.TestCase):
                 self.assertEqual(db.labels(), ["delete_structure_nodes"])
 
 
+class SourceFactTableOfContentsTests(unittest.TestCase):
+    """Facts are re-extracted from stored chunk text for every source snapshot (and legacy coverage manifest).
+
+    Changed 2026-10-08 (QC course 234653, D7): a chunk that mentioned "table of contents" was dropped
+    whole, so a TOC page lost its positioning statement, target learners and expected competencies.
+    Now only the TOC title, its entries and bare chapter labels are dropped. Re-indexing is not needed:
+    the next snapshot of an indexed document already gets the kept lines.
+    """
+
+    PAGE = (
+        "MỤC LỤC & ĐỊNH VỊ CHƯƠNG TRÌNH\n"
+        "TUYÊN BỐ ĐỊNH VỊ CỐT LÕI (POSITIONING STATEMENT)\n"
+        "MODUN 1 là cánh cổng thay đổi hệ điều hành tư duy của người lãnh đạo.\n"
+        "Đối tượng học viên: CEO, Founder, thành viên HĐQT và C-level của doanh nghiệp SME Việt Nam.\n"
+        "Năng lực 1: Nhận diện bốn lực đẩy buộc doanh nghiệp phải thay đổi.\n"
+        "CẤU TRÚC KHOÁ HỌC (TABLE OF CONTENTS)\n"
+        "1. Why change?........ 3\n"
+        "2. The BIC legacy........ 4\n"
+        "CHƯƠNG 03\n"
+        "The best-in-class house\n"
+        "Hiểu kiến trúc ngôi nhà năng lực tám cấu phần.\n"
+        "CHƯƠNG 04\n"
+    )
+
+    def test_toc_lines_are_dropped_and_the_rest_of_the_page_is_kept(self) -> None:
+        facts = main.extract_source_coverage_facts(self.PAGE)
+        self.assertIn("MODUN 1 là cánh cổng thay đổi hệ điều hành tư duy của người lãnh đạo.", facts)
+        self.assertTrue(any(fact.startswith("Đối tượng học viên: CEO") for fact in facts))
+        self.assertIn("Năng lực 1: Nhận diện bốn lực đẩy buộc doanh nghiệp phải thay đổi.", facts)
+        self.assertIn("Hiểu kiến trúc ngôi nhà năng lực tám cấu phần.", facts)
+        joined = "\n".join(facts)
+        for dropped in ("TABLE OF CONTENTS", "MỤC LỤC", "Why change?", "........", "CHƯƠNG 03", "CHƯƠNG 04"):
+            self.assertNotIn(dropped, joined)
+
+    def test_a_page_that_is_only_a_table_of_contents_still_yields_no_facts(self) -> None:
+        self.assertEqual(main.extract_source_coverage_facts(
+            "TABLE OF CONTENTS\n1. Introduction........ 3\n2. Safety rules........ 7\nChapter 3 Practice 12"), [])
+        self.assertEqual(main.extract_source_coverage_facts(
+            "Nội dung chương trình\nChương 1: Tổng quan\nChương 2: Thực hành\nPhần II"), [])
+
+    def test_a_sentence_that_mentions_the_program_content_is_content(self) -> None:
+        # Previously the whole chunk was dropped because it contained "nội dung chương trình".
+        text = "Nội dung chương trình được thiết kế cho nhân viên mới.\n1. Rửa tay trước khi vào ca làm việc."
+        self.assertEqual(main.extract_source_coverage_facts(text),
+                         ["Nội dung chương trình được thiết kế cho nhân viên mới.",
+                          "1. Rửa tay trước khi vào ca làm việc."])
+        self.assertEqual(main.extract_source_coverage_facts("1. Rửa tay.\n2. Đeo găng tay trước khi làm việc."),
+                         ["1. Rửa tay.", "2. Đeo găng tay trước khi làm việc."])
+
+    def test_chunks_without_the_previous_trigger_phrases_are_unchanged(self) -> None:
+        # "Mục lục" alone never dropped a chunk; it is only recognised as a TOC title inside a triggered chunk.
+        self.assertEqual(main.extract_source_coverage_facts("MỤC LỤC\nChương 1: Tổng quan an toàn lao động"),
+                         ["MỤC LỤC", "Chương 1: Tổng quan an toàn lao động"])
+
+
 if __name__ == "__main__":
     unittest.main()

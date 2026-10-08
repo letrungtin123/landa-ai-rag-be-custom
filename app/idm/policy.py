@@ -28,11 +28,20 @@ IDM_SINGLE_TASK_MAX_SOURCE_CHARS: Final = 384_000
 IDM_W1_PARALLELISM: Final = 4
 
 # --- Output budgets per provider call (tokens) ----------------------------------------
-IDM_W1_MAP_MAX_OUTPUT_TOKENS: Final = 6_000
-IDM_W1_REDUCE_MAX_OUTPUT_TOKENS: Final = 8_000
-IDM_W2_MAX_OUTPUT_TOKENS: Final = 12_000
-IDM_W4_COURSE_MAX_OUTPUT_TOKENS: Final = 8_000
-IDM_MODULE_MAX_OUTPUT_TOKENS: Final = 24_000
+# Gemini counts thinking tokens against max_output_tokens. QC course 234653 (2026-10-08):
+# every W1-reduce/W2/W4 call of two runs spent exactly its cap (8k/12k/8k with thinking
+# "high") and returned cut JSON, so the course always fell back. A complete W1-reduce
+# answer for 32 blocks x 6 objectives is ~5k JSON tokens, a W2 answer ~5k, a W4 answer
+# ~3k; the caps leave room for thinking plus a margin, and module calls (24k, also cut)
+# double. The task allowance Node grants (65,536 x 2 output tokens per course_skeleton or
+# chapter task) still bounds the sum: later stages only reserve their minimum admissible
+# share (half the cap, see ``idm_tail_reserve``), and the runtime shrinks a call to what
+# is left. The unit writer keeps 16k: no unit answer reached it.
+IDM_W1_MAP_MAX_OUTPUT_TOKENS: Final = 12_000
+IDM_W1_REDUCE_MAX_OUTPUT_TOKENS: Final = 24_000
+IDM_W2_MAX_OUTPUT_TOKENS: Final = 32_000
+IDM_W4_COURSE_MAX_OUTPUT_TOKENS: Final = 16_000
+IDM_MODULE_MAX_OUTPUT_TOKENS: Final = 48_000
 IDM_UNIT_WRITER_MAX_OUTPUT_TOKENS: Final = 16_000
 IDM_JUDGE_MAX_OUTPUT_TOKENS: Final = 3_000
 
@@ -60,14 +69,23 @@ IDM_MAX_ATTEMPT_TRACE_EVENTS: Final = 64
 # The judge is skipped when less than this remains (spec §7.7.5).
 IDM_JUDGE_MIN_REMAINING_SECONDS: Final = 25.0
 
-# --- Thinking levels per stage (spec §5.5) -------------------------------------------------
+# --- Thinking levels per stage (spec §5.5, revised after QC course 234653) ---------------
+# W1-reduce, W2 and W4 classify and order a compact block catalog; "high" thinking used the
+# whole output cap before any JSON was written. "medium" keeps the reasoning (one objective
+# per action, Must Do vs topic, keep/remove per block) and leaves the cap for the answer.
+# The module stage designs practice and layout for several lessons in one answer (10-20k
+# JSON tokens); with "high" it reached its cap too, and a 48k answer at "high" would also
+# risk the provider call timeout, so it uses "medium" as well.
 THINKING_W1_MAP: Final = "low"
-THINKING_W1_REDUCE: Final = "high"
-THINKING_W2: Final = "high"
-THINKING_W4_COURSE: Final = "high"
-THINKING_MODULE: Final = "high"
+THINKING_W1_REDUCE: Final = "medium"
+THINKING_W2: Final = "medium"
+THINKING_W4_COURSE: Final = "medium"
+THINKING_MODULE: Final = "medium"
 THINKING_W5: Final = "medium"
 THINKING_W6: Final = "low"
+# The repair of an answer cut at max_output_tokens thinks less and asks for a shorter answer;
+# re-sending the same prompt at the same level would be cut again.
+THINKING_AFTER_TRUNCATION: Final = "low"
 
 # --- Validation thresholds -----------------------------------------------------------------
 IDM_LO_MIN_COUNT: Final = 3

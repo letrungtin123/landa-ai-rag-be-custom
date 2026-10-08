@@ -102,7 +102,7 @@ class CourseSkeletonDispatchTests(EndpointTestCase):
                          ["IdmW1SectionResponseV1", "IdmW1ReduceResponseV1", "IdmW2BlueprintResponseV1",
                           "IdmW4CourseResponseV1"])
         self.assertTrue(all(call["json_mode"] for call in provider.calls))
-        self.assertEqual({call["thinking_level"] for call in provider.calls[1:]}, {"high"})
+        self.assertEqual({call["thinking_level"] for call in provider.calls[1:]}, {"medium"})
 
     # Regression (fixed): IdmCapacityError subclasses ValueError, not IdmError, so the course-skeleton wrapper
     # (``except IdmError``) lets it escape and the request ends as HTTP 500 INTERNAL_ERROR instead of
@@ -151,7 +151,7 @@ class ChapterShardDispatchTests(EndpointTestCase):
         ChapterBlueprintShardV2.model_validate({k: v for k, v in shard.items() if k != "idm_design"})
         self.assertEqual((data["content_origin"], shard["idm_design"]["stage_origin"]),
                          ("provider_validated", "provider"))
-        self.assertEqual(provider.calls[0]["max_output_tokens"], 24_000)
+        self.assertEqual(provider.calls[0]["max_output_tokens"], 48_000)
 
     async def test_invalid_shard_context_is_422(self) -> None:
         body = idm_shard_body()
@@ -225,7 +225,10 @@ class TransportMappingTests(unittest.IsolatedAsyncioTestCase):
     async def test_service_errors_map_to_idm_provider_errors(self) -> None:
         cases = [
             (HTTPException(504, {"code": "AI_PROVIDER_TIMEOUT"}), "AI_PROVIDER_TIMEOUT", False, 504),
-            (HTTPException(429, {"code": "AI_PROVIDER_QUOTA_EXHAUSTED"}), "AI_PROVIDER_QUOTA_EXHAUSTED", False, 429),
+            # QC course 234653 (D6): an exhausted key or a persistent rate limit must reach Node (503), not
+            # become deterministic content.
+            (HTTPException(503, {"code": "AI_PROVIDER_QUOTA_EXHAUSTED"}), "AI_PROVIDER_QUOTA_EXHAUSTED", True, 503),
+            (HTTPException(503, {"code": "AI_PROVIDER_RATE_LIMITED"}), "AI_PROVIDER_RATE_LIMITED", True, 503),
             (HTTPException(502, {"code": "AI_PROVIDER_REQUEST_REJECTED"}), "AI_PROVIDER_REQUEST_REJECTED", True, 502),
             (HTTPException(503, "plain detail"), "AI_PROVIDER_UNAVAILABLE", False, 503),
             (AppError(code="SERVICE_BUSY", http_status=503, safe_message="busy"), "SERVICE_BUSY", False, 503),
