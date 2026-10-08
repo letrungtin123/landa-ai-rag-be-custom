@@ -1,0 +1,27 @@
+{
+ "description": "Prometheus exposition (metric families only).",
+ "request": {
+  "method": "GET",
+  "path": "/metrics"
+ },
+ "expected": {
+  "status": 200,
+  "content_type": "text/plain; version=1.0.0; charset=utf-8",
+  "body": [
+   "ai_rag_deadline_exceeded_total",
+   "ai_rag_document_limit_rejections_total",
+   "ai_rag_fallbacks_total",
+   "ai_rag_http_client_disconnects_total",
+   "ai_rag_http_request_duration_seconds",
+   "ai_rag_http_requests_total",
+   "ai_rag_limiter_in_use",
+   "ai_rag_limiter_rejections_total",
+   "ai_rag_provider_call_duration_seconds",
+   "ai_rag_provider_calls_total",
+   "ai_rag_provider_tokens_total"
+  ],
+  "db_calls": [],
+  "provider_calls": [],
+  "retrieval_calls": []
+ }
+}

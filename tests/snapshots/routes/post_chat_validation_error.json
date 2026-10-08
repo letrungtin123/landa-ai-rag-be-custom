@@ -1,0 +1,52 @@
+{
+ "description": "Request validation failure (422).",
+ "request": {
+  "method": "POST",
+  "path": "/v1/chat",
+  "json": {
+   "tenant_id": "bad",
+   "kb_id": "22222222-2222-4222-8222-222222222222",
+   "conversation_id": "33333333-3333-4333-8333-333333333333",
+   "target": "admin",
+   "model": "gemini-test-model",
+   "embedding_model": "gemini-embedding-001",
+   "embedding_dimensions": 768,
+   "system_prompt": "SYSTEM PROMPT MARKER",
+   "user_message": "Quy trình khoá và gắn thẻ là gì?",
+   "history": [
+    {
+     "role": "user",
+     "content": "Xin chào"
+    },
+    {
+     "role": "assistant",
+     "content": "Chào bạn"
+    }
+   ],
+   "source_documents": [
+    {
+     "document_id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+     "kb_id": "22222222-2222-4222-8222-222222222222",
+     "name": "Safety Manual",
+     "type": "pdf",
+     "status": "learned"
+    }
+   ],
+   "locale": "vi",
+   "api_key": "route-snapshot-provider-key"
+  }
+ },
+ "expected": {
+  "status": 422,
+  "content_type": "application/json",
+  "body": {
+   "detail": {
+    "code": "REQUEST_VALIDATION_FAILED",
+    "message": "Invalid request."
+   }
+  },
+  "db_calls": [],
+  "provider_calls": [],
+  "retrieval_calls": []
+ }
+}

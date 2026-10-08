@@ -1,0 +1,21 @@
+{
+ "description": "Readiness before startup.",
+ "request": {
+  "method": "GET",
+  "path": "/readyz",
+  "auth": false
+ },
+ "expected": {
+  "status": 503,
+  "content_type": "application/json",
+  "body": {
+   "detail": {
+    "code": "NOT_READY",
+    "message": "The service is not ready."
+   }
+  },
+  "db_calls": [],
+  "provider_calls": [],
+  "retrieval_calls": []
+ }
+}

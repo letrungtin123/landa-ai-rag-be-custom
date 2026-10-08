@@ -1,0 +1,185 @@
+{
+ "description": "Legacy V2 unit deterministic fallback.",
+ "request": {
+  "method": "POST",
+  "path": "/v1/lesson-author/orchestration-v2/unit",
+  "json": {
+   "tenant_id": "00000000-0000-4000-8000-000000000001",
+   "kb_id": "00000000-0000-4000-8000-000000000002",
+   "conversation_id": "00000000-0000-4000-8000-000000000003",
+   "target": "lesson_author",
+   "model": "test-model",
+   "max_output_tokens": 8192,
+   "embedding_model": "test-embedding",
+   "embedding_dimensions": 768,
+   "system_prompt": "server-owned",
+   "user_message": "Tạo nội dung bài học",
+   "history": [],
+   "source_documents": [
+    {
+     "document_id": "00000000-0000-4000-8000-000000000005",
+     "kb_id": "00000000-0000-4000-8000-000000000002",
+     "name": "Nguồn.pdf",
+     "type": "pdf",
+     "status": "learned"
+    }
+   ],
+   "locale": "vi",
+   "correlation_id": "00000000-0000-4000-8000-000000000004",
+   "api_key": "route-snapshot-provider-key",
+   "contract_version": 2,
+   "unit_contract": {
+    "contract_version": 2,
+    "source_snapshot_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "assembly_hash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "chapter_key": "chapter-1",
+    "unit_path": "chapter_1.lesson_1.unit_1",
+    "chapter_title": "Chương 1",
+    "lesson_title": "Bài 1",
+    "lesson_learning_objectives": [
+     "Áp dụng"
+    ],
+    "unit_title": "Nội dung",
+    "unit_purpose": "Giải thích",
+    "unit_learning_objective_refs": [
+     "lo_1"
+    ],
+    "unit_source_scope_ids": [
+     "scope-1"
+    ],
+    "unit_source_fact_ids": [
+     "fact-1"
+    ],
+    "component_plan": [
+     {
+      "component_plan_id": "cp2_cccccccccccccccccccccccccccccccc",
+      "type": "html",
+      "title": "Giải thích",
+      "rationale": "Nội dung chính",
+      "purpose": "explain",
+      "source_fact_ids": [
+       "fact-1"
+      ],
+      "supporting_evidence_fact_ids": [],
+      "learning_objective_refs": [
+       "lo_1"
+      ],
+      "source_scope_ids": [
+       "scope-1"
+      ],
+      "content_requirements": [],
+      "learning_block_ids": [],
+      "required_artifacts": []
+     }
+    ],
+    "source_facts": [
+     {
+      "document_id": "00000000-0000-4000-8000-000000000005",
+      "fact_key": "fact-1",
+      "scope_key": "scope-1",
+      "fact_text": "Alpha",
+      "source_ref": null,
+      "source_page": 1,
+      "source_chunk": 0,
+      "locator": {}
+     }
+    ],
+    "contract_hash": "a8f383388944f9353937e30e83f6b0e7ed4f955acedf5416c5494addb3ec6bae"
+   },
+   "max_attempts": 1,
+   "remaining_workflow_budget_ms": 60000,
+   "fallback_only": true
+  }
+ },
+ "expected": {
+  "status": 200,
+  "content_type": "application/json",
+  "body": {
+   "contract_version": 2,
+   "source_snapshot_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "unit_path": "chapter_1.lesson_1.unit_1",
+   "unit": {
+    "title": "Nội dung",
+    "source_fact_ids": [
+     "fact-1"
+    ],
+    "supporting_evidence_fact_ids": [],
+    "component_plan": [
+     {
+      "component_plan_id": "cp2_cccccccccccccccccccccccccccccccc",
+      "type": "html",
+      "title": "Giải thích",
+      "rationale": "Nội dung chính",
+      "purpose": "explain",
+      "source_fact_ids": [
+       "fact-1"
+      ],
+      "supporting_evidence_fact_ids": [],
+      "learning_objective_refs": [
+       "lo_1"
+      ],
+      "source_scope_ids": [
+       "scope-1"
+      ],
+      "content_requirements": [],
+      "learning_block_ids": [],
+      "required_artifacts": []
+     }
+    ],
+    "components": [
+     {
+      "type": "html",
+      "title": "Giải thích",
+      "component_plan_id": "cp2_cccccccccccccccccccccccccccccccc",
+      "source_fact_ids": [
+       "fact-1"
+      ],
+      "covered_source_fact_ids": [
+       "fact-1"
+      ],
+      "supporting_evidence_fact_ids": [],
+      "learning_objective_refs": [
+       "lo_1"
+      ],
+      "source_locked_fallback": true,
+      "selection_rationale": "Kết quả từ mô hình chưa khả dụng; bản nháp để rà soát này được dựng từ các dữ kiện nguồn đã khóa.",
+      "html": "<h2>Giải thích</h2><p>Alpha</p>"
+     }
+    ],
+    "source_locked_fallback": true
+   },
+   "usage": {
+    "inputTokens": 0,
+    "outputTokens": 0,
+    "embeddingTokens": 0,
+    "totalTokens": 0
+   },
+   "usage_complete": true,
+   "usage_source": "deterministic_fallback",
+   "content_origin": "structured_fallback",
+   "quality_state": "review_required",
+   "attempt_trace": [
+    {
+     "sequence": 1,
+     "invocation_kind": "deterministic",
+     "invocation_index": 1,
+     "provider_attempt": null,
+     "phase": "fallback",
+     "outcome": "fallback",
+     "event_code": "deterministic_fallback",
+     "failure_stage": "durable_replay",
+     "failure_code": "DURABLE_FINAL_ATTEMPT",
+     "failure_path": null,
+     "provider_dispatched": false,
+     "usage_source": "unknown",
+     "observed_usage": {},
+     "duration_ms": "<volatile>",
+     "diagnostics": {}
+    }
+   ]
+  },
+  "db_calls": [],
+  "provider_calls": [],
+  "retrieval_calls": []
+ }
+}

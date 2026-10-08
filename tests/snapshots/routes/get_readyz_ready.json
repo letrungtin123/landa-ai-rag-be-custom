@@ -1,0 +1,29 @@
+{
+ "description": "Readiness with a reachable database and a passed schema check.",
+ "request": {
+  "method": "GET",
+  "path": "/readyz",
+  "auth": false
+ },
+ "runtime": {
+  "started": true,
+  "db_pool": [
+   {
+    "match": "SELECT 1",
+    "method": "fetchval",
+    "value": 1
+   }
+  ],
+  "schema": "ok"
+ },
+ "expected": {
+  "status": 200,
+  "content_type": "application/json",
+  "body": {
+   "status": "ready"
+  },
+  "db_calls": [],
+  "provider_calls": [],
+  "retrieval_calls": []
+ }
+}

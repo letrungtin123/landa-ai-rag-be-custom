@@ -1,0 +1,126 @@
+{
+ "description": "No retrieved evidence returns the fixed no-context answer without generation.",
+ "request": {
+  "method": "POST",
+  "path": "/v1/chat",
+  "json": {
+   "tenant_id": "11111111-1111-4111-8111-111111111111",
+   "kb_id": "22222222-2222-4222-8222-222222222222",
+   "conversation_id": "33333333-3333-4333-8333-333333333333",
+   "target": "admin",
+   "model": "gemini-test-model",
+   "embedding_model": "gemini-embedding-001",
+   "embedding_dimensions": 768,
+   "system_prompt": "SYSTEM PROMPT MARKER",
+   "user_message": "Quy trình khoá và gắn thẻ là gì?",
+   "history": [],
+   "source_documents": [],
+   "locale": "vi",
+   "api_key": "route-snapshot-provider-key"
+  }
+ },
+ "db": [],
+ "expected": {
+  "status": 200,
+  "content_type": "application/json",
+  "body": {
+   "text": "Hiện tại tôi chưa tìm thấy đủ thông tin liên quan trong Kho tri thức đang chọn để trả lời chính xác. Vui lòng kiểm tra bot đã được gắn đúng Kho tri thức và các tài liệu liên quan đã học xong.",
+   "usage": {
+    "inputTokens": 0,
+    "outputTokens": 0,
+    "embeddingTokens": 8,
+    "totalTokens": 8
+   },
+   "sources": [],
+   "retrieval": {
+    "kb_id": "22222222-2222-4222-8222-222222222222",
+    "source_document_count": 0,
+    "retrieved_count": 0,
+    "returned_source_count": 0,
+    "top_score": null,
+    "top_document_name": null,
+    "methods": [],
+    "top_k": 8,
+    "max_context_chars": 18000,
+    "min_score": 0.25,
+    "keyword_min_score": 0.5,
+    "max_chunks_per_document": 4,
+    "target_source_scope_count": 0,
+    "target_source_scope_chunk_count": 0,
+    "context_chars": 0,
+    "retrieval_candidate_count": 0,
+    "context_truncated": false,
+    "omitted_retrieved_count": 0,
+    "target_source_scope_candidate_count": 0,
+    "target_source_scope_hard_locked": false,
+    "target_source_scope_pages": [],
+    "target_source_scope_expected_pages": [],
+    "target_source_scope_missing_pages": [],
+    "target_source_scope_truncated": false,
+    "out_of_scope_retrieval_count": 0,
+    "structure_source": null,
+    "structure_confidence": null,
+    "structure_node_count": 0,
+    "source_structure_warnings": [],
+    "known_source_ref_count": 0,
+    "covered_source_ref_count": 0,
+    "source_coverage_ratio": null,
+    "reason": "no_confident_matching_chunks"
+   }
+  },
+  "db_calls": [
+   {
+    "method": "fetch",
+    "sql_sha256": "c443d3ab8606b5eb25668269df284e67de9a3abaa73fc34a99ca1aaa39b84b03",
+    "rule": null,
+    "args": [
+     "11111111-1111-4111-8111-111111111111",
+     "22222222-2222-4222-8222-222222222222",
+     null,
+     "[0.73333300,0.26274500,0.40784300,0.21568600]",
+     32,
+     "gemini-embedding-001",
+     768
+    ]
+   },
+   {
+    "method": "fetch",
+    "sql_sha256": "5c6fab340bdf567d7783d25532bd84b3784a546c55653411fa20e8e020363855",
+    "rule": null,
+    "args": [
+     "11111111-1111-4111-8111-111111111111",
+     "22222222-2222-4222-8222-222222222222",
+     null,
+     [
+      "%Quy trình khoá và gắn thẻ là gì?%"
+     ],
+     [
+      "%quy%",
+      "%trình%",
+      "%khoá%",
+      "%gắn%",
+      "%thẻ%"
+     ],
+     5,
+     "Quy trình khoá và gắn thẻ là gì?",
+     32,
+     "gemini-embedding-001",
+     768
+    ]
+   }
+  ],
+  "provider_calls": [
+   {
+    "op": "embed",
+    "model": "gemini-embedding-001",
+    "count": 1,
+    "contents_sha256": "a01f6e63c5d8b4186a2151a3e921beddeff9a41ba860f734cdff32d69f4223ca",
+    "config": {
+     "task_type": "QUESTION_ANSWERING",
+     "output_dimensionality": 768
+    }
+   }
+  ],
+  "retrieval_calls": []
+ }
+}

@@ -1,0 +1,311 @@
+{
+ "description": "Legacy embedding alias is normalized; the optional structure table is missing.",
+ "request": {
+  "method": "POST",
+  "path": "/v1/kb/documents/index",
+  "json": {
+   "tenant_id": "11111111-1111-4111-8111-111111111111",
+   "kb_id": "22222222-2222-4222-8222-222222222222",
+   "document_id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+   "embedding_model": "text-embedding-004",
+   "embedding_dimensions": 768,
+   "api_key": "route-snapshot-provider-key"
+  }
+ },
+ "db": [
+  {
+   "match": "rag_document_structure_nodes",
+   "raise": "UndefinedTableError"
+  },
+  {
+   "match": "FROM kb_documents",
+   "method": "fetchrow",
+   "rows": [
+    {
+     "id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+     "tenant_id": "11111111-1111-4111-8111-111111111111",
+     "kb_id": "22222222-2222-4222-8222-222222222222",
+     "type": "text",
+     "name": "an-toan.txt",
+     "status": "uploaded",
+     "source_info": null,
+     "file_path": null,
+     "content": "Chương 1. An toàn điện\n\n1.1 Cắt nguồn điện\nNgắt cầu dao tổng và treo biển cảnh báo trước khi bảo trì thiết bị điện. Kiểm tra lại bằng bút thử điện để chắc chắn không còn điện áp.\n\n1.2 Khoá và gắn thẻ\nMỗi người thực hiện gắn khoá cá nhân và thẻ ghi tên, thời gian bắt đầu công việc.\n\nChương 2. Phòng cháy chữa cháy\n\n2.1 Bình chữa cháy\nKiểm tra áp suất bình chữa cháy hằng tháng và ghi vào sổ theo dõi. Đặt bình ở nơi dễ thấy, dễ lấy, không bị che khuất.\n"
+    }
+   ]
+  },
+  {
+   "match": "COALESCE(MAX(version), 0) + 1",
+   "method": "fetchval",
+   "value": 3
+  },
+  {
+   "match": "INSERT INTO rag_document_indexes",
+   "method": "fetchval",
+   "value": "44444444-4444-4444-8444-444444444444"
+  },
+  {
+   "match": "FOR UPDATE",
+   "method": "fetchval",
+   "value": "running"
+  }
+ ],
+ "expected": {
+  "status": 200,
+  "content_type": "application/json",
+  "body": {
+   "status": "learned",
+   "chunk_count": 1,
+   "structure_source": "heading_inferred",
+   "structure_confidence": 0.76,
+   "structure_node_count": 5,
+   "diagnostics": {
+    "file_name": "an-toan.txt",
+    "raw_bytes": 598,
+    "extracted_section_count": 1,
+    "extracted_page_count": 0,
+    "extracted_pages": [],
+    "structured_evidence_contract_version": "source-evidence-propagation-v1",
+    "source_evidence_revision": "58780199a58d00cab3a1917e50d44f725b86ec1d511d8ab7c1cca7c4a0eaab95",
+    "source_evidence_revision_chunk_count": 1,
+    "sections_without_page": 1,
+    "structured_section_count": 0,
+    "extracted_table_count": 0,
+    "extracted_heading_count": 0,
+    "extracted_chars": 452,
+    "chunk_count": 1,
+    "candidate_chunk_count": 1,
+    "deduplicated_chunk_count": 0,
+    "indexed_chars": 452,
+    "indexed_tokens": 113,
+    "warnings": []
+   },
+   "usage": {
+    "inputTokens": 0,
+    "outputTokens": 0,
+    "embeddingTokens": 113,
+    "totalTokens": 113
+   }
+  },
+  "db_calls": [
+   {
+    "method": "fetchrow",
+    "sql_sha256": "3eb49d3366c349c9657210e1447543e811fe586ea5e9d7b5263e145f0fa30748",
+    "rule": "FROM kb_documents",
+    "args": [
+     "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+     "11111111-1111-4111-8111-111111111111",
+     "22222222-2222-4222-8222-222222222222"
+    ]
+   },
+   {
+    "method": "execute",
+    "sql_sha256": "c97874e587a461445c3db87a99616c0bfa4b84b1ae860e43bb06b43a32f3eca2",
+    "rule": null,
+    "args": [
+     "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+    ]
+   },
+   {
+    "method": "fetchval",
+    "sql_sha256": "b55c6e0b25e5598a9acb5645aa45d9ba7fd1f96e6b0efe497cbde1d8988ad886",
+    "rule": "COALESCE(MAX(version), 0) + 1",
+    "args": [
+     "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+    ]
+   },
+   {
+    "method": "fetchval",
+    "sql_sha256": "f2e2a0c690cc6426988a61d326fab02715195d489dc13eef800bb7a4920bb801",
+    "rule": "INSERT INTO rag_document_indexes",
+    "args": [
+     "11111111-1111-4111-8111-111111111111",
+     "22222222-2222-4222-8222-222222222222",
+     "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+     3,
+     "gemini-embedding-001"
+    ]
+   },
+   {
+    "method": "fetchval",
+    "sql_sha256": "eeab52bb43b9f34e823660a381d44576f67c045f692e83db4fe873e4b52aeb0a",
+    "rule": "FOR UPDATE",
+    "args": [
+     "44444444-4444-4444-8444-444444444444",
+     "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+    ]
+   },
+   {
+    "method": "executemany",
+    "sql_sha256": "8aed7f35c69dbb2b924fb28716d3a768d55fa549d2184526c54b730db9e0123a",
+    "rule": null,
+    "args": [
+     [
+      "11111111-1111-4111-8111-111111111111",
+      "22222222-2222-4222-8222-222222222222",
+      "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      "44444444-4444-4444-8444-444444444444",
+      0,
+      "Chương 1. An toàn điện\n\n1.1 Cắt nguồn điện\nNgắt cầu dao tổng và treo biển cảnh báo trước khi bảo trì thiết bị điện. Kiểm tra lại bằng bút thử điện để chắc chắn không còn điện áp.\n\n1.2 Khoá và gắn thẻ\nMỗi người thực hiện gắn khoá cá nhân và thẻ ghi tên, thời gian bắt đầu công việc.\n\nChương 2. Phòng cháy chữa cháy\n\n2.1 Bình chữa cháy\nKiểm tra áp suất bình chữa cháy hằng tháng và ghi vào sổ theo dõi. Đặt bình ở nơi dễ thấy, dễ lấy, không bị che khuất.",
+      "c0c4e3e657469dcc022fb0f6d0dc69f8c1abe386299f684152ae37f3197a6ed4",
+      113,
+      null,
+      null,
+      "{\"source_name\": \"an-toan.txt\", \"document_type\": \"text\", \"content_kinds\": [\"text\"], \"table_count\": 0, \"structured_evidence_contract_version\": \"source-evidence-propagation-v1\", \"source_evidence_revision\": \"58780199a58d00cab3a1917e50d44f725b86ec1d511d8ab7c1cca7c4a0eaab95\", \"structure_source\": \"heading_inferred\", \"structure_confidence\": 0.76, \"parser_version\": \"source-structure-v3\", \"source_ref\": \"src-001\", \"heading_path\": \"An toàn điện\", \"source_structure\": {\"parser_version\": \"source-structure-v3\", \"structure_source\": \"heading_inferred\", \"confidence\": 0.76, \"warnings\": [\"TOC_NOT_FOUND_HEADING_INFERRED\"], \"chapter_authority\": {\"version\": 1, \"complete\": true, \"heading_refs\": [\"src-001\", \"src-004\"], \"basis\": \"EXPLICIT_CHAPTER_OR_NUMBERED_TREE\"}, \"nodes\": [{\"source_ref\": \"src-001\", \"title\": \"An toàn điện\", \"level\": 1, \"order\": 0, \"number_label\": \"1\", \"node_type\": \"chapter\", \"confidence\": 0.76}, {\"source_ref\": \"src-002\", \"title\": \"Cắt nguồn điện\", \"level\": 2, \"order\": 1, \"number_label\": \"1.1\", \"parent_source_ref\": \"src-001\", \"node_type\": \"section\", \"confidence\": 0.76}, {\"source_ref\": \"src-003\", \"title\": \"Khoá và gắn thẻ\", \"level\": 2, \"order\": 2, \"number_label\": \"1.2\", \"parent_source_ref\": \"src-001\", \"node_type\": \"section\", \"confidence\": 0.76}, {\"source_ref\": \"src-004\", \"title\": \"Phòng cháy chữa cháy\", \"level\": 1, \"order\": 3, \"number_label\": \"2\", \"node_type\": \"chapter\", \"confidence\": 0.76}, {\"source_ref\": \"src-005\", \"title\": \"Bình chữa cháy\", \"level\": 2, \"order\": 4, \"number_label\": \"2.1\", \"parent_source_ref\": \"src-004\", \"node_type\": \"section\", \"confidence\": 0.76}]}}",
+      "[0.75294100,0.76862700,0.89019600,0.90196100]"
+     ]
+    ]
+   },
+   {
+    "method": "executemany",
+    "sql_sha256": "3953d352e34d0bbf8aed8f6d457ec9b23cc851c82dbb741ea74f147dbebdfb5f",
+    "rule": "rag_document_structure_nodes",
+    "args": [
+     [
+      "11111111-1111-4111-8111-111111111111",
+      "22222222-2222-4222-8222-222222222222",
+      "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      "44444444-4444-4444-8444-444444444444",
+      "src-001",
+      null,
+      1,
+      "chapter",
+      "An toàn điện",
+      "1",
+      null,
+      null,
+      0,
+      0.76,
+      "source-structure-v3",
+      "{\"structure_source\": \"heading_inferred\", \"parser_version\": \"source-structure-v3\", \"warnings\": [\"TOC_NOT_FOUND_HEADING_INFERRED\"], \"chapter_authority\": {\"version\": 1, \"complete\": true, \"heading_refs\": [\"src-001\", \"src-004\"], \"basis\": \"EXPLICIT_CHAPTER_OR_NUMBERED_TREE\"}}"
+     ],
+     [
+      "11111111-1111-4111-8111-111111111111",
+      "22222222-2222-4222-8222-222222222222",
+      "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      "44444444-4444-4444-8444-444444444444",
+      "src-002",
+      "src-001",
+      2,
+      "section",
+      "Cắt nguồn điện",
+      "1.1",
+      null,
+      null,
+      1,
+      0.76,
+      "source-structure-v3",
+      "{\"structure_source\": \"heading_inferred\", \"parser_version\": \"source-structure-v3\", \"warnings\": [\"TOC_NOT_FOUND_HEADING_INFERRED\"], \"chapter_authority\": {\"version\": 1, \"complete\": true, \"heading_refs\": [\"src-001\", \"src-004\"], \"basis\": \"EXPLICIT_CHAPTER_OR_NUMBERED_TREE\"}}"
+     ],
+     [
+      "11111111-1111-4111-8111-111111111111",
+      "22222222-2222-4222-8222-222222222222",
+      "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      "44444444-4444-4444-8444-444444444444",
+      "src-003",
+      "src-001",
+      2,
+      "section",
+      "Khoá và gắn thẻ",
+      "1.2",
+      null,
+      null,
+      2,
+      0.76,
+      "source-structure-v3",
+      "{\"structure_source\": \"heading_inferred\", \"parser_version\": \"source-structure-v3\", \"warnings\": [\"TOC_NOT_FOUND_HEADING_INFERRED\"], \"chapter_authority\": {\"version\": 1, \"complete\": true, \"heading_refs\": [\"src-001\", \"src-004\"], \"basis\": \"EXPLICIT_CHAPTER_OR_NUMBERED_TREE\"}}"
+     ],
+     [
+      "11111111-1111-4111-8111-111111111111",
+      "22222222-2222-4222-8222-222222222222",
+      "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      "44444444-4444-4444-8444-444444444444",
+      "src-004",
+      null,
+      1,
+      "chapter",
+      "Phòng cháy chữa cháy",
+      "2",
+      null,
+      null,
+      3,
+      0.76,
+      "source-structure-v3",
+      "{\"structure_source\": \"heading_inferred\", \"parser_version\": \"source-structure-v3\", \"warnings\": [\"TOC_NOT_FOUND_HEADING_INFERRED\"], \"chapter_authority\": {\"version\": 1, \"complete\": true, \"heading_refs\": [\"src-001\", \"src-004\"], \"basis\": \"EXPLICIT_CHAPTER_OR_NUMBERED_TREE\"}}"
+     ],
+     [
+      "11111111-1111-4111-8111-111111111111",
+      "22222222-2222-4222-8222-222222222222",
+      "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      "44444444-4444-4444-8444-444444444444",
+      "src-005",
+      "src-004",
+      2,
+      "section",
+      "Bình chữa cháy",
+      "2.1",
+      null,
+      null,
+      4,
+      0.76,
+      "source-structure-v3",
+      "{\"structure_source\": \"heading_inferred\", \"parser_version\": \"source-structure-v3\", \"warnings\": [\"TOC_NOT_FOUND_HEADING_INFERRED\"], \"chapter_authority\": {\"version\": 1, \"complete\": true, \"heading_refs\": [\"src-001\", \"src-004\"], \"basis\": \"EXPLICIT_CHAPTER_OR_NUMBERED_TREE\"}}"
+     ]
+    ]
+   },
+   {
+    "method": "execute",
+    "sql_sha256": "7285b9f026d7e739e4ee83402a1fc71e7bb7eaf33aa8b18de7e7ed69bc25223f",
+    "rule": "rag_document_structure_nodes",
+    "args": [
+     "11111111-1111-4111-8111-111111111111",
+     "22222222-2222-4222-8222-222222222222",
+     "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+     "44444444-4444-4444-8444-444444444444"
+    ]
+   },
+   {
+    "method": "execute",
+    "sql_sha256": "11eced4415d2b026795c7131d82b7ff1985c08d3cace64552388f9bef1cf1171",
+    "rule": null,
+    "args": [
+     "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+     "44444444-4444-4444-8444-444444444444"
+    ]
+   },
+   {
+    "method": "execute",
+    "sql_sha256": "af95def9884deb560eebcd8294a30840387172f37f989146544be36cbc250ce4",
+    "rule": null,
+    "args": [
+     "44444444-4444-4444-8444-444444444444",
+     "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+     "c0c4e3e657469dcc022fb0f6d0dc69f8c1abe386299f684152ae37f3197a6ed4",
+     1
+    ]
+   },
+   {
+    "method": "execute",
+    "sql_sha256": "564e65f0a0d52d71ce74195ee8b2a72167e5a644e867e117446744e25ae68be3",
+    "rule": null,
+    "args": [
+     "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+     "44444444-4444-4444-8444-444444444444"
+    ]
+   }
+  ],
+  "provider_calls": [
+   {
+    "op": "embed",
+    "model": "gemini-embedding-001",
+    "count": 1,
+    "contents_sha256": "66d39311eaca413ba6949814ec43e5143070b0ae35a0f95faf95650829f6769a",
+    "config": {
+     "task_type": "RETRIEVAL_DOCUMENT",
+     "output_dimensionality": 768
+    }
+   }
+  ],
+  "retrieval_calls": []
+ }
+}

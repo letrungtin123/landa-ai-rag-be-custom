@@ -1,0 +1,722 @@
+{
+ "description": "IDM module design for one chapter.",
+ "request": {
+  "method": "POST",
+  "path": "/v1/lesson-author/orchestration-v2/chapter-shard",
+  "json": {
+   "tenant_id": "00000000-0000-4000-8000-000000000001",
+   "kb_id": "00000000-0000-4000-8000-000000000002",
+   "conversation_id": "00000000-0000-4000-8000-000000000003",
+   "target": "lesson_author",
+   "model": "test-model",
+   "max_output_tokens": 8192,
+   "embedding_model": "test-embedding",
+   "embedding_dimensions": 768,
+   "system_prompt": "server-owned",
+   "user_message": "Tạo nội dung bài học",
+   "history": [],
+   "source_documents": [],
+   "locale": "vi",
+   "correlation_id": "00000000-0000-4000-8000-000000000004",
+   "api_key": "route-snapshot-provider-key",
+   "contract_version": 2,
+   "skeleton": {
+    "contract_version": 2,
+    "source_snapshot_hash": "af8270f967b41b2da4243ff9c472b446458f9de9bdeac1fa8ef354f80624587f",
+    "locale": "vi",
+    "title": "Xử lý khiếu nại khách hàng đúng quy trình",
+    "summary": "Khoá học giúp nhân viên Chăm sóc Khách hàng phân loại, đánh giá và quyết định hướng xử lý khiếu nại đúng tiêu chí, tránh hứa hẹn sai và escalate đúng lúc.",
+    "target_audience": "Nhân viên Chăm sóc Khách hàng tuyến đầu tiếp nhận khiếu nại qua tổng đài, đã nắm sản phẩm cơ bản và cần xử lý đúng quy trình, đúng thời hạn. (Đề xuất bởi AI — cần xác nhận)",
+    "prerequisites": [
+     "Biết sử dụng tổng đài và hệ thống CRM ở mức cơ bản"
+    ],
+    "learning_outcomes": [
+     "Người học có thể phân loại khiếu nại theo nhóm và mức độ nghiêm trọng dựa trên bảng cấp độ",
+     "Người học có thể quyết định tự xử lý hay escalate khiếu nại theo tiêu chí bắt buộc",
+     "Người học có thể thực hiện quy trình tiếp nhận và xử lý khiếu nại đúng trình tự"
+    ],
+    "assessment_strategy": "Kiểm tra nhanh sau phần Must Know, bài tình huống quyết định escalate cuối mỗi mục.",
+    "assumptions": [
+     "IDM pipeline idm-1",
+     "LO đề xuất bởi AI — cần xác nhận"
+    ],
+    "chapters": [
+     {
+      "chapter_key": "chapter-1",
+      "order": 0,
+      "title": "Phân loại và đánh giá mức độ khiếu nại",
+      "objective": "Phân loại đúng nhóm và mức độ của mọi khiếu nại tiếp nhận",
+      "learning_outcomes": [
+       "Người học có thể phân loại khiếu nại theo nhóm và mức độ nghiêm trọng dựa trên bảng cấp độ"
+      ],
+      "source_scope_ids": [
+       "idmcb_7b05aebc721d4eac1ec14e9c6e4becee",
+       "idmcb_ba44f8d684f4449eac35a7ac97897e94",
+       "idmcb_53ffd4a2e3fefe50a5a67d14201abf1a"
+      ]
+     },
+     {
+      "chapter_key": "chapter-2",
+      "order": 1,
+      "title": "Quyết định escalate khiếu nại",
+      "objective": "Quyết định đúng khi nào tự xử lý và khi nào phải escalate",
+      "learning_outcomes": [
+       "Người học có thể quyết định tự xử lý hay escalate khiếu nại theo tiêu chí bắt buộc"
+      ],
+      "source_scope_ids": [
+       "idmcb_7eaa0e3fbf112e30347ff9e30599f25d",
+       "idmcb_ffe738c2047a526b9994b57c9d37bfc8"
+      ]
+     },
+     {
+      "chapter_key": "chapter-3",
+      "order": 2,
+      "title": "Tiếp nhận khiếu nại theo quy trình",
+      "objective": "Thực hiện đúng trình tự tiếp nhận và xử lý khiếu nại",
+      "learning_outcomes": [
+       "Người học có thể thực hiện quy trình tiếp nhận và xử lý khiếu nại đúng trình tự"
+      ],
+      "source_scope_ids": [
+       "idmcb_f1db432ba8d0a598e8befef1c560f5a7",
+       "idmcb_d5706a642e72ad117aef39a0097b527f",
+       "idmcb_9c8155960f87c9785b860bba0a32d2e9",
+       "idmcb_1e0cddf95fdfe3eb09fbeac63ef951ec",
+       "idmcb_b7bbaaaa2756ee07f98da541a0308023"
+      ]
+     }
+    ]
+   },
+   "shard_plan": {
+    "chapter_key": "chapter-2",
+    "order": 1,
+    "shard_index": 0,
+    "shard_count": 1,
+    "source_scope_ids": [
+     "idmcb_7eaa0e3fbf112e30347ff9e30599f25d",
+     "idmcb_ffe738c2047a526b9994b57c9d37bfc8"
+    ],
+    "source_fact_count": 9,
+    "source_content_chars": 674
+   },
+   "source_facts": [
+    {
+     "document_id": "00000000-0000-4000-8000-0000000000d1",
+     "fact_key": "d1-c6-f1",
+     "scope_key": "idmcb_7eaa0e3fbf112e30347ff9e30599f25d",
+     "fact_text": "6. TIÊU CHÍ ESCALATE",
+     "source_ref": "src-6",
+     "source_page": 2,
+     "source_chunk": 6,
+     "locator": {
+      "source_evidence_status": "ready",
+      "source_evidence_revision": "e2f31fed4cbac472a84a5d1346174f4fd9f1091faaf3717980f5f31c9c5d55b1",
+      "scope_title": "6. TIÊU CHÍ ESCALATE"
+     }
+    },
+    {
+     "document_id": "00000000-0000-4000-8000-0000000000d1",
+     "fact_key": "d1-c6-f2",
+     "scope_key": "idmcb_7eaa0e3fbf112e30347ff9e30599f25d",
+     "fact_text": "Bắt buộc escalate khi khiếu nại liên quan đến an toàn của khách hàng.",
+     "source_ref": "src-6",
+     "source_page": 2,
+     "source_chunk": 6,
+     "locator": {
+      "source_evidence_status": "ready",
+      "source_evidence_revision": "e2f31fed4cbac472a84a5d1346174f4fd9f1091faaf3717980f5f31c9c5d55b1",
+      "scope_title": "6. TIÊU CHÍ ESCALATE"
+     }
+    },
+    {
+     "document_id": "00000000-0000-4000-8000-0000000000d1",
+     "fact_key": "d1-c6-f3",
+     "scope_key": "idmcb_7eaa0e3fbf112e30347ff9e30599f25d",
+     "fact_text": "Bắt buộc escalate khi khiếu nại có yếu tố pháp lý hoặc khách hàng đề cập đến kiện tụng.",
+     "source_ref": "src-6",
+     "source_page": 2,
+     "source_chunk": 6,
+     "locator": {
+      "source_evidence_status": "ready",
+      "source_evidence_revision": "e2f31fed4cbac472a84a5d1346174f4fd9f1091faaf3717980f5f31c9c5d55b1",
+      "scope_title": "6. TIÊU CHÍ ESCALATE"
+     }
+    },
+    {
+     "document_id": "00000000-0000-4000-8000-0000000000d1",
+     "fact_key": "d1-c6-f4",
+     "scope_key": "idmcb_7eaa0e3fbf112e30347ff9e30599f25d",
+     "fact_text": "Bắt buộc escalate khi giá trị thiệt hại từ 50 triệu đồng trở lên.",
+     "source_ref": "src-6",
+     "source_page": 2,
+     "source_chunk": 6,
+     "locator": {
+      "source_evidence_status": "ready",
+      "source_evidence_revision": "e2f31fed4cbac472a84a5d1346174f4fd9f1091faaf3717980f5f31c9c5d55b1",
+      "scope_title": "6. TIÊU CHÍ ESCALATE"
+     }
+    },
+    {
+     "document_id": "00000000-0000-4000-8000-0000000000d1",
+     "fact_key": "d1-c6-f5",
+     "scope_key": "idmcb_7eaa0e3fbf112e30347ff9e30599f25d",
+     "fact_text": "Với khách hàng VIP, nhân viên phải thông báo cho trưởng nhóm nhưng không bắt buộc escalate.",
+     "source_ref": "src-6",
+     "source_page": 2,
+     "source_chunk": 6,
+     "locator": {
+      "source_evidence_status": "ready",
+      "source_evidence_revision": "e2f31fed4cbac472a84a5d1346174f4fd9f1091faaf3717980f5f31c9c5d55b1",
+      "scope_title": "6. TIÊU CHÍ ESCALATE"
+     }
+    },
+    {
+     "document_id": "00000000-0000-4000-8000-0000000000d1",
+     "fact_key": "d1-c6-f6",
+     "scope_key": "idmcb_7eaa0e3fbf112e30347ff9e30599f25d",
+     "fact_text": "Không được hứa bồi thường trước khi khiếu nại được phân loại mức độ.",
+     "source_ref": "src-6",
+     "source_page": 2,
+     "source_chunk": 6,
+     "locator": {
+      "source_evidence_status": "ready",
+      "source_evidence_revision": "e2f31fed4cbac472a84a5d1346174f4fd9f1091faaf3717980f5f31c9c5d55b1",
+      "scope_title": "6. TIÊU CHÍ ESCALATE"
+     }
+    },
+    {
+     "document_id": "00000000-0000-4000-8000-0000000000d1",
+     "fact_key": "d1-c8-f1",
+     "scope_key": "idmcb_ffe738c2047a526b9994b57c9d37bfc8",
+     "fact_text": "8. LỖI THƯỜNG GẶP",
+     "source_ref": "src-8",
+     "source_page": 2,
+     "source_chunk": 8,
+     "locator": {
+      "source_evidence_status": "ready",
+      "source_evidence_revision": "e2f31fed4cbac472a84a5d1346174f4fd9f1091faaf3717980f5f31c9c5d55b1",
+      "scope_title": "8. LỖI THƯỜNG GẶP"
+     }
+    },
+    {
+     "document_id": "00000000-0000-4000-8000-0000000000d1",
+     "fact_key": "d1-c8-f2",
+     "scope_key": "idmcb_ffe738c2047a526b9994b57c9d37bfc8",
+     "fact_text": "Ví dụ: Nhân viên hứa hoàn tiền ngay khi khách hàng vừa gọi đến, trước khi xác minh đơn hàng; công ty phải chi trả cho một đơn hàng không thuộc diện bồi thường.",
+     "source_ref": "src-8",
+     "source_page": 2,
+     "source_chunk": 8,
+     "locator": {
+      "source_evidence_status": "ready",
+      "source_evidence_revision": "e2f31fed4cbac472a84a5d1346174f4fd9f1091faaf3717980f5f31c9c5d55b1",
+      "scope_title": "8. LỖI THƯỜNG GẶP"
+     }
+    },
+    {
+     "document_id": "00000000-0000-4000-8000-0000000000d1",
+     "fact_key": "d1-c8-f3",
+     "scope_key": "idmcb_ffe738c2047a526b9994b57c9d37bfc8",
+     "fact_text": "Lưu ý: Nhiều nhân viên ghi nhận khiếu nại cấp 3 thành cấp 2 vì không kiểm tra yếu tố truyền thông.",
+     "source_ref": "src-8",
+     "source_page": 2,
+     "source_chunk": 8,
+     "locator": {
+      "source_evidence_status": "ready",
+      "source_evidence_revision": "e2f31fed4cbac472a84a5d1346174f4fd9f1091faaf3717980f5f31c9c5d55b1",
+      "scope_title": "8. LỖI THƯỜNG GẶP"
+     }
+    }
+   ],
+   "idm_module_context": {
+    "pipeline_version": "idm-1",
+    "project_context": {
+     "locale": "vi",
+     "course_title_hint": "Xử lý khiếu nại khách hàng",
+     "source_documents": [
+      {
+       "document_id": "00000000-0000-4000-8000-0000000000d1",
+       "name": "quy-trinh-khieu-nai.pdf",
+       "type": "pdf"
+      }
+     ],
+     "target_audience": null,
+     "learning_objectives": [],
+     "duration_target_minutes": null
+    },
+    "target_audience": {
+     "description": "Nhân viên Chăm sóc Khách hàng tuyến đầu tiếp nhận khiếu nại qua tổng đài, đã nắm sản phẩm cơ bản và cần xử lý đúng quy trình, đúng thời hạn.",
+     "origin": "ai_proposed"
+    },
+    "module": {
+     "module_key": "mod_02",
+     "title": "Quyết định escalate khiếu nại",
+     "performance_goal": "Quyết định đúng khi nào tự xử lý và khi nào phải escalate",
+     "lo_ids": [
+      "lo_2"
+     ],
+     "lessons": [
+      {
+       "lesson_key": "lsn_003",
+       "kind": "learning",
+       "title": "Quyết định tự xử lý hay escalate",
+       "primary_must_do_id": "md_3",
+       "secondary_must_do_ids": [],
+       "block_ids": [
+        "cb_0009",
+        "cb_0011"
+       ],
+       "est_screens": 6,
+       "est_minutes": 10,
+       "ordering_rationale": "Nền tảng trước, theo thứ tự công việc thực tế."
+      }
+     ]
+    },
+    "learning_objectives": [
+     {
+      "lo_id": "lo_1",
+      "statement": "Người học có thể phân loại khiếu nại theo nhóm và mức độ nghiêm trọng dựa trên bảng cấp độ",
+      "bloom": "apply",
+      "origin": "ai_proposed"
+     },
+     {
+      "lo_id": "lo_2",
+      "statement": "Người học có thể quyết định tự xử lý hay escalate khiếu nại theo tiêu chí bắt buộc",
+      "bloom": "evaluate",
+      "origin": "ai_proposed"
+     },
+     {
+      "lo_id": "lo_3",
+      "statement": "Người học có thể thực hiện quy trình tiếp nhận và xử lý khiếu nại đúng trình tự",
+      "bloom": "apply",
+      "origin": "ai_proposed"
+     }
+    ],
+    "must_dos": [
+     {
+      "must_do_id": "md_1",
+      "lo_id": "lo_1",
+      "statement": "Phân loại khiếu nại theo nhóm",
+      "kind": "do",
+      "bloom": "apply"
+     },
+     {
+      "must_do_id": "md_2",
+      "lo_id": "lo_1",
+      "statement": "Đánh giá mức độ nghiêm trọng của khiếu nại",
+      "kind": "decide",
+      "bloom": "analyze"
+     },
+     {
+      "must_do_id": "md_3",
+      "lo_id": "lo_2",
+      "statement": "Quyết định tự xử lý hay escalate",
+      "kind": "decide",
+      "bloom": "evaluate"
+     },
+     {
+      "must_do_id": "md_4",
+      "lo_id": "lo_3",
+      "statement": "Thực hiện các bước tiếp nhận khiếu nại đúng trình tự",
+      "kind": "do",
+      "bloom": "apply"
+     },
+     {
+      "must_do_id": "md_5",
+      "lo_id": "lo_3",
+      "statement": "Phản hồi khách hàng đúng thời hạn",
+      "kind": "do",
+      "bloom": "apply"
+     }
+    ],
+    "blocks": [
+     {
+      "block_id": "cb_0009",
+      "section_id": "sec_001",
+      "name": "Khi nào bắt buộc phải escalate khiếu nại?",
+      "summary": "Nội dung về: Khi nào bắt buộc phải escalate khiếu nại?",
+      "intent": "decide",
+      "support_role": null,
+      "content_kind": "decision",
+      "fact_keys": [
+       "d1-c6-f1",
+       "d1-c6-f2",
+       "d1-c6-f3",
+       "d1-c6-f4",
+       "d1-c6-f5",
+       "d1-c6-f6"
+      ],
+      "issues": [],
+      "gaps": [],
+      "sme_questions": [],
+      "origin": "provider"
+     },
+     {
+      "block_id": "cb_0011",
+      "section_id": "sec_001",
+      "name": "Những lỗi nào nhân viên thường mắc khi xử lý khiếu nại?",
+      "summary": "Nội dung về: Những lỗi nào nhân viên thường mắc khi xử lý khiếu nại?",
+      "intent": "know",
+      "support_role": "common_mistake",
+      "content_kind": "case",
+      "fact_keys": [
+       "d1-c8-f1",
+       "d1-c8-f2",
+       "d1-c8-f3"
+      ],
+      "issues": [],
+      "gaps": [],
+      "sme_questions": [],
+      "origin": "provider"
+     }
+    ],
+    "blueprint": [
+     {
+      "block_id": "cb_0009",
+      "lo_id": "lo_2",
+      "must_do_ids": [
+       "md_3"
+      ],
+      "classification": "must_do",
+      "placement": "course",
+      "treatment": "keep",
+      "detail_level": "Giữ phần cần để thực hiện đúng Must Do.",
+      "hold": false,
+      "hold_reason": null,
+      "sme_question": null,
+      "combine_into": null,
+      "separate_into": [],
+      "rationale": "Quyết định theo luồng Week 2."
+     },
+     {
+      "block_id": "cb_0011",
+      "lo_id": "lo_2",
+      "must_do_ids": [
+       "md_3"
+      ],
+      "classification": "must_know",
+      "placement": "course",
+      "treatment": "condense",
+      "detail_level": "Giữ phần cần để thực hiện đúng Must Do.",
+      "hold": false,
+      "hold_reason": null,
+      "sme_question": null,
+      "combine_into": null,
+      "separate_into": [],
+      "rationale": "Quyết định theo luồng Week 2."
+     }
+    ],
+    "block_scopes": [
+     {
+      "scope_key": "idmcb_7eaa0e3fbf112e30347ff9e30599f25d",
+      "block_id": "cb_0009",
+      "title": "Khi nào bắt buộc phải escalate khiếu nại?",
+      "source_ref": "src-6",
+      "fact_count": 6,
+      "content_chars": 400,
+      "fact_keys": [
+       "d1-c6-f1",
+       "d1-c6-f2",
+       "d1-c6-f3",
+       "d1-c6-f4",
+       "d1-c6-f5",
+       "d1-c6-f6"
+      ]
+     },
+     {
+      "scope_key": "idmcb_ffe738c2047a526b9994b57c9d37bfc8",
+      "block_id": "cb_0011",
+      "title": "Những lỗi nào nhân viên thường mắc khi xử lý khiếu nại?",
+      "source_ref": "src-8",
+      "fact_count": 3,
+      "content_chars": 274,
+      "fact_keys": [
+       "d1-c8-f1",
+       "d1-c8-f2",
+       "d1-c8-f3"
+      ]
+     }
+    ],
+    "lesson_index_offset": 2,
+    "allowed_component_types": [
+     "html",
+     "problem",
+     "la_faq",
+     "la_sortable",
+     "la_crossword",
+     "la_diagram"
+    ],
+    "token_allowance": {
+     "input_tokens": 400000,
+     "output_tokens": 131072
+    },
+    "remaining_budget_ms": 500000,
+    "design_hash": "e78728133738e6dd98efe4361ed7fc0b1717f9be5347aed40b111c5713270672"
+   }
+  }
+ },
+ "provider": [
+  {
+   "schema": "IdmW3W4ModuleResponseV1",
+   "text": "{\"lessons\": [{\"lesson_key\": \"lsn_003\", \"title\": \"Quyết định tự xử lý hay escalate\", \"objective\": \"Quyết định tự xử lý hay escalate\", \"learning_objectives\": [\"Quyết định tự xử lý hay escalate\"], \"practice_tasks\": [{\"practice_id\": \"pt_1\", \"sentence\": \"Cho một khiếu nại có yếu tố pháp lý, người học quyết định tự xử lý hay escalate để bảo vệ khách hàng và công ty\", \"context_input\": \"Một tình huống khiếu nại cụ thể\", \"learner_action\": \"Chọn cách xử lý\", \"result\": \"Quyết định đúng tiêu chí\", \"bloom\": \"apply\", \"criteria_fact_keys\": [\"d1-c6-f2\", \"d1-c6-f3\", \"d1-c6-f4\", \"d1-c6-f5\", \"d1-c6-f6\"], \"scenario_origin\": \"ai_drafted\", \"hold\": false, \"hold_question\": null, \"feedback_focus\": {\"criterion\": \"Tiêu chí của quy trình\", \"rationale\": \"Vì sao phương án đúng tốt hơn\", \"improvement\": \"Cần đối chiếu tiêu chí trước khi quyết định\"}}], \"assessment\": \"Tiêu chí phản hồi sau phần Must Know, cuối mục.\", \"units\": [{\"unit_index\": 1, \"segment\": \"context_explain\", \"title\": \"Tiêu chí bắt buộc escalate\", \"purpose\": \"Người học làm được bước này của Must Do.\", \"block_ids\": [\"cb_0009\"], \"components\": [{\"component_index\": 1, \"type\": \"html\", \"role\": \"explain\", \"title\": \"Khi nào bắt buộc escalate\", \"rationale\": \"Chọn html vì phù hợp mục đích explain.\", \"block_ids\": [\"cb_0009\"], \"practice_id\": null, \"support_items\": [], \"author_review\": {\"purpose\": \"Phục vụ explain cho Must Do của mục.\", \"example_scenario\": null, \"visual_asset\": null, \"user_behavior_navigation\": \"Đọc, chọn rồi xem phản hồi.\"}}], \"media_brief\": null}, {\"unit_index\": 2, \"segment\": \"practice_feedback\", \"title\": \"Tình huống quyết định escalate\", \"purpose\": \"Người học làm được bước này của Must Do.\", \"block_ids\": [\"cb_0011\"], \"components\": [{\"component_index\": 1, \"type\": \"problem\", \"role\": \"practice\", \"title\": \"Bạn sẽ làm gì với khiếu nại này?\", \"rationale\": \"Chọn problem vì phù hợp mục đích practice.\", \"block_ids\": [\"cb_0011\"], \"practice_id\": \"pt_1\", \"support_items\": [], \"author_review\": {\"purpose\": \"Phục vụ practice cho Must Do của mục.\", \"example_scenario\": null, \"visual_asset\": null, \"user_behavior_navigation\": \"Đọc, chọn rồi xem phản hồi.\"}}, {\"component_index\": 2, \"type\": \"la_faq\", \"role\": \"clarify\", \"title\": \"Những nhầm lẫn thường gặp\", \"rationale\": \"Chọn la_faq vì phù hợp mục đích clarify.\", \"block_ids\": [\"cb_0011\"], \"practice_id\": null, \"support_items\": [], \"author_review\": {\"purpose\": \"Phục vụ clarify cho Must Do của mục.\", \"example_scenario\": null, \"visual_asset\": null, \"user_behavior_navigation\": \"Đọc, chọn rồi xem phản hồi.\"}}], \"media_brief\": null}], \"notes\": \"Bloom: Vận dụng · ước tính 4 khối.\"}]}"
+  }
+ ],
+ "expected": {
+  "status": 200,
+  "content_type": "application/json",
+  "body": {
+   "contract_version": 2,
+   "shard": {
+    "contract_version": 2,
+    "source_snapshot_hash": "af8270f967b41b2da4243ff9c472b446458f9de9bdeac1fa8ef354f80624587f",
+    "chapter_key": "chapter-2",
+    "order": 1,
+    "shard_index": 0,
+    "shard_count": 1,
+    "source_scope_ids": [
+     "idmcb_7eaa0e3fbf112e30347ff9e30599f25d",
+     "idmcb_ffe738c2047a526b9994b57c9d37bfc8"
+    ],
+    "title": "Quyết định escalate khiếu nại",
+    "objective": "Quyết định đúng khi nào tự xử lý và khi nào phải escalate",
+    "lessons": [
+     {
+      "title": "Quyết định tự xử lý hay escalate",
+      "objective": "Quyết định tự xử lý hay escalate",
+      "learning_objectives": [
+       "Quyết định tự xử lý hay escalate"
+      ],
+      "learning_activities": [
+       "Cho một khiếu nại có yếu tố pháp lý, người học quyết định tự xử lý hay escalate để bảo vệ khách hàng và công ty"
+      ],
+      "assessment": "Tiêu chí phản hồi sau phần Must Know, cuối mục.",
+      "units": [
+       {
+        "title": "Tiêu chí bắt buộc escalate",
+        "purpose": "Người học làm được bước này của Must Do.",
+        "learning_objective_refs": [
+         "lo_1"
+        ],
+        "source_scope_ids": [
+         "idmcb_7eaa0e3fbf112e30347ff9e30599f25d"
+        ],
+        "component_plan": [
+         {
+          "type": "html",
+          "title": "Khi nào bắt buộc escalate",
+          "rationale": "Chọn html vì phù hợp mục đích explain.",
+          "author_review": {
+           "purpose": "Phục vụ explain cho Must Do của mục.",
+           "example_scenario": null,
+           "visual_asset": null,
+           "user_behavior_navigation": "Đọc, chọn rồi xem phản hồi."
+          },
+          "source_scope_ids": [
+           "idmcb_7eaa0e3fbf112e30347ff9e30599f25d"
+          ]
+         }
+        ],
+        "media_brief": null
+       },
+       {
+        "title": "Tình huống quyết định escalate",
+        "purpose": "Người học làm được bước này của Must Do.",
+        "learning_objective_refs": [
+         "lo_1"
+        ],
+        "source_scope_ids": [
+         "idmcb_ffe738c2047a526b9994b57c9d37bfc8"
+        ],
+        "component_plan": [
+         {
+          "type": "problem",
+          "title": "Bạn sẽ làm gì với khiếu nại này?",
+          "rationale": "Chọn problem vì phù hợp mục đích practice.",
+          "author_review": {
+           "purpose": "Phục vụ practice cho Must Do của mục.",
+           "example_scenario": "[AI soạn — cần SME xác nhận] Một tình huống khiếu nại cụ thể",
+           "visual_asset": null,
+           "user_behavior_navigation": "Đọc, chọn rồi xem phản hồi."
+          },
+          "source_scope_ids": [
+           "idmcb_ffe738c2047a526b9994b57c9d37bfc8"
+          ]
+         },
+         {
+          "type": "la_faq",
+          "title": "Những nhầm lẫn thường gặp",
+          "rationale": "Chọn la_faq vì phù hợp mục đích clarify.",
+          "author_review": {
+           "purpose": "Phục vụ clarify cho Must Do của mục.",
+           "example_scenario": null,
+           "visual_asset": null,
+           "user_behavior_navigation": "Đọc, chọn rồi xem phản hồi."
+          },
+          "source_scope_ids": [
+           "idmcb_ffe738c2047a526b9994b57c9d37bfc8"
+          ]
+         }
+        ],
+        "media_brief": null
+       }
+      ]
+     }
+    ],
+    "assessment_obligations": [],
+    "idm_design": {
+     "pipeline_version": "idm-1",
+     "chapter_key": "chapter-2",
+     "shard_index": 0,
+     "lessons": [
+      {
+       "lesson_key": "lsn_003",
+       "title": "Quyết định tự xử lý hay escalate",
+       "objective": "Quyết định tự xử lý hay escalate",
+       "learning_objectives": [
+        "Quyết định tự xử lý hay escalate"
+       ],
+       "practice_tasks": [
+        {
+         "practice_id": "pt_1",
+         "sentence": "Cho một khiếu nại có yếu tố pháp lý, người học quyết định tự xử lý hay escalate để bảo vệ khách hàng và công ty",
+         "context_input": "Một tình huống khiếu nại cụ thể",
+         "learner_action": "Chọn cách xử lý",
+         "result": "Quyết định đúng tiêu chí",
+         "bloom": "apply",
+         "criteria_fact_keys": [
+          "d1-c6-f2",
+          "d1-c6-f3",
+          "d1-c6-f4",
+          "d1-c6-f5",
+          "d1-c6-f6"
+         ],
+         "scenario_origin": "ai_drafted",
+         "hold": false,
+         "hold_question": null,
+         "feedback_focus": {
+          "criterion": "Tiêu chí của quy trình",
+          "rationale": "Vì sao phương án đúng tốt hơn",
+          "improvement": "Cần đối chiếu tiêu chí trước khi quyết định"
+         }
+        }
+       ],
+       "assessment": "Tiêu chí phản hồi sau phần Must Know, cuối mục.",
+       "units": [
+        {
+         "unit_index": 1,
+         "segment": "context_explain",
+         "title": "Tiêu chí bắt buộc escalate",
+         "purpose": "Người học làm được bước này của Must Do.",
+         "block_ids": [
+          "cb_0009"
+         ],
+         "components": [
+          {
+           "component_index": 1,
+           "type": "html",
+           "role": "explain",
+           "title": "Khi nào bắt buộc escalate",
+           "rationale": "Chọn html vì phù hợp mục đích explain.",
+           "block_ids": [
+            "cb_0009"
+           ],
+           "practice_id": null,
+           "support_items": [],
+           "author_review": {
+            "purpose": "Phục vụ explain cho Must Do của mục.",
+            "example_scenario": null,
+            "visual_asset": null,
+            "user_behavior_navigation": "Đọc, chọn rồi xem phản hồi."
+           }
+          }
+         ],
+         "media_brief": null
+        },
+        {
+         "unit_index": 2,
+         "segment": "practice_feedback",
+         "title": "Tình huống quyết định escalate",
+         "purpose": "Người học làm được bước này của Must Do.",
+         "block_ids": [
+          "cb_0011"
+         ],
+         "components": [
+          {
+           "component_index": 1,
+           "type": "problem",
+           "role": "practice",
+           "title": "Bạn sẽ làm gì với khiếu nại này?",
+           "rationale": "Chọn problem vì phù hợp mục đích practice.",
+           "block_ids": [
+            "cb_0011"
+           ],
+           "practice_id": "pt_1",
+           "support_items": [],
+           "author_review": {
+            "purpose": "Phục vụ practice cho Must Do của mục.",
+            "example_scenario": "[AI soạn — cần SME xác nhận] Một tình huống khiếu nại cụ thể",
+            "visual_asset": null,
+            "user_behavior_navigation": "Đọc, chọn rồi xem phản hồi."
+           }
+          },
+          {
+           "component_index": 2,
+           "type": "la_faq",
+           "role": "clarify",
+           "title": "Những nhầm lẫn thường gặp",
+           "rationale": "Chọn la_faq vì phù hợp mục đích clarify.",
+           "block_ids": [
+            "cb_0011"
+           ],
+           "practice_id": null,
+           "support_items": [],
+           "author_review": {
+            "purpose": "Phục vụ clarify cho Must Do của mục.",
+            "example_scenario": null,
+            "visual_asset": null,
+            "user_behavior_navigation": "Đọc, chọn rồi xem phản hồi."
+           }
+          }
+         ],
+         "media_brief": null
+        }
+       ],
+       "notes": "Bloom: Vận dụng · ước tính 4 khối."
+      }
+     ],
+     "lesson_index_offset": 2,
+     "stage_origin": "provider",
+     "design_hash": "f30749a1a423fc481b3f83faab0887962771224bd35292281a07b0fd0dfe9434"
+    }
+   },
+   "usage": {
+    "inputTokens": 11,
+    "outputTokens": 7,
+    "embeddingTokens": 0,
+    "totalTokens": 18
+   },
+   "usage_complete": true,
+   "usage_source": "provider",
+   "content_origin": "provider_validated",
+   "quality_state": "validated"
+  },
+  "db_calls": [],
+  "provider_calls": [
+   {
+    "op": "generate",
+    "model": "test-model",
+    "schema": "IdmW3W4ModuleResponseV1",
+    "prompt_sha256": "3f7749261b7ac410fa6a5efa485580454c1a04462501e91cb23223deacb6756d",
+    "prompt_chars": 10079,
+    "config": {
+     "max_output_tokens": 48000,
+     "response_mime_type": "application/json",
+     "response_schema": {
+      "sha256": "bc05b6f2b4902b67ce5f0dfd9d1f5212f5fdfa2213542b4f6d7a8316c5ba29a2",
+      "chars": 6136
+     },
+     "temperature": 0.2
+    }
+   }
+  ],
+  "retrieval_calls": []
+ }
+}

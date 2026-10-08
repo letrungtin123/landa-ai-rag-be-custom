@@ -1,0 +1,178 @@
+{
+ "description": "Legacy V2 chapter shard.",
+ "request": {
+  "method": "POST",
+  "path": "/v1/lesson-author/orchestration-v2/chapter-shard",
+  "json": {
+   "tenant_id": "00000000-0000-4000-8000-000000000001",
+   "kb_id": "00000000-0000-4000-8000-000000000002",
+   "conversation_id": "00000000-0000-4000-8000-000000000003",
+   "target": "lesson_author",
+   "model": "test-model",
+   "max_output_tokens": 8192,
+   "embedding_model": "test-embedding",
+   "embedding_dimensions": 768,
+   "system_prompt": "server-owned",
+   "user_message": "Tạo nội dung bài học",
+   "history": [],
+   "source_documents": [],
+   "locale": "vi",
+   "correlation_id": "00000000-0000-4000-8000-000000000004",
+   "api_key": "route-snapshot-provider-key",
+   "contract_version": 2,
+   "skeleton": {
+    "contract_version": 2,
+    "source_snapshot_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "locale": "vi",
+    "title": "Khóa học",
+    "summary": "Tóm tắt",
+    "target_audience": "Quản lý",
+    "prerequisites": [],
+    "learning_outcomes": [
+     "Áp dụng"
+    ],
+    "assessment_strategy": "Đánh giá",
+    "assumptions": [],
+    "chapters": [
+     {
+      "chapter_key": "chapter-1",
+      "order": 0,
+      "title": "Chương 1",
+      "objective": "Mục tiêu",
+      "learning_outcomes": [
+       "Hoàn thành mục tiêu"
+      ],
+      "source_scope_ids": [
+       "scope-1"
+      ]
+     }
+    ]
+   },
+   "shard_plan": {
+    "chapter_key": "chapter-1",
+    "order": 0,
+    "shard_index": 0,
+    "shard_count": 1,
+    "source_scope_ids": [
+     "scope-1"
+    ],
+    "source_fact_count": 1,
+    "source_content_chars": 5
+   },
+   "source_facts": [
+    {
+     "document_id": "document-1",
+     "fact_key": "fact-1",
+     "scope_key": "scope-1",
+     "fact_text": "Alpha",
+     "source_ref": null,
+     "source_page": 1,
+     "source_chunk": 0,
+     "locator": {}
+    }
+   ],
+   "max_attempts": 2
+  }
+ },
+ "provider": [
+  {
+   "text": "{\"lessons\": [{\"title\": \"Bài 1\", \"objective\": \"Hiểu nội dung\", \"learning_objectives\": [\"Áp dụng\"], \"learning_activities\": [\"Đọc và thực hành\"], \"assessment\": \"Bài kiểm tra\", \"units\": [{\"title\": \"Nội dung\", \"purpose\": \"Giải thích nội dung nguồn\", \"learning_objective_refs\": [\"lo_1\"], \"source_scope_ids\": [\"scope-1\"], \"component_plan\": [{\"type\": \"html\", \"title\": \"Giải thích\", \"rationale\": \"Nội dung chính\", \"author_review\": {\"purpose\": \"Giải thích nội dung\", \"example_scenario\": null, \"visual_asset\": null, \"user_behavior_navigation\": null}, \"source_scope_ids\": [\"scope-1\"]}], \"media_brief\": null}]}]}"
+  },
+  {
+   "text": "{\"lessons\": [{\"title\": \"Bài 1\", \"objective\": \"Hiểu nội dung\", \"learning_objectives\": [\"Áp dụng\"], \"learning_activities\": [\"Đọc và thực hành\"], \"assessment\": \"Bài kiểm tra\", \"units\": [{\"title\": \"Nội dung\", \"purpose\": \"Giải thích nội dung nguồn\", \"learning_objective_refs\": [\"lo_1\"], \"source_scope_ids\": [\"scope-1\"], \"component_plan\": [{\"type\": \"html\", \"title\": \"Giải thích\", \"rationale\": \"Nội dung chính\", \"author_review\": {\"purpose\": \"Giải thích nội dung\", \"example_scenario\": null, \"visual_asset\": null, \"user_behavior_navigation\": null}, \"source_scope_ids\": [\"scope-1\"]}], \"media_brief\": null}]}]}"
+  }
+ ],
+ "expected": {
+  "status": 200,
+  "content_type": "application/json",
+  "body": {
+   "contract_version": 2,
+   "shard": {
+    "contract_version": 2,
+    "source_snapshot_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "chapter_key": "chapter-1",
+    "order": 0,
+    "shard_index": 0,
+    "shard_count": 1,
+    "source_scope_ids": [
+     "scope-1"
+    ],
+    "title": "Chương 1",
+    "objective": "Mục tiêu",
+    "lessons": [
+     {
+      "title": "Bài 1",
+      "objective": "Hiểu nội dung",
+      "learning_objectives": [
+       "Áp dụng"
+      ],
+      "learning_activities": [
+       "Đọc và thực hành"
+      ],
+      "assessment": "Bài kiểm tra",
+      "units": [
+       {
+        "title": "Nội dung",
+        "purpose": "Giải thích nội dung nguồn",
+        "learning_objective_refs": [
+         "lo_1"
+        ],
+        "source_scope_ids": [
+         "scope-1"
+        ],
+        "component_plan": [
+         {
+          "type": "html",
+          "title": "Giải thích",
+          "rationale": "Nội dung chính",
+          "author_review": {
+           "purpose": "Giải thích nội dung",
+           "example_scenario": null,
+           "visual_asset": null,
+           "user_behavior_navigation": null
+          },
+          "source_scope_ids": [
+           "scope-1"
+          ]
+         }
+        ],
+        "media_brief": null
+       }
+      ]
+     }
+    ],
+    "assessment_obligations": []
+   },
+   "usage": {
+    "inputTokens": 11,
+    "outputTokens": 7,
+    "embeddingTokens": 0,
+    "totalTokens": 18
+   },
+   "usage_complete": true,
+   "usage_source": "provider",
+   "content_origin": "provider_validated",
+   "quality_state": "validated"
+  },
+  "db_calls": [],
+  "provider_calls": [
+   {
+    "op": "generate",
+    "model": "test-model",
+    "schema": "ChapterShardDraftV2",
+    "prompt_sha256": "d6d28d5013d680f84ddc1cd3d80f5a873a103af31c0f46c83e532792c338ad86",
+    "prompt_chars": 3617,
+    "config": {
+     "max_output_tokens": 8192,
+     "response_mime_type": "application/json",
+     "response_schema": {
+      "sha256": "8bfd320a749c403d5024b40e63b27cdf6faebd67403adedd6d527dfc55f6dd8b",
+      "chars": 3834
+     },
+     "temperature": 0.2
+    }
+   }
+  ],
+  "retrieval_calls": []
+ }
+}

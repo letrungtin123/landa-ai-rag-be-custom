@@ -1,0 +1,217 @@
+{
+ "description": "Deterministic source page without provider calls.",
+ "request": {
+  "method": "POST",
+  "path": "/v1/lesson-author/orchestration-v2/source-snapshot",
+  "json": {
+   "tenant_id": "00000000-0000-4000-8000-000000000001",
+   "kb_id": "00000000-0000-4000-8000-000000000002",
+   "conversation_id": "00000000-0000-4000-8000-000000000003",
+   "target": "lesson_author",
+   "model": "test-model",
+   "max_output_tokens": 8192,
+   "embedding_model": "test-embedding",
+   "embedding_dimensions": 768,
+   "system_prompt": "server-owned",
+   "user_message": "Tạo nội dung bài học",
+   "history": [],
+   "source_documents": [
+    {
+     "document_id": "00000000-0000-4000-8000-000000000005",
+     "kb_id": "00000000-0000-4000-8000-000000000002",
+     "name": "Nguồn.pdf",
+     "type": "pdf",
+     "status": "learned"
+    }
+   ],
+   "locale": "vi",
+   "correlation_id": "00000000-0000-4000-8000-000000000004",
+   "contract_version": 2,
+   "source_snapshot_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  }
+ },
+ "db": [
+  {
+   "match": "FROM rag_document_indexes r",
+   "method": "fetch",
+   "rows": [
+    {
+     "index_id": "44444444-4444-4444-8444-444444444444",
+     "document_id": "00000000-0000-4000-8000-000000000005",
+     "content_sha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+     "chunk_count": 2,
+     "embedding_model": "test-embedding",
+     "embedding_dimensions": 768
+    }
+   ]
+  },
+  {
+   "match": "AS source_evidence_revision",
+   "method": "fetch",
+   "rows": [
+    {
+     "document_id": "00000000-0000-4000-8000-000000000005",
+     "source_structure": "{\"structure_source\": \"headings\", \"confidence\": 0.8, \"nodes\": []}",
+     "source_evidence_revision": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+     "actual_chunk_count": 2,
+     "evidence_revision_chunk_count": 2,
+     "evidence_revision_distinct_count": 1
+    }
+   ]
+  },
+  {
+   "match": "JOIN kb_documents d",
+   "method": "fetch",
+   "rows": [
+    {
+     "content": "Ngắt cầu dao tổng trước khi bảo trì. Treo biển cảnh báo tại tủ điện.",
+     "source_page": 1,
+     "source_section": "An toàn điện",
+     "metadata": "{\"source_ref\": \"src-1\", \"heading_path\": [\"Ch\\u01b0\\u01a1ng 1\", \"An to\\u00e0n \\u0111i\\u1ec7n\"], \"parser_version\": \"source-structure-v2\", \"content_kinds\": [\"text\"], \"table_count\": 0, \"source_evidence_revision\": \"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc\", \"structured_evidence_contract_version\": \"structured-source-v1\"}",
+     "chunk_no": 0,
+     "index_id": "44444444-4444-4444-8444-444444444444",
+     "document_id": "00000000-0000-4000-8000-000000000005",
+     "document_name": "Nguồn.pdf"
+    },
+    {
+     "content": "Kiểm tra lại bằng bút thử điện. Ghi sổ nhật ký bảo trì.",
+     "source_page": 2,
+     "source_section": "An toàn điện",
+     "metadata": "{\"source_ref\": \"src-1\", \"heading_path\": [\"Ch\\u01b0\\u01a1ng 1\", \"An to\\u00e0n \\u0111i\\u1ec7n\"], \"parser_version\": \"source-structure-v2\", \"content_kinds\": [\"text\"], \"table_count\": 0, \"source_evidence_revision\": \"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc\", \"structured_evidence_contract_version\": \"structured-source-v1\"}",
+     "chunk_no": 1,
+     "index_id": "44444444-4444-4444-8444-444444444444",
+     "document_id": "00000000-0000-4000-8000-000000000005",
+     "document_name": "Nguồn.pdf"
+    }
+   ]
+  }
+ ],
+ "expected": {
+  "status": 200,
+  "content_type": "application/json",
+  "body": {
+   "contract_version": 2,
+   "source_snapshot_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "source_revision": "6986af9ff82009876ec2804710402199027738a1febf2f3a023ceb09bd5dc60b",
+   "source_authority": {
+    "mode": "needs_review",
+    "source": "ambiguous",
+    "complete": false,
+    "confidence": 0.8,
+    "structure_hash": "54e862213c7a3a81a8c4a6c8c0caab050635d6dca08f46b7665c73a1e71270fd",
+    "reason_codes": [
+     "SOURCE_STRUCTURE_UNAVAILABLE"
+    ],
+    "chapters": []
+   },
+   "facts": [
+    {
+     "document_id": "00000000-0000-4000-8000-000000000005",
+     "fact_key": "d1-c1-f1",
+     "scope_key": "scope3_d9b7058e07f95e69c1b3feac451249b4",
+     "fact_text": "Ngắt cầu dao tổng trước khi bảo trì. Treo biển cảnh báo tại tủ điện.",
+     "source_ref": "src-1",
+     "source_page": 1,
+     "source_chunk": 0,
+     "locator": {
+      "index_id": "44444444-4444-4444-8444-444444444444",
+      "source_revision": "6986af9ff82009876ec2804710402199027738a1febf2f3a023ceb09bd5dc60b",
+      "scope_title": "Chương 1 › An toàn điện",
+      "parser_version": "source-structure-v2",
+      "content_kinds": [
+       "text"
+      ],
+      "table_count": 0,
+      "source_evidence_revision": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "source_evidence_status": "ready",
+      "structured_evidence_contract_version": "structured-source-v1",
+      "visual_regions": [],
+      "visual_prompt_text": null,
+      "instructional_density_policy_version": "unit-content-v3-density-1",
+      "scope_partition_lane": 0
+     }
+    },
+    {
+     "document_id": "00000000-0000-4000-8000-000000000005",
+     "fact_key": "d1-c2-f1",
+     "scope_key": "scope3_d9b7058e07f95e69c1b3feac451249b4",
+     "fact_text": "Kiểm tra lại bằng bút thử điện. Ghi sổ nhật ký bảo trì.",
+     "source_ref": "src-1",
+     "source_page": 2,
+     "source_chunk": 1,
+     "locator": {
+      "index_id": "44444444-4444-4444-8444-444444444444",
+      "source_revision": "6986af9ff82009876ec2804710402199027738a1febf2f3a023ceb09bd5dc60b",
+      "scope_title": "Chương 1 › An toàn điện",
+      "parser_version": "source-structure-v2",
+      "content_kinds": [
+       "text"
+      ],
+      "table_count": 0,
+      "source_evidence_revision": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "source_evidence_status": "ready",
+      "structured_evidence_contract_version": "structured-source-v1",
+      "visual_regions": [],
+      "visual_prompt_text": null,
+      "instructional_density_policy_version": "unit-content-v3-density-1",
+      "scope_partition_lane": 0
+     }
+    }
+   ],
+   "next_cursor": null,
+   "has_more": false,
+   "page_content_bytes": 167,
+   "usage": {
+    "inputTokens": 0,
+    "outputTokens": 0,
+    "embeddingTokens": 0,
+    "totalTokens": 0
+   }
+  },
+  "db_calls": [
+   {
+    "method": "fetch",
+    "sql_sha256": "e51ed74928720e56637189b32ad6a4958ecdf3d2d2a6eadaf61275de6d783e9e",
+    "rule": "FROM rag_document_indexes r",
+    "args": [
+     "00000000-0000-4000-8000-000000000001",
+     "00000000-0000-4000-8000-000000000002",
+     [
+      "00000000-0000-4000-8000-000000000005"
+     ],
+     "test-embedding",
+     768
+    ]
+   },
+   {
+    "method": "fetch",
+    "sql_sha256": "b3274ce92b3b0149f2677714b690549a43ffd1cd213841796f2b2fbad9a3f678",
+    "rule": "AS source_evidence_revision",
+    "args": [
+     "00000000-0000-4000-8000-000000000001",
+     "00000000-0000-4000-8000-000000000002",
+     [
+      "44444444-4444-4444-8444-444444444444"
+     ]
+    ]
+   },
+   {
+    "method": "fetch",
+    "sql_sha256": "63999c04e5f70724983a5626b6b8412e8693b6f6eb1bf02e0987ccfff2e05ef0",
+    "rule": "JOIN kb_documents d",
+    "args": [
+     "00000000-0000-4000-8000-000000000001",
+     "00000000-0000-4000-8000-000000000002",
+     [
+      "44444444-4444-4444-8444-444444444444"
+     ],
+     null,
+     -1,
+     129
+    ]
+   }
+  ],
+  "provider_calls": [],
+  "retrieval_calls": []
+ }
+}

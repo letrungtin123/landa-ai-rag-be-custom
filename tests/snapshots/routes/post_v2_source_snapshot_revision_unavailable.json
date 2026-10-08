@@ -1,0 +1,68 @@
+{
+ "description": "Missing learned index is a 422.",
+ "request": {
+  "method": "POST",
+  "path": "/v1/lesson-author/orchestration-v2/source-snapshot",
+  "json": {
+   "tenant_id": "00000000-0000-4000-8000-000000000001",
+   "kb_id": "00000000-0000-4000-8000-000000000002",
+   "conversation_id": "00000000-0000-4000-8000-000000000003",
+   "target": "lesson_author",
+   "model": "test-model",
+   "max_output_tokens": 8192,
+   "embedding_model": "test-embedding",
+   "embedding_dimensions": 768,
+   "system_prompt": "server-owned",
+   "user_message": "Tạo nội dung bài học",
+   "history": [],
+   "source_documents": [
+    {
+     "document_id": "00000000-0000-4000-8000-000000000005",
+     "kb_id": "00000000-0000-4000-8000-000000000002",
+     "name": "Nguồn.pdf",
+     "type": "pdf",
+     "status": "learned"
+    }
+   ],
+   "locale": "vi",
+   "correlation_id": "00000000-0000-4000-8000-000000000004",
+   "contract_version": 2,
+   "source_snapshot_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  }
+ },
+ "db": [
+  {
+   "match": "FROM rag_document_indexes r",
+   "method": "fetch",
+   "rows": []
+  }
+ ],
+ "expected": {
+  "status": 422,
+  "content_type": "application/json",
+  "body": {
+   "detail": {
+    "code": "SOURCE_REVISION_UNAVAILABLE",
+    "message": "The selected learned source revision is unavailable."
+   }
+  },
+  "db_calls": [
+   {
+    "method": "fetch",
+    "sql_sha256": "e51ed74928720e56637189b32ad6a4958ecdf3d2d2a6eadaf61275de6d783e9e",
+    "rule": "FROM rag_document_indexes r",
+    "args": [
+     "00000000-0000-4000-8000-000000000001",
+     "00000000-0000-4000-8000-000000000002",
+     [
+      "00000000-0000-4000-8000-000000000005"
+     ],
+     "test-embedding",
+     768
+    ]
+   }
+  ],
+  "provider_calls": [],
+  "retrieval_calls": []
+ }
+}

@@ -1,0 +1,116 @@
+{
+ "description": "No retrieved evidence for a locked blueprint scope is a 422.",
+ "request": {
+  "method": "POST",
+  "path": "/v1/lesson-author/proposal",
+  "json": {
+   "tenant_id": "11111111-1111-4111-8111-111111111111",
+   "kb_id": "22222222-2222-4222-8222-222222222222",
+   "conversation_id": "33333333-3333-4333-8333-333333333333",
+   "target": "lesson_author",
+   "model": "gemini-3.5-flash",
+   "max_output_tokens": 4096,
+   "embedding_model": "gemini-embedding-001",
+   "embedding_dimensions": 768,
+   "system_prompt": "test",
+   "user_message": "Soạn chi tiết Chương 3: Nhận diện mối nguy",
+   "history": [],
+   "source_documents": [
+    {
+     "document_id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+     "kb_id": "22222222-2222-4222-8222-222222222222",
+     "name": "source.pdf",
+     "type": "pdf",
+     "status": "learned"
+    }
+   ],
+   "course_context": null,
+   "locale": "vi",
+   "correlation_id": null,
+   "api_key": "route-snapshot-provider-key",
+   "outline_context": "",
+   "target_scope_instruction": "",
+   "output_schema_hint": "schema",
+   "operation": "create",
+   "target_type": "chapter",
+   "generation_mode": "staged",
+   "max_attempts": 2,
+   "blueprint_architecture": null
+  }
+ },
+ "retrieval": {
+  "rows": [],
+  "usage": {},
+  "structure": {
+   "source_coverage_manifest": {
+    "facts": [],
+    "scope_unresolved": true,
+    "target_source_refs": [
+     "src-9"
+    ],
+    "resolved_source_refs": []
+   },
+   "outline": "",
+   "known_source_refs": {
+    "__set__": []
+   }
+  }
+ },
+ "expected": {
+  "status": 422,
+  "content_type": "application/json",
+  "body": {
+   "detail": {
+    "code": "LESSON_AUTHOR_INFERRED_SCOPE_UNRESOLVED",
+    "message": "Không thể ánh xạ đầy đủ các mục của chương vào tài liệu nguồn không có mục lục. Vui lòng re-index tài liệu rồi thử lại.",
+    "missing_source_refs": [
+     "src-9"
+    ],
+    "retrieval": {
+     "kb_id": "22222222-2222-4222-8222-222222222222",
+     "source_document_count": 1,
+     "retrieved_count": 0,
+     "returned_source_count": 0,
+     "top_score": null,
+     "top_document_name": null,
+     "methods": [],
+     "top_k": 24,
+     "max_context_chars": 32000,
+     "min_score": 0.25,
+     "keyword_min_score": 0.5,
+     "max_chunks_per_document": 12,
+     "target_source_scope_count": 0,
+     "target_source_scope_chunk_count": 0,
+     "context_chars": 0,
+     "retrieval_candidate_count": 0,
+     "context_truncated": false,
+     "omitted_retrieved_count": 0,
+     "target_source_scope_candidate_count": 0,
+     "target_source_scope_hard_locked": false,
+     "target_source_scope_pages": [],
+     "target_source_scope_expected_pages": [],
+     "target_source_scope_missing_pages": [],
+     "target_source_scope_truncated": false,
+     "out_of_scope_retrieval_count": 0,
+     "structure_source": null,
+     "structure_confidence": null,
+     "structure_node_count": 0,
+     "source_structure_warnings": [],
+     "known_source_ref_count": 0,
+     "covered_source_ref_count": 0,
+     "source_coverage_ratio": null,
+     "reason": "no_confident_matching_chunks"
+    }
+   }
+  },
+  "db_calls": [],
+  "provider_calls": [],
+  "retrieval_calls": [
+   {
+    "op": "retrieve_chunks",
+    "positional": 2,
+    "keywords": []
+   }
+  ]
+ }
+}

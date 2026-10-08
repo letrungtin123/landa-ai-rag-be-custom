@@ -1,0 +1,21 @@
+{
+ "description": "Internal auth rejects a missing token.",
+ "request": {
+  "method": "GET",
+  "path": "/v1/meta",
+  "auth": false
+ },
+ "expected": {
+  "status": 401,
+  "content_type": "application/json",
+  "body": {
+   "detail": {
+    "code": "UNAUTHORIZED",
+    "message": "Unauthorized AI RAG service request."
+   }
+  },
+  "db_calls": [],
+  "provider_calls": [],
+  "retrieval_calls": []
+ }
+}

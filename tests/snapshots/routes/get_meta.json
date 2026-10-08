@@ -1,0 +1,41 @@
+{
+ "description": "Service build and contract identity.",
+ "request": {
+  "method": "GET",
+  "path": "/v1/meta"
+ },
+ "expected": {
+  "status": 200,
+  "content_type": "application/json",
+  "body": {
+   "service": "landa-ai-rag",
+   "build_sha": "snapshot-sha",
+   "api_version": "0.1.0",
+   "contracts": {
+    "orchestration_v2_contract_version": 2,
+    "orchestration_v2_provider_schema_projection": "orchestration-v2-google-wire-2",
+    "idm_pipeline_version": "idm-1",
+    "idm_contract_version": 1,
+    "idm_prompt_policy_version": "idm-prompt-1",
+    "rag_index_request_version": 2
+   },
+   "capabilities": {
+    "index_source_download_url": true,
+    "legacy_storage_service_key": false
+   },
+   "database": {
+    "state": "idle"
+   },
+   "schema_check": {
+    "status": "pending",
+    "code": null,
+    "missing_count": 0,
+    "missing": [],
+    "checked_at": null
+   }
+  },
+  "db_calls": [],
+  "provider_calls": [],
+  "retrieval_calls": []
+ }
+}

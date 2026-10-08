@@ -1,0 +1,18 @@
+{
+ "description": "Liveness.",
+ "request": {
+  "method": "GET",
+  "path": "/healthz",
+  "auth": false
+ },
+ "expected": {
+  "status": 200,
+  "content_type": "application/json",
+  "body": {
+   "status": "ok"
+  },
+  "db_calls": [],
+  "provider_calls": [],
+  "retrieval_calls": []
+ }
+}

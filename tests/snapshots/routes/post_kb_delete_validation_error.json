@@ -1,0 +1,24 @@
+{
+ "description": "Invalid UUIDs are a 422 without echoing input.",
+ "request": {
+  "method": "POST",
+  "path": "/v1/kb/delete",
+  "json": {
+   "tenant_id": "not-a-uuid",
+   "kb_id": "22222222-2222-4222-8222-222222222222"
+  }
+ },
+ "expected": {
+  "status": 422,
+  "content_type": "application/json",
+  "body": {
+   "detail": {
+    "code": "REQUEST_VALIDATION_FAILED",
+    "message": "Invalid request."
+   }
+  },
+  "db_calls": [],
+  "provider_calls": [],
+  "retrieval_calls": []
+ }
+}

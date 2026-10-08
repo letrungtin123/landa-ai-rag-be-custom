@@ -1,0 +1,355 @@
+{
+ "description": "Staged proposal recovers from malformed skeletons.",
+ "request": {
+  "method": "POST",
+  "path": "/v1/lesson-author/proposal",
+  "json": {
+   "tenant_id": "11111111-1111-4111-8111-111111111111",
+   "kb_id": "22222222-2222-4222-8222-222222222222",
+   "conversation_id": "33333333-3333-4333-8333-333333333333",
+   "target": "lesson_author",
+   "model": "gemini-3.5-flash",
+   "max_output_tokens": 4096,
+   "embedding_model": "gemini-embedding-001",
+   "embedding_dimensions": 768,
+   "system_prompt": "test",
+   "user_message": "Soạn chi tiết Chương 3: Nhận diện mối nguy",
+   "history": [],
+   "source_documents": [
+    {
+     "document_id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+     "kb_id": "22222222-2222-4222-8222-222222222222",
+     "name": "source.pdf",
+     "type": "pdf",
+     "status": "learned"
+    }
+   ],
+   "course_context": null,
+   "locale": "vi",
+   "correlation_id": null,
+   "api_key": "route-snapshot-provider-key",
+   "outline_context": "",
+   "target_scope_instruction": "",
+   "output_schema_hint": "schema",
+   "operation": "create",
+   "target_type": "chapter",
+   "generation_mode": "staged",
+   "max_attempts": 2,
+   "blueprint_architecture": null
+  }
+ },
+ "retrieval": {
+  "rows": [
+   {
+    "source_page": 10,
+    "content": "Nhận diện mối nguy: quan sát công việc, thiết bị và môi trường trước khi thao tác.",
+    "document_name": "source.pdf",
+    "source_section": "",
+    "document_id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+    "score": 0.9,
+    "chunk_no": 0,
+    "metadata": {}
+   }
+  ],
+  "usage": {
+   "embeddingTokens": 4,
+   "totalTokens": 4
+  },
+  "structure": {
+   "source_coverage_manifest": {
+    "facts": [
+     {
+      "fact_id": "p10-f1",
+      "source_page": 10,
+      "text": "Nhận diện mối nguy: quan sát công việc, thiết bị và môi trường trước khi thao tác."
+     }
+    ]
+   },
+   "outline": "",
+   "known_source_refs": {
+    "__set__": []
+   }
+  }
+ },
+ "provider": [
+  {
+   "text": "{"
+  },
+  {
+   "text": "{"
+  },
+  {
+   "text": "{\"title\": \"Nhận diện mối nguy\", \"source_fact_ids\": [\"p10-f1\"], \"components\": [{\"type\": \"html\", \"title\": \"Nhận diện mối nguy\", \"html\": \"<h3>Nhận diện mối nguy</h3><p>Người học quan sát công việc, thiết bị và môi trường trước khi thao tác để nhận diện điều kiện có thể gây mất an toàn. Việc rà soát cần được thực hiện có hệ thống, ghi nhận rõ mối nguy và dùng kết quả làm cơ sở cho bước đánh giá rủi ro tiếp theo. Khi phát hiện dấu hiệu bất thường, người học cần mô tả vị trí, điều kiện và đối tượng bị ảnh hưởng để các biện pháp kiểm soát có thể được lựa chọn phù hợp. Việc trao đổi với người phụ trách trước khi tiếp tục công việc giúp tránh bỏ sót những thay đổi tại hiện trường.</p>\", \"source_fact_ids\": [\"p10-f1\"], \"covered_source_fact_ids\": [\"p10-f1\"]}]}"
+  },
+  {
+   "text": "{\"title\": \"Nhận diện mối nguy\", \"source_fact_ids\": [\"p10-f1\"], \"components\": [{\"type\": \"html\", \"title\": \"Nhận diện mối nguy\", \"html\": \"<h3>Nhận diện mối nguy</h3><p>Người học quan sát công việc, thiết bị và môi trường trước khi thao tác để nhận diện điều kiện có thể gây mất an toàn. Việc rà soát cần được thực hiện có hệ thống, ghi nhận rõ mối nguy và dùng kết quả làm cơ sở cho bước đánh giá rủi ro tiếp theo. Khi phát hiện dấu hiệu bất thường, người học cần mô tả vị trí, điều kiện và đối tượng bị ảnh hưởng để các biện pháp kiểm soát có thể được lựa chọn phù hợp. Việc trao đổi với người phụ trách trước khi tiếp tục công việc giúp tránh bỏ sót những thay đổi tại hiện trường.</p>\", \"source_fact_ids\": [\"p10-f1\"], \"covered_source_fact_ids\": [\"p10-f1\"]}]}"
+  },
+  {
+   "text": "{\"title\": \"Nhận diện mối nguy\", \"source_fact_ids\": [\"p10-f1\"], \"components\": [{\"type\": \"html\", \"title\": \"Nhận diện mối nguy\", \"html\": \"<h3>Nhận diện mối nguy</h3><p>Người học quan sát công việc, thiết bị và môi trường trước khi thao tác để nhận diện điều kiện có thể gây mất an toàn. Việc rà soát cần được thực hiện có hệ thống, ghi nhận rõ mối nguy và dùng kết quả làm cơ sở cho bước đánh giá rủi ro tiếp theo. Khi phát hiện dấu hiệu bất thường, người học cần mô tả vị trí, điều kiện và đối tượng bị ảnh hưởng để các biện pháp kiểm soát có thể được lựa chọn phù hợp. Việc trao đổi với người phụ trách trước khi tiếp tục công việc giúp tránh bỏ sót những thay đổi tại hiện trường.</p>\", \"source_fact_ids\": [\"p10-f1\"], \"covered_source_fact_ids\": [\"p10-f1\"]}]}"
+  }
+ ],
+ "expected": {
+  "status": 200,
+  "content_type": "application/json",
+  "body": {
+   "proposal": {
+    "chapters": [
+     {
+      "title": "Nhận diện mối nguy",
+      "lessons": [
+       {
+        "title": "Nội dung trọng tâm",
+        "units": [
+         {
+          "title": "Nhận diện mối nguy",
+          "source_fact_ids": [
+           "p10-f1"
+          ],
+          "components": [
+           {
+            "type": "html",
+            "title": "Nhận diện mối nguy",
+            "html": "<h3>Nhận diện mối nguy</h3><p>Người học quan sát công việc, thiết bị và môi trường trước khi thao tác để nhận diện điều kiện có thể gây mất an toàn. Việc rà soát cần được thực hiện có hệ thống, ghi nhận rõ mối nguy và dùng kết quả làm cơ sở cho bước đánh giá rủi ro tiếp theo. Khi phát hiện dấu hiệu bất thường, người học cần mô tả vị trí, điều kiện và đối tượng bị ảnh hưởng để các biện pháp kiểm soát có thể được lựa chọn phù hợp. Việc trao đổi với người phụ trách trước khi tiếp tục công việc giúp tránh bỏ sót những thay đổi tại hiện trường.</p>",
+            "source_fact_ids": [
+             "p10-f1"
+            ],
+            "covered_source_fact_ids": [
+             "p10-f1"
+            ]
+           }
+          ],
+          "component_plan": [
+           {
+            "type": "html",
+            "rationale": "Giải thích đầy đủ các ý, điều kiện và thuật ngữ có trong tài liệu nguồn.",
+            "purpose": "explain",
+            "source_fact_ids": [
+             "p10-f1"
+            ],
+            "content_requirements": [
+             "Explain every assigned source fact accurately and preserve required source structure."
+            ]
+           }
+          ],
+          "supporting_evidence_fact_ids": []
+         }
+        ]
+       }
+      ]
+     }
+    ]
+   },
+   "usage": {
+    "inputTokens": 33,
+    "outputTokens": 21,
+    "embeddingTokens": 4,
+    "totalTokens": 58
+   },
+   "sources": [
+    {
+     "document_id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+     "document_name": "source.pdf",
+     "source_page": 10,
+     "source_section": "",
+     "score": 0.9,
+     "vector_score": 0.0,
+     "keyword_score": 0.0,
+     "method": "unknown",
+     "methods": [],
+     "source_ref": null,
+     "heading_path": null
+    }
+   ],
+   "retrieval": {
+    "kb_id": "22222222-2222-4222-8222-222222222222",
+    "source_document_count": 1,
+    "retrieved_count": 1,
+    "returned_source_count": 1,
+    "top_score": 0.9,
+    "top_document_name": "source.pdf",
+    "methods": [
+     "unknown"
+    ],
+    "top_k": 24,
+    "max_context_chars": 32000,
+    "min_score": 0.25,
+    "keyword_min_score": 0.5,
+    "max_chunks_per_document": 12,
+    "target_source_scope_count": 0,
+    "target_source_scope_chunk_count": 0,
+    "context_chars": 82,
+    "retrieval_candidate_count": 1,
+    "context_truncated": false,
+    "omitted_retrieved_count": 0,
+    "target_source_scope_candidate_count": 0,
+    "target_source_scope_hard_locked": false,
+    "target_source_scope_pages": [],
+    "target_source_scope_expected_pages": [],
+    "target_source_scope_missing_pages": [],
+    "target_source_scope_truncated": false,
+    "out_of_scope_retrieval_count": 0,
+    "structure_source": null,
+    "structure_confidence": null,
+    "structure_node_count": 0,
+    "source_structure_warnings": [],
+    "known_source_ref_count": 0,
+    "covered_source_ref_count": 0,
+    "source_coverage_ratio": 1.0,
+    "reason": null,
+    "source_coverage_required_count": 1,
+    "source_coverage_covered_count": 1,
+    "source_coverage_missing_fact_ids": [],
+    "source_coverage_status": "complete"
+   },
+   "workflow": {
+    "workflow": "lesson_generation",
+    "workflow_version": "langgraph-v1",
+    "status": "ready",
+    "duration_ms": "<volatile>",
+    "node_durations_ms": "<volatile>",
+    "repair_count": 0,
+    "repair_provider_calls": 0,
+    "repair_layer_attempts": {},
+    "repair_layer_statuses": {},
+    "validation_codes": [],
+    "source_coverage": 1.0,
+    "source_fact_coverage": null,
+    "concept_coverage": null,
+    "objective_coverage": null,
+    "assessment_alignment": null,
+    "instructional_depth": null,
+    "component_purpose": null,
+    "duplicate_count": 0,
+    "pedagogical_warning_count": 0,
+    "component_counts": {
+     "html": 1
+    },
+    "progress": [
+     {
+      "code": "PLANNING_LESSON",
+      "message": "Planning lesson scope",
+      "phase": "lesson_generation",
+      "current": 1,
+      "total": 9
+     },
+     {
+      "code": "RETRIEVING_EVIDENCE",
+      "message": "Retrieving lesson evidence",
+      "phase": "lesson_generation",
+      "current": 2,
+      "total": 9
+     },
+     {
+      "code": "VALIDATING_EVIDENCE",
+      "message": "Validating lesson evidence",
+      "phase": "lesson_generation",
+      "current": 3,
+      "total": 9
+     },
+     {
+      "code": "GENERATING_COMPONENTS",
+      "message": "Generating selected lesson components",
+      "phase": "lesson_generation",
+      "current": 4,
+      "total": 9
+     },
+     {
+      "code": "VALIDATING_CONTENT",
+      "message": "Validating generated lesson content",
+      "phase": "lesson_generation",
+      "current": 5,
+      "total": 9
+     },
+     {
+      "code": "VALIDATING_PEDAGOGY",
+      "message": "Validating learning objectives and instructional treatment",
+      "phase": "lesson_generation",
+      "current": 6,
+      "total": 9
+     },
+     {
+      "code": "CHECKING_DUPLICATION",
+      "message": "Checking generated lesson content for duplication",
+      "phase": "lesson_generation",
+      "current": 7,
+      "total": 9
+     },
+     {
+      "code": "PROPOSAL_READY",
+      "message": "Lesson proposal is ready for review",
+      "phase": "lesson_generation",
+      "current": 9,
+      "total": 9
+     }
+    ],
+    "usage": {
+     "inputTokens": 33,
+     "outputTokens": 21,
+     "embeddingTokens": 0,
+     "totalTokens": 54
+    }
+   }
+  },
+  "db_calls": [],
+  "provider_calls": [
+   {
+    "op": "generate",
+    "model": "gemini-3.5-flash",
+    "schema": null,
+    "prompt_sha256": "aaa84a1a91a4d2106d99451eac962f97da8d7219dfc687ce20b6f7f7202acdbe",
+    "prompt_chars": 3052,
+    "config": {
+     "max_output_tokens": 4096,
+     "response_mime_type": "application/json",
+     "response_schema": {
+      "sha256": "a01ba20024746228b91491bf8cb65ac20b1d97fd3b19fcf72d3809707e013590",
+      "chars": 3427
+     },
+     "temperature": 0.2,
+     "thinking_config": "ThinkingConfig(\n  include_thoughts=False\n)"
+    }
+   },
+   {
+    "op": "generate",
+    "model": "gemini-3.5-flash",
+    "schema": null,
+    "prompt_sha256": "2ec236636cc9ab986d2f6cba2bbf50b898cce9530b8a907bccba35cd384be654",
+    "prompt_chars": 2081,
+    "config": {
+     "max_output_tokens": 4096,
+     "response_mime_type": "application/json",
+     "response_schema": {
+      "sha256": "a01ba20024746228b91491bf8cb65ac20b1d97fd3b19fcf72d3809707e013590",
+      "chars": 3427
+     },
+     "temperature": 0.2,
+     "thinking_config": "ThinkingConfig(\n  include_thoughts=False\n)"
+    }
+   },
+   {
+    "op": "generate",
+    "model": "gemini-3.5-flash",
+    "schema": "StagedLessonUnit_html",
+    "prompt_sha256": "fbc02b779a7c3183d9620e1922bd2b7f65138e4f46d2c2f881003d7e9f132cb4",
+    "prompt_chars": 14375,
+    "config": {
+     "max_output_tokens": 4096,
+     "response_mime_type": "application/json",
+     "response_schema": {
+      "sha256": "27a5b5481a1ac5e0276335df9a7636a22e81bf83858f4ed5309a4197a556e35f",
+      "chars": 3271
+     },
+     "temperature": 0.2,
+     "thinking_config": "ThinkingConfig(\n  include_thoughts=False\n)"
+    }
+   }
+  ],
+  "retrieval_calls": [
+   {
+    "op": "retrieve_chunks",
+    "positional": 2,
+    "keywords": []
+   }
+  ]
+ }
+}

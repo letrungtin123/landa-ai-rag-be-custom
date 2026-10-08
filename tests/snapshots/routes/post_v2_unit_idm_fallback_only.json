@@ -1,0 +1,457 @@
+{
+ "description": "IDM unit deterministic fallback without provider calls.",
+ "request": {
+  "method": "POST",
+  "path": "/v1/lesson-author/orchestration-v2/unit",
+  "json": {
+   "tenant_id": "00000000-0000-4000-8000-0000000000a1",
+   "kb_id": "00000000-0000-4000-8000-0000000000b1",
+   "conversation_id": "00000000-0000-4000-8000-0000000000c1",
+   "target": "lesson_author",
+   "model": "gemini-3.8-flash",
+   "max_output_tokens": 65536,
+   "embedding_model": "gemini-embedding-001",
+   "system_prompt": "x",
+   "user_message": "Generate unit",
+   "locale": "vi",
+   "correlation_id": "00000000-0000-4000-8000-0000000000e1",
+   "api_key": "route-snapshot-provider-key",
+   "source_documents": [
+    {
+     "document_id": "00000000-0000-4000-8000-0000000000d1",
+     "kb_id": "00000000-0000-4000-8000-0000000000b1",
+     "name": "quy-trinh-khieu-nai.pdf",
+     "type": "pdf",
+     "status": "ready"
+    }
+   ],
+   "contract_version": 2,
+   "unit_contract": {
+    "contract_version": 2,
+    "unit_content_policy_version": "unit-content-v4-alignment-1",
+    "source_snapshot_hash": "af8270f967b41b2da4243ff9c472b446458f9de9bdeac1fa8ef354f80624587f",
+    "assembly_hash": "55b4a40f4bdcb4c98940dda747093ee2759c62bb0e32c6dce2efe9430c60f425",
+    "chapter_key": "chapter-1",
+    "unit_path": "chapter_1.lesson_2.unit_1",
+    "chapter_title": "Phân loại và đánh giá mức độ khiếu nại",
+    "lesson_title": "Đánh giá mức độ nghiêm trọng",
+    "lesson_learning_objectives": [
+     "Đánh giá mức độ nghiêm trọng của khiếu nại"
+    ],
+    "unit_title": "Ba cấp độ nghiêm trọng",
+    "unit_purpose": "Người học làm được bước này của Must Do.",
+    "unit_learning_objective_refs": [
+     "lo_1"
+    ],
+    "unit_source_scope_ids": [
+     "idmcb_53ffd4a2e3fefe50a5a67d14201abf1a"
+    ],
+    "unit_source_fact_ids": [
+     "d1-c4-f1",
+     "d1-c4-f2",
+     "d1-c4-f3",
+     "d1-c4-f4",
+     "d1-c4-f5"
+    ],
+    "component_plan": [
+     {
+      "component_plan_id": "cp2_71268d76f94d19d6fd8ae9ff5afa5fb8",
+      "type": "html",
+      "title": "Dấu hiệu của từng cấp độ",
+      "rationale": "Chọn html vì phù hợp mục đích explain.",
+      "purpose": "explain",
+      "source_fact_ids": [
+       "d1-c4-f1",
+       "d1-c4-f2",
+       "d1-c4-f3",
+       "d1-c4-f4",
+       "d1-c4-f5"
+      ],
+      "supporting_evidence_fact_ids": [],
+      "learning_objective_refs": [
+       "lo_1"
+      ],
+      "source_scope_ids": [
+       "idmcb_53ffd4a2e3fefe50a5a67d14201abf1a"
+      ],
+      "content_requirements": [],
+      "learning_block_ids": [],
+      "required_artifacts": []
+     },
+     {
+      "component_plan_id": "cp2_839077faa562c06dfeb51746230dcc41",
+      "type": "problem",
+      "title": "Khiếu nại này thuộc cấp nào?",
+      "rationale": "Chọn problem vì phù hợp mục đích practice.",
+      "purpose": "assess",
+      "source_fact_ids": [],
+      "supporting_evidence_fact_ids": [
+       "d1-c4-f1",
+       "d1-c4-f2",
+       "d1-c4-f3",
+       "d1-c4-f4",
+       "d1-c4-f5"
+      ],
+      "learning_objective_refs": [
+       "lo_1"
+      ],
+      "source_scope_ids": [
+       "idmcb_53ffd4a2e3fefe50a5a67d14201abf1a"
+      ],
+      "content_requirements": [],
+      "learning_block_ids": [],
+      "required_artifacts": []
+     }
+    ],
+    "source_facts": [
+     {
+      "document_id": "00000000-0000-4000-8000-0000000000d1",
+      "fact_key": "d1-c4-f1",
+      "scope_key": "idmcb_53ffd4a2e3fefe50a5a67d14201abf1a",
+      "fact_text": "4. MỨC ĐỘ NGHIÊM TRỌNG",
+      "source_ref": "src-4",
+      "source_page": 1,
+      "source_chunk": 4,
+      "locator": {
+       "source_evidence_status": "ready",
+       "source_evidence_revision": "e2f31fed4cbac472a84a5d1346174f4fd9f1091faaf3717980f5f31c9c5d55b1",
+       "scope_title": "4. MỨC ĐỘ NGHIÊM TRỌNG"
+      }
+     },
+     {
+      "document_id": "00000000-0000-4000-8000-0000000000d1",
+      "fact_key": "d1-c4-f2",
+      "scope_key": "idmcb_53ffd4a2e3fefe50a5a67d14201abf1a",
+      "fact_text": "Row 1: Cấp độ | Dấu hiệu | Cách xử lý",
+      "source_ref": "src-4",
+      "source_page": 1,
+      "source_chunk": 4,
+      "locator": {
+       "source_evidence_status": "ready",
+       "source_evidence_revision": "e2f31fed4cbac472a84a5d1346174f4fd9f1091faaf3717980f5f31c9c5d55b1",
+       "scope_title": "4. MỨC ĐỘ NGHIÊM TRỌNG"
+      }
+     },
+     {
+      "document_id": "00000000-0000-4000-8000-0000000000d1",
+      "fact_key": "d1-c4-f3",
+      "scope_key": "idmcb_53ffd4a2e3fefe50a5a67d14201abf1a",
+      "fact_text": "Row 2: Cấp 1 | Ảnh hưởng thấp, không thiệt hại tài chính | Nhân viên tự xử lý",
+      "source_ref": "src-4",
+      "source_page": 1,
+      "source_chunk": 4,
+      "locator": {
+       "source_evidence_status": "ready",
+       "source_evidence_revision": "e2f31fed4cbac472a84a5d1346174f4fd9f1091faaf3717980f5f31c9c5d55b1",
+       "scope_title": "4. MỨC ĐỘ NGHIÊM TRỌNG"
+      }
+     },
+     {
+      "document_id": "00000000-0000-4000-8000-0000000000d1",
+      "fact_key": "d1-c4-f4",
+      "scope_key": "idmcb_53ffd4a2e3fefe50a5a67d14201abf1a",
+      "fact_text": "Row 3: Cấp 2 | Thiệt hại tài chính dưới 50 triệu đồng hoặc khách hàng phàn nàn lần thứ hai | Thông báo trưởng nhóm",
+      "source_ref": "src-4",
+      "source_page": 1,
+      "source_chunk": 4,
+      "locator": {
+       "source_evidence_status": "ready",
+       "source_evidence_revision": "e2f31fed4cbac472a84a5d1346174f4fd9f1091faaf3717980f5f31c9c5d55b1",
+       "scope_title": "4. MỨC ĐỘ NGHIÊM TRỌNG"
+      }
+     },
+     {
+      "document_id": "00000000-0000-4000-8000-0000000000d1",
+      "fact_key": "d1-c4-f5",
+      "scope_key": "idmcb_53ffd4a2e3fefe50a5a67d14201abf1a",
+      "fact_text": "Row 4: Cấp 3 | Liên quan an toàn, pháp lý hoặc truyền thông | Escalate ngay cho quản lý và bộ phận Pháp chế theo quy trình CR-04",
+      "source_ref": "src-4",
+      "source_page": 1,
+      "source_chunk": 4,
+      "locator": {
+       "source_evidence_status": "ready",
+       "source_evidence_revision": "e2f31fed4cbac472a84a5d1346174f4fd9f1091faaf3717980f5f31c9c5d55b1",
+       "scope_title": "4. MỨC ĐỘ NGHIÊM TRỌNG"
+      }
+     }
+    ],
+    "idm_unit_brief": {
+     "pipeline_version": "idm-1",
+     "course_title": "Xử lý khiếu nại khách hàng đúng quy trình",
+     "target_audience": "Nhân viên Chăm sóc Khách hàng tuyến đầu tiếp nhận khiếu nại qua tổng đài, đã nắm sản phẩm cơ bản và cần xử lý đúng quy trình, đúng thời hạn.",
+     "module_title": "Phân loại và đánh giá mức độ khiếu nại",
+     "lesson_title": "Đánh giá mức độ nghiêm trọng",
+     "lesson_objective": "Đánh giá mức độ nghiêm trọng của khiếu nại",
+     "lesson_practice_sentences": [
+      "Cho mô tả thiệt hại của một khiếu nại, người học xác định cấp độ để chọn cách xử lý phù hợp"
+     ],
+     "previous_lesson_title": "Phân loại khiếu nại theo nhóm",
+     "next_lesson_title": null,
+     "unit_segment": "context_explain",
+     "unit_purpose": "Người học làm được bước này của Must Do.",
+     "components": [
+      {
+       "component_plan_id": "cp2_71268d76f94d19d6fd8ae9ff5afa5fb8",
+       "type": "html",
+       "role": "explain",
+       "title": "Dấu hiệu của từng cấp độ",
+       "support_items": [],
+       "practice": null,
+       "treatments": [
+        {
+         "block_id": "cb_0005",
+         "treatment": "keep",
+         "detail_level": "Giữ phần cần để thực hiện đúng Must Do."
+        }
+       ],
+       "owned_fact_keys": [
+        "d1-c4-f1",
+        "d1-c4-f2",
+        "d1-c4-f3",
+        "d1-c4-f4",
+        "d1-c4-f5"
+       ],
+       "supporting_fact_keys": []
+      },
+      {
+       "component_plan_id": "cp2_839077faa562c06dfeb51746230dcc41",
+       "type": "problem",
+       "role": "practice",
+       "title": "Khiếu nại này thuộc cấp nào?",
+       "support_items": [],
+       "practice": {
+        "practice_id": "pt_1",
+        "sentence": "Cho mô tả thiệt hại của một khiếu nại, người học xác định cấp độ để chọn cách xử lý phù hợp",
+        "context_input": "Một tình huống khiếu nại cụ thể",
+        "learner_action": "Chọn cách xử lý",
+        "result": "Quyết định đúng tiêu chí",
+        "bloom": "apply",
+        "criteria_fact_keys": [
+         "d1-c4-f2",
+         "d1-c4-f3",
+         "d1-c4-f4",
+         "d1-c4-f5"
+        ],
+        "scenario_origin": "ai_drafted",
+        "hold": false,
+        "hold_question": null,
+        "feedback_focus": {
+         "criterion": "Tiêu chí của quy trình",
+         "rationale": "Vì sao phương án đúng tốt hơn",
+         "improvement": "Cần đối chiếu tiêu chí trước khi quyết định"
+        }
+       },
+       "treatments": [
+        {
+         "block_id": "cb_0005",
+         "treatment": "keep",
+         "detail_level": "Giữ phần cần để thực hiện đúng Must Do."
+        }
+       ],
+       "owned_fact_keys": [],
+       "supporting_fact_keys": [
+        "d1-c4-f1",
+        "d1-c4-f2",
+        "d1-c4-f3",
+        "d1-c4-f4",
+        "d1-c4-f5"
+       ]
+      }
+     ],
+     "lesson_context_facts": [],
+     "job_aid_signpost": null,
+     "brief_hash": "d04d7e13e66e70d44f46df3b52cb479124890d60c67da558c72b72bdee6e30cd"
+    },
+    "contract_hash": "1c8c1a43317e530c623859d1f86f259bd333600b92128eaac6e05078993f2db6"
+   },
+   "remaining_workflow_budget_ms": 300000,
+   "fallback_only": true
+  }
+ },
+ "expected": {
+  "status": 200,
+  "content_type": "application/json",
+  "body": {
+   "contract_version": 2,
+   "source_snapshot_hash": "af8270f967b41b2da4243ff9c472b446458f9de9bdeac1fa8ef354f80624587f",
+   "unit_path": "chapter_1.lesson_2.unit_1",
+   "unit": {
+    "title": "Ba cấp độ nghiêm trọng",
+    "source_fact_ids": [
+     "d1-c4-f1",
+     "d1-c4-f2",
+     "d1-c4-f3",
+     "d1-c4-f4",
+     "d1-c4-f5"
+    ],
+    "supporting_evidence_fact_ids": [
+     "d1-c4-f1",
+     "d1-c4-f2",
+     "d1-c4-f3",
+     "d1-c4-f4",
+     "d1-c4-f5"
+    ],
+    "component_plan": [
+     {
+      "component_plan_id": "cp2_71268d76f94d19d6fd8ae9ff5afa5fb8",
+      "type": "html",
+      "title": "Dấu hiệu của từng cấp độ",
+      "rationale": "Chọn html vì phù hợp mục đích explain.",
+      "purpose": "explain",
+      "source_fact_ids": [
+       "d1-c4-f1",
+       "d1-c4-f2",
+       "d1-c4-f3",
+       "d1-c4-f4",
+       "d1-c4-f5"
+      ],
+      "supporting_evidence_fact_ids": [],
+      "learning_objective_refs": [
+       "lo_1"
+      ],
+      "source_scope_ids": [
+       "idmcb_53ffd4a2e3fefe50a5a67d14201abf1a"
+      ],
+      "content_requirements": [],
+      "learning_block_ids": [],
+      "required_artifacts": []
+     },
+     {
+      "component_plan_id": "cp2_839077faa562c06dfeb51746230dcc41",
+      "type": "problem",
+      "title": "Khiếu nại này thuộc cấp nào?",
+      "rationale": "Chọn problem vì phù hợp mục đích practice.",
+      "purpose": "assess",
+      "source_fact_ids": [],
+      "supporting_evidence_fact_ids": [
+       "d1-c4-f1",
+       "d1-c4-f2",
+       "d1-c4-f3",
+       "d1-c4-f4",
+       "d1-c4-f5"
+      ],
+      "learning_objective_refs": [
+       "lo_1"
+      ],
+      "source_scope_ids": [
+       "idmcb_53ffd4a2e3fefe50a5a67d14201abf1a"
+      ],
+      "content_requirements": [],
+      "learning_block_ids": [],
+      "required_artifacts": []
+     }
+    ],
+    "components": [
+     {
+      "type": "html",
+      "title": "Dấu hiệu của từng cấp độ",
+      "component_plan_id": "cp2_71268d76f94d19d6fd8ae9ff5afa5fb8",
+      "source_fact_ids": [
+       "d1-c4-f1",
+       "d1-c4-f2",
+       "d1-c4-f3",
+       "d1-c4-f4",
+       "d1-c4-f5"
+      ],
+      "covered_source_fact_ids": [
+       "d1-c4-f1",
+       "d1-c4-f2",
+       "d1-c4-f3",
+       "d1-c4-f4",
+       "d1-c4-f5"
+      ],
+      "supporting_evidence_fact_ids": [],
+      "learning_objective_refs": [
+       "lo_1"
+      ],
+      "source_locked_fallback": true,
+      "selection_rationale": "Kết quả từ mô hình chưa khả dụng; bản nháp để rà soát này được dựng từ các dữ kiện nguồn đã khóa.",
+      "html": "<h2>Dấu hiệu của từng cấp độ</h2><h3>4. MỨC ĐỘ NGHIÊM TRỌNG</h3><table><thead><tr><th>Cấp độ</th><th>Dấu hiệu</th><th>Cách xử lý</th></tr></thead><tbody><tr><td>Cấp 1</td><td>Ảnh hưởng thấp, không thiệt hại tài chính</td><td>Nhân viên tự xử lý</td></tr><tr><td>Cấp 2</td><td>Thiệt hại tài chính dưới 50 triệu đồng hoặc khách hàng phàn nàn lần thứ hai</td><td>Thông báo trưởng nhóm</td></tr><tr><td>Cấp 3</td><td>Liên quan an toàn, pháp lý hoặc truyền thông</td><td>Escalate ngay cho quản lý và bộ phận Pháp chế theo quy trình CR-04</td></tr></tbody></table>"
+     },
+     {
+      "type": "problem",
+      "title": "Khiếu nại này thuộc cấp nào?",
+      "component_plan_id": "cp2_839077faa562c06dfeb51746230dcc41",
+      "source_fact_ids": [],
+      "covered_source_fact_ids": [],
+      "supporting_evidence_fact_ids": [
+       "d1-c4-f1",
+       "d1-c4-f2",
+       "d1-c4-f3",
+       "d1-c4-f4",
+       "d1-c4-f5"
+      ],
+      "learning_objective_refs": [
+       "lo_1"
+      ],
+      "source_locked_fallback": true,
+      "selection_rationale": "Kết quả từ mô hình chưa khả dụng; bản nháp để rà soát này được dựng từ các dữ kiện nguồn đã khóa.",
+      "problem_type": "multiple_choice",
+      "question": "Theo Cấp độ, Dấu hiệu nào tương ứng với Cấp 1?",
+      "choices": [
+       {
+        "text": "Liên quan an toàn, pháp lý hoặc truyền thông",
+        "correct": false
+       },
+       {
+        "text": "Ảnh hưởng thấp, không thiệt hại tài chính",
+        "correct": true
+       },
+       {
+        "text": "Thiệt hại tài chính dưới 50 triệu đồng hoặc khách hàng phàn nàn lần thứ hai",
+        "correct": false
+       }
+      ],
+      "explanation": "Cấp 1 tương ứng với Ảnh hưởng thấp, không thiệt hại tài chính. Các lựa chọn còn lại mô tả nội dung khác: Thiệt hại tài chính dưới 50 triệu đồng hoặc khách hàng phàn nàn lần thứ hai ↔ Cấp 2; Liên quan an toàn, pháp lý hoặc truyền thông ↔ Cấp 3."
+     }
+    ],
+    "source_locked_fallback": true,
+    "idm_quality": {
+     "judge_mode": "observe",
+     "judge_status": "not_run",
+     "finding_counts": {
+      "minor": 0,
+      "major": 0,
+      "critical": 0
+     },
+     "criteria": {},
+     "repair_applied": false,
+     "deterministic_codes": [],
+     "author_note": "Cả bài dùng bản dự phòng dựng từ tài liệu — cần biên tập. Lý do: IDM_W5_FALLBACK_ONLY."
+    }
+   },
+   "usage": {
+    "inputTokens": 0,
+    "outputTokens": 0,
+    "embeddingTokens": 0,
+    "totalTokens": 0
+   },
+   "usage_complete": true,
+   "usage_source": "deterministic_fallback",
+   "content_origin": "structured_fallback",
+   "quality_state": "review_required",
+   "attempt_trace": [
+    {
+     "sequence": 1,
+     "invocation_kind": "deterministic",
+     "invocation_index": 1,
+     "provider_attempt": null,
+     "phase": "idm_w5_unit",
+     "outcome": "fallback",
+     "event_code": "deterministic_fallback",
+     "failure_stage": "idm_w5_unit",
+     "failure_code": "IDM_W5_UNIT_FALLBACK",
+     "failure_path": null,
+     "provider_dispatched": false,
+     "usage_source": "unknown",
+     "observed_usage": {},
+     "duration_ms": "<volatile>",
+     "diagnostics": {}
+    }
+   ]
+  },
+  "db_calls": [],
+  "provider_calls": [],
+  "retrieval_calls": []
+ }
+}

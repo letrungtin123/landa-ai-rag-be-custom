@@ -1,0 +1,2550 @@
+{
+ "description": "IDM course design (W1-map, W1-reduce, W2, W4).",
+ "request": {
+  "method": "POST",
+  "path": "/v1/lesson-author/orchestration-v2/course-skeleton",
+  "json": {
+   "tenant_id": "00000000-0000-4000-8000-000000000001",
+   "kb_id": "00000000-0000-4000-8000-000000000002",
+   "conversation_id": "00000000-0000-4000-8000-000000000003",
+   "target": "lesson_author",
+   "model": "test-model",
+   "max_output_tokens": 8192,
+   "embedding_model": "test-embedding",
+   "embedding_dimensions": 768,
+   "system_prompt": "server-owned",
+   "user_message": "Tạo nội dung bài học",
+   "history": [],
+   "source_documents": [],
+   "locale": "vi",
+   "correlation_id": "00000000-0000-4000-8000-000000000004",
+   "api_key": "route-snapshot-provider-key",
+   "contract_version": 2,
+   "source_snapshot_hash": "af8270f967b41b2da4243ff9c472b446458f9de9bdeac1fa8ef354f80624587f",
+   "source_authority": {
+    "mode": "model_designed",
+    "source": "none",
+    "complete": true,
+    "confidence": 0.0,
+    "reason_codes": [],
+    "chapters": [],
+    "structure_hash": "8f0d188f9d9f5fbba467bc58da5945dda9e7459c060f376056b2915f96d75ce2"
+   },
+   "scope_catalog": [
+    {
+     "scope_key": "scope3_00",
+     "title": "scope3_00",
+     "source_ref": null,
+     "fact_count": 1,
+     "content_chars": 5
+    },
+    {
+     "scope_key": "scope3_01",
+     "title": "scope3_01",
+     "source_ref": null,
+     "fact_count": 1,
+     "content_chars": 5
+    },
+    {
+     "scope_key": "scope3_02",
+     "title": "scope3_02",
+     "source_ref": null,
+     "fact_count": 1,
+     "content_chars": 5
+    },
+    {
+     "scope_key": "scope3_03",
+     "title": "scope3_03",
+     "source_ref": null,
+     "fact_count": 1,
+     "content_chars": 5
+    },
+    {
+     "scope_key": "scope3_04",
+     "title": "scope3_04",
+     "source_ref": null,
+     "fact_count": 1,
+     "content_chars": 5
+    },
+    {
+     "scope_key": "scope3_05",
+     "title": "scope3_05",
+     "source_ref": null,
+     "fact_count": 1,
+     "content_chars": 5
+    },
+    {
+     "scope_key": "scope3_06",
+     "title": "scope3_06",
+     "source_ref": null,
+     "fact_count": 1,
+     "content_chars": 5
+    },
+    {
+     "scope_key": "scope3_07",
+     "title": "scope3_07",
+     "source_ref": null,
+     "fact_count": 1,
+     "content_chars": 5
+    },
+    {
+     "scope_key": "scope3_08",
+     "title": "scope3_08",
+     "source_ref": null,
+     "fact_count": 1,
+     "content_chars": 5
+    },
+    {
+     "scope_key": "scope3_09",
+     "title": "scope3_09",
+     "source_ref": null,
+     "fact_count": 1,
+     "content_chars": 5
+    },
+    {
+     "scope_key": "scope3_10",
+     "title": "scope3_10",
+     "source_ref": null,
+     "fact_count": 1,
+     "content_chars": 5
+    },
+    {
+     "scope_key": "scope3_11",
+     "title": "scope3_11",
+     "source_ref": null,
+     "fact_count": 1,
+     "content_chars": 5
+    },
+    {
+     "scope_key": "scope3_12",
+     "title": "scope3_12",
+     "source_ref": null,
+     "fact_count": 1,
+     "content_chars": 5
+    }
+   ],
+   "idm": {
+    "pipeline_version": "idm-1",
+    "project_context": {
+     "locale": "vi",
+     "course_title_hint": "Xử lý khiếu nại khách hàng",
+     "source_documents": [
+      {
+       "document_id": "00000000-0000-4000-8000-0000000000d1",
+       "name": "quy-trinh-khieu-nai.pdf",
+       "type": "pdf"
+      }
+     ],
+     "target_audience": null,
+     "learning_objectives": [],
+     "duration_target_minutes": null
+    },
+    "source_facts": [
+     {
+      "document_id": "00000000-0000-4000-8000-0000000000d1",
+      "fact_key": "d1-c0-f1",
+      "scope_key": "scope3_00",
+      "fact_text": "QUY TRÌNH XỬ LÝ KHIẾU NẠI KHÁCH HÀNG",
+      "source_ref": "src-0",
+      "source_page": 1,
+      "source_chunk": 0,
+      "locator": {
+       "source_evidence_status": "ready",
+       "source_evidence_revision": "e2f31fed4cbac472a84a5d1346174f4fd9f1091faaf3717980f5f31c9c5d55b1",
+       "scope_title": "QUY TRÌNH XỬ LÝ KHIẾU NẠI KHÁCH HÀNG"
+      }
+     },
+     {
+      "document_id": "00000000-0000-4000-8000-0000000000d1",
+      "fact_key": "d1-c0-f2",
+      "scope_key": "scope3_00",
+      "fact_text": "Công ty TNHH Dịch vụ An Phú — Phiên bản 3.2 — Áp dụng từ 01/03/2026",
+      "source_ref": "src-0",
+      "source_page": 1,
+      "source_chunk": 0,
+      "locator": {
+       "source_evidence_status": "ready",
+       "source_evidence_revision": "e2f31fed4cbac472a84a5d1346174f4fd9f1091faaf3717980f5f31c9c5d55b1",
+       "scope_title": "QUY TRÌNH XỬ LÝ KHIẾU NẠI KHÁCH HÀNG"
+      }
+     },
+     {
+      "document_id": "00000000-0000-4000-8000-0000000000d1",
+      "fact_key": "d1-c1-f1",
+      "scope_key": "scope3_01",
+      "fact_text": "1. GIỚI THIỆU",
+      "source_ref": "src-1",
+      "source_page": 1,
+      "source_chunk": 1,
+      "locator": {
+       "source_evidence_status": "ready",
+       "source_evidence_revision": "e2f31fed4cbac472a84a5d1346174f4fd9f1091faaf3717980f5f31c9c5d55b1",
+       "scope_title": "1. GIỚI THIỆU"
+      }
+     },
+     {
+      "document_id": "00000000-0000-4000-8000-0000000000d1",
+      "fact_key": "d1-c1-f2",
+      "scope_key": "scope3_01",
+      "fact_text": "Phòng Chăm sóc Khách hàng được thành lập năm 2009 với 5 nhân sự đầu tiên tại chi nhánh Quận 1.",
+      "source_ref": "src-1",
+      "source_page": 1,
+      "source_chunk": 1,
+      "locator": {
+       "source_evidence_status": "ready",
+       "source_evidence_revision": "e2f31fed4cbac472a84a5d1346174f4fd9f1091faaf3717980f5f31c9c5d55b1",
+       "scope_title": "1. GIỚI THIỆU"
+      }
+     },
+     {
+      "document_id": "00000000-0000-4000-8000-0000000000d1",
+      "fact_key": "d1-c1-f3",
+      "scope_key": "scope3_01",
+      "fact_text": "Năm 2015, phòng mở rộng lên 40 nhân sự và chuyển sang mô hình tổng đài tập trung.",
+      "source_ref": "src-1",
+      "source_page": 1,
+      "source_chunk": 1,
+      "locator": {
+       "source_evidence_status": "ready",
+       "source_evidence_revision": "e2f31fed4cbac472a84a5d1346174f4fd9f1091faaf3717980f5f31c9c5d55b1",
+       "scope_title": "1. GIỚI THIỆU"
+      }
+     },
+     {
+      "document_id": "00000000-0000-4000-8000-0000000000d1",
+      "fact_key": "d1-c1-f4",
+      "scope_key": "scope3_01",
+      "fact_text": "Trong bối cảnh môi trường kinh doanh ngày càng cạnh tranh và nhu cầu khách hàng liên tục thay đổi, việc xử lý khiếu nại hiệu quả đóng vai trò rất quan trọng đối với sự phát triển bền vững của doanh nghiệp.",
+      "source_ref": "src-1",
+      "source_page": 1,
+      "source_chunk": 1,
+      "locator": {
+       "source_evidence_status": "ready",
+       "source_evidence_revision": "e2f31fed4cbac472a84a5d1346174f4fd9f1091faaf3717980f5f31c9c5d55b1",
+       "scope_title": "1. GIỚI THIỆU"
+      }
+     },
+     {
+      "document_id": "00000000-0000-4000-8000-0000000000d1",
+      "fact_key": "d1-c2-f1",
+      "scope_key": "scope3_02",
+      "fact_text": "2. ĐỊNH NGHĨA",
+      "source_ref": "src-2",
+      "source_page": 1,
+      "source_chunk": 2,
+      "locator": {
+       "source_evidence_status": "ready",
+       "source_evidence_revision": "e2f31fed4cbac472a84a5d1346174f4fd9f1091faaf3717980f5f31c9c5d55b1",
+       "scope_title": "2. ĐỊNH NGHĨA"
+      }
+     },
+     {
+      "document_id": "00000000-0000-4000-8000-0000000000d1",
+      "fact_key": "d1-c2-f2",
+      "scope_key": "scope3_02",
+      "fact_text": "Khiếu nại là phản ánh của khách hàng về việc sản phẩm, dịch vụ hoặc hành vi của nhân viên không đáp ứng cam kết của công ty, kèm yêu cầu được xử lý.",
+      "source_ref": "src-2",
+      "source_page": 1,
+      "source_chunk": 2,
+      "locator": {
+       "source_evidence_status": "ready",
+       "source_evidence_revision": "e2f31fed4cbac472a84a5d1346174f4fd9f1091faaf3717980f5f31c9c5d55b1",
+       "scope_title": "2. ĐỊNH NGHĨA"
+      }
+     },
+     {
+      "document_id": "00000000-0000-4000-8000-0000000000d1",
+      "fact_key": "d1-c2-f3",
+      "scope_key": "scope3_02",
+      "fact_text": "Góp ý không kèm yêu cầu xử lý không được coi là khiếu nại và được chuyển cho bộ phận Marketing.",
+      "source_ref": "src-2",
+      "source_page": 1,
+      "source_chunk": 2,
+      "locator": {
+       "source_evidence_status": "ready",
+       "source_evidence_revision": "e2f31fed4cbac472a84a5d1346174f4fd9f1091faaf3717980f5f31c9c5d55b1",
+       "scope_title": "2. ĐỊNH NGHĨA"
+      }
+     },
+     {
+      "document_id": "00000000-0000-4000-8000-0000000000d1",
+      "fact_key": "d1-c3-f1",
+      "scope_key": "scope3_03",
+      "fact_text": "3. PHÂN LOẠI KHIẾU NẠI",
+      "source_ref": "src-3",
+      "source_page": 1,
+      "source_chunk": 3,
+      "locator": {
+       "source_evidence_status": "ready",
+       "source_evidence_revision": "e2f31fed4cbac472a84a5d1346174f4fd9f1091faaf3717980f5f31c9c5d55b1",
+       "scope_title": "3. PHÂN LOẠI KHIẾU NẠI"
+      }
+     },
+     {
+      "document_id": "00000000-0000-4000-8000-0000000000d1",
+      "fact_key": "d1-c3-f2",
+      "scope_key": "scope3_03",
+      "fact_text": "Khiếu nại về sản phẩm.",
+      "source_ref": "src-3",
+      "source_page": 1,
+      "source_chunk": 3,
+      "locator": {
+       "source_evidence_status": "ready",
+       "source_evidence_revision": "e2f31fed4cbac472a84a5d1346174f4fd9f1091faaf3717980f5f31c9c5d55b1",
+       "scope_title": "3. PHÂN LOẠI KHIẾU NẠI"
+      }
+     },
+     {
+      "document_id": "00000000-0000-4000-8000-0000000000d1",
+      "fact_key": "d1-c3-f3",
+      "scope_key": "scope3_03",
+      "fact_text": "Khiếu nại về dịch vụ lắp đặt.",
+      "source_ref": "src-3",
+      "source_page": 1,
+      "source_chunk": 3,
+      "locator": {
+       "source_evidence_status": "ready",
+       "source_evidence_revision": "e2f31fed4cbac472a84a5d1346174f4fd9f1091faaf3717980f5f31c9c5d55b1",
+       "scope_title": "3. PHÂN LOẠI KHIẾU NẠI"
+      }
+     },
+     {
+      "document_id": "00000000-0000-4000-8000-0000000000d1",
+      "fact_key": "d1-c3-f4",
+      "scope_key": "scope3_03",
+      "fact_text": "Khiếu nại về nhân viên.",
+      "source_ref": "src-3",
+      "source_page": 1,
+      "source_chunk": 3,
+      "locator": {
+       "source_evidence_status": "ready",
+       "source_evidence_revision": "e2f31fed4cbac472a84a5d1346174f4fd9f1091faaf3717980f5f31c9c5d55b1",
+       "scope_title": "3. PHÂN LOẠI KHIẾU NẠI"
+      }
+     },
+     {
+      "document_id": "00000000-0000-4000-8000-0000000000d1",
+      "fact_key": "d1-c3-f5",
+      "scope_key": "scope3_03",
+      "fact_text": "Khiếu nại về thanh toán.",
+      "source_ref": "src-3",
+      "source_page": 1,
+      "source_chunk": 3,
+      "locator": {
+       "source_evidence_status": "ready",
+       "source_evidence_revision": "e2f31fed4cbac472a84a5d1346174f4fd9f1091faaf3717980f5f31c9c5d55b1",
+       "scope_title": "3. PHÂN LOẠI KHIẾU NẠI"
+      }
+     },
+     {
+      "document_id": "00000000-0000-4000-8000-0000000000d1",
+      "fact_key": "d1-c3-f6",
+      "scope_key": "scope3_03",
+      "fact_text": "Khiếu nại về giao hàng.",
+      "source_ref": "src-3",
+      "source_page": 1,
+      "source_chunk": 3,
+      "locator": {
+       "source_evidence_status": "ready",
+       "source_evidence_revision": "e2f31fed4cbac472a84a5d1346174f4fd9f1091faaf3717980f5f31c9c5d55b1",
+       "scope_title": "3. PHÂN LOẠI KHIẾU NẠI"
+      }
+     },
+     {
+      "document_id": "00000000-0000-4000-8000-0000000000d1",
+      "fact_key": "d1-c4-f1",
+      "scope_key": "scope3_04",
+      "fact_text": "4. MỨC ĐỘ NGHIÊM TRỌNG",
+      "source_ref": "src-4",
+      "source_page": 1,
+      "source_chunk": 4,
+      "locator": {
+       "source_evidence_status": "ready",
+       "source_evidence_revision": "e2f31fed4cbac472a84a5d1346174f4fd9f1091faaf3717980f5f31c9c5d55b1",
+       "scope_title": "4. MỨC ĐỘ NGHIÊM TRỌNG"
+      }
+     },
+     {
+      "document_id": "00000000-0000-4000-8000-0000000000d1",
+      "fact_key": "d1-c4-f2",
+      "scope_key": "scope3_04",
+      "fact_text": "Row 1: Cấp độ | Dấu hiệu | Cách xử lý",
+      "source_ref": "src-4",
+      "source_page": 1,
+      "source_chunk": 4,
+      "locator": {
+       "source_evidence_status": "ready",
+       "source_evidence_revision": "e2f31fed4cbac472a84a5d1346174f4fd9f1091faaf3717980f5f31c9c5d55b1",
+       "scope_title": "4. MỨC ĐỘ NGHIÊM TRỌNG"
+      }
+     },
+     {
+      "document_id": "00000000-0000-4000-8000-0000000000d1",
+      "fact_key": "d1-c4-f3",
+      "scope_key": "scope3_04",
+      "fact_text": "Row 2: Cấp 1 | Ảnh hưởng thấp, không thiệt hại tài chính | Nhân viên tự xử lý",
+      "source_ref": "src-4",
+      "source_page": 1,
+      "source_chunk": 4,
+      "locator": {
+       "source_evidence_status": "ready",
+       "source_evidence_revision": "e2f31fed4cbac472a84a5d1346174f4fd9f1091faaf3717980f5f31c9c5d55b1",
+       "scope_title": "4. MỨC ĐỘ NGHIÊM TRỌNG"
+      }
+     },
+     {
+      "document_id": "00000000-0000-4000-8000-0000000000d1",
+      "fact_key": "d1-c4-f4",
+      "scope_key": "scope3_04",
+      "fact_text": "Row 3: Cấp 2 | Thiệt hại tài chính dưới 50 triệu đồng hoặc khách hàng phàn nàn lần thứ hai | Thông báo trưởng nhóm",
+      "source_ref": "src-4",
+      "source_page": 1,
+      "source_chunk": 4,
+      "locator": {
+       "source_evidence_status": "ready",
+       "source_evidence_revision": "e2f31fed4cbac472a84a5d1346174f4fd9f1091faaf3717980f5f31c9c5d55b1",
+       "scope_title": "4. MỨC ĐỘ NGHIÊM TRỌNG"
+      }
+     },
+     {
+      "document_id": "00000000-0000-4000-8000-0000000000d1",
+      "fact_key": "d1-c4-f5",
+      "scope_key": "scope3_04",
+      "fact_text": "Row 4: Cấp 3 | Liên quan an toàn, pháp lý hoặc truyền thông | Escalate ngay cho quản lý và bộ phận Pháp chế theo quy trình CR-04",
+      "source_ref": "src-4",
+      "source_page": 1,
+      "source_chunk": 4,
+      "locator": {
+       "source_evidence_status": "ready",
+       "source_evidence_revision": "e2f31fed4cbac472a84a5d1346174f4fd9f1091faaf3717980f5f31c9c5d55b1",
+       "scope_title": "4. MỨC ĐỘ NGHIÊM TRỌNG"
+      }
+     },
+     {
+      "document_id": "00000000-0000-4000-8000-0000000000d1",
+      "fact_key": "d1-c5-f1",
+      "scope_key": "scope3_05",
+      "fact_text": "5. QUY TRÌNH TIẾP NHẬN",
+      "source_ref": "src-5",
+      "source_page": 2,
+      "source_chunk": 5,
+      "locator": {
+       "source_evidence_status": "ready",
+       "source_evidence_revision": "e2f31fed4cbac472a84a5d1346174f4fd9f1091faaf3717980f5f31c9c5d55b1",
+       "scope_title": "5. QUY TRÌNH TIẾP NHẬN"
+      }
+     },
+     {
+      "document_id": "00000000-0000-4000-8000-0000000000d1",
+      "fact_key": "d1-c5-f2",
+      "scope_key": "scope3_05",
+      "fact_text": "Bước 1: Chào khách hàng và xác nhận danh tính.",
+      "source_ref": "src-5",
+      "source_page": 2,
+      "source_chunk": 5,
+      "locator": {
+       "source_evidence_status": "ready",
+       "source_evidence_revision": "e2f31fed4cbac472a84a5d1346174f4fd9f1091faaf3717980f5f31c9c5d55b1",
+       "scope_title": "5. QUY TRÌNH TIẾP NHẬN"
+      }
+     },
+     {
+      "document_id": "00000000-0000-4000-8000-0000000000d1",
+      "fact_key": "d1-c5-f3",
+      "scope_key": "scope3_05",
+      "fact_text": "Bước 2: Lắng nghe toàn bộ nội dung khiếu nại, không ngắt lời.",
+      "source_ref": "src-5",
+      "source_page": 2,
+      "source_chunk": 5,
+      "locator": {
+       "source_evidence_status": "ready",
+       "source_evidence_revision": "e2f31fed4cbac472a84a5d1346174f4fd9f1091faaf3717980f5f31c9c5d55b1",
+       "scope_title": "5. QUY TRÌNH TIẾP NHẬN"
+      }
+     },
+     {
+      "document_id": "00000000-0000-4000-8000-0000000000d1",
+      "fact_key": "d1-c5-f4",
+      "scope_key": "scope3_05",
+      "fact_text": "Bước 3: Ghi nhận thông tin vào phiếu KN-01.",
+      "source_ref": "src-5",
+      "source_page": 2,
+      "source_chunk": 5,
+      "locator": {
+       "source_evidence_status": "ready",
+       "source_evidence_revision": "e2f31fed4cbac472a84a5d1346174f4fd9f1091faaf3717980f5f31c9c5d55b1",
+       "scope_title": "5. QUY TRÌNH TIẾP NHẬN"
+      }
+     },
+     {
+      "document_id": "00000000-0000-4000-8000-0000000000d1",
+      "fact_key": "d1-c5-f5",
+      "scope_key": "scope3_05",
+      "fact_text": "Bước 4: Xác minh đơn hàng trên hệ thống CRM.",
+      "source_ref": "src-5",
+      "source_page": 2,
+      "source_chunk": 5,
+      "locator": {
+       "source_evidence_status": "ready",
+       "source_evidence_revision": "e2f31fed4cbac472a84a5d1346174f4fd9f1091faaf3717980f5f31c9c5d55b1",
+       "scope_title": "5. QUY TRÌNH TIẾP NHẬN"
+      }
+     },
+     {
+      "document_id": "00000000-0000-4000-8000-0000000000d1",
+      "fact_key": "d1-c5-f6",
+      "scope_key": "scope3_05",
+      "fact_text": "Bước 5: Phân loại khiếu nại theo nhóm.",
+      "source_ref": "src-5",
+      "source_page": 2,
+      "source_chunk": 5,
+      "locator": {
+       "source_evidence_status": "ready",
+       "source_evidence_revision": "e2f31fed4cbac472a84a5d1346174f4fd9f1091faaf3717980f5f31c9c5d55b1",
+       "scope_title": "5. QUY TRÌNH TIẾP NHẬN"
+      }
+     },
+     {
+      "document_id": "00000000-0000-4000-8000-0000000000d1",
+      "fact_key": "d1-c5-f7",
+      "scope_key": "scope3_05",
+      "fact_text": "Bước 6: Đánh giá mức độ nghiêm trọng theo bảng cấp độ.",
+      "source_ref": "src-5",
+      "source_page": 2,
+      "source_chunk": 5,
+      "locator": {
+       "source_evidence_status": "ready",
+       "source_evidence_revision": "e2f31fed4cbac472a84a5d1346174f4fd9f1091faaf3717980f5f31c9c5d55b1",
+       "scope_title": "5. QUY TRÌNH TIẾP NHẬN"
+      }
+     },
+     {
+      "document_id": "00000000-0000-4000-8000-0000000000d1",
+      "fact_key": "d1-c5-f8",
+      "scope_key": "scope3_05",
+      "fact_text": "Bước 7: Quyết định tự xử lý hay escalate theo tiêu chí escalate.",
+      "source_ref": "src-5",
+      "source_page": 2,
+      "source_chunk": 5,
+      "locator": {
+       "source_evidence_status": "ready",
+       "source_evidence_revision": "e2f31fed4cbac472a84a5d1346174f4fd9f1091faaf3717980f5f31c9c5d55b1",
+       "scope_title": "5. QUY TRÌNH TIẾP NHẬN"
+      }
+     },
+     {
+      "document_id": "00000000-0000-4000-8000-0000000000d1",
+      "fact_key": "d1-c5-f9",
+      "scope_key": "scope3_05",
+      "fact_text": "Bước 8: Thông báo cho khách hàng hướng xử lý và thời hạn phản hồi.",
+      "source_ref": "src-5",
+      "source_page": 2,
+      "source_chunk": 5,
+      "locator": {
+       "source_evidence_status": "ready",
+       "source_evidence_revision": "e2f31fed4cbac472a84a5d1346174f4fd9f1091faaf3717980f5f31c9c5d55b1",
+       "scope_title": "5. QUY TRÌNH TIẾP NHẬN"
+      }
+     },
+     {
+      "document_id": "00000000-0000-4000-8000-0000000000d1",
+      "fact_key": "d1-c5-f10",
+      "scope_key": "scope3_05",
+      "fact_text": "Bước 9: Thực hiện xử lý hoặc chuyển hồ sơ.",
+      "source_ref": "src-5",
+      "source_page": 2,
+      "source_chunk": 5,
+      "locator": {
+       "source_evidence_status": "ready",
+       "source_evidence_revision": "e2f31fed4cbac472a84a5d1346174f4fd9f1091faaf3717980f5f31c9c5d55b1",
+       "scope_title": "5. QUY TRÌNH TIẾP NHẬN"
+      }
+     },
+     {
+      "document_id": "00000000-0000-4000-8000-0000000000d1",
+      "fact_key": "d1-c5-f11",
+      "scope_key": "scope3_05",
+      "fact_text": "Bước 10: Phản hồi kết quả cho khách hàng.",
+      "source_ref": "src-5",
+      "source_page": 2,
+      "source_chunk": 5,
+      "locator": {
+       "source_evidence_status": "ready",
+       "source_evidence_revision": "e2f31fed4cbac472a84a5d1346174f4fd9f1091faaf3717980f5f31c9c5d55b1",
+       "scope_title": "5. QUY TRÌNH TIẾP NHẬN"
+      }
+     },
+     {
+      "document_id": "00000000-0000-4000-8000-0000000000d1",
+      "fact_key": "d1-c5-f12",
+      "scope_key": "scope3_05",
+      "fact_text": "Bước 11: Xác nhận khách hàng đồng ý với kết quả.",
+      "source_ref": "src-5",
+      "source_page": 2,
+      "source_chunk": 5,
+      "locator": {
+       "source_evidence_status": "ready",
+       "source_evidence_revision": "e2f31fed4cbac472a84a5d1346174f4fd9f1091faaf3717980f5f31c9c5d55b1",
+       "scope_title": "5. QUY TRÌNH TIẾP NHẬN"
+      }
+     },
+     {
+      "document_id": "00000000-0000-4000-8000-0000000000d1",
+      "fact_key": "d1-c5-f13",
+      "scope_key": "scope3_05",
+      "fact_text": "Bước 12: Đóng hồ sơ và lưu trữ trên CRM.",
+      "source_ref": "src-5",
+      "source_page": 2,
+      "source_chunk": 5,
+      "locator": {
+       "source_evidence_status": "ready",
+       "source_evidence_revision": "e2f31fed4cbac472a84a5d1346174f4fd9f1091faaf3717980f5f31c9c5d55b1",
+       "scope_title": "5. QUY TRÌNH TIẾP NHẬN"
+      }
+     },
+     {
+      "document_id": "00000000-0000-4000-8000-0000000000d1",
+      "fact_key": "d1-c6-f1",
+      "scope_key": "scope3_06",
+      "fact_text": "6. TIÊU CHÍ ESCALATE",
+      "source_ref": "src-6",
+      "source_page": 2,
+      "source_chunk": 6,
+      "locator": {
+       "source_evidence_status": "ready",
+       "source_evidence_revision": "e2f31fed4cbac472a84a5d1346174f4fd9f1091faaf3717980f5f31c9c5d55b1",
+       "scope_title": "6. TIÊU CHÍ ESCALATE"
+      }
+     },
+     {
+      "document_id": "00000000-0000-4000-8000-0000000000d1",
+      "fact_key": "d1-c6-f2",
+      "scope_key": "scope3_06",
+      "fact_text": "Bắt buộc escalate khi khiếu nại liên quan đến an toàn của khách hàng.",
+      "source_ref": "src-6",
+      "source_page": 2,
+      "source_chunk": 6,
+      "locator": {
+       "source_evidence_status": "ready",
+       "source_evidence_revision": "e2f31fed4cbac472a84a5d1346174f4fd9f1091faaf3717980f5f31c9c5d55b1",
+       "scope_title": "6. TIÊU CHÍ ESCALATE"
+      }
+     },
+     {
+      "document_id": "00000000-0000-4000-8000-0000000000d1",
+      "fact_key": "d1-c6-f3",
+      "scope_key": "scope3_06",
+      "fact_text": "Bắt buộc escalate khi khiếu nại có yếu tố pháp lý hoặc khách hàng đề cập đến kiện tụng.",
+      "source_ref": "src-6",
+      "source_page": 2,
+      "source_chunk": 6,
+      "locator": {
+       "source_evidence_status": "ready",
+       "source_evidence_revision": "e2f31fed4cbac472a84a5d1346174f4fd9f1091faaf3717980f5f31c9c5d55b1",
+       "scope_title": "6. TIÊU CHÍ ESCALATE"
+      }
+     },
+     {
+      "document_id": "00000000-0000-4000-8000-0000000000d1",
+      "fact_key": "d1-c6-f4",
+      "scope_key": "scope3_06",
+      "fact_text": "Bắt buộc escalate khi giá trị thiệt hại từ 50 triệu đồng trở lên.",
+      "source_ref": "src-6",
+      "source_page": 2,
+      "source_chunk": 6,
+      "locator": {
+       "source_evidence_status": "ready",
+       "source_evidence_revision": "e2f31fed4cbac472a84a5d1346174f4fd9f1091faaf3717980f5f31c9c5d55b1",
+       "scope_title": "6. TIÊU CHÍ ESCALATE"
+      }
+     },
+     {
+      "document_id": "00000000-0000-4000-8000-0000000000d1",
+      "fact_key": "d1-c6-f5",
+      "scope_key": "scope3_06",
+      "fact_text": "Với khách hàng VIP, nhân viên phải thông báo cho trưởng nhóm nhưng không bắt buộc escalate.",
+      "source_ref": "src-6",
+      "source_page": 2,
+      "source_chunk": 6,
+      "locator": {
+       "source_evidence_status": "ready",
+       "source_evidence_revision": "e2f31fed4cbac472a84a5d1346174f4fd9f1091faaf3717980f5f31c9c5d55b1",
+       "scope_title": "6. TIÊU CHÍ ESCALATE"
+      }
+     },
+     {
+      "document_id": "00000000-0000-4000-8000-0000000000d1",
+      "fact_key": "d1-c6-f6",
+      "scope_key": "scope3_06",
+      "fact_text": "Không được hứa bồi thường trước khi khiếu nại được phân loại mức độ.",
+      "source_ref": "src-6",
+      "source_page": 2,
+      "source_chunk": 6,
+      "locator": {
+       "source_evidence_status": "ready",
+       "source_evidence_revision": "e2f31fed4cbac472a84a5d1346174f4fd9f1091faaf3717980f5f31c9c5d55b1",
+       "scope_title": "6. TIÊU CHÍ ESCALATE"
+      }
+     },
+     {
+      "document_id": "00000000-0000-4000-8000-0000000000d1",
+      "fact_key": "d1-c7-f1",
+      "scope_key": "scope3_07",
+      "fact_text": "7. THỜI HẠN PHẢN HỒI",
+      "source_ref": "src-7",
+      "source_page": 2,
+      "source_chunk": 7,
+      "locator": {
+       "source_evidence_status": "ready",
+       "source_evidence_revision": "e2f31fed4cbac472a84a5d1346174f4fd9f1091faaf3717980f5f31c9c5d55b1",
+       "scope_title": "7. THỜI HẠN PHẢN HỒI"
+      }
+     },
+     {
+      "document_id": "00000000-0000-4000-8000-0000000000d1",
+      "fact_key": "d1-c7-f2",
+      "scope_key": "scope3_07",
+      "fact_text": "Nhân viên cần phản hồi khách hàng trong vòng 24 giờ.",
+      "source_ref": "src-7",
+      "source_page": 2,
+      "source_chunk": 7,
+      "locator": {
+       "source_evidence_status": "ready",
+       "source_evidence_revision": "e2f31fed4cbac472a84a5d1346174f4fd9f1091faaf3717980f5f31c9c5d55b1",
+       "scope_title": "7. THỜI HẠN PHẢN HỒI"
+      }
+     },
+     {
+      "document_id": "00000000-0000-4000-8000-0000000000d1",
+      "fact_key": "d1-c7-f3",
+      "scope_key": "scope3_07",
+      "fact_text": "Việc phản hồi phải được thực hiện không quá 24 giờ kể từ khi tiếp nhận.",
+      "source_ref": "src-7",
+      "source_page": 2,
+      "source_chunk": 7,
+      "locator": {
+       "source_evidence_status": "ready",
+       "source_evidence_revision": "e2f31fed4cbac472a84a5d1346174f4fd9f1091faaf3717980f5f31c9c5d55b1",
+       "scope_title": "7. THỜI HẠN PHẢN HỒI"
+      }
+     },
+     {
+      "document_id": "00000000-0000-4000-8000-0000000000d1",
+      "fact_key": "d1-c7-f4",
+      "scope_key": "scope3_07",
+      "fact_text": "Theo slide đào tạo năm 2024, khiếu nại cấp 2 được phản hồi trong vòng 48 giờ.",
+      "source_ref": "src-7",
+      "source_page": 2,
+      "source_chunk": 7,
+      "locator": {
+       "source_evidence_status": "ready",
+       "source_evidence_revision": "e2f31fed4cbac472a84a5d1346174f4fd9f1091faaf3717980f5f31c9c5d55b1",
+       "scope_title": "7. THỜI HẠN PHẢN HỒI"
+      }
+     },
+     {
+      "document_id": "00000000-0000-4000-8000-0000000000d1",
+      "fact_key": "d1-c8-f1",
+      "scope_key": "scope3_08",
+      "fact_text": "8. LỖI THƯỜNG GẶP",
+      "source_ref": "src-8",
+      "source_page": 2,
+      "source_chunk": 8,
+      "locator": {
+       "source_evidence_status": "ready",
+       "source_evidence_revision": "e2f31fed4cbac472a84a5d1346174f4fd9f1091faaf3717980f5f31c9c5d55b1",
+       "scope_title": "8. LỖI THƯỜNG GẶP"
+      }
+     },
+     {
+      "document_id": "00000000-0000-4000-8000-0000000000d1",
+      "fact_key": "d1-c8-f2",
+      "scope_key": "scope3_08",
+      "fact_text": "Ví dụ: Nhân viên hứa hoàn tiền ngay khi khách hàng vừa gọi đến, trước khi xác minh đơn hàng; công ty phải chi trả cho một đơn hàng không thuộc diện bồi thường.",
+      "source_ref": "src-8",
+      "source_page": 2,
+      "source_chunk": 8,
+      "locator": {
+       "source_evidence_status": "ready",
+       "source_evidence_revision": "e2f31fed4cbac472a84a5d1346174f4fd9f1091faaf3717980f5f31c9c5d55b1",
+       "scope_title": "8. LỖI THƯỜNG GẶP"
+      }
+     },
+     {
+      "document_id": "00000000-0000-4000-8000-0000000000d1",
+      "fact_key": "d1-c8-f3",
+      "scope_key": "scope3_08",
+      "fact_text": "Lưu ý: Nhiều nhân viên ghi nhận khiếu nại cấp 3 thành cấp 2 vì không kiểm tra yếu tố truyền thông.",
+      "source_ref": "src-8",
+      "source_page": 2,
+      "source_chunk": 8,
+      "locator": {
+       "source_evidence_status": "ready",
+       "source_evidence_revision": "e2f31fed4cbac472a84a5d1346174f4fd9f1091faaf3717980f5f31c9c5d55b1",
+       "scope_title": "8. LỖI THƯỜNG GẶP"
+      }
+     },
+     {
+      "document_id": "00000000-0000-4000-8000-0000000000d1",
+      "fact_key": "d1-c9-f1",
+      "scope_key": "scope3_09",
+      "fact_text": "9. GHI NHẬN TRÊN HỆ THỐNG CRM",
+      "source_ref": "src-9",
+      "source_page": 2,
+      "source_chunk": 9,
+      "locator": {
+       "source_evidence_status": "ready",
+       "source_evidence_revision": "e2f31fed4cbac472a84a5d1346174f4fd9f1091faaf3717980f5f31c9c5d55b1",
+       "scope_title": "9. GHI NHẬN TRÊN HỆ THỐNG CRM"
+      }
+     },
+     {
+      "document_id": "00000000-0000-4000-8000-0000000000d1",
+      "fact_key": "d1-c9-f2",
+      "scope_key": "scope3_09",
+      "fact_text": "Mở mục Khiếu nại, chọn Tạo mới, chọn mã khiếu nại và đính kèm phiếu KN-01 (xem ảnh chụp màn hình CRM phiên bản 2021).",
+      "source_ref": "src-9",
+      "source_page": 2,
+      "source_chunk": 9,
+      "locator": {
+       "source_evidence_status": "ready",
+       "source_evidence_revision": "e2f31fed4cbac472a84a5d1346174f4fd9f1091faaf3717980f5f31c9c5d55b1",
+       "scope_title": "9. GHI NHẬN TRÊN HỆ THỐNG CRM"
+      }
+     },
+     {
+      "document_id": "00000000-0000-4000-8000-0000000000d1",
+      "fact_key": "d1-c10-f1",
+      "scope_key": "scope3_10",
+      "fact_text": "10. BẢNG MÃ KHIẾU NẠI",
+      "source_ref": "src-10",
+      "source_page": 3,
+      "source_chunk": 10,
+      "locator": {
+       "source_evidence_status": "ready",
+       "source_evidence_revision": "e2f31fed4cbac472a84a5d1346174f4fd9f1091faaf3717980f5f31c9c5d55b1",
+       "scope_title": "10. BẢNG MÃ KHIẾU NẠI"
+      }
+     },
+     {
+      "document_id": "00000000-0000-4000-8000-0000000000d1",
+      "fact_key": "d1-c10-f2",
+      "scope_key": "scope3_10",
+      "fact_text": "Row 1: Mã | Nhóm",
+      "source_ref": "src-10",
+      "source_page": 3,
+      "source_chunk": 10,
+      "locator": {
+       "source_evidence_status": "ready",
+       "source_evidence_revision": "e2f31fed4cbac472a84a5d1346174f4fd9f1091faaf3717980f5f31c9c5d55b1",
+       "scope_title": "10. BẢNG MÃ KHIẾU NẠI"
+      }
+     },
+     {
+      "document_id": "00000000-0000-4000-8000-0000000000d1",
+      "fact_key": "d1-c10-f3",
+      "scope_key": "scope3_10",
+      "fact_text": "Row 2: KN-SP | Sản phẩm",
+      "source_ref": "src-10",
+      "source_page": 3,
+      "source_chunk": 10,
+      "locator": {
+       "source_evidence_status": "ready",
+       "source_evidence_revision": "e2f31fed4cbac472a84a5d1346174f4fd9f1091faaf3717980f5f31c9c5d55b1",
+       "scope_title": "10. BẢNG MÃ KHIẾU NẠI"
+      }
+     },
+     {
+      "document_id": "00000000-0000-4000-8000-0000000000d1",
+      "fact_key": "d1-c10-f4",
+      "scope_key": "scope3_10",
+      "fact_text": "Row 3: KN-DV | Dịch vụ lắp đặt",
+      "source_ref": "src-10",
+      "source_page": 3,
+      "source_chunk": 10,
+      "locator": {
+       "source_evidence_status": "ready",
+       "source_evidence_revision": "e2f31fed4cbac472a84a5d1346174f4fd9f1091faaf3717980f5f31c9c5d55b1",
+       "scope_title": "10. BẢNG MÃ KHIẾU NẠI"
+      }
+     },
+     {
+      "document_id": "00000000-0000-4000-8000-0000000000d1",
+      "fact_key": "d1-c10-f5",
+      "scope_key": "scope3_10",
+      "fact_text": "Row 4: KN-NV | Nhân viên",
+      "source_ref": "src-10",
+      "source_page": 3,
+      "source_chunk": 10,
+      "locator": {
+       "source_evidence_status": "ready",
+       "source_evidence_revision": "e2f31fed4cbac472a84a5d1346174f4fd9f1091faaf3717980f5f31c9c5d55b1",
+       "scope_title": "10. BẢNG MÃ KHIẾU NẠI"
+      }
+     },
+     {
+      "document_id": "00000000-0000-4000-8000-0000000000d1",
+      "fact_key": "d1-c10-f6",
+      "scope_key": "scope3_10",
+      "fact_text": "Row 5: KN-TT | Thanh toán",
+      "source_ref": "src-10",
+      "source_page": 3,
+      "source_chunk": 10,
+      "locator": {
+       "source_evidence_status": "ready",
+       "source_evidence_revision": "e2f31fed4cbac472a84a5d1346174f4fd9f1091faaf3717980f5f31c9c5d55b1",
+       "scope_title": "10. BẢNG MÃ KHIẾU NẠI"
+      }
+     },
+     {
+      "document_id": "00000000-0000-4000-8000-0000000000d1",
+      "fact_key": "d1-c10-f7",
+      "scope_key": "scope3_10",
+      "fact_text": "Row 6: KN-GH | Giao hàng",
+      "source_ref": "src-10",
+      "source_page": 3,
+      "source_chunk": 10,
+      "locator": {
+       "source_evidence_status": "ready",
+       "source_evidence_revision": "e2f31fed4cbac472a84a5d1346174f4fd9f1091faaf3717980f5f31c9c5d55b1",
+       "scope_title": "10. BẢNG MÃ KHIẾU NẠI"
+      }
+     },
+     {
+      "document_id": "00000000-0000-4000-8000-0000000000d1",
+      "fact_key": "d1-c11-f1",
+      "scope_key": "scope3_11",
+      "fact_text": "11. ĐẦU MỐI LIÊN HỆ",
+      "source_ref": "src-11",
+      "source_page": 3,
+      "source_chunk": 11,
+      "locator": {
+       "source_evidence_status": "ready",
+       "source_evidence_revision": "e2f31fed4cbac472a84a5d1346174f4fd9f1091faaf3717980f5f31c9c5d55b1",
+       "scope_title": "11. ĐẦU MỐI LIÊN HỆ"
+      }
+     },
+     {
+      "document_id": "00000000-0000-4000-8000-0000000000d1",
+      "fact_key": "d1-c11-f2",
+      "scope_key": "scope3_11",
+      "fact_text": "Bộ phận Pháp chế: máy lẻ 204.",
+      "source_ref": "src-11",
+      "source_page": 3,
+      "source_chunk": 11,
+      "locator": {
+       "source_evidence_status": "ready",
+       "source_evidence_revision": "e2f31fed4cbac472a84a5d1346174f4fd9f1091faaf3717980f5f31c9c5d55b1",
+       "scope_title": "11. ĐẦU MỐI LIÊN HỆ"
+      }
+     },
+     {
+      "document_id": "00000000-0000-4000-8000-0000000000d1",
+      "fact_key": "d1-c11-f3",
+      "scope_key": "scope3_11",
+      "fact_text": "Trưởng nhóm Chăm sóc Khách hàng ca ngày: máy lẻ 110.",
+      "source_ref": "src-11",
+      "source_page": 3,
+      "source_chunk": 11,
+      "locator": {
+       "source_evidence_status": "ready",
+       "source_evidence_revision": "e2f31fed4cbac472a84a5d1346174f4fd9f1091faaf3717980f5f31c9c5d55b1",
+       "scope_title": "11. ĐẦU MỐI LIÊN HỆ"
+      }
+     },
+     {
+      "document_id": "00000000-0000-4000-8000-0000000000d1",
+      "fact_key": "d1-c12-f1",
+      "scope_key": "scope3_12",
+      "fact_text": "Tài liệu nội bộ — Trang 1/3",
+      "source_ref": "src-12",
+      "source_page": 3,
+      "source_chunk": 12,
+      "locator": {
+       "source_evidence_status": "ready",
+       "source_evidence_revision": "e2f31fed4cbac472a84a5d1346174f4fd9f1091faaf3717980f5f31c9c5d55b1",
+       "scope_title": "Tài liệu nội bộ — Trang 1/3"
+      }
+     },
+     {
+      "document_id": "00000000-0000-4000-8000-0000000000d1",
+      "fact_key": "d1-c12-f2",
+      "scope_key": "scope3_12",
+      "fact_text": "Tài liệu nội bộ — Trang 2/3",
+      "source_ref": "src-12",
+      "source_page": 3,
+      "source_chunk": 12,
+      "locator": {
+       "source_evidence_status": "ready",
+       "source_evidence_revision": "e2f31fed4cbac472a84a5d1346174f4fd9f1091faaf3717980f5f31c9c5d55b1",
+       "scope_title": "Tài liệu nội bộ — Trang 1/3"
+      }
+     },
+     {
+      "document_id": "00000000-0000-4000-8000-0000000000d1",
+      "fact_key": "d1-c12-f3",
+      "scope_key": "scope3_12",
+      "fact_text": "Tài liệu nội bộ — Trang 3/3",
+      "source_ref": "src-12",
+      "source_page": 3,
+      "source_chunk": 12,
+      "locator": {
+       "source_evidence_status": "ready",
+       "source_evidence_revision": "e2f31fed4cbac472a84a5d1346174f4fd9f1091faaf3717980f5f31c9c5d55b1",
+       "scope_title": "Tài liệu nội bộ — Trang 1/3"
+      }
+     }
+    ],
+    "token_allowance": {
+     "input_tokens": 1800000,
+     "output_tokens": 131072
+    },
+    "remaining_budget_ms": 500000
+   }
+  }
+ },
+ "provider": [
+  {
+   "schema": "IdmW1SectionResponseV1",
+   "text": "{\"blocks\": [{\"local_id\": \"b1\", \"name\": \"Phiên bản và ngày áp dụng của quy trình\", \"summary\": \"Nội dung về: Phiên bản và ngày áp dụng của quy trình\", \"intent\": \"know\", \"support_role\": null, \"content_kind\": \"reference\", \"fact_keys\": [\"d1-c0-f2\"], \"issues\": [], \"gaps\": [], \"sme_questions\": []}, {\"local_id\": \"b2\", \"name\": \"Phòng Chăm sóc Khách hàng đã phát triển ra sao?\", \"summary\": \"Nội dung về: Phòng Chăm sóc Khách hàng đã phát triển ra sao?\", \"intent\": \"know\", \"support_role\": null, \"content_kind\": \"concept\", \"fact_keys\": [\"d1-c1-f1\", \"d1-c1-f2\", \"d1-c1-f3\", \"d1-c1-f4\"], \"issues\": [], \"gaps\": [], \"sme_questions\": []}, {\"local_id\": \"b3\", \"name\": \"Thế nào là một khiếu nại?\", \"summary\": \"Nội dung về: Thế nào là một khiếu nại?\", \"intent\": \"know\", \"support_role\": null, \"content_kind\": \"concept\", \"fact_keys\": [\"d1-c2-f1\", \"d1-c2-f2\", \"d1-c2-f3\"], \"issues\": [], \"gaps\": [], \"sme_questions\": []}, {\"local_id\": \"b4\", \"name\": \"Khiếu nại được chia thành những nhóm nào?\", \"summary\": \"Nội dung về: Khiếu nại được chia thành những nhóm nào?\", \"intent\": \"know\", \"support_role\": null, \"content_kind\": \"concept\", \"fact_keys\": [\"d1-c3-f1\", \"d1-c3-f2\", \"d1-c3-f3\", \"d1-c3-f4\", \"d1-c3-f5\", \"d1-c3-f6\"], \"issues\": [], \"gaps\": [], \"sme_questions\": []}, {\"local_id\": \"b5\", \"name\": \"Đánh giá mức độ nghiêm trọng của khiếu nại như thế nào?\", \"summary\": \"Nội dung về: Đánh giá mức độ nghiêm trọng của khiếu nại như thế nào?\", \"intent\": \"decide\", \"support_role\": null, \"content_kind\": \"decision\", \"fact_keys\": [\"d1-c4-f1\", \"d1-c4-f2\", \"d1-c4-f3\", \"d1-c4-f4\", \"d1-c4-f5\"], \"issues\": [], \"gaps\": [], \"sme_questions\": []}, {\"local_id\": \"b6\", \"name\": \"Tiếp nhận thông tin khiếu nại ban đầu\", \"summary\": \"Nội dung về: Tiếp nhận thông tin khiếu nại ban đầu\", \"intent\": \"do\", \"support_role\": null, \"content_kind\": \"procedure\", \"fact_keys\": [\"d1-c5-f1\", \"d1-c5-f2\", \"d1-c5-f3\", \"d1-c5-f4\", \"d1-c5-f5\"], \"issues\": [], \"gaps\": [], \"sme_questions\": []}, {\"local_id\": \"b7\", \"name\": \"Xác định hướng xử lý sau khi phân loại\", \"summary\": \"Nội dung về: Xác định hướng xử lý sau khi phân loại\", \"intent\": \"do\", \"support_role\": null, \"content_kind\": \"procedure\", \"fact_keys\": [\"d1-c5-f6\", \"d1-c5-f7\", \"d1-c5-f8\", \"d1-c5-f9\"], \"issues\": [], \"gaps\": [], \"sme_questions\": []}, {\"local_id\": \"b8\", \"name\": \"Hoàn tất hồ sơ khiếu nại với khách hàng\", \"summary\": \"Nội dung về: Hoàn tất hồ sơ khiếu nại với khách hàng\", \"intent\": \"do\", \"support_role\": null, \"content_kind\": \"procedure\", \"fact_keys\": [\"d1-c5-f10\", \"d1-c5-f11\", \"d1-c5-f12\", \"d1-c5-f13\"], \"issues\": [], \"gaps\": [], \"sme_questions\": []}, {\"local_id\": \"b9\", \"name\": \"Khi nào bắt buộc phải escalate khiếu nại?\", \"summary\": \"Nội dung về: Khi nào bắt buộc phải escalate khiếu nại?\", \"intent\": \"decide\", \"support_role\": null, \"content_kind\": \"decision\", \"fact_keys\": [\"d1-c6-f1\", \"d1-c6-f2\", \"d1-c6-f3\", \"d1-c6-f4\", \"d1-c6-f5\", \"d1-c6-f6\"], \"issues\": [], \"gaps\": [], \"sme_questions\": []}, {\"local_id\": \"b10\", \"name\": \"Phải phản hồi khách hàng trong bao lâu?\", \"summary\": \"Nội dung về: Phải phản hồi khách hàng trong bao lâu?\", \"intent\": \"know\", \"support_role\": null, \"content_kind\": \"policy\", \"fact_keys\": [\"d1-c7-f1\", \"d1-c7-f2\", \"d1-c7-f3\", \"d1-c7-f4\"], \"issues\": [{\"type\": \"duplicate\", \"note\": \"Hai dòng cùng nêu thời hạn 24 giờ.\", \"fact_keys\": [\"d1-c7-f2\", \"d1-c7-f3\"]}, {\"type\": \"conflict\", \"note\": \"24 giờ mâu thuẫn với 48 giờ cho khiếu nại cấp 2.\", \"fact_keys\": [\"d1-c7-f2\", \"d1-c7-f4\"]}], \"gaps\": [], \"sme_questions\": [\"Khiếu nại cấp 2 phải phản hồi trong 24 giờ hay 48 giờ?\"]}, {\"local_id\": \"b11\", \"name\": \"Những lỗi nào nhân viên thường mắc khi xử lý khiếu nại?\", \"summary\": \"Nội dung về: Những lỗi nào nhân viên thường mắc khi xử lý khiếu nại?\", \"intent\": \"know\", \"support_role\": \"common_mistake\", \"content_kind\": \"case\", \"fact_keys\": [\"d1-c8-f1\", \"d1-c8-f2\", \"d1-c8-f3\"], \"issues\": [], \"gaps\": [], \"sme_questions\": []}, {\"local_id\": \"b12\", \"name\": \"Ghi nhận khiếu nại trên CRM như thế nào?\", \"summary\": \"Nội dung về: Ghi nhận khiếu nại trên CRM như thế nào?\", \"intent\": \"do\", \"support_role\": null, \"content_kind\": \"system\", \"fact_keys\": [\"d1-c9-f1\", \"d1-c9-f2\"], \"issues\": [{\"type\": \"outdated\", \"note\": \"Hướng dẫn dựa trên ảnh chụp CRM phiên bản 2021.\", \"fact_keys\": [\"d1-c9-f2\"]}], \"gaps\": [{\"type\": \"missing_step\", \"note\": \"Thiếu các bước trên giao diện CRM hiện tại.\"}], \"sme_questions\": [\"Giao diện CRM hiện tại còn đúng các bước Tạo mới, chọn mã và đính kèm phiếu KN-01 không?\"]}, {\"local_id\": \"b13\", \"name\": \"Mã khiếu nại ứng với từng nhóm\", \"summary\": \"Nội dung về: Mã khiếu nại ứng với từng nhóm\", \"intent\": \"know\", \"support_role\": \"job_aid\", \"content_kind\": \"reference\", \"fact_keys\": [\"d1-c10-f1\", \"d1-c10-f2\", \"d1-c10-f3\", \"d1-c10-f4\", \"d1-c10-f5\", \"d1-c10-f6\", \"d1-c10-f7\"], \"issues\": [], \"gaps\": [], \"sme_questions\": []}, {\"local_id\": \"b14\", \"name\": \"Cần liên hệ ai khi phải escalate?\", \"summary\": \"Nội dung về: Cần liên hệ ai khi phải escalate?\", \"intent\": \"know\", \"support_role\": \"job_aid\", \"content_kind\": \"reference\", \"fact_keys\": [\"d1-c11-f1\", \"d1-c11-f2\", \"d1-c11-f3\"], \"issues\": [], \"gaps\": [], \"sme_questions\": []}], \"noise\": [{\"fact_key\": \"d1-c0-f1\", \"reason\": \"toc_or_title_only\"}, {\"fact_key\": \"d1-c12-f1\", \"reason\": \"page_furniture\"}, {\"fact_key\": \"d1-c12-f2\", \"reason\": \"page_furniture\"}, {\"fact_key\": \"d1-c12-f3\", \"reason\": \"page_furniture\"}]}",
+   "usage": [
+    662,
+    1324,
+    1986
+   ]
+  },
+  {
+   "schema": "IdmW1ReduceResponseV1",
+   "text": "{\"merges\": [], \"conflicts\": [], \"target_audience\": {\"description\": \"Nhân viên Chăm sóc Khách hàng tuyến đầu tiếp nhận khiếu nại qua tổng đài, đã nắm sản phẩm cơ bản và cần xử lý đúng quy trình, đúng thời hạn.\", \"origin\": \"ai_proposed\"}, \"learning_objectives\": [{\"lo_id\": \"lo_1\", \"statement\": \"Người học có thể phân loại khiếu nại theo nhóm và mức độ nghiêm trọng dựa trên bảng cấp độ\", \"bloom\": \"apply\", \"origin\": \"ai_proposed\"}, {\"lo_id\": \"lo_2\", \"statement\": \"Người học có thể quyết định tự xử lý hay escalate khiếu nại theo tiêu chí bắt buộc\", \"bloom\": \"evaluate\", \"origin\": \"ai_proposed\"}, {\"lo_id\": \"lo_3\", \"statement\": \"Người học có thể thực hiện quy trình tiếp nhận và xử lý khiếu nại đúng trình tự\", \"bloom\": \"apply\", \"origin\": \"ai_proposed\"}], \"must_dos\": [{\"must_do_id\": \"md_1\", \"lo_id\": \"lo_1\", \"statement\": \"Phân loại khiếu nại theo nhóm\", \"kind\": \"do\", \"bloom\": \"apply\"}, {\"must_do_id\": \"md_2\", \"lo_id\": \"lo_1\", \"statement\": \"Đánh giá mức độ nghiêm trọng của khiếu nại\", \"kind\": \"decide\", \"bloom\": \"analyze\"}, {\"must_do_id\": \"md_3\", \"lo_id\": \"lo_2\", \"statement\": \"Quyết định tự xử lý hay escalate\", \"kind\": \"decide\", \"bloom\": \"evaluate\"}, {\"must_do_id\": \"md_4\", \"lo_id\": \"lo_3\", \"statement\": \"Thực hiện các bước tiếp nhận khiếu nại đúng trình tự\", \"kind\": \"do\", \"bloom\": \"apply\"}, {\"must_do_id\": \"md_5\", \"lo_id\": \"lo_3\", \"statement\": \"Phản hồi khách hàng đúng thời hạn\", \"kind\": \"do\", \"bloom\": \"apply\"}], \"lo_links\": [{\"block_id\": \"cb_0001\", \"lo_id\": \"lo_3\", \"relation\": \"unrelated\"}, {\"block_id\": \"cb_0002\", \"lo_id\": \"lo_3\", \"relation\": \"unrelated\"}, {\"block_id\": \"cb_0003\", \"lo_id\": \"lo_1\", \"relation\": \"supporting\"}, {\"block_id\": \"cb_0004\", \"lo_id\": \"lo_1\", \"relation\": \"direct\"}, {\"block_id\": \"cb_0005\", \"lo_id\": \"lo_1\", \"relation\": \"direct\"}, {\"block_id\": \"cb_0005\", \"lo_id\": \"lo_2\", \"relation\": \"supporting\"}, {\"block_id\": \"cb_0006\", \"lo_id\": \"lo_3\", \"relation\": \"direct\"}, {\"block_id\": \"cb_0007\", \"lo_id\": \"lo_3\", \"relation\": \"direct\"}, {\"block_id\": \"cb_0008\", \"lo_id\": \"lo_3\", \"relation\": \"direct\"}, {\"block_id\": \"cb_0009\", \"lo_id\": \"lo_2\", \"relation\": \"direct\"}, {\"block_id\": \"cb_0010\", \"lo_id\": \"lo_3\", \"relation\": \"direct\"}, {\"block_id\": \"cb_0011\", \"lo_id\": \"lo_2\", \"relation\": \"supporting\"}, {\"block_id\": \"cb_0012\", \"lo_id\": \"lo_3\", \"relation\": \"supporting\"}, {\"block_id\": \"cb_0013\", \"lo_id\": \"lo_1\", \"relation\": \"context\"}, {\"block_id\": \"cb_0014\", \"lo_id\": \"lo_2\", \"relation\": \"context\"}]}",
+   "usage": [
+    301,
+    603,
+    904
+   ]
+  },
+  {
+   "schema": "IdmW2BlueprintResponseV1",
+   "text": "{\"rows\": [{\"block_id\": \"cb_0001\", \"lo_id\": null, \"must_do_ids\": [], \"classification\": \"nice_to_know\", \"placement\": \"excluded\", \"treatment\": \"remove\", \"detail_level\": \"Giữ phần cần để thực hiện đúng Must Do.\", \"hold\": false, \"hold_reason\": null, \"sme_question\": null, \"combine_into\": null, \"separate_into\": [], \"rationale\": \"Quyết định theo luồng Week 2.\"}, {\"block_id\": \"cb_0002\", \"lo_id\": null, \"must_do_ids\": [], \"classification\": \"remove\", \"placement\": \"excluded\", \"treatment\": \"remove\", \"detail_level\": \"Giữ phần cần để thực hiện đúng Must Do.\", \"hold\": false, \"hold_reason\": null, \"sme_question\": null, \"combine_into\": null, \"separate_into\": [], \"rationale\": \"Quyết định theo luồng Week 2.\"}, {\"block_id\": \"cb_0003\", \"lo_id\": \"lo_1\", \"must_do_ids\": [\"md_1\"], \"classification\": \"must_know\", \"placement\": \"course\", \"treatment\": \"condense\", \"detail_level\": \"Giữ phần cần để thực hiện đúng Must Do.\", \"hold\": false, \"hold_reason\": null, \"sme_question\": null, \"combine_into\": null, \"separate_into\": [], \"rationale\": \"Quyết định theo luồng Week 2.\"}, {\"block_id\": \"cb_0004\", \"lo_id\": \"lo_1\", \"must_do_ids\": [\"md_1\"], \"classification\": \"must_know\", \"placement\": \"course\", \"treatment\": \"keep\", \"detail_level\": \"Giữ phần cần để thực hiện đúng Must Do.\", \"hold\": false, \"hold_reason\": null, \"sme_question\": null, \"combine_into\": null, \"separate_into\": [], \"rationale\": \"Quyết định theo luồng Week 2.\"}, {\"block_id\": \"cb_0005\", \"lo_id\": \"lo_1\", \"must_do_ids\": [\"md_2\", \"md_3\"], \"classification\": \"must_know\", \"placement\": \"course\", \"treatment\": \"keep\", \"detail_level\": \"Giữ phần cần để thực hiện đúng Must Do.\", \"hold\": false, \"hold_reason\": null, \"sme_question\": null, \"combine_into\": null, \"separate_into\": [], \"rationale\": \"Quyết định theo luồng Week 2.\"}, {\"block_id\": \"cb_0006\", \"lo_id\": \"lo_3\", \"must_do_ids\": [\"md_4\"], \"classification\": \"must_do\", \"placement\": \"course\", \"treatment\": \"condense\", \"detail_level\": \"Giữ phần cần để thực hiện đúng Must Do.\", \"hold\": false, \"hold_reason\": null, \"sme_question\": null, \"combine_into\": null, \"separate_into\": [], \"rationale\": \"Quyết định theo luồng Week 2.\"}, {\"block_id\": \"cb_0007\", \"lo_id\": \"lo_3\", \"must_do_ids\": [\"md_4\"], \"classification\": \"must_do\", \"placement\": \"course\", \"treatment\": \"condense\", \"detail_level\": \"Giữ phần cần để thực hiện đúng Must Do.\", \"hold\": false, \"hold_reason\": null, \"sme_question\": null, \"combine_into\": null, \"separate_into\": [], \"rationale\": \"Quyết định theo luồng Week 2.\"}, {\"block_id\": \"cb_0008\", \"lo_id\": \"lo_3\", \"must_do_ids\": [\"md_4\"], \"classification\": \"must_do\", \"placement\": \"course\", \"treatment\": \"condense\", \"detail_level\": \"Giữ phần cần để thực hiện đúng Must Do.\", \"hold\": false, \"hold_reason\": null, \"sme_question\": null, \"combine_into\": null, \"separate_into\": [], \"rationale\": \"Quyết định theo luồng Week 2.\"}, {\"block_id\": \"cb_0009\", \"lo_id\": \"lo_2\", \"must_do_ids\": [\"md_3\"], \"classification\": \"must_do\", \"placement\": \"course\", \"treatment\": \"keep\", \"detail_level\": \"Giữ phần cần để thực hiện đúng Must Do.\", \"hold\": false, \"hold_reason\": null, \"sme_question\": null, \"combine_into\": null, \"separate_into\": [], \"rationale\": \"Quyết định theo luồng Week 2.\"}, {\"block_id\": \"cb_0010\", \"lo_id\": \"lo_3\", \"must_do_ids\": [\"md_5\"], \"classification\": \"must_know\", \"placement\": \"course\", \"treatment\": \"rewrite\", \"detail_level\": \"Giữ phần cần để thực hiện đúng Must Do.\", \"hold\": true, \"hold_reason\": \"Thời hạn 24 giờ mâu thuẫn với 48 giờ cho khiếu nại cấp 2\", \"sme_question\": \"Khiếu nại cấp 2 phải phản hồi trong 24 giờ hay 48 giờ?\", \"combine_into\": null, \"separate_into\": [], \"rationale\": \"Quyết định theo luồng Week 2.\"}, {\"block_id\": \"cb_0011\", \"lo_id\": \"lo_2\", \"must_do_ids\": [\"md_3\"], \"classification\": \"must_know\", \"placement\": \"course\", \"treatment\": \"condense\", \"detail_level\": \"Giữ phần cần để thực hiện đúng Must Do.\", \"hold\": false, \"hold_reason\": null, \"sme_question\": null, \"combine_into\": null, \"separate_into\": [], \"rationale\": \"Quyết định theo luồng Week 2.\"}, {\"block_id\": \"cb_0012\", \"lo_id\": \"lo_3\", \"must_do_ids\": [\"md_4\"], \"classification\": \"must_know\", \"placement\": \"course\", \"treatment\": \"rewrite\", \"detail_level\": \"Giữ phần cần để thực hiện đúng Must Do.\", \"hold\": true, \"hold_reason\": \"Hướng dẫn CRM dựa trên ảnh chụp phiên bản 2021, có thể đã lỗi thời\", \"sme_question\": \"Giao diện CRM hiện tại còn đúng các bước Tạo mới, chọn mã và đính kèm phiếu không?\", \"combine_into\": null, \"separate_into\": [], \"rationale\": \"Quyết định theo luồng Week 2.\"}, {\"block_id\": \"cb_0013\", \"lo_id\": \"lo_1\", \"must_do_ids\": [], \"classification\": \"reference\", \"placement\": \"reference_job_aid\", \"treatment\": \"convert_to_job_aid\", \"detail_level\": \"Giữ phần cần để thực hiện đúng Must Do.\", \"hold\": false, \"hold_reason\": null, \"sme_question\": null, \"combine_into\": null, \"separate_into\": [], \"rationale\": \"Quyết định theo luồng Week 2.\"}, {\"block_id\": \"cb_0014\", \"lo_id\": \"lo_2\", \"must_do_ids\": [], \"classification\": \"reference\", \"placement\": \"reference_job_aid\", \"treatment\": \"convert_to_job_aid\", \"detail_level\": \"Giữ phần cần để thực hiện đúng Must Do.\", \"hold\": false, \"hold_reason\": null, \"sme_question\": null, \"combine_into\": null, \"separate_into\": [], \"rationale\": \"Quyết định theo luồng Week 2.\"}], \"blocked_must_do_ids\": [\"md_5\"]}",
+   "usage": [
+    652,
+    1304,
+    1956
+   ]
+  },
+  {
+   "schema": "IdmW4CourseResponseV1",
+   "text": "{\"course_title\": \"Xử lý khiếu nại khách hàng đúng quy trình\", \"course_summary\": \"Khoá học giúp nhân viên Chăm sóc Khách hàng phân loại, đánh giá và quyết định hướng xử lý khiếu nại đúng tiêu chí, tránh hứa hẹn sai và escalate đúng lúc.\", \"assessment_strategy\": \"Kiểm tra nhanh sau phần Must Know, bài tình huống quyết định escalate cuối mỗi mục.\", \"prerequisites\": [\"Biết sử dụng tổng đài và hệ thống CRM ở mức cơ bản\"], \"modules\": [{\"module_key\": \"mod_01\", \"title\": \"Phân loại và đánh giá mức độ khiếu nại\", \"performance_goal\": \"Phân loại đúng nhóm và mức độ của mọi khiếu nại tiếp nhận\", \"lo_ids\": [\"lo_1\"], \"lessons\": [{\"lesson_key\": \"lsn_001\", \"kind\": \"learning\", \"title\": \"Phân loại khiếu nại theo nhóm\", \"primary_must_do_id\": \"md_1\", \"secondary_must_do_ids\": [], \"block_ids\": [\"cb_0003\", \"cb_0004\"], \"est_screens\": 4, \"est_minutes\": 6, \"ordering_rationale\": \"Nền tảng trước, theo thứ tự công việc thực tế.\"}, {\"lesson_key\": \"lsn_002\", \"kind\": \"learning\", \"title\": \"Đánh giá mức độ nghiêm trọng\", \"primary_must_do_id\": \"md_2\", \"secondary_must_do_ids\": [], \"block_ids\": [\"cb_0005\"], \"est_screens\": 4, \"est_minutes\": 6, \"ordering_rationale\": \"Nền tảng trước, theo thứ tự công việc thực tế.\"}]}, {\"module_key\": \"mod_02\", \"title\": \"Quyết định escalate khiếu nại\", \"performance_goal\": \"Quyết định đúng khi nào tự xử lý và khi nào phải escalate\", \"lo_ids\": [\"lo_2\"], \"lessons\": [{\"lesson_key\": \"lsn_003\", \"kind\": \"learning\", \"title\": \"Quyết định tự xử lý hay escalate\", \"primary_must_do_id\": \"md_3\", \"secondary_must_do_ids\": [], \"block_ids\": [\"cb_0009\", \"cb_0011\"], \"est_screens\": 6, \"est_minutes\": 10, \"ordering_rationale\": \"Nền tảng trước, theo thứ tự công việc thực tế.\"}]}, {\"module_key\": \"mod_03\", \"title\": \"Tiếp nhận khiếu nại theo quy trình\", \"performance_goal\": \"Thực hiện đúng trình tự tiếp nhận và xử lý khiếu nại\", \"lo_ids\": [\"lo_3\"], \"lessons\": [{\"lesson_key\": \"lsn_004\", \"kind\": \"learning\", \"title\": \"Thực hiện quy trình tiếp nhận khiếu nại\", \"primary_must_do_id\": \"md_4\", \"secondary_must_do_ids\": [], \"block_ids\": [\"cb_0006\", \"cb_0007\", \"cb_0008\"], \"est_screens\": 6, \"est_minutes\": 10, \"ordering_rationale\": \"Nền tảng trước, theo thứ tự công việc thực tế.\"}, {\"lesson_key\": \"lsn_005\", \"kind\": \"job_aid\", \"title\": \"Bảng tra mã khiếu nại và đầu mối liên hệ\", \"primary_must_do_id\": null, \"secondary_must_do_ids\": [], \"block_ids\": [\"cb_0013\", \"cb_0014\"], \"est_screens\": 2, \"est_minutes\": 3, \"ordering_rationale\": \"Nền tảng trước, theo thứ tự công việc thực tế.\"}]}]}",
+   "usage": [
+    309,
+    618,
+    927
+   ]
+  }
+ ],
+ "expected": {
+  "status": 200,
+  "content_type": "application/json",
+  "body": {
+   "contract_version": 2,
+   "skeleton": {
+    "contract_version": 2,
+    "source_snapshot_hash": "af8270f967b41b2da4243ff9c472b446458f9de9bdeac1fa8ef354f80624587f",
+    "locale": "vi",
+    "title": "Xử lý khiếu nại khách hàng đúng quy trình",
+    "summary": "Khoá học giúp nhân viên Chăm sóc Khách hàng phân loại, đánh giá và quyết định hướng xử lý khiếu nại đúng tiêu chí, tránh hứa hẹn sai và escalate đúng lúc.",
+    "target_audience": "Nhân viên Chăm sóc Khách hàng tuyến đầu tiếp nhận khiếu nại qua tổng đài, đã nắm sản phẩm cơ bản và cần xử lý đúng quy trình, đúng thời hạn. (Đề xuất bởi AI — cần xác nhận)",
+    "prerequisites": [
+     "Biết sử dụng tổng đài và hệ thống CRM ở mức cơ bản"
+    ],
+    "learning_outcomes": [
+     "Người học có thể phân loại khiếu nại theo nhóm và mức độ nghiêm trọng dựa trên bảng cấp độ",
+     "Người học có thể quyết định tự xử lý hay escalate khiếu nại theo tiêu chí bắt buộc",
+     "Người học có thể thực hiện quy trình tiếp nhận và xử lý khiếu nại đúng trình tự"
+    ],
+    "assessment_strategy": "Kiểm tra nhanh sau phần Must Know, bài tình huống quyết định escalate cuối mỗi mục.",
+    "assumptions": [
+     "IDM pipeline idm-1",
+     "LO đề xuất bởi AI — cần xác nhận"
+    ],
+    "chapters": [
+     {
+      "chapter_key": "chapter-1",
+      "order": 0,
+      "title": "Phân loại và đánh giá mức độ khiếu nại",
+      "objective": "Phân loại đúng nhóm và mức độ của mọi khiếu nại tiếp nhận",
+      "learning_outcomes": [
+       "Người học có thể phân loại khiếu nại theo nhóm và mức độ nghiêm trọng dựa trên bảng cấp độ"
+      ],
+      "source_scope_ids": [
+       "idmcb_7b05aebc721d4eac1ec14e9c6e4becee",
+       "idmcb_ba44f8d684f4449eac35a7ac97897e94",
+       "idmcb_53ffd4a2e3fefe50a5a67d14201abf1a"
+      ]
+     },
+     {
+      "chapter_key": "chapter-2",
+      "order": 1,
+      "title": "Quyết định escalate khiếu nại",
+      "objective": "Quyết định đúng khi nào tự xử lý và khi nào phải escalate",
+      "learning_outcomes": [
+       "Người học có thể quyết định tự xử lý hay escalate khiếu nại theo tiêu chí bắt buộc"
+      ],
+      "source_scope_ids": [
+       "idmcb_7eaa0e3fbf112e30347ff9e30599f25d",
+       "idmcb_ffe738c2047a526b9994b57c9d37bfc8"
+      ]
+     },
+     {
+      "chapter_key": "chapter-3",
+      "order": 2,
+      "title": "Tiếp nhận khiếu nại theo quy trình",
+      "objective": "Thực hiện đúng trình tự tiếp nhận và xử lý khiếu nại",
+      "learning_outcomes": [
+       "Người học có thể thực hiện quy trình tiếp nhận và xử lý khiếu nại đúng trình tự"
+      ],
+      "source_scope_ids": [
+       "idmcb_f1db432ba8d0a598e8befef1c560f5a7",
+       "idmcb_d5706a642e72ad117aef39a0097b527f",
+       "idmcb_9c8155960f87c9785b860bba0a32d2e9",
+       "idmcb_1e0cddf95fdfe3eb09fbeac63ef951ec",
+       "idmcb_b7bbaaaa2756ee07f98da541a0308023"
+      ]
+     }
+    ]
+   },
+   "idm": {
+    "pipeline_version": "idm-1",
+    "idm_contract_version": 1,
+    "prompt_policy_version": "idm-prompt-1",
+    "source_snapshot_hash": "af8270f967b41b2da4243ff9c472b446458f9de9bdeac1fa8ef354f80624587f",
+    "project_context": {
+     "locale": "vi",
+     "course_title_hint": "Xử lý khiếu nại khách hàng",
+     "source_documents": [
+      {
+       "document_id": "00000000-0000-4000-8000-0000000000d1",
+       "name": "quy-trinh-khieu-nai.pdf",
+       "type": "pdf"
+      }
+     ],
+     "target_audience": null,
+     "learning_objectives": [],
+     "duration_target_minutes": null
+    },
+    "target_audience": {
+     "description": "Nhân viên Chăm sóc Khách hàng tuyến đầu tiếp nhận khiếu nại qua tổng đài, đã nắm sản phẩm cơ bản và cần xử lý đúng quy trình, đúng thời hạn.",
+     "origin": "ai_proposed"
+    },
+    "learning_objectives": [
+     {
+      "lo_id": "lo_1",
+      "statement": "Người học có thể phân loại khiếu nại theo nhóm và mức độ nghiêm trọng dựa trên bảng cấp độ",
+      "bloom": "apply",
+      "origin": "ai_proposed"
+     },
+     {
+      "lo_id": "lo_2",
+      "statement": "Người học có thể quyết định tự xử lý hay escalate khiếu nại theo tiêu chí bắt buộc",
+      "bloom": "evaluate",
+      "origin": "ai_proposed"
+     },
+     {
+      "lo_id": "lo_3",
+      "statement": "Người học có thể thực hiện quy trình tiếp nhận và xử lý khiếu nại đúng trình tự",
+      "bloom": "apply",
+      "origin": "ai_proposed"
+     }
+    ],
+    "must_dos": [
+     {
+      "must_do_id": "md_1",
+      "lo_id": "lo_1",
+      "statement": "Phân loại khiếu nại theo nhóm",
+      "kind": "do",
+      "bloom": "apply"
+     },
+     {
+      "must_do_id": "md_2",
+      "lo_id": "lo_1",
+      "statement": "Đánh giá mức độ nghiêm trọng của khiếu nại",
+      "kind": "decide",
+      "bloom": "analyze"
+     },
+     {
+      "must_do_id": "md_3",
+      "lo_id": "lo_2",
+      "statement": "Quyết định tự xử lý hay escalate",
+      "kind": "decide",
+      "bloom": "evaluate"
+     },
+     {
+      "must_do_id": "md_4",
+      "lo_id": "lo_3",
+      "statement": "Thực hiện các bước tiếp nhận khiếu nại đúng trình tự",
+      "kind": "do",
+      "bloom": "apply"
+     },
+     {
+      "must_do_id": "md_5",
+      "lo_id": "lo_3",
+      "statement": "Phản hồi khách hàng đúng thời hạn",
+      "kind": "do",
+      "bloom": "apply"
+     }
+    ],
+    "blocks": [
+     {
+      "block_id": "cb_0001",
+      "section_id": "sec_001",
+      "name": "Phiên bản và ngày áp dụng của quy trình",
+      "summary": "Nội dung về: Phiên bản và ngày áp dụng của quy trình",
+      "intent": "know",
+      "support_role": null,
+      "content_kind": "reference",
+      "fact_keys": [
+       "d1-c0-f2"
+      ],
+      "issues": [],
+      "gaps": [],
+      "sme_questions": [],
+      "origin": "provider"
+     },
+     {
+      "block_id": "cb_0002",
+      "section_id": "sec_001",
+      "name": "Phòng Chăm sóc Khách hàng đã phát triển ra sao?",
+      "summary": "Nội dung về: Phòng Chăm sóc Khách hàng đã phát triển ra sao?",
+      "intent": "know",
+      "support_role": null,
+      "content_kind": "concept",
+      "fact_keys": [
+       "d1-c1-f1",
+       "d1-c1-f2",
+       "d1-c1-f3",
+       "d1-c1-f4"
+      ],
+      "issues": [],
+      "gaps": [],
+      "sme_questions": [],
+      "origin": "provider"
+     },
+     {
+      "block_id": "cb_0003",
+      "section_id": "sec_001",
+      "name": "Thế nào là một khiếu nại?",
+      "summary": "Nội dung về: Thế nào là một khiếu nại?",
+      "intent": "know",
+      "support_role": null,
+      "content_kind": "concept",
+      "fact_keys": [
+       "d1-c2-f1",
+       "d1-c2-f2",
+       "d1-c2-f3"
+      ],
+      "issues": [],
+      "gaps": [],
+      "sme_questions": [],
+      "origin": "provider"
+     },
+     {
+      "block_id": "cb_0004",
+      "section_id": "sec_001",
+      "name": "Khiếu nại được chia thành những nhóm nào?",
+      "summary": "Nội dung về: Khiếu nại được chia thành những nhóm nào?",
+      "intent": "know",
+      "support_role": null,
+      "content_kind": "concept",
+      "fact_keys": [
+       "d1-c3-f1",
+       "d1-c3-f2",
+       "d1-c3-f3",
+       "d1-c3-f4",
+       "d1-c3-f5",
+       "d1-c3-f6"
+      ],
+      "issues": [],
+      "gaps": [],
+      "sme_questions": [],
+      "origin": "provider"
+     },
+     {
+      "block_id": "cb_0005",
+      "section_id": "sec_001",
+      "name": "Đánh giá mức độ nghiêm trọng của khiếu nại như thế nào?",
+      "summary": "Nội dung về: Đánh giá mức độ nghiêm trọng của khiếu nại như thế nào?",
+      "intent": "decide",
+      "support_role": null,
+      "content_kind": "decision",
+      "fact_keys": [
+       "d1-c4-f1",
+       "d1-c4-f2",
+       "d1-c4-f3",
+       "d1-c4-f4",
+       "d1-c4-f5"
+      ],
+      "issues": [],
+      "gaps": [],
+      "sme_questions": [],
+      "origin": "provider"
+     },
+     {
+      "block_id": "cb_0006",
+      "section_id": "sec_001",
+      "name": "Tiếp nhận thông tin khiếu nại ban đầu",
+      "summary": "Nội dung về: Tiếp nhận thông tin khiếu nại ban đầu",
+      "intent": "do",
+      "support_role": null,
+      "content_kind": "procedure",
+      "fact_keys": [
+       "d1-c5-f1",
+       "d1-c5-f2",
+       "d1-c5-f3",
+       "d1-c5-f4",
+       "d1-c5-f5"
+      ],
+      "issues": [],
+      "gaps": [],
+      "sme_questions": [],
+      "origin": "provider"
+     },
+     {
+      "block_id": "cb_0007",
+      "section_id": "sec_001",
+      "name": "Xác định hướng xử lý sau khi phân loại",
+      "summary": "Nội dung về: Xác định hướng xử lý sau khi phân loại",
+      "intent": "do",
+      "support_role": null,
+      "content_kind": "procedure",
+      "fact_keys": [
+       "d1-c5-f6",
+       "d1-c5-f7",
+       "d1-c5-f8",
+       "d1-c5-f9"
+      ],
+      "issues": [],
+      "gaps": [],
+      "sme_questions": [],
+      "origin": "provider"
+     },
+     {
+      "block_id": "cb_0008",
+      "section_id": "sec_001",
+      "name": "Hoàn tất hồ sơ khiếu nại với khách hàng",
+      "summary": "Nội dung về: Hoàn tất hồ sơ khiếu nại với khách hàng",
+      "intent": "do",
+      "support_role": null,
+      "content_kind": "procedure",
+      "fact_keys": [
+       "d1-c5-f10",
+       "d1-c5-f11",
+       "d1-c5-f12",
+       "d1-c5-f13"
+      ],
+      "issues": [],
+      "gaps": [],
+      "sme_questions": [],
+      "origin": "provider"
+     },
+     {
+      "block_id": "cb_0009",
+      "section_id": "sec_001",
+      "name": "Khi nào bắt buộc phải escalate khiếu nại?",
+      "summary": "Nội dung về: Khi nào bắt buộc phải escalate khiếu nại?",
+      "intent": "decide",
+      "support_role": null,
+      "content_kind": "decision",
+      "fact_keys": [
+       "d1-c6-f1",
+       "d1-c6-f2",
+       "d1-c6-f3",
+       "d1-c6-f4",
+       "d1-c6-f5",
+       "d1-c6-f6"
+      ],
+      "issues": [],
+      "gaps": [],
+      "sme_questions": [],
+      "origin": "provider"
+     },
+     {
+      "block_id": "cb_0010",
+      "section_id": "sec_001",
+      "name": "Phải phản hồi khách hàng trong bao lâu?",
+      "summary": "Nội dung về: Phải phản hồi khách hàng trong bao lâu?",
+      "intent": "know",
+      "support_role": null,
+      "content_kind": "policy",
+      "fact_keys": [
+       "d1-c7-f1",
+       "d1-c7-f2",
+       "d1-c7-f3",
+       "d1-c7-f4"
+      ],
+      "issues": [
+       {
+        "type": "duplicate",
+        "note": "Hai dòng cùng nêu thời hạn 24 giờ.",
+        "fact_keys": [
+         "d1-c7-f2",
+         "d1-c7-f3"
+        ]
+       },
+       {
+        "type": "conflict",
+        "note": "24 giờ mâu thuẫn với 48 giờ cho khiếu nại cấp 2.",
+        "fact_keys": [
+         "d1-c7-f2",
+         "d1-c7-f4"
+        ]
+       }
+      ],
+      "gaps": [],
+      "sme_questions": [
+       "Khiếu nại cấp 2 phải phản hồi trong 24 giờ hay 48 giờ?"
+      ],
+      "origin": "provider"
+     },
+     {
+      "block_id": "cb_0011",
+      "section_id": "sec_001",
+      "name": "Những lỗi nào nhân viên thường mắc khi xử lý khiếu nại?",
+      "summary": "Nội dung về: Những lỗi nào nhân viên thường mắc khi xử lý khiếu nại?",
+      "intent": "know",
+      "support_role": "common_mistake",
+      "content_kind": "case",
+      "fact_keys": [
+       "d1-c8-f1",
+       "d1-c8-f2",
+       "d1-c8-f3"
+      ],
+      "issues": [],
+      "gaps": [],
+      "sme_questions": [],
+      "origin": "provider"
+     },
+     {
+      "block_id": "cb_0012",
+      "section_id": "sec_001",
+      "name": "Ghi nhận khiếu nại trên CRM như thế nào?",
+      "summary": "Nội dung về: Ghi nhận khiếu nại trên CRM như thế nào?",
+      "intent": "do",
+      "support_role": null,
+      "content_kind": "system",
+      "fact_keys": [
+       "d1-c9-f1",
+       "d1-c9-f2"
+      ],
+      "issues": [
+       {
+        "type": "outdated",
+        "note": "Hướng dẫn dựa trên ảnh chụp CRM phiên bản 2021.",
+        "fact_keys": [
+         "d1-c9-f2"
+        ]
+       }
+      ],
+      "gaps": [
+       {
+        "type": "missing_step",
+        "note": "Thiếu các bước trên giao diện CRM hiện tại."
+       }
+      ],
+      "sme_questions": [
+       "Giao diện CRM hiện tại còn đúng các bước Tạo mới, chọn mã và đính kèm phiếu KN-01 không?"
+      ],
+      "origin": "provider"
+     },
+     {
+      "block_id": "cb_0013",
+      "section_id": "sec_001",
+      "name": "Mã khiếu nại ứng với từng nhóm",
+      "summary": "Nội dung về: Mã khiếu nại ứng với từng nhóm",
+      "intent": "know",
+      "support_role": "job_aid",
+      "content_kind": "reference",
+      "fact_keys": [
+       "d1-c10-f1",
+       "d1-c10-f2",
+       "d1-c10-f3",
+       "d1-c10-f4",
+       "d1-c10-f5",
+       "d1-c10-f6",
+       "d1-c10-f7"
+      ],
+      "issues": [],
+      "gaps": [],
+      "sme_questions": [],
+      "origin": "provider"
+     },
+     {
+      "block_id": "cb_0014",
+      "section_id": "sec_001",
+      "name": "Cần liên hệ ai khi phải escalate?",
+      "summary": "Nội dung về: Cần liên hệ ai khi phải escalate?",
+      "intent": "know",
+      "support_role": "job_aid",
+      "content_kind": "reference",
+      "fact_keys": [
+       "d1-c11-f1",
+       "d1-c11-f2",
+       "d1-c11-f3"
+      ],
+      "issues": [],
+      "gaps": [],
+      "sme_questions": [],
+      "origin": "provider"
+     }
+    ],
+    "lo_links": [
+     {
+      "block_id": "cb_0001",
+      "lo_id": "lo_3",
+      "relation": "unrelated"
+     },
+     {
+      "block_id": "cb_0002",
+      "lo_id": "lo_3",
+      "relation": "unrelated"
+     },
+     {
+      "block_id": "cb_0003",
+      "lo_id": "lo_1",
+      "relation": "supporting"
+     },
+     {
+      "block_id": "cb_0004",
+      "lo_id": "lo_1",
+      "relation": "direct"
+     },
+     {
+      "block_id": "cb_0005",
+      "lo_id": "lo_1",
+      "relation": "direct"
+     },
+     {
+      "block_id": "cb_0005",
+      "lo_id": "lo_2",
+      "relation": "supporting"
+     },
+     {
+      "block_id": "cb_0006",
+      "lo_id": "lo_3",
+      "relation": "direct"
+     },
+     {
+      "block_id": "cb_0007",
+      "lo_id": "lo_3",
+      "relation": "direct"
+     },
+     {
+      "block_id": "cb_0008",
+      "lo_id": "lo_3",
+      "relation": "direct"
+     },
+     {
+      "block_id": "cb_0009",
+      "lo_id": "lo_2",
+      "relation": "direct"
+     },
+     {
+      "block_id": "cb_0010",
+      "lo_id": "lo_3",
+      "relation": "direct"
+     },
+     {
+      "block_id": "cb_0011",
+      "lo_id": "lo_2",
+      "relation": "supporting"
+     },
+     {
+      "block_id": "cb_0012",
+      "lo_id": "lo_3",
+      "relation": "supporting"
+     },
+     {
+      "block_id": "cb_0013",
+      "lo_id": "lo_1",
+      "relation": "context"
+     },
+     {
+      "block_id": "cb_0014",
+      "lo_id": "lo_2",
+      "relation": "context"
+     }
+    ],
+    "blueprint": [
+     {
+      "block_id": "cb_0001",
+      "lo_id": null,
+      "must_do_ids": [],
+      "classification": "nice_to_know",
+      "placement": "excluded",
+      "treatment": "remove",
+      "detail_level": "Giữ phần cần để thực hiện đúng Must Do.",
+      "hold": false,
+      "hold_reason": null,
+      "sme_question": null,
+      "combine_into": null,
+      "separate_into": [],
+      "rationale": "Quyết định theo luồng Week 2."
+     },
+     {
+      "block_id": "cb_0002",
+      "lo_id": null,
+      "must_do_ids": [],
+      "classification": "remove",
+      "placement": "excluded",
+      "treatment": "remove",
+      "detail_level": "Giữ phần cần để thực hiện đúng Must Do.",
+      "hold": false,
+      "hold_reason": null,
+      "sme_question": null,
+      "combine_into": null,
+      "separate_into": [],
+      "rationale": "Quyết định theo luồng Week 2."
+     },
+     {
+      "block_id": "cb_0003",
+      "lo_id": "lo_1",
+      "must_do_ids": [
+       "md_1"
+      ],
+      "classification": "must_know",
+      "placement": "course",
+      "treatment": "condense",
+      "detail_level": "Giữ phần cần để thực hiện đúng Must Do.",
+      "hold": false,
+      "hold_reason": null,
+      "sme_question": null,
+      "combine_into": null,
+      "separate_into": [],
+      "rationale": "Quyết định theo luồng Week 2."
+     },
+     {
+      "block_id": "cb_0004",
+      "lo_id": "lo_1",
+      "must_do_ids": [
+       "md_1"
+      ],
+      "classification": "must_know",
+      "placement": "course",
+      "treatment": "keep",
+      "detail_level": "Giữ phần cần để thực hiện đúng Must Do.",
+      "hold": false,
+      "hold_reason": null,
+      "sme_question": null,
+      "combine_into": null,
+      "separate_into": [],
+      "rationale": "Quyết định theo luồng Week 2."
+     },
+     {
+      "block_id": "cb_0005",
+      "lo_id": "lo_1",
+      "must_do_ids": [
+       "md_2",
+       "md_3"
+      ],
+      "classification": "must_know",
+      "placement": "course",
+      "treatment": "keep",
+      "detail_level": "Giữ phần cần để thực hiện đúng Must Do.",
+      "hold": false,
+      "hold_reason": null,
+      "sme_question": null,
+      "combine_into": null,
+      "separate_into": [],
+      "rationale": "Quyết định theo luồng Week 2."
+     },
+     {
+      "block_id": "cb_0006",
+      "lo_id": "lo_3",
+      "must_do_ids": [
+       "md_4"
+      ],
+      "classification": "must_do",
+      "placement": "course",
+      "treatment": "condense",
+      "detail_level": "Giữ phần cần để thực hiện đúng Must Do.",
+      "hold": false,
+      "hold_reason": null,
+      "sme_question": null,
+      "combine_into": null,
+      "separate_into": [],
+      "rationale": "Quyết định theo luồng Week 2."
+     },
+     {
+      "block_id": "cb_0007",
+      "lo_id": "lo_3",
+      "must_do_ids": [
+       "md_4"
+      ],
+      "classification": "must_do",
+      "placement": "course",
+      "treatment": "condense",
+      "detail_level": "Giữ phần cần để thực hiện đúng Must Do.",
+      "hold": false,
+      "hold_reason": null,
+      "sme_question": null,
+      "combine_into": null,
+      "separate_into": [],
+      "rationale": "Quyết định theo luồng Week 2."
+     },
+     {
+      "block_id": "cb_0008",
+      "lo_id": "lo_3",
+      "must_do_ids": [
+       "md_4"
+      ],
+      "classification": "must_do",
+      "placement": "course",
+      "treatment": "condense",
+      "detail_level": "Giữ phần cần để thực hiện đúng Must Do.",
+      "hold": false,
+      "hold_reason": null,
+      "sme_question": null,
+      "combine_into": null,
+      "separate_into": [],
+      "rationale": "Quyết định theo luồng Week 2."
+     },
+     {
+      "block_id": "cb_0009",
+      "lo_id": "lo_2",
+      "must_do_ids": [
+       "md_3"
+      ],
+      "classification": "must_do",
+      "placement": "course",
+      "treatment": "keep",
+      "detail_level": "Giữ phần cần để thực hiện đúng Must Do.",
+      "hold": false,
+      "hold_reason": null,
+      "sme_question": null,
+      "combine_into": null,
+      "separate_into": [],
+      "rationale": "Quyết định theo luồng Week 2."
+     },
+     {
+      "block_id": "cb_0010",
+      "lo_id": "lo_3",
+      "must_do_ids": [
+       "md_5"
+      ],
+      "classification": "must_know",
+      "placement": "course",
+      "treatment": "rewrite",
+      "detail_level": "Giữ phần cần để thực hiện đúng Must Do.",
+      "hold": true,
+      "hold_reason": "Thời hạn 24 giờ mâu thuẫn với 48 giờ cho khiếu nại cấp 2",
+      "sme_question": "Khiếu nại cấp 2 phải phản hồi trong 24 giờ hay 48 giờ?",
+      "combine_into": null,
+      "separate_into": [],
+      "rationale": "Quyết định theo luồng Week 2."
+     },
+     {
+      "block_id": "cb_0011",
+      "lo_id": "lo_2",
+      "must_do_ids": [
+       "md_3"
+      ],
+      "classification": "must_know",
+      "placement": "course",
+      "treatment": "condense",
+      "detail_level": "Giữ phần cần để thực hiện đúng Must Do.",
+      "hold": false,
+      "hold_reason": null,
+      "sme_question": null,
+      "combine_into": null,
+      "separate_into": [],
+      "rationale": "Quyết định theo luồng Week 2."
+     },
+     {
+      "block_id": "cb_0012",
+      "lo_id": "lo_3",
+      "must_do_ids": [
+       "md_4"
+      ],
+      "classification": "must_know",
+      "placement": "course",
+      "treatment": "rewrite",
+      "detail_level": "Giữ phần cần để thực hiện đúng Must Do.",
+      "hold": true,
+      "hold_reason": "Hướng dẫn CRM dựa trên ảnh chụp phiên bản 2021, có thể đã lỗi thời",
+      "sme_question": "Giao diện CRM hiện tại còn đúng các bước Tạo mới, chọn mã và đính kèm phiếu không?",
+      "combine_into": null,
+      "separate_into": [],
+      "rationale": "Quyết định theo luồng Week 2."
+     },
+     {
+      "block_id": "cb_0013",
+      "lo_id": "lo_1",
+      "must_do_ids": [],
+      "classification": "reference",
+      "placement": "reference_job_aid",
+      "treatment": "convert_to_job_aid",
+      "detail_level": "Giữ phần cần để thực hiện đúng Must Do.",
+      "hold": false,
+      "hold_reason": null,
+      "sme_question": null,
+      "combine_into": null,
+      "separate_into": [],
+      "rationale": "Quyết định theo luồng Week 2."
+     },
+     {
+      "block_id": "cb_0014",
+      "lo_id": "lo_2",
+      "must_do_ids": [],
+      "classification": "reference",
+      "placement": "reference_job_aid",
+      "treatment": "convert_to_job_aid",
+      "detail_level": "Giữ phần cần để thực hiện đúng Must Do.",
+      "hold": false,
+      "hold_reason": null,
+      "sme_question": null,
+      "combine_into": null,
+      "separate_into": [],
+      "rationale": "Quyết định theo luồng Week 2."
+     }
+    ],
+    "blocked_must_do_ids": [
+     "md_5"
+    ],
+    "hold_items": [
+     {
+      "block_id": "cb_0010",
+      "name": "Phải phản hồi khách hàng trong bao lâu?",
+      "reason": "Thời hạn 24 giờ mâu thuẫn với 48 giờ cho khiếu nại cấp 2",
+      "sme_question": "Khiếu nại cấp 2 phải phản hồi trong 24 giờ hay 48 giờ?",
+      "blocked_must_do_ids": [
+       "md_5"
+      ]
+     },
+     {
+      "block_id": "cb_0012",
+      "name": "Ghi nhận khiếu nại trên CRM như thế nào?",
+      "reason": "Hướng dẫn CRM dựa trên ảnh chụp phiên bản 2021, có thể đã lỗi thời",
+      "sme_question": "Giao diện CRM hiện tại còn đúng các bước Tạo mới, chọn mã và đính kèm phiếu không?",
+      "blocked_must_do_ids": []
+     }
+    ],
+    "modules": [
+     {
+      "module_key": "mod_01",
+      "title": "Phân loại và đánh giá mức độ khiếu nại",
+      "performance_goal": "Phân loại đúng nhóm và mức độ của mọi khiếu nại tiếp nhận",
+      "lo_ids": [
+       "lo_1"
+      ],
+      "lessons": [
+       {
+        "lesson_key": "lsn_001",
+        "kind": "learning",
+        "title": "Phân loại khiếu nại theo nhóm",
+        "primary_must_do_id": "md_1",
+        "secondary_must_do_ids": [],
+        "block_ids": [
+         "cb_0003",
+         "cb_0004"
+        ],
+        "est_screens": 4,
+        "est_minutes": 6,
+        "ordering_rationale": "Nền tảng trước, theo thứ tự công việc thực tế."
+       },
+       {
+        "lesson_key": "lsn_002",
+        "kind": "learning",
+        "title": "Đánh giá mức độ nghiêm trọng",
+        "primary_must_do_id": "md_2",
+        "secondary_must_do_ids": [],
+        "block_ids": [
+         "cb_0005"
+        ],
+        "est_screens": 4,
+        "est_minutes": 6,
+        "ordering_rationale": "Nền tảng trước, theo thứ tự công việc thực tế."
+       }
+      ]
+     },
+     {
+      "module_key": "mod_02",
+      "title": "Quyết định escalate khiếu nại",
+      "performance_goal": "Quyết định đúng khi nào tự xử lý và khi nào phải escalate",
+      "lo_ids": [
+       "lo_2"
+      ],
+      "lessons": [
+       {
+        "lesson_key": "lsn_003",
+        "kind": "learning",
+        "title": "Quyết định tự xử lý hay escalate",
+        "primary_must_do_id": "md_3",
+        "secondary_must_do_ids": [],
+        "block_ids": [
+         "cb_0009",
+         "cb_0011"
+        ],
+        "est_screens": 6,
+        "est_minutes": 10,
+        "ordering_rationale": "Nền tảng trước, theo thứ tự công việc thực tế."
+       }
+      ]
+     },
+     {
+      "module_key": "mod_03",
+      "title": "Tiếp nhận khiếu nại theo quy trình",
+      "performance_goal": "Thực hiện đúng trình tự tiếp nhận và xử lý khiếu nại",
+      "lo_ids": [
+       "lo_3"
+      ],
+      "lessons": [
+       {
+        "lesson_key": "lsn_004",
+        "kind": "learning",
+        "title": "Thực hiện quy trình tiếp nhận khiếu nại",
+        "primary_must_do_id": "md_4",
+        "secondary_must_do_ids": [],
+        "block_ids": [
+         "cb_0006",
+         "cb_0007",
+         "cb_0008"
+        ],
+        "est_screens": 6,
+        "est_minutes": 10,
+        "ordering_rationale": "Nền tảng trước, theo thứ tự công việc thực tế."
+       },
+       {
+        "lesson_key": "lsn_005",
+        "kind": "job_aid",
+        "title": "Bảng tra mã khiếu nại và đầu mối liên hệ",
+        "primary_must_do_id": null,
+        "secondary_must_do_ids": [],
+        "block_ids": [
+         "cb_0013",
+         "cb_0014"
+        ],
+        "est_screens": 2,
+        "est_minutes": 3,
+        "ordering_rationale": "Nền tảng trước, theo thứ tự công việc thực tế."
+       }
+      ]
+     }
+    ],
+    "block_scopes": [
+     {
+      "scope_key": "idmcb_7b05aebc721d4eac1ec14e9c6e4becee",
+      "block_id": "cb_0003",
+      "title": "Thế nào là một khiếu nại?",
+      "source_ref": "src-2",
+      "fact_count": 3,
+      "content_chars": 256,
+      "fact_keys": [
+       "d1-c2-f1",
+       "d1-c2-f2",
+       "d1-c2-f3"
+      ]
+     },
+     {
+      "scope_key": "idmcb_ba44f8d684f4449eac35a7ac97897e94",
+      "block_id": "cb_0004",
+      "title": "Khiếu nại được chia thành những nhóm nào?",
+      "source_ref": "src-3",
+      "fact_count": 6,
+      "content_chars": 143,
+      "fact_keys": [
+       "d1-c3-f1",
+       "d1-c3-f2",
+       "d1-c3-f3",
+       "d1-c3-f4",
+       "d1-c3-f5",
+       "d1-c3-f6"
+      ]
+     },
+     {
+      "scope_key": "idmcb_53ffd4a2e3fefe50a5a67d14201abf1a",
+      "block_id": "cb_0005",
+      "title": "Đánh giá mức độ nghiêm trọng của khiếu nại như thế nào?",
+      "source_ref": "src-4",
+      "fact_count": 5,
+      "content_chars": 378,
+      "fact_keys": [
+       "d1-c4-f1",
+       "d1-c4-f2",
+       "d1-c4-f3",
+       "d1-c4-f4",
+       "d1-c4-f5"
+      ]
+     },
+     {
+      "scope_key": "idmcb_7eaa0e3fbf112e30347ff9e30599f25d",
+      "block_id": "cb_0009",
+      "title": "Khi nào bắt buộc phải escalate khiếu nại?",
+      "source_ref": "src-6",
+      "fact_count": 6,
+      "content_chars": 400,
+      "fact_keys": [
+       "d1-c6-f1",
+       "d1-c6-f2",
+       "d1-c6-f3",
+       "d1-c6-f4",
+       "d1-c6-f5",
+       "d1-c6-f6"
+      ]
+     },
+     {
+      "scope_key": "idmcb_ffe738c2047a526b9994b57c9d37bfc8",
+      "block_id": "cb_0011",
+      "title": "Những lỗi nào nhân viên thường mắc khi xử lý khiếu nại?",
+      "source_ref": "src-8",
+      "fact_count": 3,
+      "content_chars": 274,
+      "fact_keys": [
+       "d1-c8-f1",
+       "d1-c8-f2",
+       "d1-c8-f3"
+      ]
+     },
+     {
+      "scope_key": "idmcb_f1db432ba8d0a598e8befef1c560f5a7",
+      "block_id": "cb_0006",
+      "title": "Tiếp nhận thông tin khiếu nại ban đầu",
+      "source_ref": "src-5",
+      "fact_count": 5,
+      "content_chars": 216,
+      "fact_keys": [
+       "d1-c5-f1",
+       "d1-c5-f2",
+       "d1-c5-f3",
+       "d1-c5-f4",
+       "d1-c5-f5"
+      ]
+     },
+     {
+      "scope_key": "idmcb_d5706a642e72ad117aef39a0097b527f",
+      "block_id": "cb_0007",
+      "title": "Xác định hướng xử lý sau khi phân loại",
+      "source_ref": "src-5",
+      "fact_count": 4,
+      "content_chars": 222,
+      "fact_keys": [
+       "d1-c5-f6",
+       "d1-c5-f7",
+       "d1-c5-f8",
+       "d1-c5-f9"
+      ]
+     },
+     {
+      "scope_key": "idmcb_9c8155960f87c9785b860bba0a32d2e9",
+      "block_id": "cb_0008",
+      "title": "Hoàn tất hồ sơ khiếu nại với khách hàng",
+      "source_ref": "src-5",
+      "fact_count": 4,
+      "content_chars": 171,
+      "fact_keys": [
+       "d1-c5-f10",
+       "d1-c5-f11",
+       "d1-c5-f12",
+       "d1-c5-f13"
+      ]
+     },
+     {
+      "scope_key": "idmcb_1e0cddf95fdfe3eb09fbeac63ef951ec",
+      "block_id": "cb_0013",
+      "title": "Mã khiếu nại ứng với từng nhóm",
+      "source_ref": "src-10",
+      "fact_count": 7,
+      "content_chars": 163,
+      "fact_keys": [
+       "d1-c10-f1",
+       "d1-c10-f2",
+       "d1-c10-f3",
+       "d1-c10-f4",
+       "d1-c10-f5",
+       "d1-c10-f6",
+       "d1-c10-f7"
+      ]
+     },
+     {
+      "scope_key": "idmcb_b7bbaaaa2756ee07f98da541a0308023",
+      "block_id": "cb_0014",
+      "title": "Cần liên hệ ai khi phải escalate?",
+      "source_ref": "src-11",
+      "fact_count": 3,
+      "content_chars": 100,
+      "fact_keys": [
+       "d1-c11-f1",
+       "d1-c11-f2",
+       "d1-c11-f3"
+      ]
+     }
+    ],
+    "dispositions": [
+     {
+      "fact_key": "d1-c0-f1",
+      "disposition": "noise",
+      "block_id": null,
+      "reason": "toc_or_title_only"
+     },
+     {
+      "fact_key": "d1-c0-f2",
+      "disposition": "nice_to_know",
+      "block_id": "cb_0001",
+      "reason": null
+     },
+     {
+      "fact_key": "d1-c1-f1",
+      "disposition": "remove",
+      "block_id": "cb_0002",
+      "reason": null
+     },
+     {
+      "fact_key": "d1-c1-f2",
+      "disposition": "remove",
+      "block_id": "cb_0002",
+      "reason": null
+     },
+     {
+      "fact_key": "d1-c1-f3",
+      "disposition": "remove",
+      "block_id": "cb_0002",
+      "reason": null
+     },
+     {
+      "fact_key": "d1-c1-f4",
+      "disposition": "remove",
+      "block_id": "cb_0002",
+      "reason": null
+     },
+     {
+      "fact_key": "d1-c2-f1",
+      "disposition": "course",
+      "block_id": "cb_0003",
+      "reason": null
+     },
+     {
+      "fact_key": "d1-c2-f2",
+      "disposition": "course",
+      "block_id": "cb_0003",
+      "reason": null
+     },
+     {
+      "fact_key": "d1-c2-f3",
+      "disposition": "course",
+      "block_id": "cb_0003",
+      "reason": null
+     },
+     {
+      "fact_key": "d1-c3-f1",
+      "disposition": "course",
+      "block_id": "cb_0004",
+      "reason": null
+     },
+     {
+      "fact_key": "d1-c3-f2",
+      "disposition": "course",
+      "block_id": "cb_0004",
+      "reason": null
+     },
+     {
+      "fact_key": "d1-c3-f3",
+      "disposition": "course",
+      "block_id": "cb_0004",
+      "reason": null
+     },
+     {
+      "fact_key": "d1-c3-f4",
+      "disposition": "course",
+      "block_id": "cb_0004",
+      "reason": null
+     },
+     {
+      "fact_key": "d1-c3-f5",
+      "disposition": "course",
+      "block_id": "cb_0004",
+      "reason": null
+     },
+     {
+      "fact_key": "d1-c3-f6",
+      "disposition": "course",
+      "block_id": "cb_0004",
+      "reason": null
+     },
+     {
+      "fact_key": "d1-c4-f1",
+      "disposition": "course",
+      "block_id": "cb_0005",
+      "reason": null
+     },
+     {
+      "fact_key": "d1-c4-f2",
+      "disposition": "course",
+      "block_id": "cb_0005",
+      "reason": null
+     },
+     {
+      "fact_key": "d1-c4-f3",
+      "disposition": "course",
+      "block_id": "cb_0005",
+      "reason": null
+     },
+     {
+      "fact_key": "d1-c4-f4",
+      "disposition": "course",
+      "block_id": "cb_0005",
+      "reason": null
+     },
+     {
+      "fact_key": "d1-c4-f5",
+      "disposition": "course",
+      "block_id": "cb_0005",
+      "reason": null
+     },
+     {
+      "fact_key": "d1-c5-f1",
+      "disposition": "course",
+      "block_id": "cb_0006",
+      "reason": null
+     },
+     {
+      "fact_key": "d1-c5-f2",
+      "disposition": "course",
+      "block_id": "cb_0006",
+      "reason": null
+     },
+     {
+      "fact_key": "d1-c5-f3",
+      "disposition": "course",
+      "block_id": "cb_0006",
+      "reason": null
+     },
+     {
+      "fact_key": "d1-c5-f4",
+      "disposition": "course",
+      "block_id": "cb_0006",
+      "reason": null
+     },
+     {
+      "fact_key": "d1-c5-f5",
+      "disposition": "course",
+      "block_id": "cb_0006",
+      "reason": null
+     },
+     {
+      "fact_key": "d1-c5-f6",
+      "disposition": "course",
+      "block_id": "cb_0007",
+      "reason": null
+     },
+     {
+      "fact_key": "d1-c5-f7",
+      "disposition": "course",
+      "block_id": "cb_0007",
+      "reason": null
+     },
+     {
+      "fact_key": "d1-c5-f8",
+      "disposition": "course",
+      "block_id": "cb_0007",
+      "reason": null
+     },
+     {
+      "fact_key": "d1-c5-f9",
+      "disposition": "course",
+      "block_id": "cb_0007",
+      "reason": null
+     },
+     {
+      "fact_key": "d1-c5-f10",
+      "disposition": "course",
+      "block_id": "cb_0008",
+      "reason": null
+     },
+     {
+      "fact_key": "d1-c5-f11",
+      "disposition": "course",
+      "block_id": "cb_0008",
+      "reason": null
+     },
+     {
+      "fact_key": "d1-c5-f12",
+      "disposition": "course",
+      "block_id": "cb_0008",
+      "reason": null
+     },
+     {
+      "fact_key": "d1-c5-f13",
+      "disposition": "course",
+      "block_id": "cb_0008",
+      "reason": null
+     },
+     {
+      "fact_key": "d1-c6-f1",
+      "disposition": "course",
+      "block_id": "cb_0009",
+      "reason": null
+     },
+     {
+      "fact_key": "d1-c6-f2",
+      "disposition": "course",
+      "block_id": "cb_0009",
+      "reason": null
+     },
+     {
+      "fact_key": "d1-c6-f3",
+      "disposition": "course",
+      "block_id": "cb_0009",
+      "reason": null
+     },
+     {
+      "fact_key": "d1-c6-f4",
+      "disposition": "course",
+      "block_id": "cb_0009",
+      "reason": null
+     },
+     {
+      "fact_key": "d1-c6-f5",
+      "disposition": "course",
+      "block_id": "cb_0009",
+      "reason": null
+     },
+     {
+      "fact_key": "d1-c6-f6",
+      "disposition": "course",
+      "block_id": "cb_0009",
+      "reason": null
+     },
+     {
+      "fact_key": "d1-c7-f1",
+      "disposition": "hold",
+      "block_id": "cb_0010",
+      "reason": null
+     },
+     {
+      "fact_key": "d1-c7-f2",
+      "disposition": "hold",
+      "block_id": "cb_0010",
+      "reason": null
+     },
+     {
+      "fact_key": "d1-c7-f3",
+      "disposition": "hold",
+      "block_id": "cb_0010",
+      "reason": null
+     },
+     {
+      "fact_key": "d1-c7-f4",
+      "disposition": "hold",
+      "block_id": "cb_0010",
+      "reason": null
+     },
+     {
+      "fact_key": "d1-c8-f1",
+      "disposition": "course",
+      "block_id": "cb_0011",
+      "reason": null
+     },
+     {
+      "fact_key": "d1-c8-f2",
+      "disposition": "course",
+      "block_id": "cb_0011",
+      "reason": null
+     },
+     {
+      "fact_key": "d1-c8-f3",
+      "disposition": "course",
+      "block_id": "cb_0011",
+      "reason": null
+     },
+     {
+      "fact_key": "d1-c9-f1",
+      "disposition": "hold",
+      "block_id": "cb_0012",
+      "reason": null
+     },
+     {
+      "fact_key": "d1-c9-f2",
+      "disposition": "hold",
+      "block_id": "cb_0012",
+      "reason": null
+     },
+     {
+      "fact_key": "d1-c10-f1",
+      "disposition": "reference_job_aid",
+      "block_id": "cb_0013",
+      "reason": null
+     },
+     {
+      "fact_key": "d1-c10-f2",
+      "disposition": "reference_job_aid",
+      "block_id": "cb_0013",
+      "reason": null
+     },
+     {
+      "fact_key": "d1-c10-f3",
+      "disposition": "reference_job_aid",
+      "block_id": "cb_0013",
+      "reason": null
+     },
+     {
+      "fact_key": "d1-c10-f4",
+      "disposition": "reference_job_aid",
+      "block_id": "cb_0013",
+      "reason": null
+     },
+     {
+      "fact_key": "d1-c10-f5",
+      "disposition": "reference_job_aid",
+      "block_id": "cb_0013",
+      "reason": null
+     },
+     {
+      "fact_key": "d1-c10-f6",
+      "disposition": "reference_job_aid",
+      "block_id": "cb_0013",
+      "reason": null
+     },
+     {
+      "fact_key": "d1-c10-f7",
+      "disposition": "reference_job_aid",
+      "block_id": "cb_0013",
+      "reason": null
+     },
+     {
+      "fact_key": "d1-c11-f1",
+      "disposition": "reference_job_aid",
+      "block_id": "cb_0014",
+      "reason": null
+     },
+     {
+      "fact_key": "d1-c11-f2",
+      "disposition": "reference_job_aid",
+      "block_id": "cb_0014",
+      "reason": null
+     },
+     {
+      "fact_key": "d1-c11-f3",
+      "disposition": "reference_job_aid",
+      "block_id": "cb_0014",
+      "reason": null
+     },
+     {
+      "fact_key": "d1-c12-f1",
+      "disposition": "noise",
+      "block_id": null,
+      "reason": "page_furniture"
+     },
+     {
+      "fact_key": "d1-c12-f2",
+      "disposition": "noise",
+      "block_id": null,
+      "reason": "page_furniture"
+     },
+     {
+      "fact_key": "d1-c12-f3",
+      "disposition": "noise",
+      "block_id": null,
+      "reason": "page_furniture"
+     }
+    ],
+    "notes": {
+     "course": "[Thiết kế theo quy trình ID — idm-1]\n• Mục tiêu học tập và đối tượng học: do AI đề xuất từ tài liệu — cần xác nhận.\n• Thời lượng ước tính: 35 phút (5 mục, 3 chương).\n• Nội dung chuyển sang Tài liệu tra cứu/Job Aid: 2 khối. Nội dung loại khỏi khoá học: 2 khối (Nice to Know/Remove).\n• Cần chuyên gia bổ sung (Hold) — chờ SME xác nhận (2), chưa đưa vào bài học:\n  1. Phải phản hồi khách hàng trong bao lâu? — Thời hạn 24 giờ mâu thuẫn với 48 giờ cho khiếu nại cấp 2. Câu hỏi cho SME: Khiếu nại cấp 2 phải phản hồi trong 24 giờ hay 48 giờ? Must Do chưa dạy được: Phản hồi khách hàng đúng thời hạn.\n  2. Ghi nhận khiếu nại trên CRM như thế nào? — Hướng dẫn CRM dựa trên ảnh chụp phiên bản 2021, có thể đã lỗi thời. Câu hỏi cho SME: Giao diện CRM hiện tại còn đúng các bước Tạo mới, chọn mã và đính kèm phiếu không?\n• Nội dung tham khảo đã lược (Nice to know) — 1 khối, tác giả có thể bổ sung thủ công:\n  - Phiên bản và ngày áp dụng của quy trình: Nội dung về: Phiên bản và ngày áp dụng của quy trình\n• Cấu trúc được thiết kế theo Must Do, không theo mục lục tài liệu.",
+     "modules": {
+      "mod_01": "Mục tiêu hiệu suất: Phân loại đúng nhóm và mức độ của mọi khiếu nại tiếp nhận\n• Mục tiêu học tập phục vụ:\n  - Người học có thể phân loại khiếu nại theo nhóm và mức độ nghiêm trọng dựa trên bảng cấp độ\n• 2 mục, ước tính 12 phút.",
+      "mod_02": "Mục tiêu hiệu suất: Quyết định đúng khi nào tự xử lý và khi nào phải escalate\n• Mục tiêu học tập phục vụ:\n  - Người học có thể quyết định tự xử lý hay escalate khiếu nại theo tiêu chí bắt buộc\n• 1 mục, ước tính 10 phút.",
+      "mod_03": "Mục tiêu hiệu suất: Thực hiện đúng trình tự tiếp nhận và xử lý khiếu nại\n• Mục tiêu học tập phục vụ:\n  - Người học có thể thực hiện quy trình tiếp nhận và xử lý khiếu nại đúng trình tự\n• 2 mục, ước tính 13 phút."
+     },
+     "lessons": {
+      "lsn_001": "Bloom: Vận dụng · Ước tính 4 khối / 6 phút · Thứ tự: Nền tảng trước, theo thứ tự công việc thực tế.",
+      "lsn_002": "Bloom: Phân tích · Ước tính 4 khối / 6 phút · Thứ tự: Nền tảng trước, theo thứ tự công việc thực tế.",
+      "lsn_003": "Bloom: Đánh giá · Ước tính 6 khối / 10 phút · Thứ tự: Nền tảng trước, theo thứ tự công việc thực tế.",
+      "lsn_004": "Bloom: Vận dụng · Ước tính 6 khối / 10 phút · Thứ tự: Nền tảng trước, theo thứ tự công việc thực tế.",
+      "lsn_005": "Job Aid — tài liệu hỗ trợ khi làm việc, không đánh giá · Ước tính 2 khối / 3 phút · Thứ tự: Nền tảng trước, theo thứ tự công việc thực tế."
+     }
+    },
+    "stage_origins": {
+     "w1_map": "provider",
+     "w1_reduce": "provider",
+     "w2": "provider",
+     "w4": "provider"
+    },
+    "design_hash": "e78728133738e6dd98efe4361ed7fc0b1717f9be5347aed40b111c5713270672"
+   },
+   "usage": {
+    "inputTokens": 1924,
+    "outputTokens": 3849,
+    "embeddingTokens": 0,
+    "totalTokens": 5773
+   },
+   "usage_complete": true,
+   "usage_source": "provider",
+   "content_origin": "provider_validated",
+   "quality_state": "validated"
+  },
+  "db_calls": [],
+  "provider_calls": [
+   {
+    "op": "generate",
+    "model": "test-model",
+    "schema": "IdmW1SectionResponseV1",
+    "prompt_sha256": "179fd884732247f1a08065be9ce8628b72564b2bef6ad7ca5dc3bb7cfed2beb3",
+    "prompt_chars": 9817,
+    "config": {
+     "max_output_tokens": 12000,
+     "response_mime_type": "application/json",
+     "response_schema": {
+      "sha256": "300623c690721aa01c82ce72efbefd58f83fcdd0285e99a90a28b1aae0a80dff",
+      "chars": 2547
+     },
+     "temperature": 0.2
+    }
+   },
+   {
+    "op": "generate",
+    "model": "test-model",
+    "schema": "IdmW1ReduceResponseV1",
+    "prompt_sha256": "24c82e9bd3be88c9d8bab448f55fd8a90608bc154c46e8520719092bd5578297",
+    "prompt_chars": 8038,
+    "config": {
+     "max_output_tokens": 24000,
+     "response_mime_type": "application/json",
+     "response_schema": {
+      "sha256": "3a92a681bd9b4b80af9493153e9f115cdd63e38bc9f8ad7f51e1eadc6c1cf473",
+      "chars": 2957
+     },
+     "temperature": 0.2
+    }
+   },
+   {
+    "op": "generate",
+    "model": "test-model",
+    "schema": "IdmW2BlueprintResponseV1",
+    "prompt_sha256": "565eebb79b8e3f85e925b08b9782e3a1251aa2ab1f17ed9f9f443a28d0220e38",
+    "prompt_chars": 10542,
+    "config": {
+     "max_output_tokens": 32000,
+     "response_mime_type": "application/json",
+     "response_schema": {
+      "sha256": "ec1c0b949914f151d96242e18e097f0a678207cfceac1ac1e4513f056dec89ae",
+      "chars": 2078
+     },
+     "temperature": 0.2
+    }
+   },
+   {
+    "op": "generate",
+    "model": "test-model",
+    "schema": "IdmW4CourseResponseV1",
+    "prompt_sha256": "6b31e81c2edeef229116feec6ef44898129d5713c8084df23abd429fc4c6fbce",
+    "prompt_chars": 8020,
+    "config": {
+     "max_output_tokens": 16000,
+     "response_mime_type": "application/json",
+     "response_schema": {
+      "sha256": "7a87586e1c7b109afd1626dd5709d552477c1b2321c82f8326cd917ef0cc8068",
+      "chars": 1940
+     },
+     "temperature": 0.2
+    }
+   }
+  ],
+  "retrieval_calls": []
+ }
+}

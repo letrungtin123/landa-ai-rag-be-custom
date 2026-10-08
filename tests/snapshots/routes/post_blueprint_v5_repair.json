@@ -1,0 +1,4949 @@
+{
+ "description": "V5 course blueprint (thin objective repaired).",
+ "request": {
+  "method": "POST",
+  "path": "/v1/lesson-author/blueprint",
+  "json": {
+   "tenant_id": "11111111-1111-4111-8111-111111111111",
+   "kb_id": "22222222-2222-4222-8222-222222222222",
+   "conversation_id": "33333333-3333-4333-8333-333333333333",
+   "target": "lesson_author",
+   "model": "gemini-3.5-flash",
+   "max_output_tokens": 4096,
+   "embedding_model": "gemini-embedding-001",
+   "embedding_dimensions": 768,
+   "system_prompt": "legacy",
+   "user_message": "Tạo một khóa học an toàn thông tin.",
+   "history": [],
+   "source_documents": [],
+   "course_context": null,
+   "locale": "en",
+   "correlation_id": "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee",
+   "api_key": "route-snapshot-provider-key",
+   "component_capabilities": {
+    "version": 2,
+    "max_components_per_unit": 4,
+    "max_assessments_per_unit": 3,
+    "assessment_enabled": true
+   },
+   "outline_context": "",
+   "blueprint_schema_hint": "Server-enforced Blueprint schema.",
+   "max_attempts": 2,
+   "course_id": null
+  }
+ },
+ "retrieval": {
+  "rows": [],
+  "usage": {},
+  "structure": {
+   "source_structure_nodes": [
+    {
+     "document_id": "doc-v5",
+     "document_name": "Evidence scope guide",
+     "source_ref": "src-001",
+     "title": "Section 1",
+     "level": 1,
+     "order": 1,
+     "logical_page": 1
+    },
+    {
+     "document_id": "doc-v5",
+     "document_name": "Evidence scope guide",
+     "source_ref": "src-002",
+     "title": "Section 2",
+     "level": 1,
+     "order": 2,
+     "logical_page": 2
+    },
+    {
+     "document_id": "doc-v5",
+     "document_name": "Evidence scope guide",
+     "source_ref": "src-003",
+     "title": "Section 3",
+     "level": 1,
+     "order": 3,
+     "logical_page": 3
+    },
+    {
+     "document_id": "doc-v5",
+     "document_name": "Evidence scope guide",
+     "source_ref": "src-004",
+     "title": "Section 4",
+     "level": 1,
+     "order": 4,
+     "logical_page": 4
+    },
+    {
+     "document_id": "doc-v5",
+     "document_name": "Evidence scope guide",
+     "source_ref": "src-005",
+     "title": "Section 5",
+     "level": 1,
+     "order": 5,
+     "logical_page": 5
+    },
+    {
+     "document_id": "doc-v5",
+     "document_name": "Evidence scope guide",
+     "source_ref": "src-006",
+     "title": "Section 6",
+     "level": 1,
+     "order": 6,
+     "logical_page": 6
+    }
+   ],
+   "source_coverage_manifest": {
+    "truncated": false,
+    "fact_scope_complete": true,
+    "total_fact_count": 120,
+    "represented_fact_count": 120,
+    "facts": [
+     {
+      "fact_id": "fact-0001",
+      "document_id": "doc-v5",
+      "source_ref": "src-001",
+      "source_page": 1,
+      "source_chunk": 0,
+      "text": "Evidence fact 1: source-backed procedure or definition."
+     },
+     {
+      "fact_id": "fact-0002",
+      "document_id": "doc-v5",
+      "source_ref": "src-002",
+      "source_page": 2,
+      "source_chunk": 1,
+      "text": "Evidence fact 2: source-backed procedure or definition."
+     },
+     {
+      "fact_id": "fact-0003",
+      "document_id": "doc-v5",
+      "source_ref": "src-003",
+      "source_page": 3,
+      "source_chunk": 2,
+      "text": "Evidence fact 3: source-backed procedure or definition."
+     },
+     {
+      "fact_id": "fact-0004",
+      "document_id": "doc-v5",
+      "source_ref": "src-004",
+      "source_page": 4,
+      "source_chunk": 3,
+      "text": "Evidence fact 4: source-backed procedure or definition."
+     },
+     {
+      "fact_id": "fact-0005",
+      "document_id": "doc-v5",
+      "source_ref": "src-005",
+      "source_page": 5,
+      "source_chunk": 4,
+      "text": "Evidence fact 5: source-backed procedure or definition."
+     },
+     {
+      "fact_id": "fact-0006",
+      "document_id": "doc-v5",
+      "source_ref": "src-006",
+      "source_page": 6,
+      "source_chunk": 5,
+      "text": "Evidence fact 6: source-backed procedure or definition."
+     },
+     {
+      "fact_id": "fact-0007",
+      "document_id": "doc-v5",
+      "source_ref": "src-001",
+      "source_page": 1,
+      "source_chunk": 6,
+      "text": "Evidence fact 7: source-backed procedure or definition."
+     },
+     {
+      "fact_id": "fact-0008",
+      "document_id": "doc-v5",
+      "source_ref": "src-002",
+      "source_page": 2,
+      "source_chunk": 7,
+      "text": "Evidence fact 8: source-backed procedure or definition."
+     },
+     {
+      "fact_id": "fact-0009",
+      "document_id": "doc-v5",
+      "source_ref": "src-003",
+      "source_page": 3,
+      "source_chunk": 8,
+      "text": "Evidence fact 9: source-backed procedure or definition."
+     },
+     {
+      "fact_id": "fact-0010",
+      "document_id": "doc-v5",
+      "source_ref": "src-004",
+      "source_page": 4,
+      "source_chunk": 9,
+      "text": "Evidence fact 10: source-backed procedure or definition."
+     },
+     {
+      "fact_id": "fact-0011",
+      "document_id": "doc-v5",
+      "source_ref": "src-005",
+      "source_page": 5,
+      "source_chunk": 10,
+      "text": "Evidence fact 11: source-backed procedure or definition."
+     },
+     {
+      "fact_id": "fact-0012",
+      "document_id": "doc-v5",
+      "source_ref": "src-006",
+      "source_page": 6,
+      "source_chunk": 11,
+      "text": "Evidence fact 12: source-backed procedure or definition."
+     },
+     {
+      "fact_id": "fact-0013",
+      "document_id": "doc-v5",
+      "source_ref": "src-001",
+      "source_page": 1,
+      "source_chunk": 12,
+      "text": "Evidence fact 13: source-backed procedure or definition."
+     },
+     {
+      "fact_id": "fact-0014",
+      "document_id": "doc-v5",
+      "source_ref": "src-002",
+      "source_page": 2,
+      "source_chunk": 13,
+      "text": "Evidence fact 14: source-backed procedure or definition."
+     },
+     {
+      "fact_id": "fact-0015",
+      "document_id": "doc-v5",
+      "source_ref": "src-003",
+      "source_page": 3,
+      "source_chunk": 14,
+      "text": "Evidence fact 15: source-backed procedure or definition."
+     },
+     {
+      "fact_id": "fact-0016",
+      "document_id": "doc-v5",
+      "source_ref": "src-004",
+      "source_page": 4,
+      "source_chunk": 15,
+      "text": "Evidence fact 16: source-backed procedure or definition."
+     },
+     {
+      "fact_id": "fact-0017",
+      "document_id": "doc-v5",
+      "source_ref": "src-005",
+      "source_page": 5,
+      "source_chunk": 16,
+      "text": "Evidence fact 17: source-backed procedure or definition."
+     },
+     {
+      "fact_id": "fact-0018",
+      "document_id": "doc-v5",
+      "source_ref": "src-006",
+      "source_page": 6,
+      "source_chunk": 17,
+      "text": "Evidence fact 18: source-backed procedure or definition."
+     },
+     {
+      "fact_id": "fact-0019",
+      "document_id": "doc-v5",
+      "source_ref": "src-001",
+      "source_page": 1,
+      "source_chunk": 18,
+      "text": "Evidence fact 19: source-backed procedure or definition."
+     },
+     {
+      "fact_id": "fact-0020",
+      "document_id": "doc-v5",
+      "source_ref": "src-002",
+      "source_page": 2,
+      "source_chunk": 19,
+      "text": "Evidence fact 20: source-backed procedure or definition."
+     },
+     {
+      "fact_id": "fact-0021",
+      "document_id": "doc-v5",
+      "source_ref": "src-003",
+      "source_page": 3,
+      "source_chunk": 20,
+      "text": "Evidence fact 21: source-backed procedure or definition."
+     },
+     {
+      "fact_id": "fact-0022",
+      "document_id": "doc-v5",
+      "source_ref": "src-004",
+      "source_page": 4,
+      "source_chunk": 21,
+      "text": "Evidence fact 22: source-backed procedure or definition."
+     },
+     {
+      "fact_id": "fact-0023",
+      "document_id": "doc-v5",
+      "source_ref": "src-005",
+      "source_page": 5,
+      "source_chunk": 22,
+      "text": "Evidence fact 23: source-backed procedure or definition."
+     },
+     {
+      "fact_id": "fact-0024",
+      "document_id": "doc-v5",
+      "source_ref": "src-006",
+      "source_page": 6,
+      "source_chunk": 23,
+      "text": "Evidence fact 24: source-backed procedure or definition."
+     },
+     {
+      "fact_id": "fact-0025",
+      "document_id": "doc-v5",
+      "source_ref": "src-001",
+      "source_page": 1,
+      "source_chunk": 24,
+      "text": "Evidence fact 25: source-backed procedure or definition."
+     },
+     {
+      "fact_id": "fact-0026",
+      "document_id": "doc-v5",
+      "source_ref": "src-002",
+      "source_page": 2,
+      "source_chunk": 25,
+      "text": "Evidence fact 26: source-backed procedure or definition."
+     },
+     {
+      "fact_id": "fact-0027",
+      "document_id": "doc-v5",
+      "source_ref": "src-003",
+      "source_page": 3,
+      "source_chunk": 26,
+      "text": "Evidence fact 27: source-backed procedure or definition."
+     },
+     {
+      "fact_id": "fact-0028",
+      "document_id": "doc-v5",
+      "source_ref": "src-004",
+      "source_page": 4,
+      "source_chunk": 27,
+      "text": "Evidence fact 28: source-backed procedure or definition."
+     },
+     {
+      "fact_id": "fact-0029",
+      "document_id": "doc-v5",
+      "source_ref": "src-005",
+      "source_page": 5,
+      "source_chunk": 28,
+      "text": "Evidence fact 29: source-backed procedure or definition."
+     },
+     {
+      "fact_id": "fact-0030",
+      "document_id": "doc-v5",
+      "source_ref": "src-006",
+      "source_page": 6,
+      "source_chunk": 29,
+      "text": "Evidence fact 30: source-backed procedure or definition."
+     },
+     {
+      "fact_id": "fact-0031",
+      "document_id": "doc-v5",
+      "source_ref": "src-001",
+      "source_page": 1,
+      "source_chunk": 30,
+      "text": "Evidence fact 31: source-backed procedure or definition."
+     },
+     {
+      "fact_id": "fact-0032",
+      "document_id": "doc-v5",
+      "source_ref": "src-002",
+      "source_page": 2,
+      "source_chunk": 31,
+      "text": "Evidence fact 32: source-backed procedure or definition."
+     },
+     {
+      "fact_id": "fact-0033",
+      "document_id": "doc-v5",
+      "source_ref": "src-003",
+      "source_page": 3,
+      "source_chunk": 32,
+      "text": "Evidence fact 33: source-backed procedure or definition."
+     },
+     {
+      "fact_id": "fact-0034",
+      "document_id": "doc-v5",
+      "source_ref": "src-004",
+      "source_page": 4,
+      "source_chunk": 33,
+      "text": "Evidence fact 34: source-backed procedure or definition."
+     },
+     {
+      "fact_id": "fact-0035",
+      "document_id": "doc-v5",
+      "source_ref": "src-005",
+      "source_page": 5,
+      "source_chunk": 34,
+      "text": "Evidence fact 35: source-backed procedure or definition."
+     },
+     {
+      "fact_id": "fact-0036",
+      "document_id": "doc-v5",
+      "source_ref": "src-006",
+      "source_page": 6,
+      "source_chunk": 35,
+      "text": "Evidence fact 36: source-backed procedure or definition."
+     },
+     {
+      "fact_id": "fact-0037",
+      "document_id": "doc-v5",
+      "source_ref": "src-001",
+      "source_page": 1,
+      "source_chunk": 36,
+      "text": "Evidence fact 37: source-backed procedure or definition."
+     },
+     {
+      "fact_id": "fact-0038",
+      "document_id": "doc-v5",
+      "source_ref": "src-002",
+      "source_page": 2,
+      "source_chunk": 37,
+      "text": "Evidence fact 38: source-backed procedure or definition."
+     },
+     {
+      "fact_id": "fact-0039",
+      "document_id": "doc-v5",
+      "source_ref": "src-003",
+      "source_page": 3,
+      "source_chunk": 38,
+      "text": "Evidence fact 39: source-backed procedure or definition."
+     },
+     {
+      "fact_id": "fact-0040",
+      "document_id": "doc-v5",
+      "source_ref": "src-004",
+      "source_page": 4,
+      "source_chunk": 39,
+      "text": "Evidence fact 40: source-backed procedure or definition."
+     },
+     {
+      "fact_id": "fact-0041",
+      "document_id": "doc-v5",
+      "source_ref": "src-005",
+      "source_page": 5,
+      "source_chunk": 40,
+      "text": "Evidence fact 41: source-backed procedure or definition."
+     },
+     {
+      "fact_id": "fact-0042",
+      "document_id": "doc-v5",
+      "source_ref": "src-006",
+      "source_page": 6,
+      "source_chunk": 41,
+      "text": "Evidence fact 42: source-backed procedure or definition."
+     },
+     {
+      "fact_id": "fact-0043",
+      "document_id": "doc-v5",
+      "source_ref": "src-001",
+      "source_page": 1,
+      "source_chunk": 42,
+      "text": "Evidence fact 43: source-backed procedure or definition."
+     },
+     {
+      "fact_id": "fact-0044",
+      "document_id": "doc-v5",
+      "source_ref": "src-002",
+      "source_page": 2,
+      "source_chunk": 43,
+      "text": "Evidence fact 44: source-backed procedure or definition."
+     },
+     {
+      "fact_id": "fact-0045",
+      "document_id": "doc-v5",
+      "source_ref": "src-003",
+      "source_page": 3,
+      "source_chunk": 44,
+      "text": "Evidence fact 45: source-backed procedure or definition."
+     },
+     {
+      "fact_id": "fact-0046",
+      "document_id": "doc-v5",
+      "source_ref": "src-004",
+      "source_page": 4,
+      "source_chunk": 45,
+      "text": "Evidence fact 46: source-backed procedure or definition."
+     },
+     {
+      "fact_id": "fact-0047",
+      "document_id": "doc-v5",
+      "source_ref": "src-005",
+      "source_page": 5,
+      "source_chunk": 46,
+      "text": "Evidence fact 47: source-backed procedure or definition."
+     },
+     {
+      "fact_id": "fact-0048",
+      "document_id": "doc-v5",
+      "source_ref": "src-006",
+      "source_page": 6,
+      "source_chunk": 47,
+      "text": "Evidence fact 48: source-backed procedure or definition."
+     },
+     {
+      "fact_id": "fact-0049",
+      "document_id": "doc-v5",
+      "source_ref": "src-001",
+      "source_page": 1,
+      "source_chunk": 0,
+      "text": "Evidence fact 49: source-backed procedure or definition."
+     },
+     {
+      "fact_id": "fact-0050",
+      "document_id": "doc-v5",
+      "source_ref": "src-002",
+      "source_page": 2,
+      "source_chunk": 1,
+      "text": "Evidence fact 50: source-backed procedure or definition."
+     },
+     {
+      "fact_id": "fact-0051",
+      "document_id": "doc-v5",
+      "source_ref": "src-003",
+      "source_page": 3,
+      "source_chunk": 2,
+      "text": "Evidence fact 51: source-backed procedure or definition."
+     },
+     {
+      "fact_id": "fact-0052",
+      "document_id": "doc-v5",
+      "source_ref": "src-004",
+      "source_page": 4,
+      "source_chunk": 3,
+      "text": "Evidence fact 52: source-backed procedure or definition."
+     },
+     {
+      "fact_id": "fact-0053",
+      "document_id": "doc-v5",
+      "source_ref": "src-005",
+      "source_page": 5,
+      "source_chunk": 4,
+      "text": "Evidence fact 53: source-backed procedure or definition."
+     },
+     {
+      "fact_id": "fact-0054",
+      "document_id": "doc-v5",
+      "source_ref": "src-006",
+      "source_page": 6,
+      "source_chunk": 5,
+      "text": "Evidence fact 54: source-backed procedure or definition."
+     },
+     {
+      "fact_id": "fact-0055",
+      "document_id": "doc-v5",
+      "source_ref": "src-001",
+      "source_page": 1,
+      "source_chunk": 6,
+      "text": "Evidence fact 55: source-backed procedure or definition."
+     },
+     {
+      "fact_id": "fact-0056",
+      "document_id": "doc-v5",
+      "source_ref": "src-002",
+      "source_page": 2,
+      "source_chunk": 7,
+      "text": "Evidence fact 56: source-backed procedure or definition."
+     },
+     {
+      "fact_id": "fact-0057",
+      "document_id": "doc-v5",
+      "source_ref": "src-003",
+      "source_page": 3,
+      "source_chunk": 8,
+      "text": "Evidence fact 57: source-backed procedure or definition."
+     },
+     {
+      "fact_id": "fact-0058",
+      "document_id": "doc-v5",
+      "source_ref": "src-004",
+      "source_page": 4,
+      "source_chunk": 9,
+      "text": "Evidence fact 58: source-backed procedure or definition."
+     },
+     {
+      "fact_id": "fact-0059",
+      "document_id": "doc-v5",
+      "source_ref": "src-005",
+      "source_page": 5,
+      "source_chunk": 10,
+      "text": "Evidence fact 59: source-backed procedure or definition."
+     },
+     {
+      "fact_id": "fact-0060",
+      "document_id": "doc-v5",
+      "source_ref": "src-006",
+      "source_page": 6,
+      "source_chunk": 11,
+      "text": "Evidence fact 60: source-backed procedure or definition."
+     },
+     {
+      "fact_id": "fact-0061",
+      "document_id": "doc-v5",
+      "source_ref": "src-001",
+      "source_page": 1,
+      "source_chunk": 12,
+      "text": "Evidence fact 61: source-backed procedure or definition."
+     },
+     {
+      "fact_id": "fact-0062",
+      "document_id": "doc-v5",
+      "source_ref": "src-002",
+      "source_page": 2,
+      "source_chunk": 13,
+      "text": "Evidence fact 62: source-backed procedure or definition."
+     },
+     {
+      "fact_id": "fact-0063",
+      "document_id": "doc-v5",
+      "source_ref": "src-003",
+      "source_page": 3,
+      "source_chunk": 14,
+      "text": "Evidence fact 63: source-backed procedure or definition."
+     },
+     {
+      "fact_id": "fact-0064",
+      "document_id": "doc-v5",
+      "source_ref": "src-004",
+      "source_page": 4,
+      "source_chunk": 15,
+      "text": "Evidence fact 64: source-backed procedure or definition."
+     },
+     {
+      "fact_id": "fact-0065",
+      "document_id": "doc-v5",
+      "source_ref": "src-005",
+      "source_page": 5,
+      "source_chunk": 16,
+      "text": "Evidence fact 65: source-backed procedure or definition."
+     },
+     {
+      "fact_id": "fact-0066",
+      "document_id": "doc-v5",
+      "source_ref": "src-006",
+      "source_page": 6,
+      "source_chunk": 17,
+      "text": "Evidence fact 66: source-backed procedure or definition."
+     },
+     {
+      "fact_id": "fact-0067",
+      "document_id": "doc-v5",
+      "source_ref": "src-001",
+      "source_page": 1,
+      "source_chunk": 18,
+      "text": "Evidence fact 67: source-backed procedure or definition."
+     },
+     {
+      "fact_id": "fact-0068",
+      "document_id": "doc-v5",
+      "source_ref": "src-002",
+      "source_page": 2,
+      "source_chunk": 19,
+      "text": "Evidence fact 68: source-backed procedure or definition."
+     },
+     {
+      "fact_id": "fact-0069",
+      "document_id": "doc-v5",
+      "source_ref": "src-003",
+      "source_page": 3,
+      "source_chunk": 20,
+      "text": "Evidence fact 69: source-backed procedure or definition."
+     },
+     {
+      "fact_id": "fact-0070",
+      "document_id": "doc-v5",
+      "source_ref": "src-004",
+      "source_page": 4,
+      "source_chunk": 21,
+      "text": "Evidence fact 70: source-backed procedure or definition."
+     },
+     {
+      "fact_id": "fact-0071",
+      "document_id": "doc-v5",
+      "source_ref": "src-005",
+      "source_page": 5,
+      "source_chunk": 22,
+      "text": "Evidence fact 71: source-backed procedure or definition."
+     },
+     {
+      "fact_id": "fact-0072",
+      "document_id": "doc-v5",
+      "source_ref": "src-006",
+      "source_page": 6,
+      "source_chunk": 23,
+      "text": "Evidence fact 72: source-backed procedure or definition."
+     },
+     {
+      "fact_id": "fact-0073",
+      "document_id": "doc-v5",
+      "source_ref": "src-001",
+      "source_page": 1,
+      "source_chunk": 24,
+      "text": "Evidence fact 73: source-backed procedure or definition."
+     },
+     {
+      "fact_id": "fact-0074",
+      "document_id": "doc-v5",
+      "source_ref": "src-002",
+      "source_page": 2,
+      "source_chunk": 25,
+      "text": "Evidence fact 74: source-backed procedure or definition."
+     },
+     {
+      "fact_id": "fact-0075",
+      "document_id": "doc-v5",
+      "source_ref": "src-003",
+      "source_page": 3,
+      "source_chunk": 26,
+      "text": "Evidence fact 75: source-backed procedure or definition."
+     },
+     {
+      "fact_id": "fact-0076",
+      "document_id": "doc-v5",
+      "source_ref": "src-004",
+      "source_page": 4,
+      "source_chunk": 27,
+      "text": "Evidence fact 76: source-backed procedure or definition."
+     },
+     {
+      "fact_id": "fact-0077",
+      "document_id": "doc-v5",
+      "source_ref": "src-005",
+      "source_page": 5,
+      "source_chunk": 28,
+      "text": "Evidence fact 77: source-backed procedure or definition."
+     },
+     {
+      "fact_id": "fact-0078",
+      "document_id": "doc-v5",
+      "source_ref": "src-006",
+      "source_page": 6,
+      "source_chunk": 29,
+      "text": "Evidence fact 78: source-backed procedure or definition."
+     },
+     {
+      "fact_id": "fact-0079",
+      "document_id": "doc-v5",
+      "source_ref": "src-001",
+      "source_page": 1,
+      "source_chunk": 30,
+      "text": "Evidence fact 79: source-backed procedure or definition."
+     },
+     {
+      "fact_id": "fact-0080",
+      "document_id": "doc-v5",
+      "source_ref": "src-002",
+      "source_page": 2,
+      "source_chunk": 31,
+      "text": "Evidence fact 80: source-backed procedure or definition."
+     },
+     {
+      "fact_id": "fact-0081",
+      "document_id": "doc-v5",
+      "source_ref": "src-003",
+      "source_page": 3,
+      "source_chunk": 32,
+      "text": "Evidence fact 81: source-backed procedure or definition."
+     },
+     {
+      "fact_id": "fact-0082",
+      "document_id": "doc-v5",
+      "source_ref": "src-004",
+      "source_page": 4,
+      "source_chunk": 33,
+      "text": "Evidence fact 82: source-backed procedure or definition."
+     },
+     {
+      "fact_id": "fact-0083",
+      "document_id": "doc-v5",
+      "source_ref": "src-005",
+      "source_page": 5,
+      "source_chunk": 34,
+      "text": "Evidence fact 83: source-backed procedure or definition."
+     },
+     {
+      "fact_id": "fact-0084",
+      "document_id": "doc-v5",
+      "source_ref": "src-006",
+      "source_page": 6,
+      "source_chunk": 35,
+      "text": "Evidence fact 84: source-backed procedure or definition."
+     },
+     {
+      "fact_id": "fact-0085",
+      "document_id": "doc-v5",
+      "source_ref": "src-001",
+      "source_page": 1,
+      "source_chunk": 36,
+      "text": "Evidence fact 85: source-backed procedure or definition."
+     },
+     {
+      "fact_id": "fact-0086",
+      "document_id": "doc-v5",
+      "source_ref": "src-002",
+      "source_page": 2,
+      "source_chunk": 37,
+      "text": "Evidence fact 86: source-backed procedure or definition."
+     },
+     {
+      "fact_id": "fact-0087",
+      "document_id": "doc-v5",
+      "source_ref": "src-003",
+      "source_page": 3,
+      "source_chunk": 38,
+      "text": "Evidence fact 87: source-backed procedure or definition."
+     },
+     {
+      "fact_id": "fact-0088",
+      "document_id": "doc-v5",
+      "source_ref": "src-004",
+      "source_page": 4,
+      "source_chunk": 39,
+      "text": "Evidence fact 88: source-backed procedure or definition."
+     },
+     {
+      "fact_id": "fact-0089",
+      "document_id": "doc-v5",
+      "source_ref": "src-005",
+      "source_page": 5,
+      "source_chunk": 40,
+      "text": "Evidence fact 89: source-backed procedure or definition."
+     },
+     {
+      "fact_id": "fact-0090",
+      "document_id": "doc-v5",
+      "source_ref": "src-006",
+      "source_page": 6,
+      "source_chunk": 41,
+      "text": "Evidence fact 90: source-backed procedure or definition."
+     },
+     {
+      "fact_id": "fact-0091",
+      "document_id": "doc-v5",
+      "source_ref": "src-001",
+      "source_page": 1,
+      "source_chunk": 42,
+      "text": "Evidence fact 91: source-backed procedure or definition."
+     },
+     {
+      "fact_id": "fact-0092",
+      "document_id": "doc-v5",
+      "source_ref": "src-002",
+      "source_page": 2,
+      "source_chunk": 43,
+      "text": "Evidence fact 92: source-backed procedure or definition."
+     },
+     {
+      "fact_id": "fact-0093",
+      "document_id": "doc-v5",
+      "source_ref": "src-003",
+      "source_page": 3,
+      "source_chunk": 44,
+      "text": "Evidence fact 93: source-backed procedure or definition."
+     },
+     {
+      "fact_id": "fact-0094",
+      "document_id": "doc-v5",
+      "source_ref": "src-004",
+      "source_page": 4,
+      "source_chunk": 45,
+      "text": "Evidence fact 94: source-backed procedure or definition."
+     },
+     {
+      "fact_id": "fact-0095",
+      "document_id": "doc-v5",
+      "source_ref": "src-005",
+      "source_page": 5,
+      "source_chunk": 46,
+      "text": "Evidence fact 95: source-backed procedure or definition."
+     },
+     {
+      "fact_id": "fact-0096",
+      "document_id": "doc-v5",
+      "source_ref": "src-006",
+      "source_page": 6,
+      "source_chunk": 47,
+      "text": "Evidence fact 96: source-backed procedure or definition."
+     },
+     {
+      "fact_id": "fact-0097",
+      "document_id": "doc-v5",
+      "source_ref": "src-001",
+      "source_page": 1,
+      "source_chunk": 0,
+      "text": "Evidence fact 97: source-backed procedure or definition."
+     },
+     {
+      "fact_id": "fact-0098",
+      "document_id": "doc-v5",
+      "source_ref": "src-002",
+      "source_page": 2,
+      "source_chunk": 1,
+      "text": "Evidence fact 98: source-backed procedure or definition."
+     },
+     {
+      "fact_id": "fact-0099",
+      "document_id": "doc-v5",
+      "source_ref": "src-003",
+      "source_page": 3,
+      "source_chunk": 2,
+      "text": "Evidence fact 99: source-backed procedure or definition."
+     },
+     {
+      "fact_id": "fact-0100",
+      "document_id": "doc-v5",
+      "source_ref": "src-004",
+      "source_page": 4,
+      "source_chunk": 3,
+      "text": "Evidence fact 100: source-backed procedure or definition."
+     },
+     {
+      "fact_id": "fact-0101",
+      "document_id": "doc-v5",
+      "source_ref": "src-005",
+      "source_page": 5,
+      "source_chunk": 4,
+      "text": "Evidence fact 101: source-backed procedure or definition."
+     },
+     {
+      "fact_id": "fact-0102",
+      "document_id": "doc-v5",
+      "source_ref": "src-006",
+      "source_page": 6,
+      "source_chunk": 5,
+      "text": "Evidence fact 102: source-backed procedure or definition."
+     },
+     {
+      "fact_id": "fact-0103",
+      "document_id": "doc-v5",
+      "source_ref": "src-001",
+      "source_page": 1,
+      "source_chunk": 6,
+      "text": "Evidence fact 103: source-backed procedure or definition."
+     },
+     {
+      "fact_id": "fact-0104",
+      "document_id": "doc-v5",
+      "source_ref": "src-002",
+      "source_page": 2,
+      "source_chunk": 7,
+      "text": "Evidence fact 104: source-backed procedure or definition."
+     },
+     {
+      "fact_id": "fact-0105",
+      "document_id": "doc-v5",
+      "source_ref": "src-003",
+      "source_page": 3,
+      "source_chunk": 8,
+      "text": "Evidence fact 105: source-backed procedure or definition."
+     },
+     {
+      "fact_id": "fact-0106",
+      "document_id": "doc-v5",
+      "source_ref": "src-004",
+      "source_page": 4,
+      "source_chunk": 9,
+      "text": "Evidence fact 106: source-backed procedure or definition."
+     },
+     {
+      "fact_id": "fact-0107",
+      "document_id": "doc-v5",
+      "source_ref": "src-005",
+      "source_page": 5,
+      "source_chunk": 10,
+      "text": "Evidence fact 107: source-backed procedure or definition."
+     },
+     {
+      "fact_id": "fact-0108",
+      "document_id": "doc-v5",
+      "source_ref": "src-006",
+      "source_page": 6,
+      "source_chunk": 11,
+      "text": "Evidence fact 108: source-backed procedure or definition."
+     },
+     {
+      "fact_id": "fact-0109",
+      "document_id": "doc-v5",
+      "source_ref": "src-001",
+      "source_page": 1,
+      "source_chunk": 12,
+      "text": "Evidence fact 109: source-backed procedure or definition."
+     },
+     {
+      "fact_id": "fact-0110",
+      "document_id": "doc-v5",
+      "source_ref": "src-002",
+      "source_page": 2,
+      "source_chunk": 13,
+      "text": "Evidence fact 110: source-backed procedure or definition."
+     },
+     {
+      "fact_id": "fact-0111",
+      "document_id": "doc-v5",
+      "source_ref": "src-003",
+      "source_page": 3,
+      "source_chunk": 14,
+      "text": "Evidence fact 111: source-backed procedure or definition."
+     },
+     {
+      "fact_id": "fact-0112",
+      "document_id": "doc-v5",
+      "source_ref": "src-004",
+      "source_page": 4,
+      "source_chunk": 15,
+      "text": "Evidence fact 112: source-backed procedure or definition."
+     },
+     {
+      "fact_id": "fact-0113",
+      "document_id": "doc-v5",
+      "source_ref": "src-005",
+      "source_page": 5,
+      "source_chunk": 16,
+      "text": "Evidence fact 113: source-backed procedure or definition."
+     },
+     {
+      "fact_id": "fact-0114",
+      "document_id": "doc-v5",
+      "source_ref": "src-006",
+      "source_page": 6,
+      "source_chunk": 17,
+      "text": "Evidence fact 114: source-backed procedure or definition."
+     },
+     {
+      "fact_id": "fact-0115",
+      "document_id": "doc-v5",
+      "source_ref": "src-001",
+      "source_page": 1,
+      "source_chunk": 18,
+      "text": "Evidence fact 115: source-backed procedure or definition."
+     },
+     {
+      "fact_id": "fact-0116",
+      "document_id": "doc-v5",
+      "source_ref": "src-002",
+      "source_page": 2,
+      "source_chunk": 19,
+      "text": "Evidence fact 116: source-backed procedure or definition."
+     },
+     {
+      "fact_id": "fact-0117",
+      "document_id": "doc-v5",
+      "source_ref": "src-003",
+      "source_page": 3,
+      "source_chunk": 20,
+      "text": "Evidence fact 117: source-backed procedure or definition."
+     },
+     {
+      "fact_id": "fact-0118",
+      "document_id": "doc-v5",
+      "source_ref": "src-004",
+      "source_page": 4,
+      "source_chunk": 21,
+      "text": "Evidence fact 118: source-backed procedure or definition."
+     },
+     {
+      "fact_id": "fact-0119",
+      "document_id": "doc-v5",
+      "source_ref": "src-005",
+      "source_page": 5,
+      "source_chunk": 22,
+      "text": "Evidence fact 119: source-backed procedure or definition."
+     },
+     {
+      "fact_id": "fact-0120",
+      "document_id": "doc-v5",
+      "source_ref": "src-006",
+      "source_page": 6,
+      "source_chunk": 23,
+      "text": "Evidence fact 120: source-backed procedure or definition."
+     }
+    ]
+   },
+   "known_source_refs": {
+    "__set__": [
+     "src-001",
+     "src-002",
+     "src-003",
+     "src-004",
+     "src-005",
+     "src-006"
+    ]
+   }
+  }
+ },
+ "provider": [
+  {
+   "text": "{\"architecture_contract_version\": 5, \"content_contract_version\": 1, \"title\": \"Evidence scope guide\", \"summary\": \"Server-owned evidence scope blueprint.\", \"target_audience\": \"Operators\", \"prerequisites\": [], \"learning_outcomes\": [\"Identify source-backed concepts.\", \"Explain source-backed concepts.\", \"Apply source-backed concepts.\"], \"course_outcomes\": [\"Identify source-backed concepts.\", \"Explain source-backed concepts.\", \"Apply source-backed concepts.\"], \"assessment_strategy\": \"Grounded checks.\", \"assumptions\": [], \"chapters\": [{\"title\": \"Chapter 1\", \"objective\": \"Explain section 1.\", \"learning_objectives\": [\"Explain section 1.\"], \"concept_ids\": [\"concept_f3740496472a7ba6\"], \"source_refs\": [\"src-001\"], \"lessons\": [{\"title\": \"Lesson 1\", \"objective\": \"Identify and explain section 1.\", \"learning_objectives\": [\"Identify the source-grounded safety control.\", \"Explain the documented purpose of the safety control.\"], \"learning_activities\": [\"Review source evidence.\"], \"assessment\": \"Use a grounded check.\", \"primary_concept_ids\": [\"concept_f3740496472a7ba6\"], \"supporting_concept_ids\": [], \"prerequisite_concept_ids\": [], \"assessment_required\": true, \"assessment_objective_refs\": [\"lo_1\"], \"source_refs\": [\"src-001\"], \"units\": [{\"title\": \"Unit 1\", \"purpose\": \"Teach the bounded evidence scope.\", \"concept_ids\": [\"concept_f3740496472a7ba6\"], \"primary_concept_ids\": [\"concept_f3740496472a7ba6\"], \"learning_objective_refs\": [\"lo_1\", \"lo_2\"], \"source_refs\": [\"src-001\"], \"learning_blocks\": [{\"id\": \"lb_1\", \"intent\": \"concept_explanation\", \"importance\": \"core\", \"concept_ids\": [\"concept_f3740496472a7ba6\"], \"primary_concept_ids\": [\"concept_f3740496472a7ba6\"], \"primary_evidence_scope_ids\": [\"evidence_scope_02384132b002b7b648c4\"], \"supporting_evidence_scope_ids\": [], \"source_refs\": [\"src-001\"], \"learning_objective_refs\": [\"lo_1\", \"lo_2\"], \"content\": {}}]}]}]}, {\"title\": \"Chapter 2\", \"objective\": \"Explain section 2.\", \"learning_objectives\": [\"Explain section 2.\"], \"concept_ids\": [\"concept_87181c1c44d7269e\"], \"source_refs\": [\"src-002\"], \"lessons\": [{\"title\": \"Lesson 2\", \"objective\": \"Identify and explain section 2.\", \"learning_objectives\": [\"Identify the source-grounded scope in section 2.\"], \"learning_activities\": [\"Review source evidence.\"], \"assessment\": \"Use a grounded check.\", \"primary_concept_ids\": [\"concept_87181c1c44d7269e\"], \"supporting_concept_ids\": [], \"prerequisite_concept_ids\": [], \"assessment_required\": false, \"assessment_objective_refs\": [], \"source_refs\": [\"src-002\"], \"units\": [{\"title\": \"Unit 2\", \"purpose\": \"Teach the bounded evidence scope.\", \"concept_ids\": [\"concept_87181c1c44d7269e\"], \"primary_concept_ids\": [\"concept_87181c1c44d7269e\"], \"learning_objective_refs\": [\"lo_1\"], \"source_refs\": [\"src-002\"], \"learning_blocks\": [{\"id\": \"lb_2\", \"intent\": \"concept_explanation\", \"importance\": \"core\", \"concept_ids\": [\"concept_87181c1c44d7269e\"], \"primary_concept_ids\": [\"concept_87181c1c44d7269e\"], \"primary_evidence_scope_ids\": [\"evidence_scope_fba394ef922f007385ef\"], \"supporting_evidence_scope_ids\": [], \"source_refs\": [\"src-002\"], \"learning_objective_refs\": [\"lo_1\"], \"content\": {}}]}]}]}, {\"title\": \"Chapter 3\", \"objective\": \"Explain section 3.\", \"learning_objectives\": [\"Explain section 3.\"], \"concept_ids\": [\"concept_cf8025b7dbf93b83\"], \"source_refs\": [\"src-003\"], \"lessons\": [{\"title\": \"Lesson 3\", \"objective\": \"Identify and explain section 3.\", \"learning_objectives\": [\"Identify the source-grounded scope in section 3.\"], \"learning_activities\": [\"Review source evidence.\"], \"assessment\": \"Use a grounded check.\", \"primary_concept_ids\": [\"concept_cf8025b7dbf93b83\"], \"supporting_concept_ids\": [], \"prerequisite_concept_ids\": [], \"assessment_required\": false, \"assessment_objective_refs\": [], \"source_refs\": [\"src-003\"], \"units\": [{\"title\": \"Unit 3\", \"purpose\": \"Teach the bounded evidence scope.\", \"concept_ids\": [\"concept_cf8025b7dbf93b83\"], \"primary_concept_ids\": [\"concept_cf8025b7dbf93b83\"], \"learning_objective_refs\": [\"lo_1\"], \"source_refs\": [\"src-003\"], \"learning_blocks\": [{\"id\": \"lb_3\", \"intent\": \"concept_explanation\", \"importance\": \"core\", \"concept_ids\": [\"concept_cf8025b7dbf93b83\"], \"primary_concept_ids\": [\"concept_cf8025b7dbf93b83\"], \"primary_evidence_scope_ids\": [\"evidence_scope_748be2a1c831379df811\"], \"supporting_evidence_scope_ids\": [], \"source_refs\": [\"src-003\"], \"learning_objective_refs\": [\"lo_1\"], \"content\": {}}]}]}]}, {\"title\": \"Chapter 4\", \"objective\": \"Explain section 4.\", \"learning_objectives\": [\"Explain section 4.\"], \"concept_ids\": [\"concept_f8e6a5c81bbb243a\"], \"source_refs\": [\"src-004\"], \"lessons\": [{\"title\": \"Lesson 4\", \"objective\": \"Identify and explain section 4.\", \"learning_objectives\": [\"Identify the source-grounded scope in section 4.\"], \"learning_activities\": [\"Review source evidence.\"], \"assessment\": \"Use a grounded check.\", \"primary_concept_ids\": [\"concept_f8e6a5c81bbb243a\"], \"supporting_concept_ids\": [], \"prerequisite_concept_ids\": [], \"assessment_required\": false, \"assessment_objective_refs\": [], \"source_refs\": [\"src-004\"], \"units\": [{\"title\": \"Unit 4\", \"purpose\": \"Teach the bounded evidence scope.\", \"concept_ids\": [\"concept_f8e6a5c81bbb243a\"], \"primary_concept_ids\": [\"concept_f8e6a5c81bbb243a\"], \"learning_objective_refs\": [\"lo_1\"], \"source_refs\": [\"src-004\"], \"learning_blocks\": [{\"id\": \"lb_4\", \"intent\": \"concept_explanation\", \"importance\": \"core\", \"concept_ids\": [\"concept_f8e6a5c81bbb243a\"], \"primary_concept_ids\": [\"concept_f8e6a5c81bbb243a\"], \"primary_evidence_scope_ids\": [\"evidence_scope_7a6bb0cf914dad4ffe92\"], \"supporting_evidence_scope_ids\": [], \"source_refs\": [\"src-004\"], \"learning_objective_refs\": [\"lo_1\"], \"content\": {}}]}]}]}, {\"title\": \"Chapter 5\", \"objective\": \"Explain section 5.\", \"learning_objectives\": [\"Explain section 5.\"], \"concept_ids\": [\"concept_5e2c141a37f3b656\"], \"source_refs\": [\"src-005\"], \"lessons\": [{\"title\": \"Lesson 5\", \"objective\": \"Identify and explain section 5.\", \"learning_objectives\": [\"Identify the source-grounded scope in section 5.\"], \"learning_activities\": [\"Review source evidence.\"], \"assessment\": \"Use a grounded check.\", \"primary_concept_ids\": [\"concept_5e2c141a37f3b656\"], \"supporting_concept_ids\": [], \"prerequisite_concept_ids\": [], \"assessment_required\": false, \"assessment_objective_refs\": [], \"source_refs\": [\"src-005\"], \"units\": [{\"title\": \"Unit 5\", \"purpose\": \"Teach the bounded evidence scope.\", \"concept_ids\": [\"concept_5e2c141a37f3b656\"], \"primary_concept_ids\": [\"concept_5e2c141a37f3b656\"], \"learning_objective_refs\": [\"lo_1\"], \"source_refs\": [\"src-005\"], \"learning_blocks\": [{\"id\": \"lb_5\", \"intent\": \"concept_explanation\", \"importance\": \"core\", \"concept_ids\": [\"concept_5e2c141a37f3b656\"], \"primary_concept_ids\": [\"concept_5e2c141a37f3b656\"], \"primary_evidence_scope_ids\": [\"evidence_scope_df73069163daaf6ca3ea\"], \"supporting_evidence_scope_ids\": [], \"source_refs\": [\"src-005\"], \"learning_objective_refs\": [\"lo_1\"], \"content\": {}}]}]}]}, {\"title\": \"Chapter 6\", \"objective\": \"Explain section 6.\", \"learning_objectives\": [\"Explain section 6.\"], \"concept_ids\": [\"concept_5fd3b85b7fb471bd\"], \"source_refs\": [\"src-006\"], \"lessons\": [{\"title\": \"Lesson 6\", \"objective\": \"Identify and explain section 6.\", \"learning_objectives\": [\"Identify the source-grounded scope in section 6.\"], \"learning_activities\": [\"Review source evidence.\"], \"assessment\": \"Use a grounded check.\", \"primary_concept_ids\": [\"concept_5fd3b85b7fb471bd\"], \"supporting_concept_ids\": [], \"prerequisite_concept_ids\": [], \"assessment_required\": false, \"assessment_objective_refs\": [], \"source_refs\": [\"src-006\"], \"units\": [{\"title\": \"Unit 6\", \"purpose\": \"Teach the bounded evidence scope.\", \"concept_ids\": [\"concept_5fd3b85b7fb471bd\"], \"primary_concept_ids\": [\"concept_5fd3b85b7fb471bd\"], \"learning_objective_refs\": [\"lo_1\"], \"source_refs\": [\"src-006\"], \"learning_blocks\": [{\"id\": \"lb_6\", \"intent\": \"concept_explanation\", \"importance\": \"core\", \"concept_ids\": [\"concept_5fd3b85b7fb471bd\"], \"primary_concept_ids\": [\"concept_5fd3b85b7fb471bd\"], \"primary_evidence_scope_ids\": [\"evidence_scope_c18d17e91a3e25cb3112\"], \"supporting_evidence_scope_ids\": [], \"source_refs\": [\"src-006\"], \"learning_objective_refs\": [\"lo_1\"], \"content\": {}}]}]}]}]}"
+  },
+  {
+   "text": "{\"patches\": [{\"path\": \"chapter_1.lesson_1\", \"operation\": \"add_instructional_support_block\", \"unit_path\": \"chapter_1.lesson_1.unit_1\", \"after_block_id\": \"lb_1\", \"intent\": \"worked_example\", \"learning_objective_refs\": [\"lo_1\", \"lo_2\"], \"content\": {\"purpose\": \"Demonstrate the documented control and explain its safety implication.\"}}]}"
+  }
+ ],
+ "expected": {
+  "status": 200,
+  "content_type": "application/json",
+  "body": {
+   "blueprint": {
+    "architecture_contract_version": 5,
+    "content_contract_version": 1,
+    "title": "Evidence scope guide",
+    "summary": "Server-owned evidence scope blueprint.",
+    "target_audience": "Operators",
+    "prerequisites": [],
+    "learning_outcomes": [
+     "Identify source-backed concepts.",
+     "Explain source-backed concepts.",
+     "Apply source-backed concepts."
+    ],
+    "course_outcomes": [
+     "Identify source-backed concepts.",
+     "Explain source-backed concepts.",
+     "Apply source-backed concepts."
+    ],
+    "assessment_strategy": "Grounded checks.",
+    "assumptions": [],
+    "chapters": [
+     {
+      "title": "Chapter 1",
+      "objective": "Explain section 1.",
+      "lessons": [
+       {
+        "title": "Lesson 1",
+        "objective": "Identify and explain section 1.",
+        "learning_activities": [
+         "Review source evidence."
+        ],
+        "assessment": "Use a grounded check.",
+        "units": [
+         {
+          "title": "Unit 1",
+          "purpose": "Teach the bounded evidence scope.",
+          "concept_ids": [
+           "concept_f3740496472a7ba6"
+          ],
+          "primary_concept_ids": [
+           "concept_f3740496472a7ba6"
+          ],
+          "primary_evidence_scope_ids": [
+           "evidence_scope_02384132b002b7b648c4"
+          ],
+          "supporting_evidence_scope_ids": [
+           "evidence_scope_02384132b002b7b648c4"
+          ],
+          "learning_objective_refs": [
+           "lo_1",
+           "lo_2"
+          ],
+          "component_plan": [],
+          "source_refs": [
+           "src-001"
+          ],
+          "learning_blocks": [
+           {
+            "id": "lb_1",
+            "intent": "concept_explanation",
+            "importance": "core",
+            "concept_ids": [
+             "concept_f3740496472a7ba6"
+            ],
+            "primary_concept_ids": [
+             "concept_f3740496472a7ba6"
+            ],
+            "source_refs": [
+             "src-001"
+            ],
+            "learning_objective_refs": [
+             "lo_1",
+             "lo_2"
+            ],
+            "content": {},
+            "primary_evidence_scope_ids": [
+             "evidence_scope_02384132b002b7b648c4"
+            ],
+            "supporting_evidence_scope_ids": [],
+            "source_fact_ids": [
+             "fact-0001",
+             "fact-0007",
+             "fact-0013",
+             "fact-0019",
+             "fact-0025",
+             "fact-0031",
+             "fact-0037",
+             "fact-0043",
+             "fact-0049",
+             "fact-0055",
+             "fact-0061",
+             "fact-0067",
+             "fact-0073",
+             "fact-0079",
+             "fact-0085",
+             "fact-0091",
+             "fact-0097",
+             "fact-0103",
+             "fact-0109",
+             "fact-0115"
+            ]
+           },
+           {
+            "id": "lb_server_instructional_support_1",
+            "intent": "worked_example",
+            "importance": "supporting",
+            "concept_ids": [
+             "concept_f3740496472a7ba6"
+            ],
+            "primary_concept_ids": [],
+            "source_refs": [
+             "src-001"
+            ],
+            "learning_objective_refs": [
+             "lo_1",
+             "lo_2"
+            ],
+            "content": {
+             "purpose": "Demonstrate the documented control and explain its safety implication."
+            },
+            "primary_evidence_scope_ids": [],
+            "supporting_evidence_scope_ids": [
+             "evidence_scope_02384132b002b7b648c4"
+            ],
+            "source_fact_ids": []
+           },
+           {
+            "id": "lb_server_assessment_8f1eb0835f",
+            "intent": "knowledge_check",
+            "importance": "assessment",
+            "concept_ids": [
+             "concept_f3740496472a7ba6"
+            ],
+            "primary_concept_ids": [],
+            "source_refs": [
+             "src-001"
+            ],
+            "learning_objective_refs": [
+             "lo_1"
+            ],
+            "content": {},
+            "primary_evidence_scope_ids": [],
+            "supporting_evidence_scope_ids": [
+             "evidence_scope_02384132b002b7b648c4"
+            ],
+            "source_fact_ids": []
+           }
+          ],
+          "source_fact_ids": [
+           "fact-0001",
+           "fact-0007",
+           "fact-0013",
+           "fact-0019",
+           "fact-0025",
+           "fact-0031",
+           "fact-0037",
+           "fact-0043",
+           "fact-0049",
+           "fact-0055",
+           "fact-0061",
+           "fact-0067",
+           "fact-0073",
+           "fact-0079",
+           "fact-0085",
+           "fact-0091",
+           "fact-0097",
+           "fact-0103",
+           "fact-0109",
+           "fact-0115"
+          ],
+          "media_plan": {
+           "type": "video",
+           "title": "Proposed walkthrough: Unit 1",
+           "brief_version": 2,
+           "content_points": [
+            "Evidence fact 1: source-backed procedure or definition.",
+            "Evidence fact 25: source-backed procedure or definition.",
+            "Evidence fact 49: source-backed procedure or definition.",
+            "Evidence fact 67: source-backed procedure or definition.",
+            "Evidence fact 91: source-backed procedure or definition.",
+            "Evidence fact 115: source-backed procedure or definition."
+           ],
+           "context_description": "Presentation suggestion for \"Unit 1\": use one scene per point, display the source wording, and highlight the action or relationship explicitly stated. Do not invent a case, outcome or sequence. Source anchor for this brief (original language): “Evidence fact 1: source-backed procedure or definition.”",
+           "evidence_language": "original",
+           "content_basis": "SOURCE_EXCERPTS",
+           "content_outline": "Source excerpt (original language): Evidence fact 1: source-backed procedure or definition.",
+           "rationale": "A bounded source-backed visual brief, not a generated asset."
+          }
+         }
+        ],
+        "source_refs": [
+         "src-001"
+        ],
+        "learning_objectives": [
+         "Identify the source-grounded safety control.",
+         "Explain the documented purpose of the safety control."
+        ],
+        "primary_concept_ids": [
+         "concept_f3740496472a7ba6"
+        ],
+        "supporting_concept_ids": [],
+        "prerequisite_concept_ids": [],
+        "assessment_required": true,
+        "assessment_objective_refs": [
+         "lo_1"
+        ]
+       }
+      ],
+      "source_refs": [
+       "src-001"
+      ],
+      "learning_objectives": [
+       "Explain section 1."
+      ],
+      "concept_ids": [
+       "concept_f3740496472a7ba6"
+      ]
+     },
+     {
+      "title": "Chapter 2",
+      "objective": "Explain section 2.",
+      "lessons": [
+       {
+        "title": "Lesson 2",
+        "objective": "Identify and explain section 2.",
+        "learning_activities": [
+         "Review source evidence."
+        ],
+        "assessment": "Use a grounded check.",
+        "units": [
+         {
+          "title": "Unit 2",
+          "purpose": "Teach the bounded evidence scope.",
+          "concept_ids": [
+           "concept_87181c1c44d7269e"
+          ],
+          "primary_concept_ids": [
+           "concept_87181c1c44d7269e"
+          ],
+          "primary_evidence_scope_ids": [
+           "evidence_scope_fba394ef922f007385ef"
+          ],
+          "supporting_evidence_scope_ids": [],
+          "learning_objective_refs": [
+           "lo_1"
+          ],
+          "component_plan": [],
+          "source_refs": [
+           "src-002"
+          ],
+          "learning_blocks": [
+           {
+            "id": "lb_2",
+            "intent": "concept_explanation",
+            "importance": "core",
+            "concept_ids": [
+             "concept_87181c1c44d7269e"
+            ],
+            "primary_concept_ids": [
+             "concept_87181c1c44d7269e"
+            ],
+            "source_refs": [
+             "src-002"
+            ],
+            "learning_objective_refs": [
+             "lo_1"
+            ],
+            "content": {},
+            "primary_evidence_scope_ids": [
+             "evidence_scope_fba394ef922f007385ef"
+            ],
+            "supporting_evidence_scope_ids": [],
+            "source_fact_ids": [
+             "fact-0002",
+             "fact-0008",
+             "fact-0014",
+             "fact-0020",
+             "fact-0026",
+             "fact-0032",
+             "fact-0038",
+             "fact-0044",
+             "fact-0050",
+             "fact-0056",
+             "fact-0062",
+             "fact-0068",
+             "fact-0074",
+             "fact-0080",
+             "fact-0086",
+             "fact-0092",
+             "fact-0098",
+             "fact-0104",
+             "fact-0110",
+             "fact-0116"
+            ]
+           }
+          ],
+          "source_fact_ids": [
+           "fact-0002",
+           "fact-0008",
+           "fact-0014",
+           "fact-0020",
+           "fact-0026",
+           "fact-0032",
+           "fact-0038",
+           "fact-0044",
+           "fact-0050",
+           "fact-0056",
+           "fact-0062",
+           "fact-0068",
+           "fact-0074",
+           "fact-0080",
+           "fact-0086",
+           "fact-0092",
+           "fact-0098",
+           "fact-0104",
+           "fact-0110",
+           "fact-0116"
+          ]
+         }
+        ],
+        "source_refs": [
+         "src-002"
+        ],
+        "learning_objectives": [
+         "Identify the source-grounded scope in section 2."
+        ],
+        "primary_concept_ids": [
+         "concept_87181c1c44d7269e"
+        ],
+        "supporting_concept_ids": [],
+        "prerequisite_concept_ids": [],
+        "assessment_required": false,
+        "assessment_objective_refs": []
+       }
+      ],
+      "source_refs": [
+       "src-002"
+      ],
+      "learning_objectives": [
+       "Explain section 2."
+      ],
+      "concept_ids": [
+       "concept_87181c1c44d7269e"
+      ]
+     },
+     {
+      "title": "Chapter 3",
+      "objective": "Explain section 3.",
+      "lessons": [
+       {
+        "title": "Lesson 3",
+        "objective": "Identify and explain section 3.",
+        "learning_activities": [
+         "Review source evidence."
+        ],
+        "assessment": "Use a grounded check.",
+        "units": [
+         {
+          "title": "Unit 3",
+          "purpose": "Teach the bounded evidence scope.",
+          "concept_ids": [
+           "concept_cf8025b7dbf93b83"
+          ],
+          "primary_concept_ids": [
+           "concept_cf8025b7dbf93b83"
+          ],
+          "primary_evidence_scope_ids": [
+           "evidence_scope_748be2a1c831379df811"
+          ],
+          "supporting_evidence_scope_ids": [],
+          "learning_objective_refs": [
+           "lo_1"
+          ],
+          "component_plan": [],
+          "source_refs": [
+           "src-003"
+          ],
+          "learning_blocks": [
+           {
+            "id": "lb_3",
+            "intent": "concept_explanation",
+            "importance": "core",
+            "concept_ids": [
+             "concept_cf8025b7dbf93b83"
+            ],
+            "primary_concept_ids": [
+             "concept_cf8025b7dbf93b83"
+            ],
+            "source_refs": [
+             "src-003"
+            ],
+            "learning_objective_refs": [
+             "lo_1"
+            ],
+            "content": {},
+            "primary_evidence_scope_ids": [
+             "evidence_scope_748be2a1c831379df811"
+            ],
+            "supporting_evidence_scope_ids": [],
+            "source_fact_ids": [
+             "fact-0003",
+             "fact-0009",
+             "fact-0015",
+             "fact-0021",
+             "fact-0027",
+             "fact-0033",
+             "fact-0039",
+             "fact-0045",
+             "fact-0051",
+             "fact-0057",
+             "fact-0063",
+             "fact-0069",
+             "fact-0075",
+             "fact-0081",
+             "fact-0087",
+             "fact-0093",
+             "fact-0099",
+             "fact-0105",
+             "fact-0111",
+             "fact-0117"
+            ]
+           }
+          ],
+          "source_fact_ids": [
+           "fact-0003",
+           "fact-0009",
+           "fact-0015",
+           "fact-0021",
+           "fact-0027",
+           "fact-0033",
+           "fact-0039",
+           "fact-0045",
+           "fact-0051",
+           "fact-0057",
+           "fact-0063",
+           "fact-0069",
+           "fact-0075",
+           "fact-0081",
+           "fact-0087",
+           "fact-0093",
+           "fact-0099",
+           "fact-0105",
+           "fact-0111",
+           "fact-0117"
+          ]
+         }
+        ],
+        "source_refs": [
+         "src-003"
+        ],
+        "learning_objectives": [
+         "Identify the source-grounded scope in section 3."
+        ],
+        "primary_concept_ids": [
+         "concept_cf8025b7dbf93b83"
+        ],
+        "supporting_concept_ids": [],
+        "prerequisite_concept_ids": [],
+        "assessment_required": false,
+        "assessment_objective_refs": []
+       }
+      ],
+      "source_refs": [
+       "src-003"
+      ],
+      "learning_objectives": [
+       "Explain section 3."
+      ],
+      "concept_ids": [
+       "concept_cf8025b7dbf93b83"
+      ]
+     },
+     {
+      "title": "Chapter 4",
+      "objective": "Explain section 4.",
+      "lessons": [
+       {
+        "title": "Lesson 4",
+        "objective": "Identify and explain section 4.",
+        "learning_activities": [
+         "Review source evidence."
+        ],
+        "assessment": "Use a grounded check.",
+        "units": [
+         {
+          "title": "Unit 4",
+          "purpose": "Teach the bounded evidence scope.",
+          "concept_ids": [
+           "concept_f8e6a5c81bbb243a"
+          ],
+          "primary_concept_ids": [
+           "concept_f8e6a5c81bbb243a"
+          ],
+          "primary_evidence_scope_ids": [
+           "evidence_scope_7a6bb0cf914dad4ffe92"
+          ],
+          "supporting_evidence_scope_ids": [],
+          "learning_objective_refs": [
+           "lo_1"
+          ],
+          "component_plan": [],
+          "source_refs": [
+           "src-004"
+          ],
+          "learning_blocks": [
+           {
+            "id": "lb_4",
+            "intent": "concept_explanation",
+            "importance": "core",
+            "concept_ids": [
+             "concept_f8e6a5c81bbb243a"
+            ],
+            "primary_concept_ids": [
+             "concept_f8e6a5c81bbb243a"
+            ],
+            "source_refs": [
+             "src-004"
+            ],
+            "learning_objective_refs": [
+             "lo_1"
+            ],
+            "content": {},
+            "primary_evidence_scope_ids": [
+             "evidence_scope_7a6bb0cf914dad4ffe92"
+            ],
+            "supporting_evidence_scope_ids": [],
+            "source_fact_ids": [
+             "fact-0004",
+             "fact-0010",
+             "fact-0016",
+             "fact-0022",
+             "fact-0028",
+             "fact-0034",
+             "fact-0040",
+             "fact-0046",
+             "fact-0052",
+             "fact-0058",
+             "fact-0064",
+             "fact-0070",
+             "fact-0076",
+             "fact-0082",
+             "fact-0088",
+             "fact-0094",
+             "fact-0100",
+             "fact-0106",
+             "fact-0112",
+             "fact-0118"
+            ]
+           }
+          ],
+          "source_fact_ids": [
+           "fact-0004",
+           "fact-0010",
+           "fact-0016",
+           "fact-0022",
+           "fact-0028",
+           "fact-0034",
+           "fact-0040",
+           "fact-0046",
+           "fact-0052",
+           "fact-0058",
+           "fact-0064",
+           "fact-0070",
+           "fact-0076",
+           "fact-0082",
+           "fact-0088",
+           "fact-0094",
+           "fact-0100",
+           "fact-0106",
+           "fact-0112",
+           "fact-0118"
+          ]
+         }
+        ],
+        "source_refs": [
+         "src-004"
+        ],
+        "learning_objectives": [
+         "Identify the source-grounded scope in section 4."
+        ],
+        "primary_concept_ids": [
+         "concept_f8e6a5c81bbb243a"
+        ],
+        "supporting_concept_ids": [],
+        "prerequisite_concept_ids": [],
+        "assessment_required": false,
+        "assessment_objective_refs": []
+       }
+      ],
+      "source_refs": [
+       "src-004"
+      ],
+      "learning_objectives": [
+       "Explain section 4."
+      ],
+      "concept_ids": [
+       "concept_f8e6a5c81bbb243a"
+      ]
+     },
+     {
+      "title": "Chapter 5",
+      "objective": "Explain section 5.",
+      "lessons": [
+       {
+        "title": "Lesson 5",
+        "objective": "Identify and explain section 5.",
+        "learning_activities": [
+         "Review source evidence."
+        ],
+        "assessment": "Use a grounded check.",
+        "units": [
+         {
+          "title": "Unit 5",
+          "purpose": "Teach the bounded evidence scope.",
+          "concept_ids": [
+           "concept_5e2c141a37f3b656"
+          ],
+          "primary_concept_ids": [
+           "concept_5e2c141a37f3b656"
+          ],
+          "primary_evidence_scope_ids": [
+           "evidence_scope_df73069163daaf6ca3ea"
+          ],
+          "supporting_evidence_scope_ids": [],
+          "learning_objective_refs": [
+           "lo_1"
+          ],
+          "component_plan": [],
+          "source_refs": [
+           "src-005"
+          ],
+          "learning_blocks": [
+           {
+            "id": "lb_5",
+            "intent": "concept_explanation",
+            "importance": "core",
+            "concept_ids": [
+             "concept_5e2c141a37f3b656"
+            ],
+            "primary_concept_ids": [
+             "concept_5e2c141a37f3b656"
+            ],
+            "source_refs": [
+             "src-005"
+            ],
+            "learning_objective_refs": [
+             "lo_1"
+            ],
+            "content": {},
+            "primary_evidence_scope_ids": [
+             "evidence_scope_df73069163daaf6ca3ea"
+            ],
+            "supporting_evidence_scope_ids": [],
+            "source_fact_ids": [
+             "fact-0005",
+             "fact-0011",
+             "fact-0017",
+             "fact-0023",
+             "fact-0029",
+             "fact-0035",
+             "fact-0041",
+             "fact-0047",
+             "fact-0053",
+             "fact-0059",
+             "fact-0065",
+             "fact-0071",
+             "fact-0077",
+             "fact-0083",
+             "fact-0089",
+             "fact-0095",
+             "fact-0101",
+             "fact-0107",
+             "fact-0113",
+             "fact-0119"
+            ]
+           }
+          ],
+          "source_fact_ids": [
+           "fact-0005",
+           "fact-0011",
+           "fact-0017",
+           "fact-0023",
+           "fact-0029",
+           "fact-0035",
+           "fact-0041",
+           "fact-0047",
+           "fact-0053",
+           "fact-0059",
+           "fact-0065",
+           "fact-0071",
+           "fact-0077",
+           "fact-0083",
+           "fact-0089",
+           "fact-0095",
+           "fact-0101",
+           "fact-0107",
+           "fact-0113",
+           "fact-0119"
+          ]
+         }
+        ],
+        "source_refs": [
+         "src-005"
+        ],
+        "learning_objectives": [
+         "Identify the source-grounded scope in section 5."
+        ],
+        "primary_concept_ids": [
+         "concept_5e2c141a37f3b656"
+        ],
+        "supporting_concept_ids": [],
+        "prerequisite_concept_ids": [],
+        "assessment_required": false,
+        "assessment_objective_refs": []
+       }
+      ],
+      "source_refs": [
+       "src-005"
+      ],
+      "learning_objectives": [
+       "Explain section 5."
+      ],
+      "concept_ids": [
+       "concept_5e2c141a37f3b656"
+      ]
+     },
+     {
+      "title": "Chapter 6",
+      "objective": "Explain section 6.",
+      "lessons": [
+       {
+        "title": "Lesson 6",
+        "objective": "Identify and explain section 6.",
+        "learning_activities": [
+         "Review source evidence."
+        ],
+        "assessment": "Use a grounded check.",
+        "units": [
+         {
+          "title": "Unit 6",
+          "purpose": "Teach the bounded evidence scope.",
+          "concept_ids": [
+           "concept_5fd3b85b7fb471bd"
+          ],
+          "primary_concept_ids": [
+           "concept_5fd3b85b7fb471bd"
+          ],
+          "primary_evidence_scope_ids": [
+           "evidence_scope_c18d17e91a3e25cb3112"
+          ],
+          "supporting_evidence_scope_ids": [],
+          "learning_objective_refs": [
+           "lo_1"
+          ],
+          "component_plan": [],
+          "source_refs": [
+           "src-006"
+          ],
+          "learning_blocks": [
+           {
+            "id": "lb_6",
+            "intent": "concept_explanation",
+            "importance": "core",
+            "concept_ids": [
+             "concept_5fd3b85b7fb471bd"
+            ],
+            "primary_concept_ids": [
+             "concept_5fd3b85b7fb471bd"
+            ],
+            "source_refs": [
+             "src-006"
+            ],
+            "learning_objective_refs": [
+             "lo_1"
+            ],
+            "content": {},
+            "primary_evidence_scope_ids": [
+             "evidence_scope_c18d17e91a3e25cb3112"
+            ],
+            "supporting_evidence_scope_ids": [],
+            "source_fact_ids": [
+             "fact-0006",
+             "fact-0012",
+             "fact-0018",
+             "fact-0024",
+             "fact-0030",
+             "fact-0036",
+             "fact-0042",
+             "fact-0048",
+             "fact-0054",
+             "fact-0060",
+             "fact-0066",
+             "fact-0072",
+             "fact-0078",
+             "fact-0084",
+             "fact-0090",
+             "fact-0096",
+             "fact-0102",
+             "fact-0108",
+             "fact-0114",
+             "fact-0120"
+            ]
+           }
+          ],
+          "source_fact_ids": [
+           "fact-0006",
+           "fact-0012",
+           "fact-0018",
+           "fact-0024",
+           "fact-0030",
+           "fact-0036",
+           "fact-0042",
+           "fact-0048",
+           "fact-0054",
+           "fact-0060",
+           "fact-0066",
+           "fact-0072",
+           "fact-0078",
+           "fact-0084",
+           "fact-0090",
+           "fact-0096",
+           "fact-0102",
+           "fact-0108",
+           "fact-0114",
+           "fact-0120"
+          ]
+         }
+        ],
+        "source_refs": [
+         "src-006"
+        ],
+        "learning_objectives": [
+         "Identify the source-grounded scope in section 6."
+        ],
+        "primary_concept_ids": [
+         "concept_5fd3b85b7fb471bd"
+        ],
+        "supporting_concept_ids": [],
+        "prerequisite_concept_ids": [],
+        "assessment_required": false,
+        "assessment_objective_refs": []
+       }
+      ],
+      "source_refs": [
+       "src-006"
+      ],
+      "learning_objectives": [
+       "Explain section 6."
+      ],
+      "concept_ids": [
+       "concept_5fd3b85b7fb471bd"
+      ]
+     }
+    ],
+    "component_capabilities": {
+     "version": 2,
+     "max_components_per_unit": 4,
+     "max_assessments_per_unit": 3,
+     "assessment_enabled": true
+    },
+    "source_evidence_scope_allocation": {
+     "version": "source-evidence-scope-allocation-v1",
+     "authority": "server",
+     "architecture_contract_version": 5,
+     "required_count": 6,
+     "allocated_count": 6,
+     "complete": true,
+     "allocations": [
+      {
+       "evidence_scope_id": "evidence_scope_02384132b002b7b648c4",
+       "unit_path": "chapter_1.lesson_1.unit_1",
+       "learning_block_id": "lb_1",
+       "basis": "PRIMARY_EVIDENCE_SCOPE",
+       "evidence_char_count": 1121,
+       "evidence_token_estimate": 281
+      },
+      {
+       "evidence_scope_id": "evidence_scope_748be2a1c831379df811",
+       "unit_path": "chapter_3.lesson_1.unit_1",
+       "learning_block_id": "lb_3",
+       "basis": "PRIMARY_EVIDENCE_SCOPE",
+       "evidence_char_count": 1121,
+       "evidence_token_estimate": 281
+      },
+      {
+       "evidence_scope_id": "evidence_scope_7a6bb0cf914dad4ffe92",
+       "unit_path": "chapter_4.lesson_1.unit_1",
+       "learning_block_id": "lb_4",
+       "basis": "PRIMARY_EVIDENCE_SCOPE",
+       "evidence_char_count": 1123,
+       "evidence_token_estimate": 281
+      },
+      {
+       "evidence_scope_id": "evidence_scope_c18d17e91a3e25cb3112",
+       "unit_path": "chapter_6.lesson_1.unit_1",
+       "learning_block_id": "lb_6",
+       "basis": "PRIMARY_EVIDENCE_SCOPE",
+       "evidence_char_count": 1123,
+       "evidence_token_estimate": 281
+      },
+      {
+       "evidence_scope_id": "evidence_scope_df73069163daaf6ca3ea",
+       "unit_path": "chapter_5.lesson_1.unit_1",
+       "learning_block_id": "lb_5",
+       "basis": "PRIMARY_EVIDENCE_SCOPE",
+       "evidence_char_count": 1123,
+       "evidence_token_estimate": 281
+      },
+      {
+       "evidence_scope_id": "evidence_scope_fba394ef922f007385ef",
+       "unit_path": "chapter_2.lesson_1.unit_1",
+       "learning_block_id": "lb_2",
+       "basis": "PRIMARY_EVIDENCE_SCOPE",
+       "evidence_char_count": 1121,
+       "evidence_token_estimate": 281
+      }
+     ],
+     "unallocated": [],
+     "evidence_char_count": 6732,
+     "evidence_token_estimate": 1686
+    },
+    "source_fact_allocation": {
+     "version": "source-fact-allocation-v3",
+     "authority": "server",
+     "architecture_contract_version": 5,
+     "required_count": 120,
+     "allocated_count": 120,
+     "complete": true,
+     "allocations": [
+      {
+       "fact_id": "fact-0001",
+       "unit_path": "chapter_1.lesson_1.unit_1",
+       "learning_block_id": "lb_1",
+       "evidence_scope_id": "evidence_scope_02384132b002b7b648c4",
+       "basis": "PRIMARY_EVIDENCE_SCOPE"
+      },
+      {
+       "fact_id": "fact-0007",
+       "unit_path": "chapter_1.lesson_1.unit_1",
+       "learning_block_id": "lb_1",
+       "evidence_scope_id": "evidence_scope_02384132b002b7b648c4",
+       "basis": "PRIMARY_EVIDENCE_SCOPE"
+      },
+      {
+       "fact_id": "fact-0013",
+       "unit_path": "chapter_1.lesson_1.unit_1",
+       "learning_block_id": "lb_1",
+       "evidence_scope_id": "evidence_scope_02384132b002b7b648c4",
+       "basis": "PRIMARY_EVIDENCE_SCOPE"
+      },
+      {
+       "fact_id": "fact-0019",
+       "unit_path": "chapter_1.lesson_1.unit_1",
+       "learning_block_id": "lb_1",
+       "evidence_scope_id": "evidence_scope_02384132b002b7b648c4",
+       "basis": "PRIMARY_EVIDENCE_SCOPE"
+      },
+      {
+       "fact_id": "fact-0025",
+       "unit_path": "chapter_1.lesson_1.unit_1",
+       "learning_block_id": "lb_1",
+       "evidence_scope_id": "evidence_scope_02384132b002b7b648c4",
+       "basis": "PRIMARY_EVIDENCE_SCOPE"
+      },
+      {
+       "fact_id": "fact-0031",
+       "unit_path": "chapter_1.lesson_1.unit_1",
+       "learning_block_id": "lb_1",
+       "evidence_scope_id": "evidence_scope_02384132b002b7b648c4",
+       "basis": "PRIMARY_EVIDENCE_SCOPE"
+      },
+      {
+       "fact_id": "fact-0037",
+       "unit_path": "chapter_1.lesson_1.unit_1",
+       "learning_block_id": "lb_1",
+       "evidence_scope_id": "evidence_scope_02384132b002b7b648c4",
+       "basis": "PRIMARY_EVIDENCE_SCOPE"
+      },
+      {
+       "fact_id": "fact-0043",
+       "unit_path": "chapter_1.lesson_1.unit_1",
+       "learning_block_id": "lb_1",
+       "evidence_scope_id": "evidence_scope_02384132b002b7b648c4",
+       "basis": "PRIMARY_EVIDENCE_SCOPE"
+      },
+      {
+       "fact_id": "fact-0049",
+       "unit_path": "chapter_1.lesson_1.unit_1",
+       "learning_block_id": "lb_1",
+       "evidence_scope_id": "evidence_scope_02384132b002b7b648c4",
+       "basis": "PRIMARY_EVIDENCE_SCOPE"
+      },
+      {
+       "fact_id": "fact-0055",
+       "unit_path": "chapter_1.lesson_1.unit_1",
+       "learning_block_id": "lb_1",
+       "evidence_scope_id": "evidence_scope_02384132b002b7b648c4",
+       "basis": "PRIMARY_EVIDENCE_SCOPE"
+      },
+      {
+       "fact_id": "fact-0061",
+       "unit_path": "chapter_1.lesson_1.unit_1",
+       "learning_block_id": "lb_1",
+       "evidence_scope_id": "evidence_scope_02384132b002b7b648c4",
+       "basis": "PRIMARY_EVIDENCE_SCOPE"
+      },
+      {
+       "fact_id": "fact-0067",
+       "unit_path": "chapter_1.lesson_1.unit_1",
+       "learning_block_id": "lb_1",
+       "evidence_scope_id": "evidence_scope_02384132b002b7b648c4",
+       "basis": "PRIMARY_EVIDENCE_SCOPE"
+      },
+      {
+       "fact_id": "fact-0073",
+       "unit_path": "chapter_1.lesson_1.unit_1",
+       "learning_block_id": "lb_1",
+       "evidence_scope_id": "evidence_scope_02384132b002b7b648c4",
+       "basis": "PRIMARY_EVIDENCE_SCOPE"
+      },
+      {
+       "fact_id": "fact-0079",
+       "unit_path": "chapter_1.lesson_1.unit_1",
+       "learning_block_id": "lb_1",
+       "evidence_scope_id": "evidence_scope_02384132b002b7b648c4",
+       "basis": "PRIMARY_EVIDENCE_SCOPE"
+      },
+      {
+       "fact_id": "fact-0085",
+       "unit_path": "chapter_1.lesson_1.unit_1",
+       "learning_block_id": "lb_1",
+       "evidence_scope_id": "evidence_scope_02384132b002b7b648c4",
+       "basis": "PRIMARY_EVIDENCE_SCOPE"
+      },
+      {
+       "fact_id": "fact-0091",
+       "unit_path": "chapter_1.lesson_1.unit_1",
+       "learning_block_id": "lb_1",
+       "evidence_scope_id": "evidence_scope_02384132b002b7b648c4",
+       "basis": "PRIMARY_EVIDENCE_SCOPE"
+      },
+      {
+       "fact_id": "fact-0097",
+       "unit_path": "chapter_1.lesson_1.unit_1",
+       "learning_block_id": "lb_1",
+       "evidence_scope_id": "evidence_scope_02384132b002b7b648c4",
+       "basis": "PRIMARY_EVIDENCE_SCOPE"
+      },
+      {
+       "fact_id": "fact-0103",
+       "unit_path": "chapter_1.lesson_1.unit_1",
+       "learning_block_id": "lb_1",
+       "evidence_scope_id": "evidence_scope_02384132b002b7b648c4",
+       "basis": "PRIMARY_EVIDENCE_SCOPE"
+      },
+      {
+       "fact_id": "fact-0109",
+       "unit_path": "chapter_1.lesson_1.unit_1",
+       "learning_block_id": "lb_1",
+       "evidence_scope_id": "evidence_scope_02384132b002b7b648c4",
+       "basis": "PRIMARY_EVIDENCE_SCOPE"
+      },
+      {
+       "fact_id": "fact-0115",
+       "unit_path": "chapter_1.lesson_1.unit_1",
+       "learning_block_id": "lb_1",
+       "evidence_scope_id": "evidence_scope_02384132b002b7b648c4",
+       "basis": "PRIMARY_EVIDENCE_SCOPE"
+      },
+      {
+       "fact_id": "fact-0003",
+       "unit_path": "chapter_3.lesson_1.unit_1",
+       "learning_block_id": "lb_3",
+       "evidence_scope_id": "evidence_scope_748be2a1c831379df811",
+       "basis": "PRIMARY_EVIDENCE_SCOPE"
+      },
+      {
+       "fact_id": "fact-0009",
+       "unit_path": "chapter_3.lesson_1.unit_1",
+       "learning_block_id": "lb_3",
+       "evidence_scope_id": "evidence_scope_748be2a1c831379df811",
+       "basis": "PRIMARY_EVIDENCE_SCOPE"
+      },
+      {
+       "fact_id": "fact-0015",
+       "unit_path": "chapter_3.lesson_1.unit_1",
+       "learning_block_id": "lb_3",
+       "evidence_scope_id": "evidence_scope_748be2a1c831379df811",
+       "basis": "PRIMARY_EVIDENCE_SCOPE"
+      },
+      {
+       "fact_id": "fact-0021",
+       "unit_path": "chapter_3.lesson_1.unit_1",
+       "learning_block_id": "lb_3",
+       "evidence_scope_id": "evidence_scope_748be2a1c831379df811",
+       "basis": "PRIMARY_EVIDENCE_SCOPE"
+      },
+      {
+       "fact_id": "fact-0027",
+       "unit_path": "chapter_3.lesson_1.unit_1",
+       "learning_block_id": "lb_3",
+       "evidence_scope_id": "evidence_scope_748be2a1c831379df811",
+       "basis": "PRIMARY_EVIDENCE_SCOPE"
+      },
+      {
+       "fact_id": "fact-0033",
+       "unit_path": "chapter_3.lesson_1.unit_1",
+       "learning_block_id": "lb_3",
+       "evidence_scope_id": "evidence_scope_748be2a1c831379df811",
+       "basis": "PRIMARY_EVIDENCE_SCOPE"
+      },
+      {
+       "fact_id": "fact-0039",
+       "unit_path": "chapter_3.lesson_1.unit_1",
+       "learning_block_id": "lb_3",
+       "evidence_scope_id": "evidence_scope_748be2a1c831379df811",
+       "basis": "PRIMARY_EVIDENCE_SCOPE"
+      },
+      {
+       "fact_id": "fact-0045",
+       "unit_path": "chapter_3.lesson_1.unit_1",
+       "learning_block_id": "lb_3",
+       "evidence_scope_id": "evidence_scope_748be2a1c831379df811",
+       "basis": "PRIMARY_EVIDENCE_SCOPE"
+      },
+      {
+       "fact_id": "fact-0051",
+       "unit_path": "chapter_3.lesson_1.unit_1",
+       "learning_block_id": "lb_3",
+       "evidence_scope_id": "evidence_scope_748be2a1c831379df811",
+       "basis": "PRIMARY_EVIDENCE_SCOPE"
+      },
+      {
+       "fact_id": "fact-0057",
+       "unit_path": "chapter_3.lesson_1.unit_1",
+       "learning_block_id": "lb_3",
+       "evidence_scope_id": "evidence_scope_748be2a1c831379df811",
+       "basis": "PRIMARY_EVIDENCE_SCOPE"
+      },
+      {
+       "fact_id": "fact-0063",
+       "unit_path": "chapter_3.lesson_1.unit_1",
+       "learning_block_id": "lb_3",
+       "evidence_scope_id": "evidence_scope_748be2a1c831379df811",
+       "basis": "PRIMARY_EVIDENCE_SCOPE"
+      },
+      {
+       "fact_id": "fact-0069",
+       "unit_path": "chapter_3.lesson_1.unit_1",
+       "learning_block_id": "lb_3",
+       "evidence_scope_id": "evidence_scope_748be2a1c831379df811",
+       "basis": "PRIMARY_EVIDENCE_SCOPE"
+      },
+      {
+       "fact_id": "fact-0075",
+       "unit_path": "chapter_3.lesson_1.unit_1",
+       "learning_block_id": "lb_3",
+       "evidence_scope_id": "evidence_scope_748be2a1c831379df811",
+       "basis": "PRIMARY_EVIDENCE_SCOPE"
+      },
+      {
+       "fact_id": "fact-0081",
+       "unit_path": "chapter_3.lesson_1.unit_1",
+       "learning_block_id": "lb_3",
+       "evidence_scope_id": "evidence_scope_748be2a1c831379df811",
+       "basis": "PRIMARY_EVIDENCE_SCOPE"
+      },
+      {
+       "fact_id": "fact-0087",
+       "unit_path": "chapter_3.lesson_1.unit_1",
+       "learning_block_id": "lb_3",
+       "evidence_scope_id": "evidence_scope_748be2a1c831379df811",
+       "basis": "PRIMARY_EVIDENCE_SCOPE"
+      },
+      {
+       "fact_id": "fact-0093",
+       "unit_path": "chapter_3.lesson_1.unit_1",
+       "learning_block_id": "lb_3",
+       "evidence_scope_id": "evidence_scope_748be2a1c831379df811",
+       "basis": "PRIMARY_EVIDENCE_SCOPE"
+      },
+      {
+       "fact_id": "fact-0099",
+       "unit_path": "chapter_3.lesson_1.unit_1",
+       "learning_block_id": "lb_3",
+       "evidence_scope_id": "evidence_scope_748be2a1c831379df811",
+       "basis": "PRIMARY_EVIDENCE_SCOPE"
+      },
+      {
+       "fact_id": "fact-0105",
+       "unit_path": "chapter_3.lesson_1.unit_1",
+       "learning_block_id": "lb_3",
+       "evidence_scope_id": "evidence_scope_748be2a1c831379df811",
+       "basis": "PRIMARY_EVIDENCE_SCOPE"
+      },
+      {
+       "fact_id": "fact-0111",
+       "unit_path": "chapter_3.lesson_1.unit_1",
+       "learning_block_id": "lb_3",
+       "evidence_scope_id": "evidence_scope_748be2a1c831379df811",
+       "basis": "PRIMARY_EVIDENCE_SCOPE"
+      },
+      {
+       "fact_id": "fact-0117",
+       "unit_path": "chapter_3.lesson_1.unit_1",
+       "learning_block_id": "lb_3",
+       "evidence_scope_id": "evidence_scope_748be2a1c831379df811",
+       "basis": "PRIMARY_EVIDENCE_SCOPE"
+      },
+      {
+       "fact_id": "fact-0004",
+       "unit_path": "chapter_4.lesson_1.unit_1",
+       "learning_block_id": "lb_4",
+       "evidence_scope_id": "evidence_scope_7a6bb0cf914dad4ffe92",
+       "basis": "PRIMARY_EVIDENCE_SCOPE"
+      },
+      {
+       "fact_id": "fact-0010",
+       "unit_path": "chapter_4.lesson_1.unit_1",
+       "learning_block_id": "lb_4",
+       "evidence_scope_id": "evidence_scope_7a6bb0cf914dad4ffe92",
+       "basis": "PRIMARY_EVIDENCE_SCOPE"
+      },
+      {
+       "fact_id": "fact-0016",
+       "unit_path": "chapter_4.lesson_1.unit_1",
+       "learning_block_id": "lb_4",
+       "evidence_scope_id": "evidence_scope_7a6bb0cf914dad4ffe92",
+       "basis": "PRIMARY_EVIDENCE_SCOPE"
+      },
+      {
+       "fact_id": "fact-0022",
+       "unit_path": "chapter_4.lesson_1.unit_1",
+       "learning_block_id": "lb_4",
+       "evidence_scope_id": "evidence_scope_7a6bb0cf914dad4ffe92",
+       "basis": "PRIMARY_EVIDENCE_SCOPE"
+      },
+      {
+       "fact_id": "fact-0028",
+       "unit_path": "chapter_4.lesson_1.unit_1",
+       "learning_block_id": "lb_4",
+       "evidence_scope_id": "evidence_scope_7a6bb0cf914dad4ffe92",
+       "basis": "PRIMARY_EVIDENCE_SCOPE"
+      },
+      {
+       "fact_id": "fact-0034",
+       "unit_path": "chapter_4.lesson_1.unit_1",
+       "learning_block_id": "lb_4",
+       "evidence_scope_id": "evidence_scope_7a6bb0cf914dad4ffe92",
+       "basis": "PRIMARY_EVIDENCE_SCOPE"
+      },
+      {
+       "fact_id": "fact-0040",
+       "unit_path": "chapter_4.lesson_1.unit_1",
+       "learning_block_id": "lb_4",
+       "evidence_scope_id": "evidence_scope_7a6bb0cf914dad4ffe92",
+       "basis": "PRIMARY_EVIDENCE_SCOPE"
+      },
+      {
+       "fact_id": "fact-0046",
+       "unit_path": "chapter_4.lesson_1.unit_1",
+       "learning_block_id": "lb_4",
+       "evidence_scope_id": "evidence_scope_7a6bb0cf914dad4ffe92",
+       "basis": "PRIMARY_EVIDENCE_SCOPE"
+      },
+      {
+       "fact_id": "fact-0052",
+       "unit_path": "chapter_4.lesson_1.unit_1",
+       "learning_block_id": "lb_4",
+       "evidence_scope_id": "evidence_scope_7a6bb0cf914dad4ffe92",
+       "basis": "PRIMARY_EVIDENCE_SCOPE"
+      },
+      {
+       "fact_id": "fact-0058",
+       "unit_path": "chapter_4.lesson_1.unit_1",
+       "learning_block_id": "lb_4",
+       "evidence_scope_id": "evidence_scope_7a6bb0cf914dad4ffe92",
+       "basis": "PRIMARY_EVIDENCE_SCOPE"
+      },
+      {
+       "fact_id": "fact-0064",
+       "unit_path": "chapter_4.lesson_1.unit_1",
+       "learning_block_id": "lb_4",
+       "evidence_scope_id": "evidence_scope_7a6bb0cf914dad4ffe92",
+       "basis": "PRIMARY_EVIDENCE_SCOPE"
+      },
+      {
+       "fact_id": "fact-0070",
+       "unit_path": "chapter_4.lesson_1.unit_1",
+       "learning_block_id": "lb_4",
+       "evidence_scope_id": "evidence_scope_7a6bb0cf914dad4ffe92",
+       "basis": "PRIMARY_EVIDENCE_SCOPE"
+      },
+      {
+       "fact_id": "fact-0076",
+       "unit_path": "chapter_4.lesson_1.unit_1",
+       "learning_block_id": "lb_4",
+       "evidence_scope_id": "evidence_scope_7a6bb0cf914dad4ffe92",
+       "basis": "PRIMARY_EVIDENCE_SCOPE"
+      },
+      {
+       "fact_id": "fact-0082",
+       "unit_path": "chapter_4.lesson_1.unit_1",
+       "learning_block_id": "lb_4",
+       "evidence_scope_id": "evidence_scope_7a6bb0cf914dad4ffe92",
+       "basis": "PRIMARY_EVIDENCE_SCOPE"
+      },
+      {
+       "fact_id": "fact-0088",
+       "unit_path": "chapter_4.lesson_1.unit_1",
+       "learning_block_id": "lb_4",
+       "evidence_scope_id": "evidence_scope_7a6bb0cf914dad4ffe92",
+       "basis": "PRIMARY_EVIDENCE_SCOPE"
+      },
+      {
+       "fact_id": "fact-0094",
+       "unit_path": "chapter_4.lesson_1.unit_1",
+       "learning_block_id": "lb_4",
+       "evidence_scope_id": "evidence_scope_7a6bb0cf914dad4ffe92",
+       "basis": "PRIMARY_EVIDENCE_SCOPE"
+      },
+      {
+       "fact_id": "fact-0100",
+       "unit_path": "chapter_4.lesson_1.unit_1",
+       "learning_block_id": "lb_4",
+       "evidence_scope_id": "evidence_scope_7a6bb0cf914dad4ffe92",
+       "basis": "PRIMARY_EVIDENCE_SCOPE"
+      },
+      {
+       "fact_id": "fact-0106",
+       "unit_path": "chapter_4.lesson_1.unit_1",
+       "learning_block_id": "lb_4",
+       "evidence_scope_id": "evidence_scope_7a6bb0cf914dad4ffe92",
+       "basis": "PRIMARY_EVIDENCE_SCOPE"
+      },
+      {
+       "fact_id": "fact-0112",
+       "unit_path": "chapter_4.lesson_1.unit_1",
+       "learning_block_id": "lb_4",
+       "evidence_scope_id": "evidence_scope_7a6bb0cf914dad4ffe92",
+       "basis": "PRIMARY_EVIDENCE_SCOPE"
+      },
+      {
+       "fact_id": "fact-0118",
+       "unit_path": "chapter_4.lesson_1.unit_1",
+       "learning_block_id": "lb_4",
+       "evidence_scope_id": "evidence_scope_7a6bb0cf914dad4ffe92",
+       "basis": "PRIMARY_EVIDENCE_SCOPE"
+      },
+      {
+       "fact_id": "fact-0006",
+       "unit_path": "chapter_6.lesson_1.unit_1",
+       "learning_block_id": "lb_6",
+       "evidence_scope_id": "evidence_scope_c18d17e91a3e25cb3112",
+       "basis": "PRIMARY_EVIDENCE_SCOPE"
+      },
+      {
+       "fact_id": "fact-0012",
+       "unit_path": "chapter_6.lesson_1.unit_1",
+       "learning_block_id": "lb_6",
+       "evidence_scope_id": "evidence_scope_c18d17e91a3e25cb3112",
+       "basis": "PRIMARY_EVIDENCE_SCOPE"
+      },
+      {
+       "fact_id": "fact-0018",
+       "unit_path": "chapter_6.lesson_1.unit_1",
+       "learning_block_id": "lb_6",
+       "evidence_scope_id": "evidence_scope_c18d17e91a3e25cb3112",
+       "basis": "PRIMARY_EVIDENCE_SCOPE"
+      },
+      {
+       "fact_id": "fact-0024",
+       "unit_path": "chapter_6.lesson_1.unit_1",
+       "learning_block_id": "lb_6",
+       "evidence_scope_id": "evidence_scope_c18d17e91a3e25cb3112",
+       "basis": "PRIMARY_EVIDENCE_SCOPE"
+      },
+      {
+       "fact_id": "fact-0030",
+       "unit_path": "chapter_6.lesson_1.unit_1",
+       "learning_block_id": "lb_6",
+       "evidence_scope_id": "evidence_scope_c18d17e91a3e25cb3112",
+       "basis": "PRIMARY_EVIDENCE_SCOPE"
+      },
+      {
+       "fact_id": "fact-0036",
+       "unit_path": "chapter_6.lesson_1.unit_1",
+       "learning_block_id": "lb_6",
+       "evidence_scope_id": "evidence_scope_c18d17e91a3e25cb3112",
+       "basis": "PRIMARY_EVIDENCE_SCOPE"
+      },
+      {
+       "fact_id": "fact-0042",
+       "unit_path": "chapter_6.lesson_1.unit_1",
+       "learning_block_id": "lb_6",
+       "evidence_scope_id": "evidence_scope_c18d17e91a3e25cb3112",
+       "basis": "PRIMARY_EVIDENCE_SCOPE"
+      },
+      {
+       "fact_id": "fact-0048",
+       "unit_path": "chapter_6.lesson_1.unit_1",
+       "learning_block_id": "lb_6",
+       "evidence_scope_id": "evidence_scope_c18d17e91a3e25cb3112",
+       "basis": "PRIMARY_EVIDENCE_SCOPE"
+      },
+      {
+       "fact_id": "fact-0054",
+       "unit_path": "chapter_6.lesson_1.unit_1",
+       "learning_block_id": "lb_6",
+       "evidence_scope_id": "evidence_scope_c18d17e91a3e25cb3112",
+       "basis": "PRIMARY_EVIDENCE_SCOPE"
+      },
+      {
+       "fact_id": "fact-0060",
+       "unit_path": "chapter_6.lesson_1.unit_1",
+       "learning_block_id": "lb_6",
+       "evidence_scope_id": "evidence_scope_c18d17e91a3e25cb3112",
+       "basis": "PRIMARY_EVIDENCE_SCOPE"
+      },
+      {
+       "fact_id": "fact-0066",
+       "unit_path": "chapter_6.lesson_1.unit_1",
+       "learning_block_id": "lb_6",
+       "evidence_scope_id": "evidence_scope_c18d17e91a3e25cb3112",
+       "basis": "PRIMARY_EVIDENCE_SCOPE"
+      },
+      {
+       "fact_id": "fact-0072",
+       "unit_path": "chapter_6.lesson_1.unit_1",
+       "learning_block_id": "lb_6",
+       "evidence_scope_id": "evidence_scope_c18d17e91a3e25cb3112",
+       "basis": "PRIMARY_EVIDENCE_SCOPE"
+      },
+      {
+       "fact_id": "fact-0078",
+       "unit_path": "chapter_6.lesson_1.unit_1",
+       "learning_block_id": "lb_6",
+       "evidence_scope_id": "evidence_scope_c18d17e91a3e25cb3112",
+       "basis": "PRIMARY_EVIDENCE_SCOPE"
+      },
+      {
+       "fact_id": "fact-0084",
+       "unit_path": "chapter_6.lesson_1.unit_1",
+       "learning_block_id": "lb_6",
+       "evidence_scope_id": "evidence_scope_c18d17e91a3e25cb3112",
+       "basis": "PRIMARY_EVIDENCE_SCOPE"
+      },
+      {
+       "fact_id": "fact-0090",
+       "unit_path": "chapter_6.lesson_1.unit_1",
+       "learning_block_id": "lb_6",
+       "evidence_scope_id": "evidence_scope_c18d17e91a3e25cb3112",
+       "basis": "PRIMARY_EVIDENCE_SCOPE"
+      },
+      {
+       "fact_id": "fact-0096",
+       "unit_path": "chapter_6.lesson_1.unit_1",
+       "learning_block_id": "lb_6",
+       "evidence_scope_id": "evidence_scope_c18d17e91a3e25cb3112",
+       "basis": "PRIMARY_EVIDENCE_SCOPE"
+      },
+      {
+       "fact_id": "fact-0102",
+       "unit_path": "chapter_6.lesson_1.unit_1",
+       "learning_block_id": "lb_6",
+       "evidence_scope_id": "evidence_scope_c18d17e91a3e25cb3112",
+       "basis": "PRIMARY_EVIDENCE_SCOPE"
+      },
+      {
+       "fact_id": "fact-0108",
+       "unit_path": "chapter_6.lesson_1.unit_1",
+       "learning_block_id": "lb_6",
+       "evidence_scope_id": "evidence_scope_c18d17e91a3e25cb3112",
+       "basis": "PRIMARY_EVIDENCE_SCOPE"
+      },
+      {
+       "fact_id": "fact-0114",
+       "unit_path": "chapter_6.lesson_1.unit_1",
+       "learning_block_id": "lb_6",
+       "evidence_scope_id": "evidence_scope_c18d17e91a3e25cb3112",
+       "basis": "PRIMARY_EVIDENCE_SCOPE"
+      },
+      {
+       "fact_id": "fact-0120",
+       "unit_path": "chapter_6.lesson_1.unit_1",
+       "learning_block_id": "lb_6",
+       "evidence_scope_id": "evidence_scope_c18d17e91a3e25cb3112",
+       "basis": "PRIMARY_EVIDENCE_SCOPE"
+      },
+      {
+       "fact_id": "fact-0005",
+       "unit_path": "chapter_5.lesson_1.unit_1",
+       "learning_block_id": "lb_5",
+       "evidence_scope_id": "evidence_scope_df73069163daaf6ca3ea",
+       "basis": "PRIMARY_EVIDENCE_SCOPE"
+      },
+      {
+       "fact_id": "fact-0011",
+       "unit_path": "chapter_5.lesson_1.unit_1",
+       "learning_block_id": "lb_5",
+       "evidence_scope_id": "evidence_scope_df73069163daaf6ca3ea",
+       "basis": "PRIMARY_EVIDENCE_SCOPE"
+      },
+      {
+       "fact_id": "fact-0017",
+       "unit_path": "chapter_5.lesson_1.unit_1",
+       "learning_block_id": "lb_5",
+       "evidence_scope_id": "evidence_scope_df73069163daaf6ca3ea",
+       "basis": "PRIMARY_EVIDENCE_SCOPE"
+      },
+      {
+       "fact_id": "fact-0023",
+       "unit_path": "chapter_5.lesson_1.unit_1",
+       "learning_block_id": "lb_5",
+       "evidence_scope_id": "evidence_scope_df73069163daaf6ca3ea",
+       "basis": "PRIMARY_EVIDENCE_SCOPE"
+      },
+      {
+       "fact_id": "fact-0029",
+       "unit_path": "chapter_5.lesson_1.unit_1",
+       "learning_block_id": "lb_5",
+       "evidence_scope_id": "evidence_scope_df73069163daaf6ca3ea",
+       "basis": "PRIMARY_EVIDENCE_SCOPE"
+      },
+      {
+       "fact_id": "fact-0035",
+       "unit_path": "chapter_5.lesson_1.unit_1",
+       "learning_block_id": "lb_5",
+       "evidence_scope_id": "evidence_scope_df73069163daaf6ca3ea",
+       "basis": "PRIMARY_EVIDENCE_SCOPE"
+      },
+      {
+       "fact_id": "fact-0041",
+       "unit_path": "chapter_5.lesson_1.unit_1",
+       "learning_block_id": "lb_5",
+       "evidence_scope_id": "evidence_scope_df73069163daaf6ca3ea",
+       "basis": "PRIMARY_EVIDENCE_SCOPE"
+      },
+      {
+       "fact_id": "fact-0047",
+       "unit_path": "chapter_5.lesson_1.unit_1",
+       "learning_block_id": "lb_5",
+       "evidence_scope_id": "evidence_scope_df73069163daaf6ca3ea",
+       "basis": "PRIMARY_EVIDENCE_SCOPE"
+      },
+      {
+       "fact_id": "fact-0053",
+       "unit_path": "chapter_5.lesson_1.unit_1",
+       "learning_block_id": "lb_5",
+       "evidence_scope_id": "evidence_scope_df73069163daaf6ca3ea",
+       "basis": "PRIMARY_EVIDENCE_SCOPE"
+      },
+      {
+       "fact_id": "fact-0059",
+       "unit_path": "chapter_5.lesson_1.unit_1",
+       "learning_block_id": "lb_5",
+       "evidence_scope_id": "evidence_scope_df73069163daaf6ca3ea",
+       "basis": "PRIMARY_EVIDENCE_SCOPE"
+      },
+      {
+       "fact_id": "fact-0065",
+       "unit_path": "chapter_5.lesson_1.unit_1",
+       "learning_block_id": "lb_5",
+       "evidence_scope_id": "evidence_scope_df73069163daaf6ca3ea",
+       "basis": "PRIMARY_EVIDENCE_SCOPE"
+      },
+      {
+       "fact_id": "fact-0071",
+       "unit_path": "chapter_5.lesson_1.unit_1",
+       "learning_block_id": "lb_5",
+       "evidence_scope_id": "evidence_scope_df73069163daaf6ca3ea",
+       "basis": "PRIMARY_EVIDENCE_SCOPE"
+      },
+      {
+       "fact_id": "fact-0077",
+       "unit_path": "chapter_5.lesson_1.unit_1",
+       "learning_block_id": "lb_5",
+       "evidence_scope_id": "evidence_scope_df73069163daaf6ca3ea",
+       "basis": "PRIMARY_EVIDENCE_SCOPE"
+      },
+      {
+       "fact_id": "fact-0083",
+       "unit_path": "chapter_5.lesson_1.unit_1",
+       "learning_block_id": "lb_5",
+       "evidence_scope_id": "evidence_scope_df73069163daaf6ca3ea",
+       "basis": "PRIMARY_EVIDENCE_SCOPE"
+      },
+      {
+       "fact_id": "fact-0089",
+       "unit_path": "chapter_5.lesson_1.unit_1",
+       "learning_block_id": "lb_5",
+       "evidence_scope_id": "evidence_scope_df73069163daaf6ca3ea",
+       "basis": "PRIMARY_EVIDENCE_SCOPE"
+      },
+      {
+       "fact_id": "fact-0095",
+       "unit_path": "chapter_5.lesson_1.unit_1",
+       "learning_block_id": "lb_5",
+       "evidence_scope_id": "evidence_scope_df73069163daaf6ca3ea",
+       "basis": "PRIMARY_EVIDENCE_SCOPE"
+      },
+      {
+       "fact_id": "fact-0101",
+       "unit_path": "chapter_5.lesson_1.unit_1",
+       "learning_block_id": "lb_5",
+       "evidence_scope_id": "evidence_scope_df73069163daaf6ca3ea",
+       "basis": "PRIMARY_EVIDENCE_SCOPE"
+      },
+      {
+       "fact_id": "fact-0107",
+       "unit_path": "chapter_5.lesson_1.unit_1",
+       "learning_block_id": "lb_5",
+       "evidence_scope_id": "evidence_scope_df73069163daaf6ca3ea",
+       "basis": "PRIMARY_EVIDENCE_SCOPE"
+      },
+      {
+       "fact_id": "fact-0113",
+       "unit_path": "chapter_5.lesson_1.unit_1",
+       "learning_block_id": "lb_5",
+       "evidence_scope_id": "evidence_scope_df73069163daaf6ca3ea",
+       "basis": "PRIMARY_EVIDENCE_SCOPE"
+      },
+      {
+       "fact_id": "fact-0119",
+       "unit_path": "chapter_5.lesson_1.unit_1",
+       "learning_block_id": "lb_5",
+       "evidence_scope_id": "evidence_scope_df73069163daaf6ca3ea",
+       "basis": "PRIMARY_EVIDENCE_SCOPE"
+      },
+      {
+       "fact_id": "fact-0002",
+       "unit_path": "chapter_2.lesson_1.unit_1",
+       "learning_block_id": "lb_2",
+       "evidence_scope_id": "evidence_scope_fba394ef922f007385ef",
+       "basis": "PRIMARY_EVIDENCE_SCOPE"
+      },
+      {
+       "fact_id": "fact-0008",
+       "unit_path": "chapter_2.lesson_1.unit_1",
+       "learning_block_id": "lb_2",
+       "evidence_scope_id": "evidence_scope_fba394ef922f007385ef",
+       "basis": "PRIMARY_EVIDENCE_SCOPE"
+      },
+      {
+       "fact_id": "fact-0014",
+       "unit_path": "chapter_2.lesson_1.unit_1",
+       "learning_block_id": "lb_2",
+       "evidence_scope_id": "evidence_scope_fba394ef922f007385ef",
+       "basis": "PRIMARY_EVIDENCE_SCOPE"
+      },
+      {
+       "fact_id": "fact-0020",
+       "unit_path": "chapter_2.lesson_1.unit_1",
+       "learning_block_id": "lb_2",
+       "evidence_scope_id": "evidence_scope_fba394ef922f007385ef",
+       "basis": "PRIMARY_EVIDENCE_SCOPE"
+      },
+      {
+       "fact_id": "fact-0026",
+       "unit_path": "chapter_2.lesson_1.unit_1",
+       "learning_block_id": "lb_2",
+       "evidence_scope_id": "evidence_scope_fba394ef922f007385ef",
+       "basis": "PRIMARY_EVIDENCE_SCOPE"
+      },
+      {
+       "fact_id": "fact-0032",
+       "unit_path": "chapter_2.lesson_1.unit_1",
+       "learning_block_id": "lb_2",
+       "evidence_scope_id": "evidence_scope_fba394ef922f007385ef",
+       "basis": "PRIMARY_EVIDENCE_SCOPE"
+      },
+      {
+       "fact_id": "fact-0038",
+       "unit_path": "chapter_2.lesson_1.unit_1",
+       "learning_block_id": "lb_2",
+       "evidence_scope_id": "evidence_scope_fba394ef922f007385ef",
+       "basis": "PRIMARY_EVIDENCE_SCOPE"
+      },
+      {
+       "fact_id": "fact-0044",
+       "unit_path": "chapter_2.lesson_1.unit_1",
+       "learning_block_id": "lb_2",
+       "evidence_scope_id": "evidence_scope_fba394ef922f007385ef",
+       "basis": "PRIMARY_EVIDENCE_SCOPE"
+      },
+      {
+       "fact_id": "fact-0050",
+       "unit_path": "chapter_2.lesson_1.unit_1",
+       "learning_block_id": "lb_2",
+       "evidence_scope_id": "evidence_scope_fba394ef922f007385ef",
+       "basis": "PRIMARY_EVIDENCE_SCOPE"
+      },
+      {
+       "fact_id": "fact-0056",
+       "unit_path": "chapter_2.lesson_1.unit_1",
+       "learning_block_id": "lb_2",
+       "evidence_scope_id": "evidence_scope_fba394ef922f007385ef",
+       "basis": "PRIMARY_EVIDENCE_SCOPE"
+      },
+      {
+       "fact_id": "fact-0062",
+       "unit_path": "chapter_2.lesson_1.unit_1",
+       "learning_block_id": "lb_2",
+       "evidence_scope_id": "evidence_scope_fba394ef922f007385ef",
+       "basis": "PRIMARY_EVIDENCE_SCOPE"
+      },
+      {
+       "fact_id": "fact-0068",
+       "unit_path": "chapter_2.lesson_1.unit_1",
+       "learning_block_id": "lb_2",
+       "evidence_scope_id": "evidence_scope_fba394ef922f007385ef",
+       "basis": "PRIMARY_EVIDENCE_SCOPE"
+      },
+      {
+       "fact_id": "fact-0074",
+       "unit_path": "chapter_2.lesson_1.unit_1",
+       "learning_block_id": "lb_2",
+       "evidence_scope_id": "evidence_scope_fba394ef922f007385ef",
+       "basis": "PRIMARY_EVIDENCE_SCOPE"
+      },
+      {
+       "fact_id": "fact-0080",
+       "unit_path": "chapter_2.lesson_1.unit_1",
+       "learning_block_id": "lb_2",
+       "evidence_scope_id": "evidence_scope_fba394ef922f007385ef",
+       "basis": "PRIMARY_EVIDENCE_SCOPE"
+      },
+      {
+       "fact_id": "fact-0086",
+       "unit_path": "chapter_2.lesson_1.unit_1",
+       "learning_block_id": "lb_2",
+       "evidence_scope_id": "evidence_scope_fba394ef922f007385ef",
+       "basis": "PRIMARY_EVIDENCE_SCOPE"
+      },
+      {
+       "fact_id": "fact-0092",
+       "unit_path": "chapter_2.lesson_1.unit_1",
+       "learning_block_id": "lb_2",
+       "evidence_scope_id": "evidence_scope_fba394ef922f007385ef",
+       "basis": "PRIMARY_EVIDENCE_SCOPE"
+      },
+      {
+       "fact_id": "fact-0098",
+       "unit_path": "chapter_2.lesson_1.unit_1",
+       "learning_block_id": "lb_2",
+       "evidence_scope_id": "evidence_scope_fba394ef922f007385ef",
+       "basis": "PRIMARY_EVIDENCE_SCOPE"
+      },
+      {
+       "fact_id": "fact-0104",
+       "unit_path": "chapter_2.lesson_1.unit_1",
+       "learning_block_id": "lb_2",
+       "evidence_scope_id": "evidence_scope_fba394ef922f007385ef",
+       "basis": "PRIMARY_EVIDENCE_SCOPE"
+      },
+      {
+       "fact_id": "fact-0110",
+       "unit_path": "chapter_2.lesson_1.unit_1",
+       "learning_block_id": "lb_2",
+       "evidence_scope_id": "evidence_scope_fba394ef922f007385ef",
+       "basis": "PRIMARY_EVIDENCE_SCOPE"
+      },
+      {
+       "fact_id": "fact-0116",
+       "unit_path": "chapter_2.lesson_1.unit_1",
+       "learning_block_id": "lb_2",
+       "evidence_scope_id": "evidence_scope_fba394ef922f007385ef",
+       "basis": "PRIMARY_EVIDENCE_SCOPE"
+      }
+     ],
+     "unallocated": []
+    },
+    "media_review": {
+     "version": "media-review-v1",
+     "decisions": [
+      {
+       "unit_path": "chapter_1.lesson_1.unit_1",
+       "status": "PROPOSED",
+       "reason_code": "PROCEDURE_VISUAL_CANDIDATE"
+      },
+      {
+       "unit_path": "chapter_2.lesson_1.unit_1",
+       "status": "NOT_NEEDED",
+       "reason_code": "NO_SOURCE_BACKED_VISUAL_CANDIDATE"
+      },
+      {
+       "unit_path": "chapter_3.lesson_1.unit_1",
+       "status": "NOT_NEEDED",
+       "reason_code": "NO_SOURCE_BACKED_VISUAL_CANDIDATE"
+      },
+      {
+       "unit_path": "chapter_4.lesson_1.unit_1",
+       "status": "NOT_NEEDED",
+       "reason_code": "NO_SOURCE_BACKED_VISUAL_CANDIDATE"
+      },
+      {
+       "unit_path": "chapter_5.lesson_1.unit_1",
+       "status": "NOT_NEEDED",
+       "reason_code": "NO_SOURCE_BACKED_VISUAL_CANDIDATE"
+      },
+      {
+       "unit_path": "chapter_6.lesson_1.unit_1",
+       "status": "NOT_NEEDED",
+       "reason_code": "NO_SOURCE_BACKED_VISUAL_CANDIDATE"
+      }
+     ]
+    }
+   },
+   "source_map": {
+    "version": "source-map-v2",
+    "documents": [
+     {
+      "id": "doc-v5",
+      "title": "Evidence scope guide",
+      "language": "en",
+      "source_section_ids": [
+       "src_section_f3740496472a7ba6",
+       "src_section_87181c1c44d7269e",
+       "src_section_cf8025b7dbf93b83",
+       "src_section_f8e6a5c81bbb243a",
+       "src_section_5e2c141a37f3b656",
+       "src_section_5fd3b85b7fb471bd"
+      ]
+     }
+    ],
+    "sections": [
+     {
+      "id": "src_section_f3740496472a7ba6",
+      "document_id": "doc-v5",
+      "document_name": "Evidence scope guide",
+      "source_ref": "src-001",
+      "title": "Section 1",
+      "level": 1,
+      "parent_id": null,
+      "parent_source_ref": null,
+      "order": 1,
+      "page_start": 1,
+      "page_end": 1,
+      "node_type": "section",
+      "structure_source": "legacy_unknown",
+      "structure_confidence": null,
+      "source_fact_ids": [
+       "fact-0001",
+       "fact-0007",
+       "fact-0013",
+       "fact-0019",
+       "fact-0025",
+       "fact-0031",
+       "fact-0037",
+       "fact-0043",
+       "fact-0049",
+       "fact-0055",
+       "fact-0061",
+       "fact-0067",
+       "fact-0073",
+       "fact-0079",
+       "fact-0085",
+       "fact-0091",
+       "fact-0097",
+       "fact-0103",
+       "fact-0109",
+       "fact-0115"
+      ]
+     },
+     {
+      "id": "src_section_87181c1c44d7269e",
+      "document_id": "doc-v5",
+      "document_name": "Evidence scope guide",
+      "source_ref": "src-002",
+      "title": "Section 2",
+      "level": 1,
+      "parent_id": null,
+      "parent_source_ref": null,
+      "order": 2,
+      "page_start": 2,
+      "page_end": 2,
+      "node_type": "section",
+      "structure_source": "legacy_unknown",
+      "structure_confidence": null,
+      "source_fact_ids": [
+       "fact-0002",
+       "fact-0008",
+       "fact-0014",
+       "fact-0020",
+       "fact-0026",
+       "fact-0032",
+       "fact-0038",
+       "fact-0044",
+       "fact-0050",
+       "fact-0056",
+       "fact-0062",
+       "fact-0068",
+       "fact-0074",
+       "fact-0080",
+       "fact-0086",
+       "fact-0092",
+       "fact-0098",
+       "fact-0104",
+       "fact-0110",
+       "fact-0116"
+      ]
+     },
+     {
+      "id": "src_section_cf8025b7dbf93b83",
+      "document_id": "doc-v5",
+      "document_name": "Evidence scope guide",
+      "source_ref": "src-003",
+      "title": "Section 3",
+      "level": 1,
+      "parent_id": null,
+      "parent_source_ref": null,
+      "order": 3,
+      "page_start": 3,
+      "page_end": 3,
+      "node_type": "section",
+      "structure_source": "legacy_unknown",
+      "structure_confidence": null,
+      "source_fact_ids": [
+       "fact-0003",
+       "fact-0009",
+       "fact-0015",
+       "fact-0021",
+       "fact-0027",
+       "fact-0033",
+       "fact-0039",
+       "fact-0045",
+       "fact-0051",
+       "fact-0057",
+       "fact-0063",
+       "fact-0069",
+       "fact-0075",
+       "fact-0081",
+       "fact-0087",
+       "fact-0093",
+       "fact-0099",
+       "fact-0105",
+       "fact-0111",
+       "fact-0117"
+      ]
+     },
+     {
+      "id": "src_section_f8e6a5c81bbb243a",
+      "document_id": "doc-v5",
+      "document_name": "Evidence scope guide",
+      "source_ref": "src-004",
+      "title": "Section 4",
+      "level": 1,
+      "parent_id": null,
+      "parent_source_ref": null,
+      "order": 4,
+      "page_start": 4,
+      "page_end": 4,
+      "node_type": "section",
+      "structure_source": "legacy_unknown",
+      "structure_confidence": null,
+      "source_fact_ids": [
+       "fact-0004",
+       "fact-0010",
+       "fact-0016",
+       "fact-0022",
+       "fact-0028",
+       "fact-0034",
+       "fact-0040",
+       "fact-0046",
+       "fact-0052",
+       "fact-0058",
+       "fact-0064",
+       "fact-0070",
+       "fact-0076",
+       "fact-0082",
+       "fact-0088",
+       "fact-0094",
+       "fact-0100",
+       "fact-0106",
+       "fact-0112",
+       "fact-0118"
+      ]
+     },
+     {
+      "id": "src_section_5e2c141a37f3b656",
+      "document_id": "doc-v5",
+      "document_name": "Evidence scope guide",
+      "source_ref": "src-005",
+      "title": "Section 5",
+      "level": 1,
+      "parent_id": null,
+      "parent_source_ref": null,
+      "order": 5,
+      "page_start": 5,
+      "page_end": 5,
+      "node_type": "section",
+      "structure_source": "legacy_unknown",
+      "structure_confidence": null,
+      "source_fact_ids": [
+       "fact-0005",
+       "fact-0011",
+       "fact-0017",
+       "fact-0023",
+       "fact-0029",
+       "fact-0035",
+       "fact-0041",
+       "fact-0047",
+       "fact-0053",
+       "fact-0059",
+       "fact-0065",
+       "fact-0071",
+       "fact-0077",
+       "fact-0083",
+       "fact-0089",
+       "fact-0095",
+       "fact-0101",
+       "fact-0107",
+       "fact-0113",
+       "fact-0119"
+      ]
+     },
+     {
+      "id": "src_section_5fd3b85b7fb471bd",
+      "document_id": "doc-v5",
+      "document_name": "Evidence scope guide",
+      "source_ref": "src-006",
+      "title": "Section 6",
+      "level": 1,
+      "parent_id": null,
+      "parent_source_ref": null,
+      "order": 6,
+      "page_start": 6,
+      "page_end": 6,
+      "node_type": "section",
+      "structure_source": "legacy_unknown",
+      "structure_confidence": null,
+      "source_fact_ids": [
+       "fact-0006",
+       "fact-0012",
+       "fact-0018",
+       "fact-0024",
+       "fact-0030",
+       "fact-0036",
+       "fact-0042",
+       "fact-0048",
+       "fact-0054",
+       "fact-0060",
+       "fact-0066",
+       "fact-0072",
+       "fact-0078",
+       "fact-0084",
+       "fact-0090",
+       "fact-0096",
+       "fact-0102",
+       "fact-0108",
+       "fact-0114",
+       "fact-0120"
+      ]
+     }
+    ],
+    "concepts": [
+     {
+      "id": "concept_f3740496472a7ba6",
+      "name": "Section 1",
+      "description": "Section 1",
+      "source_section_ids": [
+       "src_section_f3740496472a7ba6"
+      ],
+      "source_fact_ids": [
+       "fact-0001",
+       "fact-0007",
+       "fact-0013",
+       "fact-0019",
+       "fact-0025",
+       "fact-0031",
+       "fact-0037",
+       "fact-0043",
+       "fact-0049",
+       "fact-0055",
+       "fact-0061",
+       "fact-0067",
+       "fact-0073",
+       "fact-0079",
+       "fact-0085",
+       "fact-0091",
+       "fact-0097",
+       "fact-0103",
+       "fact-0109",
+       "fact-0115"
+      ],
+      "prerequisite_concept_ids": [],
+      "importance": "core",
+      "relationship_evidence": "none"
+     },
+     {
+      "id": "concept_87181c1c44d7269e",
+      "name": "Section 2",
+      "description": "Section 2",
+      "source_section_ids": [
+       "src_section_87181c1c44d7269e"
+      ],
+      "source_fact_ids": [
+       "fact-0002",
+       "fact-0008",
+       "fact-0014",
+       "fact-0020",
+       "fact-0026",
+       "fact-0032",
+       "fact-0038",
+       "fact-0044",
+       "fact-0050",
+       "fact-0056",
+       "fact-0062",
+       "fact-0068",
+       "fact-0074",
+       "fact-0080",
+       "fact-0086",
+       "fact-0092",
+       "fact-0098",
+       "fact-0104",
+       "fact-0110",
+       "fact-0116"
+      ],
+      "prerequisite_concept_ids": [],
+      "importance": "core",
+      "relationship_evidence": "none"
+     },
+     {
+      "id": "concept_cf8025b7dbf93b83",
+      "name": "Section 3",
+      "description": "Section 3",
+      "source_section_ids": [
+       "src_section_cf8025b7dbf93b83"
+      ],
+      "source_fact_ids": [
+       "fact-0003",
+       "fact-0009",
+       "fact-0015",
+       "fact-0021",
+       "fact-0027",
+       "fact-0033",
+       "fact-0039",
+       "fact-0045",
+       "fact-0051",
+       "fact-0057",
+       "fact-0063",
+       "fact-0069",
+       "fact-0075",
+       "fact-0081",
+       "fact-0087",
+       "fact-0093",
+       "fact-0099",
+       "fact-0105",
+       "fact-0111",
+       "fact-0117"
+      ],
+      "prerequisite_concept_ids": [],
+      "importance": "core",
+      "relationship_evidence": "none"
+     },
+     {
+      "id": "concept_f8e6a5c81bbb243a",
+      "name": "Section 4",
+      "description": "Section 4",
+      "source_section_ids": [
+       "src_section_f8e6a5c81bbb243a"
+      ],
+      "source_fact_ids": [
+       "fact-0004",
+       "fact-0010",
+       "fact-0016",
+       "fact-0022",
+       "fact-0028",
+       "fact-0034",
+       "fact-0040",
+       "fact-0046",
+       "fact-0052",
+       "fact-0058",
+       "fact-0064",
+       "fact-0070",
+       "fact-0076",
+       "fact-0082",
+       "fact-0088",
+       "fact-0094",
+       "fact-0100",
+       "fact-0106",
+       "fact-0112",
+       "fact-0118"
+      ],
+      "prerequisite_concept_ids": [],
+      "importance": "core",
+      "relationship_evidence": "none"
+     },
+     {
+      "id": "concept_5e2c141a37f3b656",
+      "name": "Section 5",
+      "description": "Section 5",
+      "source_section_ids": [
+       "src_section_5e2c141a37f3b656"
+      ],
+      "source_fact_ids": [
+       "fact-0005",
+       "fact-0011",
+       "fact-0017",
+       "fact-0023",
+       "fact-0029",
+       "fact-0035",
+       "fact-0041",
+       "fact-0047",
+       "fact-0053",
+       "fact-0059",
+       "fact-0065",
+       "fact-0071",
+       "fact-0077",
+       "fact-0083",
+       "fact-0089",
+       "fact-0095",
+       "fact-0101",
+       "fact-0107",
+       "fact-0113",
+       "fact-0119"
+      ],
+      "prerequisite_concept_ids": [],
+      "importance": "core",
+      "relationship_evidence": "none"
+     },
+     {
+      "id": "concept_5fd3b85b7fb471bd",
+      "name": "Section 6",
+      "description": "Section 6",
+      "source_section_ids": [
+       "src_section_5fd3b85b7fb471bd"
+      ],
+      "source_fact_ids": [
+       "fact-0006",
+       "fact-0012",
+       "fact-0018",
+       "fact-0024",
+       "fact-0030",
+       "fact-0036",
+       "fact-0042",
+       "fact-0048",
+       "fact-0054",
+       "fact-0060",
+       "fact-0066",
+       "fact-0072",
+       "fact-0078",
+       "fact-0084",
+       "fact-0090",
+       "fact-0096",
+       "fact-0102",
+       "fact-0108",
+       "fact-0114",
+       "fact-0120"
+      ],
+      "prerequisite_concept_ids": [],
+      "importance": "core",
+      "relationship_evidence": "none"
+     }
+    ],
+    "facts": [
+     {
+      "id": "fact-0001",
+      "section_id": "src_section_f3740496472a7ba6",
+      "document_id": "doc-v5",
+      "source_ref": "src-001",
+      "page": 1,
+      "chunk": 0
+     },
+     {
+      "id": "fact-0002",
+      "section_id": "src_section_87181c1c44d7269e",
+      "document_id": "doc-v5",
+      "source_ref": "src-002",
+      "page": 2,
+      "chunk": 1
+     },
+     {
+      "id": "fact-0003",
+      "section_id": "src_section_cf8025b7dbf93b83",
+      "document_id": "doc-v5",
+      "source_ref": "src-003",
+      "page": 3,
+      "chunk": 2
+     },
+     {
+      "id": "fact-0004",
+      "section_id": "src_section_f8e6a5c81bbb243a",
+      "document_id": "doc-v5",
+      "source_ref": "src-004",
+      "page": 4,
+      "chunk": 3
+     },
+     {
+      "id": "fact-0005",
+      "section_id": "src_section_5e2c141a37f3b656",
+      "document_id": "doc-v5",
+      "source_ref": "src-005",
+      "page": 5,
+      "chunk": 4
+     },
+     {
+      "id": "fact-0006",
+      "section_id": "src_section_5fd3b85b7fb471bd",
+      "document_id": "doc-v5",
+      "source_ref": "src-006",
+      "page": 6,
+      "chunk": 5
+     },
+     {
+      "id": "fact-0007",
+      "section_id": "src_section_f3740496472a7ba6",
+      "document_id": "doc-v5",
+      "source_ref": "src-001",
+      "page": 1,
+      "chunk": 6
+     },
+     {
+      "id": "fact-0008",
+      "section_id": "src_section_87181c1c44d7269e",
+      "document_id": "doc-v5",
+      "source_ref": "src-002",
+      "page": 2,
+      "chunk": 7
+     },
+     {
+      "id": "fact-0009",
+      "section_id": "src_section_cf8025b7dbf93b83",
+      "document_id": "doc-v5",
+      "source_ref": "src-003",
+      "page": 3,
+      "chunk": 8
+     },
+     {
+      "id": "fact-0010",
+      "section_id": "src_section_f8e6a5c81bbb243a",
+      "document_id": "doc-v5",
+      "source_ref": "src-004",
+      "page": 4,
+      "chunk": 9
+     },
+     {
+      "id": "fact-0011",
+      "section_id": "src_section_5e2c141a37f3b656",
+      "document_id": "doc-v5",
+      "source_ref": "src-005",
+      "page": 5,
+      "chunk": 10
+     },
+     {
+      "id": "fact-0012",
+      "section_id": "src_section_5fd3b85b7fb471bd",
+      "document_id": "doc-v5",
+      "source_ref": "src-006",
+      "page": 6,
+      "chunk": 11
+     },
+     {
+      "id": "fact-0013",
+      "section_id": "src_section_f3740496472a7ba6",
+      "document_id": "doc-v5",
+      "source_ref": "src-001",
+      "page": 1,
+      "chunk": 12
+     },
+     {
+      "id": "fact-0014",
+      "section_id": "src_section_87181c1c44d7269e",
+      "document_id": "doc-v5",
+      "source_ref": "src-002",
+      "page": 2,
+      "chunk": 13
+     },
+     {
+      "id": "fact-0015",
+      "section_id": "src_section_cf8025b7dbf93b83",
+      "document_id": "doc-v5",
+      "source_ref": "src-003",
+      "page": 3,
+      "chunk": 14
+     },
+     {
+      "id": "fact-0016",
+      "section_id": "src_section_f8e6a5c81bbb243a",
+      "document_id": "doc-v5",
+      "source_ref": "src-004",
+      "page": 4,
+      "chunk": 15
+     },
+     {
+      "id": "fact-0017",
+      "section_id": "src_section_5e2c141a37f3b656",
+      "document_id": "doc-v5",
+      "source_ref": "src-005",
+      "page": 5,
+      "chunk": 16
+     },
+     {
+      "id": "fact-0018",
+      "section_id": "src_section_5fd3b85b7fb471bd",
+      "document_id": "doc-v5",
+      "source_ref": "src-006",
+      "page": 6,
+      "chunk": 17
+     },
+     {
+      "id": "fact-0019",
+      "section_id": "src_section_f3740496472a7ba6",
+      "document_id": "doc-v5",
+      "source_ref": "src-001",
+      "page": 1,
+      "chunk": 18
+     },
+     {
+      "id": "fact-0020",
+      "section_id": "src_section_87181c1c44d7269e",
+      "document_id": "doc-v5",
+      "source_ref": "src-002",
+      "page": 2,
+      "chunk": 19
+     },
+     {
+      "id": "fact-0021",
+      "section_id": "src_section_cf8025b7dbf93b83",
+      "document_id": "doc-v5",
+      "source_ref": "src-003",
+      "page": 3,
+      "chunk": 20
+     },
+     {
+      "id": "fact-0022",
+      "section_id": "src_section_f8e6a5c81bbb243a",
+      "document_id": "doc-v5",
+      "source_ref": "src-004",
+      "page": 4,
+      "chunk": 21
+     },
+     {
+      "id": "fact-0023",
+      "section_id": "src_section_5e2c141a37f3b656",
+      "document_id": "doc-v5",
+      "source_ref": "src-005",
+      "page": 5,
+      "chunk": 22
+     },
+     {
+      "id": "fact-0024",
+      "section_id": "src_section_5fd3b85b7fb471bd",
+      "document_id": "doc-v5",
+      "source_ref": "src-006",
+      "page": 6,
+      "chunk": 23
+     },
+     {
+      "id": "fact-0025",
+      "section_id": "src_section_f3740496472a7ba6",
+      "document_id": "doc-v5",
+      "source_ref": "src-001",
+      "page": 1,
+      "chunk": 24
+     },
+     {
+      "id": "fact-0026",
+      "section_id": "src_section_87181c1c44d7269e",
+      "document_id": "doc-v5",
+      "source_ref": "src-002",
+      "page": 2,
+      "chunk": 25
+     },
+     {
+      "id": "fact-0027",
+      "section_id": "src_section_cf8025b7dbf93b83",
+      "document_id": "doc-v5",
+      "source_ref": "src-003",
+      "page": 3,
+      "chunk": 26
+     },
+     {
+      "id": "fact-0028",
+      "section_id": "src_section_f8e6a5c81bbb243a",
+      "document_id": "doc-v5",
+      "source_ref": "src-004",
+      "page": 4,
+      "chunk": 27
+     },
+     {
+      "id": "fact-0029",
+      "section_id": "src_section_5e2c141a37f3b656",
+      "document_id": "doc-v5",
+      "source_ref": "src-005",
+      "page": 5,
+      "chunk": 28
+     },
+     {
+      "id": "fact-0030",
+      "section_id": "src_section_5fd3b85b7fb471bd",
+      "document_id": "doc-v5",
+      "source_ref": "src-006",
+      "page": 6,
+      "chunk": 29
+     },
+     {
+      "id": "fact-0031",
+      "section_id": "src_section_f3740496472a7ba6",
+      "document_id": "doc-v5",
+      "source_ref": "src-001",
+      "page": 1,
+      "chunk": 30
+     },
+     {
+      "id": "fact-0032",
+      "section_id": "src_section_87181c1c44d7269e",
+      "document_id": "doc-v5",
+      "source_ref": "src-002",
+      "page": 2,
+      "chunk": 31
+     },
+     {
+      "id": "fact-0033",
+      "section_id": "src_section_cf8025b7dbf93b83",
+      "document_id": "doc-v5",
+      "source_ref": "src-003",
+      "page": 3,
+      "chunk": 32
+     },
+     {
+      "id": "fact-0034",
+      "section_id": "src_section_f8e6a5c81bbb243a",
+      "document_id": "doc-v5",
+      "source_ref": "src-004",
+      "page": 4,
+      "chunk": 33
+     },
+     {
+      "id": "fact-0035",
+      "section_id": "src_section_5e2c141a37f3b656",
+      "document_id": "doc-v5",
+      "source_ref": "src-005",
+      "page": 5,
+      "chunk": 34
+     },
+     {
+      "id": "fact-0036",
+      "section_id": "src_section_5fd3b85b7fb471bd",
+      "document_id": "doc-v5",
+      "source_ref": "src-006",
+      "page": 6,
+      "chunk": 35
+     },
+     {
+      "id": "fact-0037",
+      "section_id": "src_section_f3740496472a7ba6",
+      "document_id": "doc-v5",
+      "source_ref": "src-001",
+      "page": 1,
+      "chunk": 36
+     },
+     {
+      "id": "fact-0038",
+      "section_id": "src_section_87181c1c44d7269e",
+      "document_id": "doc-v5",
+      "source_ref": "src-002",
+      "page": 2,
+      "chunk": 37
+     },
+     {
+      "id": "fact-0039",
+      "section_id": "src_section_cf8025b7dbf93b83",
+      "document_id": "doc-v5",
+      "source_ref": "src-003",
+      "page": 3,
+      "chunk": 38
+     },
+     {
+      "id": "fact-0040",
+      "section_id": "src_section_f8e6a5c81bbb243a",
+      "document_id": "doc-v5",
+      "source_ref": "src-004",
+      "page": 4,
+      "chunk": 39
+     },
+     {
+      "id": "fact-0041",
+      "section_id": "src_section_5e2c141a37f3b656",
+      "document_id": "doc-v5",
+      "source_ref": "src-005",
+      "page": 5,
+      "chunk": 40
+     },
+     {
+      "id": "fact-0042",
+      "section_id": "src_section_5fd3b85b7fb471bd",
+      "document_id": "doc-v5",
+      "source_ref": "src-006",
+      "page": 6,
+      "chunk": 41
+     },
+     {
+      "id": "fact-0043",
+      "section_id": "src_section_f3740496472a7ba6",
+      "document_id": "doc-v5",
+      "source_ref": "src-001",
+      "page": 1,
+      "chunk": 42
+     },
+     {
+      "id": "fact-0044",
+      "section_id": "src_section_87181c1c44d7269e",
+      "document_id": "doc-v5",
+      "source_ref": "src-002",
+      "page": 2,
+      "chunk": 43
+     },
+     {
+      "id": "fact-0045",
+      "section_id": "src_section_cf8025b7dbf93b83",
+      "document_id": "doc-v5",
+      "source_ref": "src-003",
+      "page": 3,
+      "chunk": 44
+     },
+     {
+      "id": "fact-0046",
+      "section_id": "src_section_f8e6a5c81bbb243a",
+      "document_id": "doc-v5",
+      "source_ref": "src-004",
+      "page": 4,
+      "chunk": 45
+     },
+     {
+      "id": "fact-0047",
+      "section_id": "src_section_5e2c141a37f3b656",
+      "document_id": "doc-v5",
+      "source_ref": "src-005",
+      "page": 5,
+      "chunk": 46
+     },
+     {
+      "id": "fact-0048",
+      "section_id": "src_section_5fd3b85b7fb471bd",
+      "document_id": "doc-v5",
+      "source_ref": "src-006",
+      "page": 6,
+      "chunk": 47
+     },
+     {
+      "id": "fact-0049",
+      "section_id": "src_section_f3740496472a7ba6",
+      "document_id": "doc-v5",
+      "source_ref": "src-001",
+      "page": 1,
+      "chunk": 0
+     },
+     {
+      "id": "fact-0050",
+      "section_id": "src_section_87181c1c44d7269e",
+      "document_id": "doc-v5",
+      "source_ref": "src-002",
+      "page": 2,
+      "chunk": 1
+     },
+     {
+      "id": "fact-0051",
+      "section_id": "src_section_cf8025b7dbf93b83",
+      "document_id": "doc-v5",
+      "source_ref": "src-003",
+      "page": 3,
+      "chunk": 2
+     },
+     {
+      "id": "fact-0052",
+      "section_id": "src_section_f8e6a5c81bbb243a",
+      "document_id": "doc-v5",
+      "source_ref": "src-004",
+      "page": 4,
+      "chunk": 3
+     },
+     {
+      "id": "fact-0053",
+      "section_id": "src_section_5e2c141a37f3b656",
+      "document_id": "doc-v5",
+      "source_ref": "src-005",
+      "page": 5,
+      "chunk": 4
+     },
+     {
+      "id": "fact-0054",
+      "section_id": "src_section_5fd3b85b7fb471bd",
+      "document_id": "doc-v5",
+      "source_ref": "src-006",
+      "page": 6,
+      "chunk": 5
+     },
+     {
+      "id": "fact-0055",
+      "section_id": "src_section_f3740496472a7ba6",
+      "document_id": "doc-v5",
+      "source_ref": "src-001",
+      "page": 1,
+      "chunk": 6
+     },
+     {
+      "id": "fact-0056",
+      "section_id": "src_section_87181c1c44d7269e",
+      "document_id": "doc-v5",
+      "source_ref": "src-002",
+      "page": 2,
+      "chunk": 7
+     },
+     {
+      "id": "fact-0057",
+      "section_id": "src_section_cf8025b7dbf93b83",
+      "document_id": "doc-v5",
+      "source_ref": "src-003",
+      "page": 3,
+      "chunk": 8
+     },
+     {
+      "id": "fact-0058",
+      "section_id": "src_section_f8e6a5c81bbb243a",
+      "document_id": "doc-v5",
+      "source_ref": "src-004",
+      "page": 4,
+      "chunk": 9
+     },
+     {
+      "id": "fact-0059",
+      "section_id": "src_section_5e2c141a37f3b656",
+      "document_id": "doc-v5",
+      "source_ref": "src-005",
+      "page": 5,
+      "chunk": 10
+     },
+     {
+      "id": "fact-0060",
+      "section_id": "src_section_5fd3b85b7fb471bd",
+      "document_id": "doc-v5",
+      "source_ref": "src-006",
+      "page": 6,
+      "chunk": 11
+     },
+     {
+      "id": "fact-0061",
+      "section_id": "src_section_f3740496472a7ba6",
+      "document_id": "doc-v5",
+      "source_ref": "src-001",
+      "page": 1,
+      "chunk": 12
+     },
+     {
+      "id": "fact-0062",
+      "section_id": "src_section_87181c1c44d7269e",
+      "document_id": "doc-v5",
+      "source_ref": "src-002",
+      "page": 2,
+      "chunk": 13
+     },
+     {
+      "id": "fact-0063",
+      "section_id": "src_section_cf8025b7dbf93b83",
+      "document_id": "doc-v5",
+      "source_ref": "src-003",
+      "page": 3,
+      "chunk": 14
+     },
+     {
+      "id": "fact-0064",
+      "section_id": "src_section_f8e6a5c81bbb243a",
+      "document_id": "doc-v5",
+      "source_ref": "src-004",
+      "page": 4,
+      "chunk": 15
+     },
+     {
+      "id": "fact-0065",
+      "section_id": "src_section_5e2c141a37f3b656",
+      "document_id": "doc-v5",
+      "source_ref": "src-005",
+      "page": 5,
+      "chunk": 16
+     },
+     {
+      "id": "fact-0066",
+      "section_id": "src_section_5fd3b85b7fb471bd",
+      "document_id": "doc-v5",
+      "source_ref": "src-006",
+      "page": 6,
+      "chunk": 17
+     },
+     {
+      "id": "fact-0067",
+      "section_id": "src_section_f3740496472a7ba6",
+      "document_id": "doc-v5",
+      "source_ref": "src-001",
+      "page": 1,
+      "chunk": 18
+     },
+     {
+      "id": "fact-0068",
+      "section_id": "src_section_87181c1c44d7269e",
+      "document_id": "doc-v5",
+      "source_ref": "src-002",
+      "page": 2,
+      "chunk": 19
+     },
+     {
+      "id": "fact-0069",
+      "section_id": "src_section_cf8025b7dbf93b83",
+      "document_id": "doc-v5",
+      "source_ref": "src-003",
+      "page": 3,
+      "chunk": 20
+     },
+     {
+      "id": "fact-0070",
+      "section_id": "src_section_f8e6a5c81bbb243a",
+      "document_id": "doc-v5",
+      "source_ref": "src-004",
+      "page": 4,
+      "chunk": 21
+     },
+     {
+      "id": "fact-0071",
+      "section_id": "src_section_5e2c141a37f3b656",
+      "document_id": "doc-v5",
+      "source_ref": "src-005",
+      "page": 5,
+      "chunk": 22
+     },
+     {
+      "id": "fact-0072",
+      "section_id": "src_section_5fd3b85b7fb471bd",
+      "document_id": "doc-v5",
+      "source_ref": "src-006",
+      "page": 6,
+      "chunk": 23
+     },
+     {
+      "id": "fact-0073",
+      "section_id": "src_section_f3740496472a7ba6",
+      "document_id": "doc-v5",
+      "source_ref": "src-001",
+      "page": 1,
+      "chunk": 24
+     },
+     {
+      "id": "fact-0074",
+      "section_id": "src_section_87181c1c44d7269e",
+      "document_id": "doc-v5",
+      "source_ref": "src-002",
+      "page": 2,
+      "chunk": 25
+     },
+     {
+      "id": "fact-0075",
+      "section_id": "src_section_cf8025b7dbf93b83",
+      "document_id": "doc-v5",
+      "source_ref": "src-003",
+      "page": 3,
+      "chunk": 26
+     },
+     {
+      "id": "fact-0076",
+      "section_id": "src_section_f8e6a5c81bbb243a",
+      "document_id": "doc-v5",
+      "source_ref": "src-004",
+      "page": 4,
+      "chunk": 27
+     },
+     {
+      "id": "fact-0077",
+      "section_id": "src_section_5e2c141a37f3b656",
+      "document_id": "doc-v5",
+      "source_ref": "src-005",
+      "page": 5,
+      "chunk": 28
+     },
+     {
+      "id": "fact-0078",
+      "section_id": "src_section_5fd3b85b7fb471bd",
+      "document_id": "doc-v5",
+      "source_ref": "src-006",
+      "page": 6,
+      "chunk": 29
+     },
+     {
+      "id": "fact-0079",
+      "section_id": "src_section_f3740496472a7ba6",
+      "document_id": "doc-v5",
+      "source_ref": "src-001",
+      "page": 1,
+      "chunk": 30
+     },
+     {
+      "id": "fact-0080",
+      "section_id": "src_section_87181c1c44d7269e",
+      "document_id": "doc-v5",
+      "source_ref": "src-002",
+      "page": 2,
+      "chunk": 31
+     },
+     {
+      "id": "fact-0081",
+      "section_id": "src_section_cf8025b7dbf93b83",
+      "document_id": "doc-v5",
+      "source_ref": "src-003",
+      "page": 3,
+      "chunk": 32
+     },
+     {
+      "id": "fact-0082",
+      "section_id": "src_section_f8e6a5c81bbb243a",
+      "document_id": "doc-v5",
+      "source_ref": "src-004",
+      "page": 4,
+      "chunk": 33
+     },
+     {
+      "id": "fact-0083",
+      "section_id": "src_section_5e2c141a37f3b656",
+      "document_id": "doc-v5",
+      "source_ref": "src-005",
+      "page": 5,
+      "chunk": 34
+     },
+     {
+      "id": "fact-0084",
+      "section_id": "src_section_5fd3b85b7fb471bd",
+      "document_id": "doc-v5",
+      "source_ref": "src-006",
+      "page": 6,
+      "chunk": 35
+     },
+     {
+      "id": "fact-0085",
+      "section_id": "src_section_f3740496472a7ba6",
+      "document_id": "doc-v5",
+      "source_ref": "src-001",
+      "page": 1,
+      "chunk": 36
+     },
+     {
+      "id": "fact-0086",
+      "section_id": "src_section_87181c1c44d7269e",
+      "document_id": "doc-v5",
+      "source_ref": "src-002",
+      "page": 2,
+      "chunk": 37
+     },
+     {
+      "id": "fact-0087",
+      "section_id": "src_section_cf8025b7dbf93b83",
+      "document_id": "doc-v5",
+      "source_ref": "src-003",
+      "page": 3,
+      "chunk": 38
+     },
+     {
+      "id": "fact-0088",
+      "section_id": "src_section_f8e6a5c81bbb243a",
+      "document_id": "doc-v5",
+      "source_ref": "src-004",
+      "page": 4,
+      "chunk": 39
+     },
+     {
+      "id": "fact-0089",
+      "section_id": "src_section_5e2c141a37f3b656",
+      "document_id": "doc-v5",
+      "source_ref": "src-005",
+      "page": 5,
+      "chunk": 40
+     },
+     {
+      "id": "fact-0090",
+      "section_id": "src_section_5fd3b85b7fb471bd",
+      "document_id": "doc-v5",
+      "source_ref": "src-006",
+      "page": 6,
+      "chunk": 41
+     },
+     {
+      "id": "fact-0091",
+      "section_id": "src_section_f3740496472a7ba6",
+      "document_id": "doc-v5",
+      "source_ref": "src-001",
+      "page": 1,
+      "chunk": 42
+     },
+     {
+      "id": "fact-0092",
+      "section_id": "src_section_87181c1c44d7269e",
+      "document_id": "doc-v5",
+      "source_ref": "src-002",
+      "page": 2,
+      "chunk": 43
+     },
+     {
+      "id": "fact-0093",
+      "section_id": "src_section_cf8025b7dbf93b83",
+      "document_id": "doc-v5",
+      "source_ref": "src-003",
+      "page": 3,
+      "chunk": 44
+     },
+     {
+      "id": "fact-0094",
+      "section_id": "src_section_f8e6a5c81bbb243a",
+      "document_id": "doc-v5",
+      "source_ref": "src-004",
+      "page": 4,
+      "chunk": 45
+     },
+     {
+      "id": "fact-0095",
+      "section_id": "src_section_5e2c141a37f3b656",
+      "document_id": "doc-v5",
+      "source_ref": "src-005",
+      "page": 5,
+      "chunk": 46
+     },
+     {
+      "id": "fact-0096",
+      "section_id": "src_section_5fd3b85b7fb471bd",
+      "document_id": "doc-v5",
+      "source_ref": "src-006",
+      "page": 6,
+      "chunk": 47
+     },
+     {
+      "id": "fact-0097",
+      "section_id": "src_section_f3740496472a7ba6",
+      "document_id": "doc-v5",
+      "source_ref": "src-001",
+      "page": 1,
+      "chunk": 0
+     },
+     {
+      "id": "fact-0098",
+      "section_id": "src_section_87181c1c44d7269e",
+      "document_id": "doc-v5",
+      "source_ref": "src-002",
+      "page": 2,
+      "chunk": 1
+     },
+     {
+      "id": "fact-0099",
+      "section_id": "src_section_cf8025b7dbf93b83",
+      "document_id": "doc-v5",
+      "source_ref": "src-003",
+      "page": 3,
+      "chunk": 2
+     },
+     {
+      "id": "fact-0100",
+      "section_id": "src_section_f8e6a5c81bbb243a",
+      "document_id": "doc-v5",
+      "source_ref": "src-004",
+      "page": 4,
+      "chunk": 3
+     },
+     {
+      "id": "fact-0101",
+      "section_id": "src_section_5e2c141a37f3b656",
+      "document_id": "doc-v5",
+      "source_ref": "src-005",
+      "page": 5,
+      "chunk": 4
+     },
+     {
+      "id": "fact-0102",
+      "section_id": "src_section_5fd3b85b7fb471bd",
+      "document_id": "doc-v5",
+      "source_ref": "src-006",
+      "page": 6,
+      "chunk": 5
+     },
+     {
+      "id": "fact-0103",
+      "section_id": "src_section_f3740496472a7ba6",
+      "document_id": "doc-v5",
+      "source_ref": "src-001",
+      "page": 1,
+      "chunk": 6
+     },
+     {
+      "id": "fact-0104",
+      "section_id": "src_section_87181c1c44d7269e",
+      "document_id": "doc-v5",
+      "source_ref": "src-002",
+      "page": 2,
+      "chunk": 7
+     },
+     {
+      "id": "fact-0105",
+      "section_id": "src_section_cf8025b7dbf93b83",
+      "document_id": "doc-v5",
+      "source_ref": "src-003",
+      "page": 3,
+      "chunk": 8
+     },
+     {
+      "id": "fact-0106",
+      "section_id": "src_section_f8e6a5c81bbb243a",
+      "document_id": "doc-v5",
+      "source_ref": "src-004",
+      "page": 4,
+      "chunk": 9
+     },
+     {
+      "id": "fact-0107",
+      "section_id": "src_section_5e2c141a37f3b656",
+      "document_id": "doc-v5",
+      "source_ref": "src-005",
+      "page": 5,
+      "chunk": 10
+     },
+     {
+      "id": "fact-0108",
+      "section_id": "src_section_5fd3b85b7fb471bd",
+      "document_id": "doc-v5",
+      "source_ref": "src-006",
+      "page": 6,
+      "chunk": 11
+     },
+     {
+      "id": "fact-0109",
+      "section_id": "src_section_f3740496472a7ba6",
+      "document_id": "doc-v5",
+      "source_ref": "src-001",
+      "page": 1,
+      "chunk": 12
+     },
+     {
+      "id": "fact-0110",
+      "section_id": "src_section_87181c1c44d7269e",
+      "document_id": "doc-v5",
+      "source_ref": "src-002",
+      "page": 2,
+      "chunk": 13
+     },
+     {
+      "id": "fact-0111",
+      "section_id": "src_section_cf8025b7dbf93b83",
+      "document_id": "doc-v5",
+      "source_ref": "src-003",
+      "page": 3,
+      "chunk": 14
+     },
+     {
+      "id": "fact-0112",
+      "section_id": "src_section_f8e6a5c81bbb243a",
+      "document_id": "doc-v5",
+      "source_ref": "src-004",
+      "page": 4,
+      "chunk": 15
+     },
+     {
+      "id": "fact-0113",
+      "section_id": "src_section_5e2c141a37f3b656",
+      "document_id": "doc-v5",
+      "source_ref": "src-005",
+      "page": 5,
+      "chunk": 16
+     },
+     {
+      "id": "fact-0114",
+      "section_id": "src_section_5fd3b85b7fb471bd",
+      "document_id": "doc-v5",
+      "source_ref": "src-006",
+      "page": 6,
+      "chunk": 17
+     },
+     {
+      "id": "fact-0115",
+      "section_id": "src_section_f3740496472a7ba6",
+      "document_id": "doc-v5",
+      "source_ref": "src-001",
+      "page": 1,
+      "chunk": 18
+     },
+     {
+      "id": "fact-0116",
+      "section_id": "src_section_87181c1c44d7269e",
+      "document_id": "doc-v5",
+      "source_ref": "src-002",
+      "page": 2,
+      "chunk": 19
+     },
+     {
+      "id": "fact-0117",
+      "section_id": "src_section_cf8025b7dbf93b83",
+      "document_id": "doc-v5",
+      "source_ref": "src-003",
+      "page": 3,
+      "chunk": 20
+     },
+     {
+      "id": "fact-0118",
+      "section_id": "src_section_f8e6a5c81bbb243a",
+      "document_id": "doc-v5",
+      "source_ref": "src-004",
+      "page": 4,
+      "chunk": 21
+     },
+     {
+      "id": "fact-0119",
+      "section_id": "src_section_5e2c141a37f3b656",
+      "document_id": "doc-v5",
+      "source_ref": "src-005",
+      "page": 5,
+      "chunk": 22
+     },
+     {
+      "id": "fact-0120",
+      "section_id": "src_section_5fd3b85b7fb471bd",
+      "document_id": "doc-v5",
+      "source_ref": "src-006",
+      "page": 6,
+      "chunk": 23
+     }
+    ],
+    "fact_partitions": [
+     {
+      "section_id": "src_section_f3740496472a7ba6",
+      "document_id": "doc-v5",
+      "source_ref": "src-001",
+      "fact_count": 20,
+      "source_fact_ids": [
+       "fact-0001",
+       "fact-0007",
+       "fact-0013",
+       "fact-0019",
+       "fact-0025",
+       "fact-0031",
+       "fact-0037",
+       "fact-0043",
+       "fact-0049",
+       "fact-0055",
+       "fact-0061",
+       "fact-0067",
+       "fact-0073",
+       "fact-0079",
+       "fact-0085",
+       "fact-0091",
+       "fact-0097",
+       "fact-0103",
+       "fact-0109",
+       "fact-0115"
+      ]
+     },
+     {
+      "section_id": "src_section_87181c1c44d7269e",
+      "document_id": "doc-v5",
+      "source_ref": "src-002",
+      "fact_count": 20,
+      "source_fact_ids": [
+       "fact-0002",
+       "fact-0008",
+       "fact-0014",
+       "fact-0020",
+       "fact-0026",
+       "fact-0032",
+       "fact-0038",
+       "fact-0044",
+       "fact-0050",
+       "fact-0056",
+       "fact-0062",
+       "fact-0068",
+       "fact-0074",
+       "fact-0080",
+       "fact-0086",
+       "fact-0092",
+       "fact-0098",
+       "fact-0104",
+       "fact-0110",
+       "fact-0116"
+      ]
+     },
+     {
+      "section_id": "src_section_cf8025b7dbf93b83",
+      "document_id": "doc-v5",
+      "source_ref": "src-003",
+      "fact_count": 20,
+      "source_fact_ids": [
+       "fact-0003",
+       "fact-0009",
+       "fact-0015",
+       "fact-0021",
+       "fact-0027",
+       "fact-0033",
+       "fact-0039",
+       "fact-0045",
+       "fact-0051",
+       "fact-0057",
+       "fact-0063",
+       "fact-0069",
+       "fact-0075",
+       "fact-0081",
+       "fact-0087",
+       "fact-0093",
+       "fact-0099",
+       "fact-0105",
+       "fact-0111",
+       "fact-0117"
+      ]
+     },
+     {
+      "section_id": "src_section_f8e6a5c81bbb243a",
+      "document_id": "doc-v5",
+      "source_ref": "src-004",
+      "fact_count": 20,
+      "source_fact_ids": [
+       "fact-0004",
+       "fact-0010",
+       "fact-0016",
+       "fact-0022",
+       "fact-0028",
+       "fact-0034",
+       "fact-0040",
+       "fact-0046",
+       "fact-0052",
+       "fact-0058",
+       "fact-0064",
+       "fact-0070",
+       "fact-0076",
+       "fact-0082",
+       "fact-0088",
+       "fact-0094",
+       "fact-0100",
+       "fact-0106",
+       "fact-0112",
+       "fact-0118"
+      ]
+     },
+     {
+      "section_id": "src_section_5e2c141a37f3b656",
+      "document_id": "doc-v5",
+      "source_ref": "src-005",
+      "fact_count": 20,
+      "source_fact_ids": [
+       "fact-0005",
+       "fact-0011",
+       "fact-0017",
+       "fact-0023",
+       "fact-0029",
+       "fact-0035",
+       "fact-0041",
+       "fact-0047",
+       "fact-0053",
+       "fact-0059",
+       "fact-0065",
+       "fact-0071",
+       "fact-0077",
+       "fact-0083",
+       "fact-0089",
+       "fact-0095",
+       "fact-0101",
+       "fact-0107",
+       "fact-0113",
+       "fact-0119"
+      ]
+     },
+     {
+      "section_id": "src_section_5fd3b85b7fb471bd",
+      "document_id": "doc-v5",
+      "source_ref": "src-006",
+      "fact_count": 20,
+      "source_fact_ids": [
+       "fact-0006",
+       "fact-0012",
+       "fact-0018",
+       "fact-0024",
+       "fact-0030",
+       "fact-0036",
+       "fact-0042",
+       "fact-0048",
+       "fact-0054",
+       "fact-0060",
+       "fact-0066",
+       "fact-0072",
+       "fact-0078",
+       "fact-0084",
+       "fact-0090",
+       "fact-0096",
+       "fact-0102",
+       "fact-0108",
+       "fact-0114",
+       "fact-0120"
+      ]
+     }
+    ],
+    "source_evidence_scopes": [
+     {
+      "id": "evidence_scope_02384132b002b7b648c4",
+      "document_id": "doc-v5",
+      "section_id": "src_section_f3740496472a7ba6",
+      "concept_ids": [
+       "concept_f3740496472a7ba6"
+      ],
+      "source_ref": "src-001",
+      "parent_source_ref": null,
+      "heading_path": [
+       "Section 1"
+      ],
+      "page_start": 1,
+      "page_end": 1,
+      "chunk_start": 0,
+      "chunk_end": 42,
+      "fact_count": 20,
+      "evidence_char_count": 1121,
+      "evidence_token_estimate": 281,
+      "source_fact_ids": [
+       "fact-0001",
+       "fact-0007",
+       "fact-0013",
+       "fact-0019",
+       "fact-0025",
+       "fact-0031",
+       "fact-0037",
+       "fact-0043",
+       "fact-0049",
+       "fact-0055",
+       "fact-0061",
+       "fact-0067",
+       "fact-0073",
+       "fact-0079",
+       "fact-0085",
+       "fact-0091",
+       "fact-0097",
+       "fact-0103",
+       "fact-0109",
+       "fact-0115"
+      ],
+      "derivation_basis": "FALLBACK_PAGE_FACT_ORDINAL_RANGE",
+      "provenance_complete": true,
+      "ordinal": 1
+     },
+     {
+      "id": "evidence_scope_fba394ef922f007385ef",
+      "document_id": "doc-v5",
+      "section_id": "src_section_87181c1c44d7269e",
+      "concept_ids": [
+       "concept_87181c1c44d7269e"
+      ],
+      "source_ref": "src-002",
+      "parent_source_ref": null,
+      "heading_path": [
+       "Section 2"
+      ],
+      "page_start": 2,
+      "page_end": 2,
+      "chunk_start": 1,
+      "chunk_end": 43,
+      "fact_count": 20,
+      "evidence_char_count": 1121,
+      "evidence_token_estimate": 281,
+      "source_fact_ids": [
+       "fact-0002",
+       "fact-0008",
+       "fact-0014",
+       "fact-0020",
+       "fact-0026",
+       "fact-0032",
+       "fact-0038",
+       "fact-0044",
+       "fact-0050",
+       "fact-0056",
+       "fact-0062",
+       "fact-0068",
+       "fact-0074",
+       "fact-0080",
+       "fact-0086",
+       "fact-0092",
+       "fact-0098",
+       "fact-0104",
+       "fact-0110",
+       "fact-0116"
+      ],
+      "derivation_basis": "FALLBACK_PAGE_FACT_ORDINAL_RANGE",
+      "provenance_complete": true,
+      "ordinal": 1
+     },
+     {
+      "id": "evidence_scope_748be2a1c831379df811",
+      "document_id": "doc-v5",
+      "section_id": "src_section_cf8025b7dbf93b83",
+      "concept_ids": [
+       "concept_cf8025b7dbf93b83"
+      ],
+      "source_ref": "src-003",
+      "parent_source_ref": null,
+      "heading_path": [
+       "Section 3"
+      ],
+      "page_start": 3,
+      "page_end": 3,
+      "chunk_start": 2,
+      "chunk_end": 44,
+      "fact_count": 20,
+      "evidence_char_count": 1121,
+      "evidence_token_estimate": 281,
+      "source_fact_ids": [
+       "fact-0003",
+       "fact-0009",
+       "fact-0015",
+       "fact-0021",
+       "fact-0027",
+       "fact-0033",
+       "fact-0039",
+       "fact-0045",
+       "fact-0051",
+       "fact-0057",
+       "fact-0063",
+       "fact-0069",
+       "fact-0075",
+       "fact-0081",
+       "fact-0087",
+       "fact-0093",
+       "fact-0099",
+       "fact-0105",
+       "fact-0111",
+       "fact-0117"
+      ],
+      "derivation_basis": "FALLBACK_PAGE_FACT_ORDINAL_RANGE",
+      "provenance_complete": true,
+      "ordinal": 1
+     },
+     {
+      "id": "evidence_scope_7a6bb0cf914dad4ffe92",
+      "document_id": "doc-v5",
+      "section_id": "src_section_f8e6a5c81bbb243a",
+      "concept_ids": [
+       "concept_f8e6a5c81bbb243a"
+      ],
+      "source_ref": "src-004",
+      "parent_source_ref": null,
+      "heading_path": [
+       "Section 4"
+      ],
+      "page_start": 4,
+      "page_end": 4,
+      "chunk_start": 3,
+      "chunk_end": 45,
+      "fact_count": 20,
+      "evidence_char_count": 1123,
+      "evidence_token_estimate": 281,
+      "source_fact_ids": [
+       "fact-0004",
+       "fact-0010",
+       "fact-0016",
+       "fact-0022",
+       "fact-0028",
+       "fact-0034",
+       "fact-0040",
+       "fact-0046",
+       "fact-0052",
+       "fact-0058",
+       "fact-0064",
+       "fact-0070",
+       "fact-0076",
+       "fact-0082",
+       "fact-0088",
+       "fact-0094",
+       "fact-0100",
+       "fact-0106",
+       "fact-0112",
+       "fact-0118"
+      ],
+      "derivation_basis": "FALLBACK_PAGE_FACT_ORDINAL_RANGE",
+      "provenance_complete": true,
+      "ordinal": 1
+     },
+     {
+      "id": "evidence_scope_df73069163daaf6ca3ea",
+      "document_id": "doc-v5",
+      "section_id": "src_section_5e2c141a37f3b656",
+      "concept_ids": [
+       "concept_5e2c141a37f3b656"
+      ],
+      "source_ref": "src-005",
+      "parent_source_ref": null,
+      "heading_path": [
+       "Section 5"
+      ],
+      "page_start": 5,
+      "page_end": 5,
+      "chunk_start": 4,
+      "chunk_end": 46,
+      "fact_count": 20,
+      "evidence_char_count": 1123,
+      "evidence_token_estimate": 281,
+      "source_fact_ids": [
+       "fact-0005",
+       "fact-0011",
+       "fact-0017",
+       "fact-0023",
+       "fact-0029",
+       "fact-0035",
+       "fact-0041",
+       "fact-0047",
+       "fact-0053",
+       "fact-0059",
+       "fact-0065",
+       "fact-0071",
+       "fact-0077",
+       "fact-0083",
+       "fact-0089",
+       "fact-0095",
+       "fact-0101",
+       "fact-0107",
+       "fact-0113",
+       "fact-0119"
+      ],
+      "derivation_basis": "FALLBACK_PAGE_FACT_ORDINAL_RANGE",
+      "provenance_complete": true,
+      "ordinal": 1
+     },
+     {
+      "id": "evidence_scope_c18d17e91a3e25cb3112",
+      "document_id": "doc-v5",
+      "section_id": "src_section_5fd3b85b7fb471bd",
+      "concept_ids": [
+       "concept_5fd3b85b7fb471bd"
+      ],
+      "source_ref": "src-006",
+      "parent_source_ref": null,
+      "heading_path": [
+       "Section 6"
+      ],
+      "page_start": 6,
+      "page_end": 6,
+      "chunk_start": 5,
+      "chunk_end": 47,
+      "fact_count": 20,
+      "evidence_char_count": 1123,
+      "evidence_token_estimate": 281,
+      "source_fact_ids": [
+       "fact-0006",
+       "fact-0012",
+       "fact-0018",
+       "fact-0024",
+       "fact-0030",
+       "fact-0036",
+       "fact-0042",
+       "fact-0048",
+       "fact-0054",
+       "fact-0060",
+       "fact-0066",
+       "fact-0072",
+       "fact-0078",
+       "fact-0084",
+       "fact-0090",
+       "fact-0096",
+       "fact-0102",
+       "fact-0108",
+       "fact-0114",
+       "fact-0120"
+      ],
+      "derivation_basis": "FALLBACK_PAGE_FACT_ORDINAL_RANGE",
+      "provenance_complete": true,
+      "ordinal": 1
+     }
+    ],
+    "coverage": {
+     "section_count": 6,
+     "source_fact_count": 120,
+     "mapped_fact_count": 120,
+     "total_fact_count": 120,
+     "represented_fact_count": 120,
+     "concept_count": 6,
+     "evidence_scope_count": 6,
+     "evidence_scope_complete": true,
+     "unmapped_fact_ids": [],
+     "incomplete_reason": null,
+     "fact_scope_complete": true,
+     "section_scope_complete": true
+    },
+    "warnings": []
+   },
+   "usage": {
+    "inputTokens": 11,
+    "outputTokens": 7,
+    "embeddingTokens": 0,
+    "totalTokens": 18
+   },
+   "sources": [],
+   "retrieval": {
+    "kb_id": "22222222-2222-4222-8222-222222222222",
+    "source_document_count": 0,
+    "retrieved_count": 0,
+    "returned_source_count": 0,
+    "top_score": null,
+    "top_document_name": null,
+    "methods": [],
+    "top_k": 24,
+    "max_context_chars": 32000,
+    "min_score": 0.25,
+    "keyword_min_score": 0.5,
+    "max_chunks_per_document": 12,
+    "target_source_scope_count": 0,
+    "target_source_scope_chunk_count": 0,
+    "context_chars": 0,
+    "retrieval_candidate_count": 0,
+    "context_truncated": false,
+    "omitted_retrieved_count": 0,
+    "target_source_scope_candidate_count": 0,
+    "target_source_scope_hard_locked": false,
+    "target_source_scope_pages": [],
+    "target_source_scope_expected_pages": [],
+    "target_source_scope_missing_pages": [],
+    "target_source_scope_truncated": false,
+    "out_of_scope_retrieval_count": 0,
+    "structure_source": null,
+    "structure_confidence": null,
+    "structure_node_count": 0,
+    "source_structure_warnings": [],
+    "known_source_ref_count": 6,
+    "covered_source_ref_count": 6,
+    "source_coverage_ratio": 1.0,
+    "reason": "no_confident_matching_chunks",
+    "source_map_version": "source-map-v2",
+    "source_map_section_count": 6,
+    "source_map_concept_count": 6,
+    "source_map_fact_count": 120,
+    "source_total_facts": 120,
+    "source_total_sections": 6,
+    "source_total_concepts": 6,
+    "source_map_complete": true,
+    "architect_context_mode": "evidence_scope",
+    "architect_context_size": 4645,
+    "architect_detail_fact_count": 0,
+    "source_coverage_required_count": 120,
+    "source_coverage_covered_count": 120,
+    "source_coverage_status": "complete"
+   },
+   "workflow": {
+    "workflow": "course_architecture",
+    "workflow_version": "langgraph-v1",
+    "status": "ready",
+    "duration_ms": "<volatile>",
+    "node_durations_ms": "<volatile>",
+    "repair_count": 1,
+    "repair_provider_calls": 1,
+    "repair_layer_attempts": {
+     "POST_ALLOCATION_INSTRUCTIONAL_DEPTH": 1
+    },
+    "repair_layer_statuses": {
+     "SCHEMA": "PASS",
+     "EVIDENCE_SEMANTIC": "PASS",
+     "PRE_ALLOCATION_COHERENCE": "PASS",
+     "POST_ALLOCATION_INSTRUCTIONAL_DEPTH": "PASS"
+    },
+    "validation_codes": [],
+    "source_coverage": 1.0,
+    "source_fact_coverage": null,
+    "concept_coverage": null,
+    "objective_coverage": null,
+    "assessment_alignment": 1.0,
+    "instructional_depth": 1.0,
+    "component_purpose": null,
+    "duplicate_count": 0,
+    "pedagogical_warning_count": 0,
+    "component_counts": {},
+    "progress": [
+     {
+      "code": "ANALYZING_SOURCE",
+      "message": "Analyzing source scope",
+      "phase": "course_architecture",
+      "current": 1,
+      "total": 6
+     },
+     {
+      "code": "BUILDING_SOURCE_MAP",
+      "message": "Building source map",
+      "phase": "course_architecture",
+      "current": 2,
+      "total": 6
+     },
+     {
+      "code": "DESIGNING_COURSE",
+      "message": "Designing course architecture",
+      "phase": "course_architecture",
+      "current": 3,
+      "total": 6
+     },
+     {
+      "code": "VALIDATING_BLUEPRINT",
+      "message": "Validating course architecture",
+      "phase": "course_architecture",
+      "current": 4,
+      "total": 6
+     },
+     {
+      "code": "REPAIRING_BLUEPRINT",
+      "message": "Repairing affected course architecture",
+      "phase": "course_architecture",
+      "current": 5,
+      "total": 6
+     },
+     {
+      "code": "VALIDATING_BLUEPRINT",
+      "message": "Validating course architecture",
+      "phase": "course_architecture",
+      "current": 4,
+      "total": 6
+     },
+     {
+      "code": "BLUEPRINT_READY",
+      "message": "Course blueprint is ready for review",
+      "phase": "course_architecture",
+      "current": 6,
+      "total": 6
+     }
+    ],
+    "usage": {
+     "inputTokens": 11,
+     "outputTokens": 7,
+     "embeddingTokens": 0,
+     "totalTokens": 18
+    }
+   }
+  },
+  "db_calls": [],
+  "provider_calls": [
+   {
+    "op": "generate",
+    "model": "gemini-3.5-flash",
+    "schema": null,
+    "prompt_sha256": "f9b7b6558032143b7142aea43e0fc93b30afb77f22068e956a8b0c386668c3f0",
+    "prompt_chars": 15140,
+    "config": {
+     "max_output_tokens": 4096,
+     "response_mime_type": "application/json",
+     "response_schema": {
+      "sha256": "6ed70e164a974c927c0cd730db64ae4d5e3034405d6b34195000df8bb94252c6",
+      "chars": 10934
+     },
+     "temperature": 0.2,
+     "thinking_config": "ThinkingConfig(\n  include_thoughts=False\n)"
+    }
+   },
+   {
+    "op": "generate",
+    "model": "gemini-3.5-flash",
+    "schema": null,
+    "prompt_sha256": "ea3c66b23a9bd8ff2af3c1b01bb78247bdbd20c5bb81cedbe3d2c8e968d7351b",
+    "prompt_chars": 1953,
+    "config": {
+     "max_output_tokens": 4096,
+     "response_mime_type": "application/json",
+     "response_schema": {
+      "sha256": "7b7a07fdd13229ec2382e4696da82435bd014b7710d064f576d9bc462e981aa5",
+      "chars": 1725
+     },
+     "temperature": 0.2,
+     "thinking_config": "ThinkingConfig(\n  include_thoughts=False\n)"
+    }
+   }
+  ],
+  "retrieval_calls": [
+   {
+    "op": "retrieve_chunks",
+    "positional": 2,
+    "keywords": []
+   }
+  ]
+ }
+}

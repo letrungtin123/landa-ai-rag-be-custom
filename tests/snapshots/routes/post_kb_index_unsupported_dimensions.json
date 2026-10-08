@@ -1,0 +1,59 @@
+{
+ "description": "Only 768 dimensions are supported.",
+ "request": {
+  "method": "POST",
+  "path": "/v1/kb/documents/index",
+  "json": {
+   "tenant_id": "11111111-1111-4111-8111-111111111111",
+   "kb_id": "22222222-2222-4222-8222-222222222222",
+   "document_id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+   "embedding_model": "gemini-embedding-001",
+   "embedding_dimensions": 1536,
+   "api_key": "route-snapshot-provider-key"
+  }
+ },
+ "db": [
+  {
+   "match": "FROM kb_documents",
+   "method": "fetchrow",
+   "rows": [
+    {
+     "id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+     "tenant_id": "11111111-1111-4111-8111-111111111111",
+     "kb_id": "22222222-2222-4222-8222-222222222222",
+     "type": "text",
+     "name": "an-toan.txt",
+     "status": "uploaded",
+     "source_info": null,
+     "file_path": null,
+     "content": "Chương 1. An toàn điện\n\n1.1 Cắt nguồn điện\nNgắt cầu dao tổng và treo biển cảnh báo trước khi bảo trì thiết bị điện. Kiểm tra lại bằng bút thử điện để chắc chắn không còn điện áp.\n\n1.2 Khoá và gắn thẻ\nMỗi người thực hiện gắn khoá cá nhân và thẻ ghi tên, thời gian bắt đầu công việc.\n\nChương 2. Phòng cháy chữa cháy\n\n2.1 Bình chữa cháy\nKiểm tra áp suất bình chữa cháy hằng tháng và ghi vào sổ theo dõi. Đặt bình ở nơi dễ thấy, dễ lấy, không bị che khuất.\n"
+    }
+   ]
+  },
+  {
+   "match": "COALESCE(MAX(version), 0) + 1",
+   "method": "fetchval",
+   "value": 3
+  },
+  {
+   "match": "INSERT INTO rag_document_indexes",
+   "method": "fetchval",
+   "value": "44444444-4444-4444-8444-444444444444"
+  },
+  {
+   "match": "FOR UPDATE",
+   "method": "fetchval",
+   "value": "running"
+  }
+ ],
+ "expected": {
+  "status": 400,
+  "content_type": "application/json",
+  "body": {
+   "detail": "RAG hiện chỉ hỗ trợ embedding 768 chiều."
+  },
+  "db_calls": [],
+  "provider_calls": [],
+  "retrieval_calls": []
+ }
+}

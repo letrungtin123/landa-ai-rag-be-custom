@@ -1,0 +1,118 @@
+{
+ "description": "Legacy V2 course skeleton (provider answer).",
+ "request": {
+  "method": "POST",
+  "path": "/v1/lesson-author/orchestration-v2/course-skeleton",
+  "json": {
+   "tenant_id": "00000000-0000-4000-8000-000000000001",
+   "kb_id": "00000000-0000-4000-8000-000000000002",
+   "conversation_id": "00000000-0000-4000-8000-000000000003",
+   "target": "lesson_author",
+   "model": "test-model",
+   "max_output_tokens": 8192,
+   "embedding_model": "test-embedding",
+   "embedding_dimensions": 768,
+   "system_prompt": "server-owned",
+   "user_message": "Tạo nội dung bài học",
+   "history": [],
+   "source_documents": [],
+   "locale": "vi",
+   "correlation_id": "00000000-0000-4000-8000-000000000004",
+   "api_key": "route-snapshot-provider-key",
+   "contract_version": 2,
+   "source_snapshot_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "source_authority": {
+    "mode": "model_designed",
+    "source": "none",
+    "complete": true,
+    "confidence": 0.0,
+    "reason_codes": [],
+    "chapters": [],
+    "structure_hash": "8f0d188f9d9f5fbba467bc58da5945dda9e7459c060f376056b2915f96d75ce2"
+   },
+   "scope_catalog": [
+    {
+     "scope_key": "scope-1",
+     "title": "Mục 1",
+     "source_ref": null,
+     "fact_count": 1,
+     "content_chars": 5
+    }
+   ],
+   "max_attempts": 2
+  }
+ },
+ "provider": [
+  {
+   "text": "{\"title\": \"Khóa học\", \"summary\": \"Tóm tắt\", \"target_audience\": \"Quản lý\", \"prerequisites\": [], \"learning_outcomes\": [\"Áp dụng\"], \"assessment_strategy\": \"Đánh giá\", \"assumptions\": [], \"chapters\": [{\"chapter_key\": \"chapter-1\", \"order\": 0, \"title\": \"Chương 1\", \"objective\": \"Mục tiêu\", \"learning_outcomes\": [\"Hoàn thành mục tiêu\"], \"source_scope_ids\": [\"scope-1\"]}]}"
+  },
+  {
+   "text": "{\"title\": \"Khóa học\", \"summary\": \"Tóm tắt\", \"target_audience\": \"Quản lý\", \"prerequisites\": [], \"learning_outcomes\": [\"Áp dụng\"], \"assessment_strategy\": \"Đánh giá\", \"assumptions\": [], \"chapters\": [{\"chapter_key\": \"chapter-1\", \"order\": 0, \"title\": \"Chương 1\", \"objective\": \"Mục tiêu\", \"learning_outcomes\": [\"Hoàn thành mục tiêu\"], \"source_scope_ids\": [\"scope-1\"]}]}"
+  }
+ ],
+ "expected": {
+  "status": 200,
+  "content_type": "application/json",
+  "body": {
+   "contract_version": 2,
+   "skeleton": {
+    "contract_version": 2,
+    "source_snapshot_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "locale": "vi",
+    "title": "Khóa học",
+    "summary": "Tóm tắt",
+    "target_audience": "Quản lý",
+    "prerequisites": [],
+    "learning_outcomes": [
+     "Áp dụng"
+    ],
+    "assessment_strategy": "Đánh giá",
+    "assumptions": [],
+    "chapters": [
+     {
+      "chapter_key": "chapter-1",
+      "order": 0,
+      "title": "Chương 1",
+      "objective": "Mục tiêu",
+      "learning_outcomes": [
+       "Hoàn thành mục tiêu"
+      ],
+      "source_scope_ids": [
+       "scope-1"
+      ]
+     }
+    ]
+   },
+   "usage": {
+    "inputTokens": 11,
+    "outputTokens": 7,
+    "embeddingTokens": 0,
+    "totalTokens": 18
+   },
+   "usage_complete": true,
+   "usage_source": "provider",
+   "content_origin": "provider_validated",
+   "quality_state": "validated"
+  },
+  "db_calls": [],
+  "provider_calls": [
+   {
+    "op": "generate",
+    "model": "test-model",
+    "schema": "CourseSkeletonDraftV2",
+    "prompt_sha256": "2b0ec57a688d8117c396aae00b3bbba64aea047d35396de1051819f46dc9aac1",
+    "prompt_chars": 965,
+    "config": {
+     "max_output_tokens": 8192,
+     "response_mime_type": "application/json",
+     "response_schema": {
+      "sha256": "54cb15659420199f8b3762a34c0f64a28c8ee4a1b6c780d916b6e7238789144e",
+      "chars": 1448
+     },
+     "temperature": 0.2
+    }
+   }
+  ],
+  "retrieval_calls": []
+ }
+}
