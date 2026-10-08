@@ -16,7 +16,8 @@ from app.core.document_limits import (
     validate_ooxml_archive,
 )
 from app.core.errors import DocumentLimitError
-from app.main import extract_pdf, settings
+from app.main import settings
+from app.services.ingestion.extract import extract_pdf
 
 
 class DocumentLimitTests(unittest.TestCase):

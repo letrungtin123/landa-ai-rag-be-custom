@@ -5,16 +5,15 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-from app.main import (
+from app.services.ingestion.chunking import build_chunks, split_text
+from app.services.ingestion.extract import (
     ExtractedSection,
     STRUCTURED_EXTRACTION_VERSION,
     _render_structured_table,
-    build_chunks,
     extract_docx,
     extract_pdf,
     extract_pptx,
     extract_xlsx,
-    split_text,
 )
 from app.source_structure import analyze_source_structure
 

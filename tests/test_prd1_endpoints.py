@@ -18,11 +18,14 @@ from app.core import metrics
 from app.core.errors import AppError
 from app.infra import gemini as gemini_infra
 from app.infra.schema_check import SchemaCheckResult
+from app.repositories import indexing as index_repository
 from app.schemas.chat import RagChatRequest
 from app.schemas.kb import RagIndexRequest
 from app.services import deadlines as deadlines_service
 from app.services import provider as provider_service
 from app.services import runtime as runtime_service
+from app.services.ingestion import extract as extraction
+from app.services.ingestion import index as index_service
 
 APP_ROOT = Path(__file__).resolve().parents[1] / "app"
 TOKEN = "prd1-test-token-0123456789"
@@ -209,7 +212,7 @@ class IndexRuntimeTests(unittest.TestCase):
                     patch.object(limiter, "acquire_timeout_seconds", 0.01),
                     self.assertRaises(AppError) as raised,
                 ):
-                    await main.index_document(self.index_request(), pool=object())  # type: ignore[arg-type]
+                    await index_service.index_document(self.index_request(), pool=object())  # type: ignore[arg-type]
                 return raised.exception.code
             finally:
                 for slot in held:
@@ -230,13 +233,15 @@ class IndexRuntimeTests(unittest.TestCase):
             return {"nodes": []}
 
         with (
-            patch.object(main, "load_document", AsyncMock(return_value=row)),
-            patch.object(main, "start_index_row", AsyncMock(return_value="55555555-5555-4555-8555-555555555555")),
-            patch.object(main, "mark_index_error", mark),
-            patch.object(main, "analyze_source_structure", slow_structure),
+            patch.object(index_repository, "load_document", AsyncMock(return_value=row)),
+            patch.object(index_repository, "start_index_row",
+                         AsyncMock(return_value="55555555-5555-4555-8555-555555555555")),
+            patch.object(index_repository, "mark_index_error", mark),
+            patch.object(index_service, "analyze_source_structure", slow_structure),
             patch.object(main.settings, "index_deadline_ms", 50),
         ):
-            result = asyncio.run(main.index_document(self.index_request(), pool=object()))  # type: ignore[arg-type]
+            result = asyncio.run(index_service.index_document(self.index_request(),
+                                                              pool=object()))  # type: ignore[arg-type]
         self.assertEqual(result["status"], "error")
         self.assertEqual(result["error_reason"], "INDEX_DEADLINE_EXCEEDED")
         self.assertEqual(marked, ["INDEX_DEADLINE_EXCEEDED"])
@@ -262,14 +267,15 @@ class IndexRuntimeTests(unittest.TestCase):
         async def scenario() -> None:
             loop = asyncio.get_running_loop()
             loop.slow_callback_duration = 0.1
-            await main.index_document(self.index_request(), pool=object())  # type: ignore[arg-type]
+            await index_service.index_document(self.index_request(), pool=object())  # type: ignore[arg-type]
 
         try:
             with (
-                patch.object(main, "load_document", AsyncMock(return_value=row)),
-                patch.object(main, "start_index_row", AsyncMock(return_value="55555555-5555-4555-8555-555555555555")),
-                patch.object(main, "mark_index_error", AsyncMock()),
-                patch.object(main, "analyze_source_structure", busy_structure),
+                patch.object(index_repository, "load_document", AsyncMock(return_value=row)),
+                patch.object(index_repository, "start_index_row",
+                             AsyncMock(return_value="55555555-5555-4555-8555-555555555555")),
+                patch.object(index_repository, "mark_index_error", AsyncMock()),
+                patch.object(index_service, "analyze_source_structure", busy_structure),
                 patch.object(provider_service, "embed_texts",
                              AsyncMock(side_effect=RuntimeError("stop after offloaded steps"))),
             ):
@@ -438,7 +444,7 @@ class SourceCodeSecurityTests(unittest.TestCase):
         """SEC-7: the temp path is server-owned even for hostile display names."""
         with tempfile.TemporaryDirectory() as temp_dir:
             for name in ("../../evil.py", "C:/evil/x.docx", "/abs/evil.pdf", "báo cáo.pdf"):
-                path = main.index_document_temp_path(temp_dir, DOC, name)
+                path = extraction.index_document_temp_path(temp_dir, DOC, name)
                 self.assertEqual(path.parent, Path(temp_dir).resolve())
                 self.assertTrue(path.name.startswith(DOC))
 

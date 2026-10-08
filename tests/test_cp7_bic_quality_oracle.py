@@ -6,7 +6,8 @@ from pathlib import Path
 import re
 import unittest
 
-from app.main import build_chunks, extract_pdf
+from app.services.ingestion.chunking import build_chunks
+from app.services.ingestion.extract import extract_pdf
 from app.instructional_quality import source_relationship_pairs
 
 

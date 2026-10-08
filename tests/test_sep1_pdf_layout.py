@@ -16,6 +16,8 @@ import pymupdf
 
 from app import main
 from app.infra.pdf_layout import Box, baseline_order, column_reading_order
+from app.services.ingestion.extract import ExtractedSection
+from app.services.ingestion import extract as extraction
 
 
 def lines(*rows: tuple[float, float, float, float]) -> list[Box]:
@@ -88,11 +90,11 @@ class PdfExtractionTests(unittest.TestCase):
         self.addCleanup(temp.cleanup)
         self.dir = Path(temp.name)
 
-    def extract(self, build: Callable[[Any], None], *, column_aware: bool) -> list[main.ExtractedSection]:
+    def extract(self, build: Callable[[Any], None], *, column_aware: bool) -> list[ExtractedSection]:
         path = self.dir / f"page-{column_aware}.pdf"
         make_pdf(path, build)
         with patch.object(main.settings, "pdf_column_aware", column_aware):
-            return main.extract_pdf(path)
+            return extraction.extract_pdf(path)
 
     def test_one_column_page_is_unchanged_byte_for_byte(self) -> None:
         [aware] = self.extract(one_column_page, column_aware=True)

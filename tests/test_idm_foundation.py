@@ -9,6 +9,8 @@ import httpx
 
 from app import main
 from app.api import deps as api_deps
+from app.services.ingestion.extract import ExtractedSection
+from app.services.ingestion import extract as extraction
 
 
 class IdmFoundationTests(unittest.IsolatedAsyncioTestCase):
@@ -49,14 +51,14 @@ class IdmFoundationTests(unittest.IsolatedAsyncioTestCase):
                 ("/abs/source.docx", ".docx"),
             ):
                 with self.subTest(original_name=original_name):
-                    path = main.index_document_temp_path(temp_dir, document_id, original_name)
+                    path = extraction.index_document_temp_path(temp_dir, document_id, original_name)
                     self.assertEqual(path.parent, root)
                     self.assertEqual(path.name, f"{document_id}{expected_suffix}")
 
-            pdf_path = main.index_document_temp_path(temp_dir, document_id, "../../source.pdf")
+            pdf_path = extraction.index_document_temp_path(temp_dir, document_id, "../../source.pdf")
             pdf_path.write_bytes(b"offline fixture")
-            with patch("app.main.extract_pdf", return_value=[main.ExtractedSection(text="parsed")]) as extractor:
-                sections = main.extract_sections(pdf_path, pdf_path.name)
+            with patch("app.services.ingestion.extract.extract_pdf", return_value=[ExtractedSection(text="parsed")]) as extractor:
+                sections = extraction.extract_sections(pdf_path, pdf_path.name)
             extractor.assert_called_once_with(pdf_path)
             self.assertEqual(sections[0].text, "parsed")
 

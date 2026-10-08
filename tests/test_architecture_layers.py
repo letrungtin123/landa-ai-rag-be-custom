@@ -77,16 +77,17 @@ class ArchitectureLayerTests(unittest.TestCase):
         self.assertEqual(offenders, [])
 
     def test_document_queries_keep_tenant_filter_and_safe_error_code(self) -> None:
-        source = (APP_ROOT / "main.py").read_text(encoding="utf-8")
+        repository = (APP_ROOT / "repositories" / "indexing.py").read_text(encoding="utf-8")
         load_document = re.search(
-            r"async def load_document\(.*?(?=\nasync def |\n@app\.)",
-            source,
+            r"async def load_document\(.*?(?=\nasync def |\n@app\.|\Z)",
+            repository,
             flags=re.DOTALL,
         )
         self.assertIsNotNone(load_document)
         self.assertIn("tenant_id", load_document.group(0))
-        self.assertIn('"INDEX_DOCUMENT_FAILED"', source)
-        self.assertNotIn("await mark_index_error(pool, index_id, str(", source)
+        service = (APP_ROOT / "services" / "ingestion" / "index.py").read_text(encoding="utf-8")
+        self.assertIn('"INDEX_DOCUMENT_FAILED"', service)
+        self.assertNotIn("mark_index_error(pool, index_id, str(", service)
 
 
 if __name__ == "__main__":

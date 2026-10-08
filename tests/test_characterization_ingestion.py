@@ -31,9 +31,16 @@ from pydantic import ValidationError
 
 from app import main
 from app.core.errors import AppError, DocumentLimitError
+from app.repositories import indexing as index_repository
 from app.schemas.common import AiUsage
 from app.schemas.kb import RagDeleteDocumentRequest, RagDeleteKbRequest, RagIndexRequest
 from app.services import provider as provider_service
+from app.services.ingestion import chunking
+from app.services.ingestion import documents as documents_service
+from app.services.ingestion import extract as extraction
+from app.services.ingestion import index as index_service
+from app.services.ingestion.chunking import SOURCE_EVIDENCE_PROPAGATION_VERSION
+from app.services.ingestion.extract import STRUCTURED_EXTRACTION_VERSION, ExtractedSection
 
 TENANT_ID = "11111111-1111-4111-8111-111111111111"
 KB_ID = "22222222-2222-4222-8222-222222222222"
@@ -232,14 +239,14 @@ class ExtractorCharacterizationTests(TempDirTestCase):
     def test_extract_pdf_uses_pymupdf_pages_headings_and_visual_regions(self) -> None:
         path = self.dir / "source.pdf"
         write_pdf(path)
-        sections = main.extract_pdf(path)
+        sections = extraction.extract_pdf(path)
         self.assertEqual([section.page for section in sections], [1, 2])  # blank page dropped
         first, second = sections
         self.assertTrue(first.text.startswith("Chapter One Overview\n\nBody text line"))
         self.assertEqual(first.metadata["heading_candidates"], [{"title": "Chapter One Overview", "level": 1}])
         self.assertEqual((first.metadata["extraction_version"], first.metadata["content_kinds"],
                           first.metadata["reading_order"]),
-                         (main.STRUCTURED_EXTRACTION_VERSION, ["text"], "top_to_bottom_left_to_right"))
+                         (STRUCTURED_EXTRACTION_VERSION, ["text"], "top_to_bottom_left_to_right"))
         self.assertNotIn("visual_regions", first.metadata)
         self.assertEqual(second.metadata["visual_region_count"], 1)
         self.assertEqual(second.metadata["visual_regions"][0]["region_kind"], "embedded_image")
@@ -249,16 +256,16 @@ class ExtractorCharacterizationTests(TempDirTestCase):
         path = self.dir / "pages.pdf"
         write_pdf(path, pages=3)
         with patch.object(main.settings, "max_document_pages", 2), self.assertRaises(DocumentLimitError):
-            main.extract_pdf(path)
+            extraction.extract_pdf(path)
         blank = self.dir / "blank.pdf"
         write_pdf(blank, pages=0)
         with self.assertRaises(ValueError) as caught:
-            main.extract_pdf(blank)  # pymupdf finds nothing, the pypdf fallback finds nothing
+            extraction.extract_pdf(blank)  # pymupdf finds nothing, the pypdf fallback finds nothing
         self.assertTrue(str(caught.exception).startswith("OCR_REQUIRED:"))
         broken = self.dir / "broken.pdf"
         broken.write_bytes(b"%PDF-1.4 not really a pdf")
         with self.assertRaises(pymupdf.FileDataError):  # RuntimeError subclass; no pypdf fallback
-            main.extract_pdf(broken)
+            extraction.extract_pdf(broken)
         # Characterized: the failed open keeps the file handle alive until GC; on Windows the
         # file cannot be deleted before a collection (see the corrupt-PDF index test below).
         gc.collect()
@@ -267,21 +274,21 @@ class ExtractorCharacterizationTests(TempDirTestCase):
         path = self.dir / "fallback.pdf"
         write_pdf(path, pages=2)
         with patch.dict(sys.modules, {"pymupdf": None}):  # makes `import pymupdf` raise ImportError
-            sections = main.extract_pdf(path)
+            sections = extraction.extract_pdf(path)
             self.assertEqual([(s.page, s.text) for s in sections], [(1, "Bounded page 1"), (2, "Bounded page 2")])
             self.assertEqual(sections[0].metadata, {})  # pypdf path carries no structured metadata
             with patch.object(main.settings, "max_document_pages", 1), self.assertRaises(DocumentLimitError):
-                main.extract_pdf(path)
+                extraction.extract_pdf(path)
 
     def test_extract_docx_keeps_document_order_tables_and_heading_styles(self) -> None:
         path = self.dir / "guide.docx"
         write_docx(path)
-        [section] = main.extract_docx(path)
+        [section] = extraction.extract_docx(path)
         self.assertEqual(section.text, "Muc 1 Gioi thieu\n\nDoan van ban mo dau.\n\n[TABLE]\nRow 1: Cap | Kiem soat\n"
                                        "Row 2: 1 | \n\nMuc 2")
         self.assertIsNone(section.page)
         self.assertEqual(section.metadata, {
-            "extraction_version": main.STRUCTURED_EXTRACTION_VERSION, "content_kinds": ["table", "text"],
+            "extraction_version": STRUCTURED_EXTRACTION_VERSION, "content_kinds": ["table", "text"],
             "table_count": 1, "reading_order": "document_order",
             "heading_candidates": [{"title": "Muc 1 Gioi thieu", "level": 1}, {"title": "Muc 2", "level": 2}],
         })
@@ -289,7 +296,7 @@ class ExtractorCharacterizationTests(TempDirTestCase):
     def test_extract_pptx_slides_tables_notes_and_slide_limit(self) -> None:
         path = self.dir / "deck.pptx"
         write_pptx(path)
-        first, second = main.extract_pptx(path)  # blank third slide dropped
+        first, second = extraction.extract_pptx(path)  # blank third slide dropped
         self.assertEqual([(s.page, s.section) for s in (first, second)], [(1, "Slide 1"), (2, "Slide 2")])
         self.assertEqual(first.text, "Slide Title A\n\nBullet body\n\n[SPEAKER NOTES]\nSpeaker note text")
         self.assertEqual((first.metadata["content_kinds"], first.metadata["notes_included"]),
@@ -299,19 +306,19 @@ class ExtractorCharacterizationTests(TempDirTestCase):
         # Characterized: a table-only slide still reports "text" among its content kinds.
         self.assertEqual((second.metadata["content_kinds"], second.metadata["table_count"]), (["table", "text"], 1))
         with patch.object(main.settings, "max_document_pages", 2), self.assertRaises(DocumentLimitError):
-            main.extract_pptx(path)  # 3 slides including the blank one
+            extraction.extract_pptx(path)  # 3 slides including the blank one
 
     def test_extract_xlsx_renders_coordinates_formula_text_and_cell_limit(self) -> None:
         path = self.dir / "sheet.xlsx"
         write_xlsx(path)
-        [section] = main.extract_xlsx(path)  # empty sheet dropped
+        [section] = extraction.extract_xlsx(path)  # empty sheet dropped
         # Characterized: data_only=False indexes formula text ("=1+1"), not computed values.
         self.assertEqual(section.text, "[TABLE]\nRow 1: A1=Level | C1=Owner\nRow 2: A2=1 | C2==1+1")
         self.assertEqual((section.section, section.page), ("Controls", None))
         self.assertEqual(section.metadata["reading_order"], "row_major_with_coordinates")
         self.assertEqual(section.metadata["heading_candidates"], [{"title": "Controls", "level": 1}])
         with patch.object(main.settings, "max_xlsx_cells", 5), self.assertRaises(DocumentLimitError):
-            main.extract_xlsx(path)  # 2 rows x 3 cols = 6 cells
+            extraction.extract_xlsx(path)  # 2 rows x 3 cols = 6 cells
 
     def test_extract_xls_reads_xlrd_sheets_and_enforces_cell_limit(self) -> None:
         rows = [["Level", "", "Owner"], [1.0, "", "Supervisor"]]
@@ -320,13 +327,13 @@ class ExtractorCharacterizationTests(TempDirTestCase):
         path = self.dir / "legacy.xls"
         path.write_bytes(b"xls placeholder")
         with patch("xlrd.open_workbook", return_value=SimpleNamespace(sheets=lambda: sheets)) as opener:
-            [section] = main.extract_xls(path)
+            [section] = extraction.extract_xls(path)
             opener.assert_called_once_with(str(path))
             # Characterized: xlrd numeric cells are rendered as floats ("1.0").
             self.assertEqual(section.text, "[TABLE]\nRow 1: A1=Level | C1=Owner\nRow 2: A2=1.0 | C2=Supervisor")
             self.assertEqual((section.section, section.metadata["content_kinds"]), ("Levels", ["table"]))
             with patch.object(main.settings, "max_xlsx_cells", 5), self.assertRaises(DocumentLimitError):
-                main.extract_xls(path)  # nrows * ncols = 6 is checked before reading values
+                extraction.extract_xls(path)  # nrows * ncols = 6 is checked before reading values
 
     def test_extract_doc_converts_with_libreoffice_then_reads_docx(self) -> None:
         path = self.dir / "legacy.doc"
@@ -339,9 +346,10 @@ class ExtractorCharacterizationTests(TempDirTestCase):
             write_docx(outdir / f"{Path(command[-1]).stem}.docx")
             return subprocess.CompletedProcess(command, 0, b"", b"")
 
-        with patch("app.main.shutil.which", side_effect=lambda name: FAKE_SOFFICE if name == "soffice" else None), \
-                patch("app.main.run_limited_subprocess", side_effect=convert):
-            [section] = main.extract_doc(path)
+        with patch("app.services.ingestion.extract.shutil.which",
+                   side_effect=lambda name: FAKE_SOFFICE if name == "soffice" else None), \
+                patch("app.services.ingestion.extract.run_limited_subprocess", side_effect=convert):
+            [section] = extraction.extract_doc(path)
         command = seen["command"]
         self.assertEqual(command[:2] + command[3:], [FAKE_SOFFICE, "--headless", "--convert-to", "docx", "--outdir",
                                                      str(seen["outdir"]), str(path)])
@@ -356,100 +364,102 @@ class ExtractorCharacterizationTests(TempDirTestCase):
         readable = "Readable legacy body text. " * 10
         path.write_bytes(b"\x00\x01\x02" + readable.encode("ascii") + b"\x03\x7f")  # controls -> spaces
         no_output = Mock(return_value=None)
-        with patch("app.main.shutil.which", return_value=FAKE_SOFFICE), \
-                patch("app.main.run_limited_subprocess", new=no_output):
-            [section] = main.extract_doc(path)  # converter produced nothing -> byte decode fallback
+        with patch("app.services.ingestion.extract.shutil.which", return_value=FAKE_SOFFICE), \
+                patch("app.services.ingestion.extract.run_limited_subprocess", new=no_output):
+            [section] = extraction.extract_doc(path)  # converter produced nothing -> byte decode fallback
         no_output.assert_called_once()
         self.assertEqual((section.text, section.page, section.metadata), (readable.strip(), None, {}))
-        with patch("app.main.shutil.which", return_value=None):
-            self.assertEqual(main.extract_doc(path)[0].text, readable.strip())
+        with patch("app.services.ingestion.extract.shutil.which", return_value=None):
+            self.assertEqual(extraction.extract_doc(path)[0].text, readable.strip())
             path.write_bytes(b"too short")
             with self.assertRaises(ValueError):
-                main.extract_doc(path)
+                extraction.extract_doc(path)
         for error in (RuntimeError("Document conversion failed."), DocumentLimitError("timeout")):
             with self.subTest(error=type(error).__name__), \
-                    patch("app.main.shutil.which", return_value=FAKE_SOFFICE), \
-                    patch("app.main.run_limited_subprocess", side_effect=error), \
+                    patch("app.services.ingestion.extract.shutil.which", return_value=FAKE_SOFFICE), \
+                    patch("app.services.ingestion.extract.run_limited_subprocess", side_effect=error), \
                     self.assertRaises(type(error)):
-                main.extract_doc(path)  # conversion errors propagate; no byte fallback
+                extraction.extract_doc(path)  # conversion errors propagate; no byte fallback
 
     def test_extract_plain_text_decoding(self) -> None:
         path = self.dir / "notes.txt"
         path.write_bytes(b"caf\xe9  \t latte\n\n\n\nend")
         # cp1258 fallback decodes 0xE9; runs of spaces/tabs and 3+ newlines collapse.
-        self.assertEqual(main.extract_plain_text(path)[0].text, "café latte\n\nend")
+        self.assertEqual(extraction.extract_plain_text(path)[0].text, "café latte\n\nend")
         path.write_bytes("\ufeffBOM body".encode())
         # Characterized: utf-8 (not utf-8-sig) wins first, so the BOM survives clean_text.
-        self.assertEqual(main.extract_plain_text(path)[0].text, "\ufeffBOM body")
+        self.assertEqual(extraction.extract_plain_text(path)[0].text, "\ufeffBOM body")
         path.write_bytes(b"line one\r\nline two")
         # Characterized: CRLF line endings are not normalized.
-        self.assertEqual(main.extract_plain_text(path)[0].text, "line one\r\nline two")
+        self.assertEqual(extraction.extract_plain_text(path)[0].text, "line one\r\nline two")
 
 
 class ExtractSectionsRoutingTests(TempDirTestCase):
     def test_routes_by_lowercased_file_name_suffix(self) -> None:
         targets = {".pdf": "extract_pdf", ".docx": "extract_docx", ".doc": "extract_doc", ".pptx": "extract_pptx",
                    ".xlsx": "extract_xlsx", ".xls": "extract_xls"}
-        extracted = [main.ExtractedSection(text="x"), main.ExtractedSection(text=" \n ")]
+        extracted = [ExtractedSection(text="x"), ExtractedSection(text=" \n ")]
         for suffix, target in targets.items():
             path = self.dir / f"source{suffix}"
             path.write_bytes(b"placeholder")
-            with self.subTest(suffix=suffix), patch("app.main.validate_ooxml_archive"), \
-                    patch(f"app.main.{target}", return_value=extracted) as extractor:
-                sections = main.extract_sections(path, f"SOURCE{suffix.upper()}")
+            with self.subTest(suffix=suffix), patch("app.services.ingestion.extract.validate_ooxml_archive"), \
+                    patch(f"app.services.ingestion.extract.{target}", return_value=extracted) as extractor:
+                sections = extraction.extract_sections(path, f"SOURCE{suffix.upper()}")
                 extractor.assert_called_once_with(path)
                 self.assertEqual([s.text for s in sections], ["x"])  # blank sections dropped
         for suffix in (".txt", ".md", ".csv"):
             path = self.dir / f"plain{suffix}"
             path.write_bytes(b"a,b\n1,2")
             with self.subTest(suffix=suffix):
-                self.assertEqual(main.extract_sections(path, path.name)[0].text, "a,b\n1,2")
+                self.assertEqual(extraction.extract_sections(path, path.name)[0].text, "a,b\n1,2")
 
     def test_unknown_suffix_empty_content_and_size_limit(self) -> None:
         path = self.dir / "payload.exe"
         path.write_bytes(b"MZ")
         for file_name, expected in (("payload.exe", ".exe"), ("README", "README")):
             with self.subTest(file_name=file_name), self.assertRaises(ValueError) as caught:
-                main.extract_sections(path, file_name)
+                extraction.extract_sections(path, file_name)
             self.assertIn(expected, str(caught.exception))
         empty = self.dir / "empty.txt"
         empty.write_bytes(b" \n\t ")
         with self.assertRaises(ValueError):
-            main.extract_sections(empty, empty.name)
+            extraction.extract_sections(empty, empty.name)
         big = self.dir / "big.txt"
         big.write_bytes(b"12345")
         with patch.object(main.settings, "max_document_bytes", 4), \
-                patch("app.main.extract_plain_text") as extractor, self.assertRaises(DocumentLimitError):
-            main.extract_sections(big, big.name)
+                patch("app.services.ingestion.extract.extract_plain_text") as extractor, \
+                self.assertRaises(DocumentLimitError):
+            extraction.extract_sections(big, big.name)
         extractor.assert_not_called()
 
     def test_ooxml_archive_guard_runs_on_the_routing_suffix(self) -> None:
         bogus = self.dir / "bogus.docx"
         bogus.write_bytes(b"not a zip archive")
         with self.assertRaises(DocumentLimitError) as caught:
-            main.extract_sections(bogus, bogus.name)
+            extraction.extract_sections(bogus, bogus.name)
         self.assertEqual(caught.exception.safe_message, "Document archive is invalid or unsafe.")
         real = self.dir / "real.docx"
         write_docx(real)
         with patch.object(main.settings, "max_ooxml_entries", 1), self.assertRaises(DocumentLimitError):
-            main.extract_sections(real, real.name)
+            extraction.extract_sections(real, real.name)
         # Changed 2026-10-08 (SEP-1, F2): the guard used the *path* suffix while routing used file_name,
         # so a mismatched pair reached the zip parser unguarded. Both now use the routing suffix.
         disguised = self.dir / "disguised.bin"
         disguised.write_bytes(real.read_bytes())
         with patch.object(main.settings, "max_ooxml_entries", 1), self.assertRaises(DocumentLimitError):
-            main.extract_sections(disguised, "real.docx")
+            extraction.extract_sections(disguised, "real.docx")
         # The reverse pair is routed to the plain-text reader, which never decompresses: no guard needed.
         with patch.object(main.settings, "max_ooxml_entries", 1):
-            self.assertTrue(main.extract_sections(real, "real.txt")[0].text.startswith("PK"))
+            self.assertTrue(extraction.extract_sections(real, "real.txt")[0].text.startswith("PK"))
 
     def test_index_document_temp_path(self) -> None:
         root = self.dir.resolve()
         for name, suffix in ((None, ".txt"), ("A.PDF", ".pdf"), ("x.exe", ".txt"), ("../../y.docx", ".docx")):
             with self.subTest(name=name):
-                self.assertEqual(main.index_document_temp_path(str(self.dir), DOC_ID, name), root / f"{DOC_ID}{suffix}")
+                self.assertEqual(extraction.index_document_temp_path(str(self.dir), DOC_ID, name),
+                                 root / f"{DOC_ID}{suffix}")
         with self.assertRaises(ValueError):
-            main.index_document_temp_path(str(self.dir), "../not-a-uuid", "x.pdf")
+            extraction.index_document_temp_path(str(self.dir), "../not-a-uuid", "x.pdf")
 
 
 # ---- 2. index_document ---------------------------------------------------------
@@ -463,10 +473,10 @@ class IndexDocumentCharacterizationTests(unittest.TestCase):
         downloader = Mock(return_value=download, side_effect=None if download is not None
                           else AssertionError("download not expected"))
         with patch("app.services.provider.embed_texts", new=embedder), \
-                patch("app.main.download_storage_object", new=downloader), \
+                patch("app.services.ingestion.storage.download_storage_object", new=downloader), \
                 self.assertLogs(main.logger, level="INFO") as logs:
             try:
-                outcome: Any = asyncio.run(main.index_document(request or index_request(), pool=db))
+                outcome: Any = asyncio.run(index_service.index_document(request or index_request(), pool=db))
             except Exception as error:
                 outcome = error
         return outcome, embedder, downloader, logs.records
@@ -506,7 +516,7 @@ class IndexDocumentCharacterizationTests(unittest.TestCase):
         self.assertEqual([(args[8], args[9]) for args in chunk_args], [(None, None)] * 3)
         metadata = json.loads(chunk_args[0][10])
         self.assertEqual((metadata["source_name"], metadata["document_type"]), ("Safety notes", "text"))
-        self.assertEqual(metadata["structured_evidence_contract_version"], main.SOURCE_EVIDENCE_PROPAGATION_VERSION)
+        self.assertEqual(metadata["structured_evidence_contract_version"], SOURCE_EVIDENCE_PROPAGATION_VERSION)
         self.assertTrue(chunk_args[0][11].startswith("[0.50000000,-0.25000000,0.00000000,"))
         content_sha = hashlib.sha256("\n\n".join(contents).encode()).hexdigest()
         self.assertEqual(db.args_for("activate_index"), [(INDEX_ID, DOC_ID, content_sha, 3)])
@@ -538,8 +548,8 @@ class IndexDocumentCharacterizationTests(unittest.TestCase):
             write_docx(Path(directory) / "guide.docx")
             raw = (Path(directory) / "guide.docx").read_bytes()
         db = FakeDb(document=document_row(name="guide.docx", type="docx", file_path=storage_path, content=None))
-        spy = Mock(wraps=main.extract_sections)
-        with patch("app.main.extract_sections", new=spy):
+        spy = Mock(wraps=extraction.extract_sections)
+        with patch("app.services.ingestion.extract.extract_sections", new=spy):
             result, _, downloader, records = self.run_index(db, download=raw)
         downloader.assert_called_once_with(storage_path)
         temp_path, file_name = spy.call_args.args
@@ -694,7 +704,7 @@ class IndexDocumentCharacterizationTests(unittest.TestCase):
             with self.subTest(status=status, row=row):
                 db = FakeDb(document=row)
                 with self.assertRaises(HTTPException) as caught:
-                    asyncio.run(main.index_document(request, pool=db))
+                    asyncio.run(index_service.index_document(request, pool=db))
                 self.assertEqual((caught.exception.status_code, db.labels()), (status, labels))
 
 
@@ -704,13 +714,13 @@ class PersistenceHelperTests(unittest.TestCase):
     def test_load_document_404_and_start_index_row(self) -> None:
         db = FakeDb(document=None)
         with self.assertRaises(HTTPException) as caught:
-            asyncio.run(main.load_document(db, TENANT_ID, KB_ID, DOC_ID))
+            asyncio.run(index_repository.load_document(db, TENANT_ID, KB_ID, DOC_ID))
         self.assertEqual(caught.exception.status_code, 404)
         [(method, sql, args)] = db.calls
         self.assertEqual((method, args), ("fetchrow", (DOC_ID, TENANT_ID, KB_ID)))
         self.assertIn("WHERE id = $1::uuid AND tenant_id = $2::uuid AND kb_id = $3::uuid", sql)
         db = FakeDb(next_version=7)
-        self.assertEqual(asyncio.run(main.start_index_row(db, document_row(), "model-x")), INDEX_ID)
+        self.assertEqual(asyncio.run(index_repository.start_index_row(db, document_row(), "model-x")), INDEX_ID)
         self.assertEqual(db.labels(), ["supersede_running_indexes", "next_index_version", "insert_index_row"])
         self.assertEqual(db.args_for("insert_index_row"), [(TENANT_ID, KB_ID, DOC_ID, 7, "model-x")])
         self.assertIn("'running', false, $5, 768, now()", db.calls[2][1])  # dimensions are hard-coded
@@ -718,10 +728,10 @@ class PersistenceHelperTests(unittest.TestCase):
 
     def test_mark_index_error_noop_without_index_and_truncates_reason(self) -> None:
         db = FakeDb()
-        asyncio.run(main.mark_index_error(db, None, "ignored"))
-        asyncio.run(main.mark_index_error(db, "", "ignored"))
+        asyncio.run(index_repository.mark_index_error(db, None, "ignored"))
+        asyncio.run(index_repository.mark_index_error(db, "", "ignored"))
         self.assertEqual(db.calls, [])
-        asyncio.run(main.mark_index_error(db, INDEX_ID, "r" * 1500))
+        asyncio.run(index_repository.mark_index_error(db, INDEX_ID, "r" * 1500))
         [(method, sql, args)] = db.calls
         self.assertEqual((method, args[0], len(args[1])), ("execute", INDEX_ID, 1000))
         self.assertIn("WHERE id = $1::uuid AND status = 'running'", sql)
@@ -731,7 +741,8 @@ class PersistenceHelperTests(unittest.TestCase):
                                "not-a-node"], "confidence": 0.8, "structure_source": "toc"}
 
         def persist(db: FakeDb, value: dict[str, Any]) -> bool:
-            return asyncio.run(main.persist_structure_nodes_if_available(db, document_row(), INDEX_ID, value))
+            return asyncio.run(index_repository.persist_structure_nodes_if_available(db, document_row(), INDEX_ID,
+                                                                                     value))
 
         db = FakeDb()
         self.assertTrue(persist(db, structure))
@@ -753,7 +764,7 @@ class PersistenceHelperTests(unittest.TestCase):
         for table_present in (True, False):
             with self.subTest(table_present=table_present):
                 db = FakeDb(structure_table=table_present)
-                self.assertIsNone(asyncio.run(main.delete_previous_structure_nodes_if_available(
+                self.assertIsNone(asyncio.run(index_repository.delete_previous_structure_nodes_if_available(
                     db, document_row(), INDEX_ID)))
                 [(_, sql, args)] = db.calls
                 self.assertIn("AND index_id <> $4::uuid", sql)
@@ -761,19 +772,19 @@ class PersistenceHelperTests(unittest.TestCase):
         db = FakeDb(errors={"DELETE FROM rag_document_structure_nodes":
                             asyncpg.exceptions.InsufficientPrivilegeError("denied")})
         with self.assertRaises(asyncpg.exceptions.InsufficientPrivilegeError):
-            asyncio.run(main.delete_previous_structure_nodes_if_available(db, document_row(), INDEX_ID))
+            asyncio.run(index_repository.delete_previous_structure_nodes_if_available(db, document_row(), INDEX_ID))
 
     def test_build_index_diagnostics_warnings(self) -> None:
-        empty = main.build_index_diagnostics([], [], raw_bytes=0, file_name="deck.PPTX")
+        empty = chunking.build_index_diagnostics([], [], raw_bytes=0, file_name="deck.PPTX")
         # Characterized: the PPTX warning says speaker notes are not extracted, but extract_pptx does.
         self.assertEqual(empty["warnings"], [
             "PPTX_TEXT_SHAPES_ONLY; CHARTS_IMAGES_AND_SPEAKER_NOTES_ARE_NOT_EXTRACTED",
             "EXTRACTION_EMPTY", "INDEX_CONTENT_EMPTY", "STRUCTURED_EVIDENCE_REVISION_INCONSISTENT",
         ])
-        sections = [main.ExtractedSection(text="Same paragraph.", page=2),
-                    main.ExtractedSection(text="Same paragraph.", page=1)]
-        chunks = main.build_chunks(sections)
-        diagnostics = main.build_index_diagnostics(sections, chunks, raw_bytes=10, file_name="a.pdf")
+        sections = [ExtractedSection(text="Same paragraph.", page=2),
+                    ExtractedSection(text="Same paragraph.", page=1)]
+        chunks = chunking.build_chunks(sections)
+        diagnostics = chunking.build_index_diagnostics(sections, chunks, raw_bytes=10, file_name="a.pdf")
         self.assertEqual(diagnostics["warnings"], ["PDF_TEXT_LAYER_ONLY; OCR_OR_EMBEDDED_IMAGE_TEXT_IS_NOT_EXTRACTED",
                                                    "DUPLICATE_CHUNKS_DEDUPLICATED"])
         self.assertEqual((diagnostics["chunk_count"], diagnostics["candidate_chunk_count"],
@@ -788,8 +799,9 @@ class DeleteEndpointTests(unittest.TestCase):
         with self.assertRaises(ValidationError):  # ids are validated as UUIDs before any SQL runs
             RagDeleteKbRequest(tenant_id="tenant-a", kb_id=KB_ID)
         cases = (
-            ("document", lambda db: main.delete_document(document_request, pool=db), (TENANT_ID, KB_ID, DOC_ID)),
-            ("kb", lambda db: main.delete_kb(kb_request, pool=db), (TENANT_ID, KB_ID)),
+            ("document", lambda db: documents_service.delete_document(document_request, pool=db), (TENANT_ID, KB_ID,
+                                                                                                   DOC_ID)),
+            ("kb", lambda db: documents_service.delete_kb(kb_request, pool=db), (TENANT_ID, KB_ID)),
         )
         for name, call, expected_args in cases:
             for table_present in (True, False):

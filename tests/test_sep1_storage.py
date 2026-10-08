@@ -36,6 +36,8 @@ from tests.test_characterization_ingestion import (
 )
 from app.schemas.kb import RagIndexRequest
 from app.services import runtime as runtime_service
+from app.services.ingestion import index as index_service
+from app.services.ingestion import storage as storage_service
 
 ORIGIN = "https://storage.internal:8443"
 BUCKET = "landa-storage"
@@ -237,13 +239,13 @@ class IndexRouteSignedUrlTests(unittest.TestCase):
         logging.getLogger("app").addHandler(handler_obj)
         try:
             with patch("app.services.provider.embed_texts", new=FakeEmbedder()), \
-                    patch("app.main.download_storage_object", new=legacy), \
-                    patch.object(main.storage_infra, "download_to_file", new=injected), \
+                    patch("app.services.ingestion.storage.download_storage_object", new=legacy), \
+                    patch.object(storage, "download_to_file", new=injected), \
                     patch.object(main.settings, "supabase_url", ORIGIN), \
                     patch.object(main.settings, "storage_allowed_origins", ""), \
                     patch.object(main.settings, "supabase_storage_bucket", BUCKET):
                 try:
-                    outcome: Any = asyncio.run(main.index_document(request, pool=db))
+                    outcome: Any = asyncio.run(index_service.index_document(request, pool=db))
                 except Exception as error:
                     outcome = error
         finally:
@@ -291,7 +293,7 @@ class IndexRouteSignedUrlTests(unittest.TestCase):
             patch("app.services.provider.embed_texts", new=FakeEmbedder()),
             self.assertRaises(AppError) as caught,
         ):
-            asyncio.run(main.index_document(index_request(), pool=db))
+            asyncio.run(index_service.index_document(index_request(), pool=db))
         self.assertEqual((caught.exception.code, caught.exception.http_status), ("SOURCE_DOWNLOAD_URL_REQUIRED", 422))
         self.assertEqual(db.labels(), ["load_document"])
 
@@ -301,7 +303,7 @@ class IndexRouteSignedUrlTests(unittest.TestCase):
         client = Mock()
         client.storage.from_.return_value = bucket
         with patch.object(runtime_service, "supabase_client", client):
-            self.assertEqual(main.download_storage_object(f"{TENANT_ID}/kb-files/notes.txt"), b"legacy body")
+            self.assertEqual(storage_service.download_storage_object(f"{TENANT_ID}/kb-files/notes.txt"), b"legacy body")
         client.storage.from_.assert_called_once_with(main.settings.supabase_storage_bucket)
 
     def test_the_signed_url_is_a_bounded_secret_field(self) -> None:

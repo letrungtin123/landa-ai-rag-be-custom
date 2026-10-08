@@ -5,12 +5,8 @@ import json
 import unittest
 from unittest.mock import AsyncMock, patch
 
-from app.main import (
-    ExtractedSection,
-    build_source_structure_context,
-    generate_validated_lesson_author_blueprint,
-    lesson_author_blueprint,
-)
+from app.main import build_source_structure_context, generate_validated_lesson_author_blueprint, lesson_author_blueprint
+from app.services.ingestion.extract import ExtractedSection
 from app.schemas.common import AiUsage
 from app.source_structure import analyze_source_structure, compact_structure
 from app.source_chapter_policy import bind_source_chapters, resolve_source_chapter_policy

@@ -14,7 +14,7 @@ REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 if str(REPOSITORY_ROOT) not in sys.path:
     sys.path.insert(0, str(REPOSITORY_ROOT))
 
-from app.main import extract_pdf
+from app.services.ingestion.extract import extract_pdf
 from app.source_readiness import analyze_pdf_readiness
 from app.source_visual_observation import (
     build_shadow_visual_observation_plan,

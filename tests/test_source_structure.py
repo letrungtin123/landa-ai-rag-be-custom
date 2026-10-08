@@ -3,9 +3,7 @@ from __future__ import annotations
 import unittest
 
 from app.main import (
-    ExtractedSection,
     build_retrieval_diagnostics,
-    build_index_diagnostics,
     build_source_coverage_manifest,
     build_retrieval_query_texts,
     build_target_source_scopes,
@@ -19,6 +17,8 @@ from app.main import (
     target_source_scope_is_incomplete,
     validate_lesson_author_source_coverage,
 )
+from app.services.ingestion.chunking import build_index_diagnostics
+from app.services.ingestion.extract import ExtractedSection
 from app.schemas.lesson_author import RagLessonAuthorRequest
 from app.source_structure import analyze_source_structure, chunk_structure_metadata, structure_outline
 
