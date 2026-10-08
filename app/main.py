@@ -184,6 +184,7 @@ from app.lesson_author_orchestration_v2_provider import (
 from app.idm.contracts import IdmCourseSkeletonRequestV1, IdmModuleContextV1
 from app.idm.course_design import run_idm_course_design
 from app.idm.module_design import run_idm_module_design
+from app.idm.diagram import idm_source_step_diagram
 from app.idm.source_locked import idm_source_grounded_single_choice, render_idm_source_locked_html
 from app.idm.storyboard import IdmUnitDeps, run_idm_unit
 from app.idm.runtime import (
@@ -10368,6 +10369,7 @@ def build_orchestration_v2_source_locked_components(
     *,
     html_renderer: Callable[..., str] = render_source_locked_html,
     single_choice_builder: Callable[..., dict[str, Any] | None] = build_source_grounded_single_choice,
+    diagram_builder: Callable[..., dict[str, Any] | None] | None = None,
 ) -> list[dict[str, Any] | None]:
     """One source-locked component per server-owned plan slot, in plan order.
 
@@ -10381,7 +10383,8 @@ def build_orchestration_v2_source_locked_components(
     fact_by_id = {fact.fact_key: fact.fact_text for fact in contract.source_facts}
     return [_orchestration_v2_source_locked_component(contract, plan, fact_by_id, locale,
                                                       html_renderer=html_renderer,
-                                                      single_choice_builder=single_choice_builder)
+                                                      single_choice_builder=single_choice_builder,
+                                                      diagram_builder=diagram_builder)
             for plan in contract.component_plan]
 
 
@@ -10393,6 +10396,7 @@ def _orchestration_v2_source_locked_component(
     *,
     html_renderer: Callable[..., str] = render_source_locked_html,
     single_choice_builder: Callable[..., dict[str, Any] | None] = build_source_grounded_single_choice,
+    diagram_builder: Callable[..., dict[str, Any] | None] | None = None,
 ) -> dict[str, Any] | None:
     evidence_fact_ids = list(dict.fromkeys([
         *plan.source_fact_ids,
@@ -10459,11 +10463,18 @@ def _orchestration_v2_source_locked_component(
             return None
         component["words"] = words
     elif plan.type == "la_diagram":
-        component.update(_orchestration_v2_source_relationship_diagram(
-            title,
-            fact_texts,
-            locale,
-        ))
+        if diagram_builder is None:
+            component.update(_orchestration_v2_source_relationship_diagram(
+                title,
+                fact_texts,
+                locale,
+            ))
+        else:
+            # IDM units inject a step-only builder that returns None when the evidence has no steps.
+            diagram = diagram_builder(title, fact_texts, locale)
+            if diagram is None:
+                return None
+            component.update(diagram)
     else:
         return None
     return component
@@ -18759,7 +18770,7 @@ def _idm_unit_deps(request: RagLessonAuthorUnitV2Request) -> IdmUnitDeps:
                                     for item in plan.supporting_evidence_fact_ids))
     source_locked_components = build_orchestration_v2_source_locked_components(
         contract, request.locale, html_renderer=render_idm_source_locked_html,
-        single_choice_builder=idm_source_grounded_single_choice)
+        single_choice_builder=idm_source_grounded_single_choice, diagram_builder=idm_source_step_diagram)
     return IdmUnitDeps(
         build_instance_model=build_staged_instance_response_model,
         bind_instance_payload=bind_staged_instance_payload,

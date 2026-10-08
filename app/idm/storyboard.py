@@ -12,13 +12,22 @@ import asyncio
 import json
 import re
 import time
-from collections.abc import Callable, Sequence
+from collections import Counter
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any, Final, Protocol
 
 from pydantic import BaseModel, ValidationError
 
 from app.idm.contracts import IdmUnitBriefV1, brief_hash_of
+from app.idm.diagram import idm_diagram_relationships
+from app.idm.html_rules import (
+    DENSITY_CODE,
+    HtmlRuleViolation,
+    html_rule_violations,
+    minimum_visible_chars,
+    normalize_html_semantic,
+)
 from app.idm.policy import (
     EXTRA_WORDS_PER_MUST_KNOW_BLOCK,
     IDM_UNIT_WRITER_MAX_OUTPUT_TOKENS,
@@ -28,7 +37,16 @@ from app.idm.policy import (
     THINKING_W5,
     VISIBLE_CHARS_PER_WORD,
 )
-from app.idm.prompts import COMPACT_UNIT, repair_suffix, truncation_suffix, unit_writer_prompt
+from app.idm.prompts import (
+    COMPACT_UNIT,
+    html_slot_rules,
+    html_violation_line,
+    repair_suffix,
+    rule_line,
+    truncation_suffix,
+    unit_repair_suffix,
+    unit_writer_prompt,
+)
 from app.idm.qa import (
     JudgeMode,
     JudgeOutcome,
@@ -52,7 +70,6 @@ from app.idm.runtime import (
     repair_thinking,
 )
 from app.instructional_density import INSTRUCTIONAL_DENSITY_POLICY_VERSION
-from app.instructional_quality import source_relationship_pairs
 from app.lesson_author_orchestration_v2_provider import UnitGenerationContractV2
 from app.ordered_learning_content import bind_provider_semantic_versions
 
@@ -61,6 +78,40 @@ _COVERAGE_CODES: Final = frozenset({
     "COMPONENT_COVERAGE_MISSING", "COMPONENT_COVERAGE_INCOMPLETE", "INVALID_FACT_ID_ARRAY",
 })
 _MS: Final = 1000
+# Log/prompt-safe tokens: a validator code and a JSON path (never provider text).
+_SAFE_CODE_RE: Final = re.compile(r"^[A-Z][A-Z0-9_]{2,99}$")
+_SAFE_PATH_RE: Final = re.compile(r"^[A-Za-z0-9_.\[\]]{1,160}$")
+_MAX_LOGGED_DETAILS: Final = 16
+_FIELD_OF_PATH_RE: Final = re.compile(r"^components\[\d+\]\.?")
+
+
+def safe_error_details(error: BaseException) -> list[dict[str, Any]]:
+    """The validator code and path behind a rejected answer, in ``ValidationError``-like form.
+
+    Shared validators raise ``LessonAuthorProposalValidationError(code)`` (the code is the
+    message), ``LessonAuthorProposalValidationError(message, code=..., path=...)`` or
+    ``WorkflowFailure`` with ``diagnostics.validation_finding``; only tokens that look like a
+    code or a JSON path are kept, so provider text can never reach a log line or a prompt.
+    """
+
+    diagnostics = getattr(error, "diagnostics", None)
+    finding = diagnostics.get("validation_finding") if isinstance(diagnostics, dict) else None
+    candidates: list[tuple[Any, Any]] = []
+    if isinstance(finding, dict):
+        candidates.append((finding.get("code"), finding.get("path")))
+    # A code raised as the message carries no location (its ``path`` is the class default "unit").
+    candidates.append((str(error), None))
+    candidates.append((getattr(error, "code", None), getattr(error, "path", None)))
+    for code, path in candidates:
+        if isinstance(code, str) and _SAFE_CODE_RE.fullmatch(code):
+            return [{"type": code, "loc": [path] if isinstance(path, str) and _SAFE_PATH_RE.fullmatch(path) else []}]
+    if isinstance(error, json.JSONDecodeError):
+        return [{"type": "json_invalid", "loc": []}]
+    return [{"type": type(error).__name__, "loc": []}]
+
+
+def _safe_path(path: Any) -> str | None:
+    return path if isinstance(path, str) and _SAFE_PATH_RE.fullmatch(path) else None
 
 
 class UnitFinding(Protocol):
@@ -128,14 +179,13 @@ def build_idm_expected(contract: UnitGenerationContractV2, brief: IdmUnitBriefV1
     supporting = list(dict.fromkeys(fact_id for plan in contract.component_plan
                                     for fact_id in plan.supporting_evidence_fact_ids))
     text_by_id = {fact.fact_key: fact.fact_text for fact in contract.source_facts}
+    # The same step construction as the IDM diagram fallback (app.idm.diagram), so a provider
+    # diagram is never required to draw a slogan or heading the fallback would refuse (run e869f43a).
     diagrams = {
-        plan.component_plan_id: [
-            [left, right, *([relation] if relation else [])]
-            for left, right, relation in source_relationship_pairs(
-                text_by_id[fact_id] for fact_id in dict.fromkeys([*plan.source_fact_ids,
-                                                                  *plan.supporting_evidence_fact_ids])
-                if fact_id in text_by_id)
-        ]
+        plan.component_plan_id: idm_diagram_relationships(
+            text_by_id[fact_id] for fact_id in dict.fromkeys([*plan.source_fact_ids,
+                                                              *plan.supporting_evidence_fact_ids])
+            if fact_id in text_by_id)
         for plan in contract.component_plan if plan.type == "la_diagram"
     }
     return {
@@ -154,12 +204,14 @@ def _strip_learning_block_ids(value: Any) -> Any:
     """Teaching-group ids are server-owned; V2 IDM plans carry none."""
 
     slots = value.get("components") if isinstance(value, dict) else None
-    if isinstance(slots, dict):
-        for payload in slots.values():
-            semantic = payload.get("semantic_content") if isinstance(payload, dict) else None
-            for section in (semantic or {}).get("sections", []) if isinstance(semantic, dict) else []:
-                if isinstance(section, dict):
-                    section["learning_block_ids"] = []
+    # A writer answer addresses slots by key ({"c0": ...}); a decoded repair delta is a list.
+    payloads = slots.values() if isinstance(slots, dict) else slots if isinstance(slots, list) else []
+    for payload in payloads:
+        semantic = payload.get("semantic_content") if isinstance(payload, dict) else None
+        sections = semantic.get("sections") if isinstance(semantic, dict) else None
+        for section in sections if isinstance(sections, list) else []:
+            if isinstance(section, dict):
+                section["learning_block_ids"] = []
     return value
 
 
@@ -193,6 +245,10 @@ class IdmUnitWriter:
         self.owned_text = [" ".join(self.text_by_id[key] for key in slot.owned_fact_keys if key in self.text_by_id)
                            for slot in brief.components]
         self.codes: list[str] = []
+        self.budget: dict[str, Any] = self.expected["instructional_output_budget"]
+        self.min_html_chars = minimum_visible_chars(self.budget.get("source_content_chars"))
+        # Deterministic html fixes applied before validation (counted, never content).
+        self.html_fixes: Counter[str] = Counter()
 
     # -- prompts ----------------------------------------------------------------------------
     def writer_prompt(self) -> str:
@@ -217,16 +273,114 @@ class IdmUnitWriter:
                         "job_aid_signpost": brief.job_aid_signpost},
             facts=[(fact.fact_key, fact.fact_text, None) for fact in self.contract.source_facts],
             context_facts=[(item.fact_key, item.fact_text, None) for item in brief.lesson_context_facts],
+            html_rules=html_slot_rules(max_words=self.budget.get("max_words"),
+                                       max_chars=self.budget.get("max_visible_chars"),
+                                       min_chars=self.min_html_chars)
+            if any(slot.type == "html" for slot in brief.components) else "",
         )
 
+    def html_violations(self, component: Any) -> list[HtmlRuleViolation]:
+        if not isinstance(component, dict) or component.get("type") != "html":
+            return []
+        return html_rule_violations(component.get("semantic_content"), budget=self.budget,
+                                    min_chars=self.min_html_chars)
+
+    def rule_lines(self, unit: dict[str, Any], issues: Sequence[tuple[str, int]],
+                   locations: Mapping[tuple[str, int], str]) -> list[str]:
+        """Precise failing rules per slot for the repair prompt (codes, locations, server numbers)."""
+
+        components = unit.get("components", [])
+        lines: list[str] = []
+        for index in sorted({index for _code, index in issues}):
+            slot = f"c{index}"
+            component = components[index] if 0 <= index < len(components) else None
+            violations = self.html_violations(component)
+            only_density = bool(violations) and all(item.code == DENSITY_CODE for item in violations)
+            lines.extend(html_violation_line(slot, item, only_density=only_density) for item in violations)
+            explained = {item.code for item in violations}
+            if any(item.structural for item in violations):
+                explained.add("HTML_SEMANTIC_INVALID")
+            if any(item.code == "HTML_PRESENTATION_MARKUP" for item in violations):
+                explained.add("HTML_PRESENTATION_FORBIDDEN")
+            for code, issue_index in issues:
+                if issue_index == index and code not in explained:
+                    field = _FIELD_OF_PATH_RE.sub("", locations.get((code, index), ""))
+                    lines.append(rule_line(slot, code, f"{slot}.{field}" if field else slot))
+                    explained.add(code)
+        return lines
+
     # -- acceptance --------------------------------------------------------------------------
+    def normalize_component(self, index: int, component: Any) -> Any:
+        """Deterministic, meaning-preserving html fixes before validation (``app.idm.html_rules``)."""
+
+        plan_type = self.plans[index]["type"] if 0 <= index < len(self.plans) else None
+        if plan_type != "html" or not isinstance(component, dict) or not isinstance(
+                component.get("semantic_content"), dict):
+            return component
+        semantic, fixes = normalize_html_semantic(component["semantic_content"])
+        if not fixes:
+            return component
+        self.html_fixes.update(fixes)
+        self.runtime.adjustments.update({f"w5_html_{key}": count for key, count in fixes.items()})
+        return {**component, "semantic_content": semantic}
+
     def bind(self, text: str) -> dict[str, Any]:
         try:
             value = _strip_learning_block_ids(bind_provider_semantic_versions(json.loads(text)))
             unit = self.deps.bind_instance_payload(value, self.expected)
         except self.deps.recoverable_errors as error:
-            raise IdmResponseInvalidError("IDM_W5_INSTANCE_INVALID", []) from error
-        return {**unit, "component_plan": list(self.plans)}
+            raise IdmResponseInvalidError("IDM_W5_INSTANCE_INVALID", safe_error_details(error)) from error
+        components = [self.normalize_component(index, component)
+                      for index, component in enumerate(unit.get("components", []))]
+        return {**unit, "components": components, "component_plan": list(self.plans)}
+
+    def decode_repair(self, text: str, unit: dict[str, Any], targets: list[int],
+                      coverage: list[int]) -> dict[str, Any]:
+        """The addressed slot payloads of a repair answer, prepared exactly like a writer answer.
+
+        The repair wire schema hides the server-owned ``semantic_content.version``; without the
+        stamp every html repair failed the shared reader (run e869f43a: 4 x IDM_W5_REPAIR_INVALID).
+        """
+
+        delta: dict[str, Any] = _strip_learning_block_ids(bind_provider_semantic_versions(
+            self.deps.decode_repair(text, unit, targets, coverage, {})))
+        changes = delta.get("components") if isinstance(delta, dict) else None
+        if isinstance(changes, list):
+            delta = {**delta, "components": [
+                self.normalize_component(change["component_index"], change)
+                if isinstance(change, dict) and type(change.get("component_index")) is int else change
+                for change in changes]}
+        return delta
+
+    def delta_details(self, delta: Any) -> list[dict[str, Any]]:
+        """Safe html rule codes and paths of the slots a rejected repair answer addressed."""
+
+        changes = delta.get("components") if isinstance(delta, dict) else None
+        details: list[dict[str, Any]] = []
+        for change in changes if isinstance(changes, list) else []:
+            index = change.get("component_index") if isinstance(change, dict) else None
+            if type(index) is not int or not 0 <= index < len(self.plans) or "semantic_content" not in change:
+                continue
+            component = {"type": self.plans[index]["type"], "semantic_content": change["semantic_content"]}
+            details.extend({"type": item.code, "loc": [f"components[{index}].{item.location}"]}
+                           for item in self.html_violations(component))
+        return details[:_MAX_LOGGED_DETAILS]
+
+    def log_findings(self, answer: str, draft: _Draft, finding: UnitFinding | None,
+                     idm: Sequence[tuple[str, int]]) -> None:
+        """One safe line per accepted-but-invalid writer/repair answer: codes, paths, numbers."""
+
+        slots = sorted({index for _code, index in idm} | ({slot} if (slot := _slot_of(finding)) is not None else set()))
+        components = draft.unit.get("components", [])
+        html_rules = [item.as_log(index) for index in slots if 0 <= index < len(components)
+                      for item in self.html_violations(components[index])]
+        log_stage("idm_unit_validation", {
+            "correlation_id": self.runtime.correlation_id, "unit_path": self.contract.unit_path, "answer": answer,
+            "finding": None if finding is None else f"{finding.code}@{_safe_path(finding.path) or ''}",
+            "idm_findings": [f"{code}@components[{index}]" for code, index in idm],
+            "html_rules": html_rules[:_MAX_LOGGED_DETAILS], "html_fixes": dict(sorted(self.html_fixes.items())),
+            "fallback_slots": list(draft.fallback_slots),
+        })
 
     def problems(self, draft: _Draft) -> tuple[UnitFinding | None, list[tuple[str, int]]]:
         """First shared-validator finding plus IDM slot findings (fallback slots exempt)."""
@@ -248,20 +402,24 @@ class IdmUnitWriter:
             invocation_kind="writer" if not repair else "repair",
         )
 
-    async def repair_slots(self, draft: _Draft, issues: Sequence[tuple[str, int]]) -> _Draft:
+    async def repair_slots(self, draft: _Draft, issues: Sequence[tuple[str, int]],
+                           locations: Mapping[tuple[str, int], str] | None = None) -> _Draft:
         targets = sorted({index for _code, index in issues})
         coverage = sorted({index for code, index in issues if code in _COVERAGE_CODES})
         model = self.deps.build_repair_model(draft.unit, targets, coverage)
 
         def parse(text: str) -> dict[str, Any]:
+            delta: Any = None
             try:
-                delta = self.deps.decode_repair(text, draft.unit, targets, coverage, {})
+                delta = self.decode_repair(text, draft.unit, targets, coverage)
                 return self.deps.merge_repair(draft.unit, delta, targets, coverage)
             except self.deps.recoverable_errors as error:
-                raise IdmResponseInvalidError("IDM_W5_REPAIR_INVALID", []) from error
+                details = (safe_error_details(error) + self.delta_details(delta))[:_MAX_LOGGED_DETAILS]
+                raise IdmResponseInvalidError("IDM_W5_REPAIR_INVALID", details) from error
 
-        prompt = self.writer_prompt() + repair_suffix([{"code": code, "path": f"components[{index}]"}
-                                                       for code, index in issues])
+        prompt = self.writer_prompt() + unit_repair_suffix(
+            [{"code": code, "path": f"components[{index}]"} for code, index in issues],
+            self.rule_lines(draft.unit, issues, locations or {}))
         unit = await idm_generate(
             self.runtime, stage="idm_w5_repair", prompt=prompt, response_schema=model, parse=parse,
             max_output_tokens=IDM_UNIT_WRITER_MAX_OUTPUT_TOKENS, thinking_level=THINKING_W5,
@@ -298,27 +456,34 @@ class IdmUnitWriter:
         finding, idm = self.problems(draft)
         if finding is None and not idm:
             return draft
+        self.log_findings("writer", draft, finding, idm)
         self.codes.extend([finding.code] if finding is not None else [])
         self.codes.extend(code for code, _index in idm)
         issues = list(idm)
         slot = _slot_of(finding)
         if finding is not None and slot is None:
             return None
+        locations: dict[tuple[str, int], str] = {}
         if finding is not None and slot is not None:
             issues.append((finding.code, slot))
+            locations[(finding.code, slot)] = _safe_path(finding.path) or ""
         # A failed repair (budget, provider, invalid answer) falls through to slot fallback.
+        repaired = False
         try:
-            draft = await self.repair_slots(draft, issues)
+            draft = await self.repair_slots(draft, issues, locations)
+            repaired = True
         except (IdmBudgetError, IdmResponseInvalidError):
             pass  # falls through to the per-slot fallback below
         except IdmProviderError as error:
             if error.terminal:
                 raise
         # Each pass settles one slot (fallback or review), so the bound is never the limiting factor.
-        for _ in range(2 * len(self.plans) + 1):
+        for attempt in range(2 * len(self.plans) + 1):
             finding, idm = self.problems(draft)
             if finding is None and not idm:
                 return draft
+            if repaired and attempt == 0:
+                self.log_findings("repair", draft, finding, idm)
             bad = _slot_of(finding) if finding is not None else idm[0][1]
             if bad is None or bad in draft.fallback_slots:
                 return None
@@ -403,7 +568,7 @@ async def run_idm_unit(
         "correlation_id": runtime.correlation_id, "unit_path": contract.unit_path,
         "judge_status": judge.status, "finding_counts": quality.finding_counts.model_dump(),
         "repair_applied": draft.repair_applied, "fallback_slots": draft.fallback_slots,
-        "review_slots": draft.review_slots,
+        "review_slots": draft.review_slots, "html_fixes": dict(sorted(writer.html_fixes.items())),
         "whole_fallback": whole_fallback, "codes": sorted(set(writer.codes)),
         "call_count": runtime.usage.calls, "duration_ms": int((time.perf_counter() - started) * _MS),
     })
@@ -434,9 +599,12 @@ async def _provider_draft(writer: IdmUnitWriter) -> _Draft | None:
             unit = await writer.write(repair, thinking)
         except IdmResponseInvalidError as error:
             writer.codes.append(error.code)
-            # A cut answer is retried shorter and with less thinking, never with the same prompt.
+            # A cut answer is retried shorter and with less thinking, never with the same prompt; any
+            # other rejection names the validator codes and paths behind it (never the answer itself).
+            details = [{"code": str(item.get("type")), "path": ".".join(str(part) for part in item.get("loc", []))}
+                       for item in error.errors if isinstance(item, dict)]
             repair = (truncation_suffix(COMPACT_UNIT) if error.code == "IDM_RESPONSE_TRUNCATED"
-                      else repair_suffix([{"code": error.code, "path": "components"}]))
+                      else repair_suffix([{"code": error.code, "path": "components"}, *details]))
             thinking = repair_thinking(error.code, thinking)
             continue
         return await writer.settle(_Draft(unit, []))

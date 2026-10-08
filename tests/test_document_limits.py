@@ -68,6 +68,7 @@ class DocumentLimitTests(unittest.TestCase):
         with (
             patch("app.core.document_limits.subprocess.Popen", return_value=process),
             patch("app.core.document_limits.subprocess.run") as kill_tree,
+            patch("app.core.document_limits.os.kill"),  # never signal a real pid on POSIX
             self.assertRaises(DocumentLimitError),
         ):
             run_limited_subprocess(["soffice", "--headless"], timeout_seconds=1)
@@ -75,6 +76,30 @@ class DocumentLimitTests(unittest.TestCase):
         process.wait.assert_called_once()
         if kill_tree.called:
             self.assertIn("taskkill", kill_tree.call_args.args[0])
+
+    def _posix_timeout(self, kill_side_effect: BaseException | None) -> Mock:
+        process = Mock()
+        process.pid = 1234
+        process.communicate.side_effect = subprocess.TimeoutExpired(["soffice"], 1)
+        with (
+            patch("app.core.document_limits.os.name", "posix"),
+            patch("app.core.document_limits.subprocess.Popen", return_value=process),
+            patch("app.core.document_limits.os.kill", side_effect=kill_side_effect) as kill_group,
+            self.assertRaises(DocumentLimitError),
+        ):
+            run_limited_subprocess(["soffice", "--headless"], timeout_seconds=1)
+        process.kill.assert_called_once()
+        return kill_group
+
+    def test_posix_timeout_kills_the_process_group(self) -> None:
+        kill_group = self._posix_timeout(None)
+        kill_group.assert_called_once()
+        self.assertEqual(kill_group.call_args.args[0], -1234)
+
+    def test_posix_timeout_tolerates_an_exited_process_group(self) -> None:
+        for error in (ProcessLookupError(), PermissionError()):
+            with self.subTest(error=type(error).__name__):
+                self._posix_timeout(error).assert_called_once()
 
 
 if __name__ == "__main__":

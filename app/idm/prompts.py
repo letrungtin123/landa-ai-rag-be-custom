@@ -2,8 +2,8 @@
 
 Builders are pure string functions. Every document-derived value is wrapped in a
 tagged block whose closing tag is neutralised (SEC-9); the preamble tells the
-model that tagged text is data. Repair prompts list only codes and paths, never
-source text or the rejected answer.
+model that tagged text is data. Repair prompts list only codes, paths, server-owned rule
+text and server-measured numbers, never source text or the rejected answer.
 """
 
 from __future__ import annotations
@@ -12,6 +12,17 @@ import json
 from collections.abc import Iterable, Sequence
 from typing import Any, Final, Literal
 
+from app.idm.html_rules import (
+    DENSITY_CODE,
+    GROUP_LIMITS,
+    MAX_BLOCKS_PER_SECTION,
+    MAX_HEADING_CHARS,
+    MAX_ROW_LABEL_CHARS,
+    MAX_ROW_VALUE_CHARS,
+    MAX_ROWS,
+    MAX_SECTIONS,
+    HtmlRuleViolation,
+)
 from app.idm.policy import IDM_PROMPT_POLICY_VERSION
 from app.prompt_safety import untrusted_block
 
@@ -376,12 +387,13 @@ def unit_writer_prompt(
     unit_brief: dict[str, Any],
     facts: Iterable[tuple[str, str, Sequence[str] | None]],
     context_facts: Iterable[tuple[str, str, Sequence[str] | None]],
+    html_rules: str = "",
 ) -> str:
     return preamble(locale) + f"""
 TASK: Week 5 - write the development-ready storyboard content for ONE unit. The plan is approved; do not
 redesign it. Produce exactly the component slots in UNIT_BRIEF (c0, c1, ...), in order, as payloads matching the
 schema.
-
+{html_rules}
 Writing rules (learner-facing, {locale_name(locale)}):
 - Write for TARGET_AUDIENCE: short sentences, active voice, direct instructions; explain a necessary term the
   first time; split long text into short paragraphs, bullets, steps or tables; each heading says which question
@@ -415,6 +427,175 @@ Writing rules (learner-facing, {locale_name(locale)}):
 {untrusted_block("SOURCE_FACTS", fact_lines(facts))}
 {untrusted_block("LESSON_CONTEXT_FACTS", fact_lines(context_facts))}
 """
+
+
+def html_slot_rules(*, max_words: int | None, max_chars: int | None, min_chars: int | None) -> str:
+    """The ordered-content rules the server enforces on every ``html`` slot (stated up front)."""
+
+    paragraphs, paragraph_chars = GROUP_LIMITS["paragraphs"]
+    bullets, bullet_chars = GROUP_LIMITS["bullet_points"]
+    steps, step_chars = GROUP_LIMITS["ordered_steps"]
+    warnings, warning_chars = GROUP_LIMITS["warnings"]
+    length = ""
+    if max_words is not None and max_chars is not None:
+        length = (f"\n- Length of EACH html slot: at most {max_words} words and at most {max_chars} visible "
+                  "characters (paragraph, task and warning text, list items and table cells; headings are not "
+                  "counted; every space-separated word or syllable counts)")
+        if min_chars is not None:
+            length += f"; at least {min_chars} visible characters"
+        length += ". Stay well inside the budget: teach only what the practice needs."
+    return f"""
+HTML SLOT FORMAT (type "html"). The server renders the HTML itself and rejects an answer that breaks ANY rule:
+- Write the slot only as semantic_content = {{"sections": [...]}} and set "html" to null. Every string is plain
+  text: no HTML tags (no <p>, <div>, <span>, <h1>-<h6>, <ul>, <li>, <br>, <table>), no markdown (#, **, "- "
+  bullets inside a text), no style or class attributes.
+- Headings: one heading level only. Each section has exactly one "heading" (plain text, 1-{MAX_HEADING_CHARS}
+  characters, saying which question the section answers). Never put a sub-heading inside blocks: start a new
+  section instead. 1-{MAX_SECTIONS} sections per slot, 1-{MAX_BLOCKS_PER_SECTION} blocks per section.
+- Block structure: kind paragraph, task or warning fills only "text"; kind bullets or steps fills only "items"
+  (non-empty strings; steps in order); kind table fills only "rows", each {{"label": ..., "value": ...}} with both
+  non-empty. Leave the other fields empty (text null, items [], rows []). A sentence that introduces a list or a
+  table is its own paragraph block placed before it. No empty strings, no empty blocks.
+- Whole-slot limits, counted over ALL sections together: at most {paragraphs} paragraph+task blocks (each at most
+  {paragraph_chars} characters); at most {bullets} bullet items (each at most {bullet_chars}); at most {steps} step
+  items (each at most {step_chars}); at most {warnings} warning blocks (each at most {warning_chars}); at most
+  {MAX_ROWS} table rows (label at most {MAX_ROW_LABEL_CHARS}, value at most {MAX_ROW_VALUE_CHARS} characters).
+  Group parallel points into one bullets block instead of many short paragraphs.
+- No FAQ section and no question-and-answer pairs inside html (questions belong to la_faq or problem slots).{length}
+"""
+
+
+# Short, server-owned rule text per validator code for repair prompts (never provider text).
+UNIT_RULE_TEXT: Final[dict[str, str]] = {
+    "HTML_SEMANTIC_INVALID": "semantic_content must follow the HTML SLOT FORMAT above",
+    "HTML_SEMANTIC_REQUIRED": 'write the slot as semantic_content {"sections": [...]} with html null',
+    "HTML_VERSION_INVALID": "do not write a version field; the server sets it",
+    "HTML_LEGACY_FIELDS": 'semantic_content holds only "sections": put heading/paragraphs/bullet_points/'
+                          "ordered_steps/warnings/comparison_rows content into section blocks",
+    "HTML_UNKNOWN_FIELD": 'semantic_content holds only "sections"',
+    "HTML_SECTION_COUNT": f"1-{MAX_SECTIONS} sections per slot",
+    "HTML_SECTION_INVALID": 'a section has only "heading" and "blocks"',
+    "HTML_HEADING_INVALID": f"each section heading is plain text of 1-{MAX_HEADING_CHARS} characters",
+    "HTML_BLOCK_COUNT": f"each section has 1-{MAX_BLOCKS_PER_SECTION} blocks; start a new section or merge short "
+                        "paragraphs",
+    "HTML_BLOCK_KIND_INVALID": "block kind is one of paragraph, task, warning, bullets, steps, table",
+    "HTML_BLOCK_FIELDS_MIXED": "a block fills only the field of its kind (paragraph/task/warning: text; "
+                               "bullets/steps: items; table: rows); put an introduction sentence in its own "
+                               "paragraph block before the list or table",
+    "HTML_BLOCK_CONTENT_REQUIRED": "the field of the block's kind needs non-empty content; remove empty blocks",
+    "HTML_ITEM_INVALID": "every text and list item is a non-empty plain string",
+    "HTML_TEXT_TOO_LONG": "shorten this text or split it into a list",
+    "HTML_ROW_INVALID": 'every table row is {"label", "value"} with both non-empty',
+    "HTML_ROW_TOO_LONG": f"table label at most {MAX_ROW_LABEL_CHARS} characters, value at most {MAX_ROW_VALUE_CHARS}",
+    "HTML_TOO_MANY_PARAGRAPHS": "too many paragraph+task blocks in the whole slot (all sections together): merge "
+                                "related short paragraphs or turn parallel points into one bullets block",
+    "HTML_TOO_MANY_BULLETS": "too many bullet items in the whole slot: keep only the points the practice needs",
+    "HTML_TOO_MANY_STEPS": "too many step items in the whole slot",
+    "HTML_TOO_MANY_WARNINGS": "too many warning blocks in the whole slot: merge related warnings",
+    "HTML_TOO_MANY_ROWS": "too many table rows in the whole slot",
+    "HTML_PRESENTATION_MARKUP": "plain text only: no HTML tags (div, span, style, script, iframe) and no style or "
+                                "class attributes",
+    "HTML_PRESENTATION_FORBIDDEN": "plain text only: no HTML tags (div, span, style, script, iframe) and no style "
+                                   "or class attributes",
+    "HTML_CONTENT_REQUIRED": "fill semantic_content with at least one section",
+    "HTML_INSTRUCTIONAL_DENSITY_EXCEEDED": "condense the slot to the length budget in the HTML SLOT FORMAT",
+    "HTML_INSUFFICIENT_DEPTH": "explain the owned facts in more visible text (see the length rule above)",
+    "HTML_FAQ_BOUNDARY_VIOLATION": "no FAQ heading and no question-and-answer pairs inside html",
+    "HTML_GENERIC_REVIEW_COPY": "write instruction for the learner, not notes about reviewing the source",
+    "HTML_NON_INSTRUCTIONAL_CONTACT_COPY": "remove URLs, websites and e-mail addresses",
+    "HTML_OCR_NOISE": "remove runs of repeated characters",
+    "HTML_DUPLICATE_BLOCK": "do not repeat the same paragraph, list item or table cell",
+    "REQUIRED_ARTIFACT_NOT_PRESERVED": "keep the list, table or warning structure the plan requires for this slot",
+    "LEARNER_CONTENT_SOURCE_ATTRIBUTION": "no attribution to the source document in learner text",
+    "LEARNER_CONTENT_SOURCE_LOCATOR": "no page, slide or section locators in learner text",
+    "LEARNER_CONTENT_SOURCE_FILENAME": "no file names in learner text",
+    "LEARNER_CONTENT_INTERNAL_IDENTIFIER": "no fact keys or internal IDs in learner text",
+    "COMPONENT_PAYLOAD_SCHEMA_INVALID": "fill every required field of this slot type with valid values",
+    "PROBLEM_SINGLE_CHOICE_REQUIRED": 'problem_type is "multiple_choice" with exactly one correct choice',
+    "PROBLEM_QUESTION_REQUIRED": "write the question",
+    "PROBLEM_CONTENT_INCOMPLETE": "a complete question (at least 20 characters) and 3-6 choices",
+    "PROBLEM_CHOICE_INVALID": "every choice is a complete option of at least 8 characters",
+    "PROBLEM_CHOICES_INVALID": "every choice has non-empty text",
+    "PROBLEM_DUPLICATE_CHOICES": "choices must differ",
+    "PROBLEM_CORRECT_ANSWER_INVALID": "distinct choices and exactly one choice with correct true",
+    "PROBLEM_EXPLANATION_INCOMPLETE": "an explanation of at least 20 characters that states the source criterion",
+    "FAQ_ITEM_COUNT_INVALID": "at least two question-and-answer items",
+    "FAQ_ITEM_INVALID": 'every item is {"question", "answer"}',
+    "FAQ_DUPLICATE_QUESTION": "questions must differ",
+    "FAQ_CLARIFICATION_INCOMPLETE": "each question at least 14 characters; each answer a complete sentence of at "
+                                    "least 40 characters that starts with a capital letter",
+    "FAQ_GENERIC_REVIEW_COPY": "answer a learner question, not a note about reviewing the source",
+    "SORTABLE_STEP_INCOMPLETE": "at least three complete steps of at least 14 characters each",
+    "SORTABLE_DUPLICATE_STEP": "steps must differ",
+    "SORTABLE_STEP_FRAGMENT": "every step is a complete step that starts with a capital letter",
+    "SORTABLE_GENERIC_SOURCE_ORDER": "order a real procedure, not the display order of the source",
+    "DIAGRAM_SOURCE_RELATION_MISSING": "keep every step chain the owned facts write with arrows (A -> B -> C) as "
+                                       "edges in the same direction between nodes labelled with exactly those terms",
+    "COMPONENT_COVERAGE_MISSING": "covered_source_fact_ids lists exactly the owned fact keys of this slot",
+    "COMPONENT_COVERAGE_INCOMPLETE": "covered_source_fact_ids lists exactly the owned fact keys of this slot",
+    "INVALID_FACT_ID_ARRAY": "covered_source_fact_ids lists exactly the owned fact keys of this slot",
+    "IDM_W5_PRACTICE_INCOMPLETE": "exactly one correct choice, and an explanation that labels each option "
+                                  "(A - ...; B - ...) and says why it is right or wrong",
+    "IDM_W5_FEEDBACK_NOT_TEACHING": "feedback of at least 60 characters that names the criterion; never only "
+                                    "Correct/Incorrect",
+    "IDM_W5_ANSWER_LEAK": "earlier html must not reveal the correct answer of this question",
+    "IDM_W5_VERBATIM_COPY": "rewrite for the learner instead of copying the source text",
+    "IDM_W6_Q1": "a learner can do the practice using only what this lesson taught",
+    "IDM_W6_Q2": "rewrite for the learner; do not paste the source (exact rules and definitions may stay)",
+    "IDM_W6_Q3": "context, task, input, one correct answer and feedback are present and consistent",
+    "IDM_W6_Q4": "feedback names the criterion and explains why each option is right or wrong",
+    "IDM_W6_Q5": "the correct answer follows from the source facts; no invented rule, threshold or exception",
+    "IDM_W6_Q6": "the practice matches the Must Do action type and Bloom level",
+    "IDM_W6_Q7": "no long theory runs; context under 20%; detail matches detail_level",
+    "IDM_W6_Q8": "clear language for the audience; terms explained; no internal IDs or citations",
+    "IDM_W6_Q9": "every component serves the stated Must Do, practice or support",
+}
+# A condensed slot aims below the hard limit, so a near miss does not fail again.
+DENSITY_TARGET_SHARE: Final = 0.9
+_MAX_RULE_LINES: Final = 40
+
+
+def _metrics_text(violation: HtmlRuleViolation) -> str:
+    measured = ", ".join(f"{value} {unit}" for unit, value, _limit in violation.metrics)
+    limits = ", ".join(f"{limit} {unit}" for unit, _value, limit in violation.metrics)
+    return f"measured {measured}; limit {limits}"
+
+
+def html_violation_line(slot: str, violation: HtmlRuleViolation, *, only_density: bool = False) -> str:
+    """One repair line: slot, code, JSON location, the rule and the server-measured numbers."""
+
+    location = f"{slot}.{violation.location}"
+    if violation.code == DENSITY_CODE and violation.metrics:
+        targets = " and ".join(f"{int(limit * DENSITY_TARGET_SHARE)} {unit}"
+                               for unit, _value, limit in violation.metrics)
+        line = (f"{slot} {violation.code} at {location}: {_metrics_text(violation)}. Condense this slot to at "
+                f"most {targets}: cut repetition, long introductions and examples the brief does not ask for; keep "
+                "every rule, condition, number and exception of the owned facts; prefer short bullets to long "
+                "paragraphs; do not move content into other slots.")
+        if only_density:
+            line += " Everything else in this slot is valid: keep its sections and their order, only shorten it."
+        return line
+    rule = UNIT_RULE_TEXT.get(violation.code)
+    numbers = f" ({_metrics_text(violation)})" if violation.metrics else ""
+    return f"{slot} {violation.code} at {location}" + (f": {rule}" if rule else "") + numbers
+
+
+def rule_line(slot: str, code: str, location: str) -> str:
+    """A repair line for a validator code without a finer IDM diagnosis."""
+
+    rule = UNIT_RULE_TEXT.get(code)
+    return f"{slot} {code} at {location}" + (f": {rule}" if rule else "")
+
+
+def unit_repair_suffix(issues: Sequence[dict[str, str]], rules: Sequence[str]) -> str:
+    """``repair_suffix`` plus the precise failing rules per slot (code, location, rule, numbers)."""
+
+    suffix = repair_suffix(issues)
+    if not rules:
+        return suffix
+    lines = "\n".join(f"- {line}" for line in list(dict.fromkeys(rules))[:_MAX_RULE_LINES])
+    return (suffix + "FAILING_RULES (fix every one; a location is a JSON path inside your answer, c0 = "
+            "components.c0):\n" + lines + "\n")
 
 
 def judge_prompt(

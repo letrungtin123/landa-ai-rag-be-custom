@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import contextlib
 import os
 import signal
 import subprocess
+import sys
 import zipfile
 from collections.abc import Sequence
 from pathlib import Path
@@ -61,7 +63,10 @@ def run_limited_subprocess(
     *,
     timeout_seconds: int,
 ) -> subprocess.CompletedProcess[bytes]:
-    creation_flags = subprocess.CREATE_NEW_PROCESS_GROUP if os.name == "nt" else 0
+    # An if-statement on sys.platform (not os.name) so mypy type-checks it on Windows and Linux.
+    creation_flags = 0
+    if sys.platform == "win32":
+        creation_flags = subprocess.CREATE_NEW_PROCESS_GROUP
     process = subprocess.Popen(  # noqa: S603 - command is server-owned and contains no shell.
         list(command),
         stdout=subprocess.PIPE,
@@ -81,7 +86,10 @@ def run_limited_subprocess(
             )
         else:
             kill_signal = getattr(signal, "SIGKILL", signal.SIGTERM)
-            os.kill(-process.pid, kill_signal)
+            # start_new_session=True made the child a group leader: kill the whole group. A group
+            # that already exited is fine; the timeout is still the error to report.
+            with contextlib.suppress(ProcessLookupError, PermissionError):
+                os.kill(-process.pid, kill_signal)
         process.kill()
         process.wait()
         raise DocumentLimitError("Document conversion exceeded the configured timeout.") from error

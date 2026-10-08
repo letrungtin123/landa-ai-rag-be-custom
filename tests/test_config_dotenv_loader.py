@@ -21,7 +21,8 @@ class RuntimeDotenvLoaderTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / ".env.production"
             path.write_bytes(b"AI_RAG_TEST_NUL=invalid\x00-value\n")
-            with self.assertRaisesRegex(ValueError, "embedded null character"):
+            # Windows says "embedded null character", Linux "embedded null byte".
+            with self.assertRaisesRegex(ValueError, "embedded null (character|byte)"):
                 load_runtime_dotenv(path, allow_nul_sanitization=False)
 
     def test_production_ignores_all_dotenv_files(self) -> None:

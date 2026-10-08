@@ -25,6 +25,10 @@ SECRET_PATTERNS = (
     ),
 )
 STANDARD_LOG_RECORD_FIELDS = frozenset(logging.makeLogRecord({}).__dict__)
+# Observability fields every JSON line carries; they default to null and are
+# filled from the record's ``extra`` when the caller supplies them (for example
+# the request middleware's ``http_request_completed`` event).
+REQUEST_OUTCOME_FIELDS = frozenset({"route", "duration_ms", "status"})
 CAPTURE_GROUPS_WITH_SECRET = 2
 
 
@@ -85,7 +89,9 @@ class JsonFormatter(logging.Formatter):
             "status": None,
         }
         for key, value in record.__dict__.items():
-            if key not in STANDARD_LOG_RECORD_FIELDS and key not in payload:
+            if key in STANDARD_LOG_RECORD_FIELDS:
+                continue
+            if key not in payload or key in REQUEST_OUTCOME_FIELDS:
                 payload[key] = _safe_value(key, value)
         if record.exc_info:
             payload["exception_type"] = record.exc_info[0].__name__ if record.exc_info[0] else "Exception"
