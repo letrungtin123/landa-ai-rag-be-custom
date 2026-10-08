@@ -201,6 +201,6 @@ if __name__ == '__main__':
     import sys
     if '--node-fixture' in sys.argv:
         unit_result, result, provider, request, *_ = asyncio.run(endpoint_fixture())
-        print(json.dumps({'unit_result': unit_result, 'result': result, 'request': request.model_dump(), 'provider_calls': provider.await_count}))
+        print(json.dumps({'unit_result': unit_result, 'result': result, 'request': request.model_dump(mode='json'), 'provider_calls': provider.await_count}))
     else:
         unittest.main()

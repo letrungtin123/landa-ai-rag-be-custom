@@ -50,11 +50,11 @@ def run(payload):
             completed = request.model_copy(update={"checkpoint_action": "validate_chapter", "checkpoint_unit_index": None,
                 "checkpoint_units": [ChapterCheckpointUnit(unit_index=0, unit=deepcopy(generated["unit"]))]})
             ready = asyncio.run(checkpoint_result(completed, manifest, events))
-        return {"request": request.model_dump(), "result": ready, "unit_result": generated,
+        return {"request": request.model_dump(mode="json"), "result": ready, "unit_result": generated,
                 "provider_calls": provider.await_count, "events": events}
     request, units, manifest = fixture()
     if payload["action"] == "fixture":
-        return {"request": request.model_dump(), "manifest": manifest}
+        return {"request": request.model_dump(mode="json"), "manifest": manifest}
     data = {**request.model_dump(), **payload["request"]}
     data["checkpoint_units"] = data.get("checkpoint_units", [])
     if data["checkpoint_action"] == "validate_chapter":
