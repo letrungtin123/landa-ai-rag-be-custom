@@ -145,9 +145,12 @@ class DeterministicSlotFindingTests(unittest.TestCase):
         # ... or a distractor copied the bad example.
         bad_example = html("Ví dụ chưa đạt: Cấp 3 vì cần escalate ngay cho quản lý.")
         self.assertEqual(self.findings(unit(bad_example, problem())), [SlotFinding("IDM_W5_ANSWER_LEAK", 1)])
-        # The rule taught in other words (4 of 7 four-grams) and a taught list every option comes from are not.
+        # The rule taught in other words (4 of 7 four-grams), an example that inserts a clause into the answer
+        # (5 of 7, the backend acceptance fixture) and a taught list every option comes from are not.
         rule = html("Khiếu nại thuộc cấp 2 khi khách hàng phàn nàn lần thứ hai.")
         self.assertEqual(self.findings(unit(rule, problem())), [])
+        inserted = html("Khiếu nại mẫu thứ nhất: Cấp 2: thông báo trưởng nhóm vì khách hàng phàn nàn lần thứ hai.")
+        self.assertEqual(self.findings(unit(inserted, problem())), [])
         every = html("Cấp 1 vì chưa có thiệt hại tài chính. Cấp 2 vì khách hàng phàn nàn lần thứ hai. "
                      "Cấp 3 vì cần escalate ngay cho quản lý.")
         self.assertEqual(self.findings(unit(every, problem())), [])

@@ -148,12 +148,15 @@ IDM_WORKSHEET_MIN_LIST_ITEMS: Final = 2
 IDM_MCQ_LENGTH_CUE_RATIO: Final = 1.25
 # Answer leak: an option whose word 4-grams (accent-folded) mostly appear in the html shown before
 # the question in the same unit copies it ("ví dụ đạt chuẩn" -> correct option, "ví dụ không đạt
-# chuẩn" -> distractor). 4-grams keep a shared term or rule fragment ("liên quan đến an toàn", 0.4
-# of a scenario option) below the share; a copied sentence is near 1.0. Options under the minimum
-# number of 4-grams (about 7 words) are too short to tell a copy from a term.
+# chuẩn" -> distractor; QC c4.l2.u1 was a near-verbatim copy, ~1.0). A rule fragment shared with a
+# scenario option ("liên quan đến an toàn") scores ~0.4, the rule restated in other words ~0.57, and
+# an example that inserts a clause into the answer ("Cấp 2: thông báo trưởng nhóm vì khách hàng phàn
+# nàn lần thứ hai", the backend acceptance fixture the Node test accepts without repair) 0.71: only a
+# near-verbatim copy (>= 3/4 of the 4-grams) is a leak. Options under the minimum number of 4-grams
+# (about 7 words) are too short to tell a copy from a term.
 IDM_ANSWER_LEAK_NGRAM: Final = 4
 IDM_ANSWER_LEAK_MIN_NGRAMS: Final = 4
-IDM_ANSWER_LEAK_MIN_SHARE: Final = 0.6
+IDM_ANSWER_LEAK_MIN_SHARE: Final = 0.75
 
 # --- Methodology word lists (folded: lower case, no diacritics, d for đ) ----------------
 GENERIC_TITLES: Final = frozenset({

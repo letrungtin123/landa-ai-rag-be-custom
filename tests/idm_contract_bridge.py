@@ -99,9 +99,11 @@ def _problem(plan: dict[str, Any], slot: dict[str, Any], texts: dict[str, str]) 
         "title": slot["title"], "selection_rationale": "Luyện tập áp dụng tiêu chí của Must Do.",
         "covered_source_fact_ids": list(plan["source_fact_ids"]), "problem_type": "multiple_choice",
         "question": f"{situation}: nhân viên cần quyết định cách xử lý tiếp theo. Cách làm nào đúng với quy trình?",
+        # The correct option names the criterion without copying the html before it (an answer leak, QC 364564
+        # N3) and is no longer than the distractors (a length cue, N2); the explanation quotes the criterion.
         "choices": [
             {"text": "Xử lý theo cảm tính mà không đối chiếu tiêu chí của quy trình", "correct": False},
-            {"text": f"Làm đúng theo tiêu chí: {criterion[:300]}", "correct": True},
+            {"text": "Đối chiếu tình huống với tiêu chí vừa học rồi xử lý đúng như vậy", "correct": True},
             {"text": "Chuyển ngay cho bộ phận khác mà không ghi nhận thông tin", "correct": False},
         ],
         "answer": None, "tolerance": None,
