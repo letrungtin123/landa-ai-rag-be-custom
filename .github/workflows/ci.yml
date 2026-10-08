@@ -1,0 +1,278 @@
+# CI for landa-ai-rag (SEP-3): quality gate -> image build -> container smoke -> SBOM -> scan
+# -> push to Amazon ECR (main and v* tags only, via GitHub OIDC; no long-lived AWS keys).
+#
+# Repository settings to fill (Settings -> Secrets and variables -> Actions):
+#   vars.AWS_REGION              e.g. ap-southeast-1                      (placeholder: <aws-region>)
+#   vars.AWS_ECR_PUSH_ROLE_ARN   arn:aws:iam::<account-id>:role/<github-oidc-ecr-push>
+#   vars.ECR_REPOSITORY          default landa-ai-rag
+#   vars.WITH_LIBREOFFICE        "true" to build the LibreOffice variant (default false)
+#   vars.BACKEND_REPOSITORY      default letrungtin123/landa-supabase-be-custom
+#   vars.BACKEND_REF             backend branch for the cross-language test (default main)
+#   vars.BACKEND_NODE_VERSION    default 24
+#   secrets.BACKEND_REPO_TOKEN   read-only fine-grained token for the backend repo (optional; without
+#                                it the one Node cross-language test is deselected with a warning)
+#
+# Supply chain: actions are pinned by major/minor version. Before production, pin every `uses:` to a
+# full commit SHA (keep the version as a trailing comment) - marked "pin-sha" below.
+
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main, "ai-id/**"]
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  IMAGE_NAME: landa-ai-rag
+  AWS_REGION: ${{ vars.AWS_REGION }}
+  AWS_ECR_PUSH_ROLE_ARN: ${{ vars.AWS_ECR_PUSH_ROLE_ARN }}
+  ECR_REPOSITORY: ${{ vars.ECR_REPOSITORY || 'landa-ai-rag' }}
+
+jobs:
+  quality:
+    name: Quality gate (scripts/check.sh)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      HAS_BACKEND_CHECKOUT: ${{ secrets.BACKEND_REPO_TOKEN != '' }}
+    defaults:
+      run:
+        working-directory: landa-ai-rag
+    steps:
+      # The cross-language test resolves the backend as a sibling directory
+      # (tests/test_instructional_opportunities.py: Path(__file__).parents[2] / "landa-backend").
+      - name: Checkout AI service
+        uses: actions/checkout@v5 # pin-sha
+        with:
+          path: landa-ai-rag
+          persist-credentials: false
+
+      - name: Checkout backend (cross-language test)
+        if: env.HAS_BACKEND_CHECKOUT == 'true'
+        uses: actions/checkout@v5 # pin-sha
+        with:
+          repository: ${{ vars.BACKEND_REPOSITORY || 'letrungtin123/landa-supabase-be-custom' }}
+          ref: ${{ vars.BACKEND_REF || 'main' }}
+          token: ${{ secrets.BACKEND_REPO_TOKEN }}
+          path: landa-backend
+          persist-credentials: false
+
+      - name: Set up Node
+        if: env.HAS_BACKEND_CHECKOUT == 'true'
+        uses: actions/setup-node@v5 # pin-sha
+        with:
+          node-version: ${{ vars.BACKEND_NODE_VERSION || '24' }}
+          cache: npm
+          cache-dependency-path: landa-backend/package-lock.json
+
+      - name: Install backend dependencies
+        if: env.HAS_BACKEND_CHECKOUT == 'true'
+        working-directory: landa-backend
+        run: npm ci --no-audit --no-fund
+
+      - name: Deselect the Node cross-language test (backend not checked out)
+        if: env.HAS_BACKEND_CHECKOUT != 'true'
+        run: |
+          echo "::warning::BACKEND_REPO_TOKEN not available: deselecting the Node cross-language test"
+          echo "PYTEST_ADDOPTS=--deselect tests/test_instructional_opportunities.py::InstructionalOpportunityTests::test_node_registry_maps_discovered_treatments_permissions_and_faq_last" >> "$GITHUB_ENV"
+
+      - name: Set up Python
+        uses: actions/setup-python@v6 # pin-sha
+        with:
+          python-version-file: landa-ai-rag/.python-version
+          cache: pip
+          cache-dependency-path: |
+            landa-ai-rag/requirements.lock
+            landa-ai-rag/requirements-dev.lock
+
+      # scripts/check.sh requires .venv-dev/bin/python. Both locks are hash-locked (pip-compile
+      # --generate-hashes). --no-deps: the locks are complete and were compiled on Windows;
+      # requirements-dev.lock also leaves pip/setuptools unpinned (pip-tools needs setuptools), which
+      # hash mode would reject. pip check runs after the runtime lock (the dev lock would fail it on
+      # pip-tools -> setuptools, which the gate does not use).
+      - name: Create .venv-dev from the hash-locked requirements
+        run: |
+          python -m venv .venv-dev
+          .venv-dev/bin/python -m pip install --require-hashes --no-deps -r requirements.lock
+          .venv-dev/bin/python -m pip check
+          .venv-dev/bin/python -m pip install --require-hashes --no-deps -r requirements-dev.lock
+
+      - name: Quality gate (ruff, mypy, pytest --cov-fail-under=82, pip-audit)
+        run: sh scripts/check.sh
+
+  image:
+    name: Image (build, smoke, SBOM, scan, ECR push on main/v*)
+    needs: quality
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      id-token: write # OIDC to AWS; only used by the publish steps
+    env:
+      PUBLISH: ${{ github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')) }}
+    services:
+      # Throwaway database for the container smoke test (trust auth, runner-local only).
+      postgres:
+        image: postgres:17-alpine # pin-sha (digest)
+        env:
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5 # pin-sha
+        with:
+          persist-credentials: false
+
+      - name: Guard - base image pinned by digest
+        run: |
+          if ! grep -Eq '^ARG PYTHON_IMAGE=python:3\.12[0-9.]*-slim[a-z-]*@sha256:[0-9a-f]{64}$' Dockerfile; then
+            echo "::error file=Dockerfile::Pin ARG PYTHON_IMAGE to python:3.12...-slim...@sha256:<64 hex> (see the Dockerfile header)"
+            exit 1
+          fi
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3 # pin-sha
+
+      - name: Image tags (git sha + branch/tag)
+        id: meta
+        uses: docker/metadata-action@v5 # pin-sha
+        with:
+          images: ${{ env.IMAGE_NAME }}
+          tags: |
+            type=sha,format=long,prefix=sha-
+            type=ref,event=branch
+            type=ref,event=tag
+            type=ref,event=pr
+
+      - name: Build runtime image (load locally, no push)
+        uses: docker/build-push-action@v6 # pin-sha
+        with:
+          context: .
+          target: runtime
+          platforms: linux/amd64
+          load: true
+          push: false
+          provenance: false
+          tags: ${{ env.IMAGE_NAME }}:ci
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            GIT_SHA=${{ github.sha }}
+            WITH_LIBREOFFICE=${{ vars.WITH_LIBREOFFICE || 'false' }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Smoke test (read-only rootfs, non-root, HEALTHCHECK, DB, HMAC)
+        run: |
+          set -eu
+          umask 077
+          secret=$(openssl rand -hex 32)
+          echo "::add-mask::$secret"
+          env_file="$RUNNER_TEMP/smoke.env"
+          {
+            echo "DATABASE_URL=postgresql://postgres@127.0.0.1:5432/postgres"
+            echo "SUPABASE_URL=http://127.0.0.1:9"
+            echo "SUPABASE_SERVICE_KEY=ci-smoke-unused"
+            echo "AI_RAG_AUTH_MODE=hmac"
+            echo "AI_RAG_SERVICE_HMAC_SECRETS=ci-smoke:$secret"
+            echo "AI_RAG_HOST=127.0.0.1"
+          } > "$env_file"
+          docker run -d --name ai-rag-smoke --network host --read-only \
+            --tmpfs /tmp:rw,noexec,nosuid,nodev,size=256m,mode=1777 \
+            --cap-drop ALL --security-opt no-new-privileges:true \
+            --env-file "$env_file" "$IMAGE_NAME:ci"
+          rm -f "$env_file"
+          status=starting
+          for _ in $(seq 1 60); do
+            status=$(docker inspect --format '{{.State.Health.Status}}' ai-rag-smoke)
+            [ "$status" = healthy ] && break
+            [ "$(docker inspect --format '{{.State.Running}}' ai-rag-smoke)" = true ] || break
+            sleep 3
+          done
+          [ "$status" = healthy ] || { echo "::error::container not healthy (status=$status)"; exit 1; }
+          [ "$(docker exec ai-rag-smoke id -u)" = 10001 ] || { echo "::error::container is not uid 10001"; exit 1; }
+          docker exec -i ai-rag-smoke python - http://127.0.0.1:8010 < deploy/server-b/smoke.py
+
+      - name: Container logs (on failure)
+        if: failure()
+        run: docker logs ai-rag-smoke 2>&1 | tail -n 200 || true
+
+      - name: Stop smoke container
+        if: always()
+        run: docker rm -f ai-rag-smoke >/dev/null 2>&1 || true
+
+      - name: SBOM (SPDX JSON)
+        uses: anchore/sbom-action@v0 # pin-sha
+        with:
+          image: ${{ env.IMAGE_NAME }}:ci
+          format: spdx-json
+          output-file: sbom-${{ github.sha }}.spdx.json
+          artifact-name: sbom-${{ github.sha }}.spdx.json
+
+      - name: Vulnerability and secret scan (fail on fixable HIGH/CRITICAL)
+        uses: aquasecurity/trivy-action@0.33.1 # pin-sha
+        with:
+          image-ref: ${{ env.IMAGE_NAME }}:ci
+          scanners: vuln,secret
+          vuln-type: os,library
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+          exit-code: "1"
+          format: table
+
+      - name: Guard - AWS publish settings
+        if: env.PUBLISH == 'true'
+        run: |
+          if [ -z "$AWS_REGION" ] || [ -z "$AWS_ECR_PUSH_ROLE_ARN" ]; then
+            echo "::error::Set repository variables AWS_REGION and AWS_ECR_PUSH_ROLE_ARN"
+            exit 1
+          fi
+
+      - name: Configure AWS credentials (OIDC)
+        if: env.PUBLISH == 'true'
+        uses: aws-actions/configure-aws-credentials@v5 # pin-sha
+        with:
+          role-to-assume: ${{ env.AWS_ECR_PUSH_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+          role-session-name: landa-ai-rag-ci-${{ github.run_id }}
+
+      - name: Log in to Amazon ECR
+        if: env.PUBLISH == 'true'
+        id: ecr
+        uses: aws-actions/amazon-ecr-login@v2 # pin-sha
+
+      # Pushes the exact image that passed the smoke test and the scan (no rebuild).
+      - name: Push to ECR
+        if: env.PUBLISH == 'true'
+        env:
+          REGISTRY: ${{ steps.ecr.outputs.registry }}
+          TAGS: ${{ steps.meta.outputs.tags }}
+        run: |
+          set -eu
+          remote="$REGISTRY/$ECR_REPOSITORY"
+          while IFS= read -r tag; do
+            [ -n "$tag" ] || continue
+            docker tag "$IMAGE_NAME:ci" "$remote:${tag#*:}"
+            docker push --quiet "$remote:${tag#*:}"
+          done <<< "$TAGS"
+          digest=$(docker inspect --format '{{index .RepoDigests 0}}' "$remote:sha-$GITHUB_SHA")
+          {
+            echo "### Pushed image"
+            echo "- tag: \`$remote:sha-$GITHUB_SHA\`"
+            echo "- digest: \`$digest\`"
+            echo "- deploy on server B: \`sudo ./deploy.sh sha-$GITHUB_SHA\` (or \`@${digest#*@}\`)"
+          } >> "$GITHUB_STEP_SUMMARY"

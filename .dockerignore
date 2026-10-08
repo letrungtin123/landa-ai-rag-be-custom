@@ -1,0 +1,42 @@
+# Build context for the Dockerfile. The runtime stage copies only requirements.lock and app/;
+# the optional `test` stage copies the rest (tests/, scripts/, pyproject.toml, *.lock).
+
+# VCS, CI and the server-B deploy kit (never part of the image)
+.git
+.github
+deploy
+
+# Virtual environments (local .venv is a Windows PM2 runtime, .venv-dev is tooling)
+.venv*
+venv*
+env/
+ENV/
+
+# Python bytecode, test, coverage and static-analysis caches
+**/__pycache__
+**/*.py[cod]
+.pytest_cache
+.mypy_cache
+.ruff_cache
+.pyre
+.pytype
+.coverage
+.coverage.*
+htmlcov
+coverage.xml
+
+# Local runtime output and logs
+tmp/
+**/*.log
+.local-dev-logs
+
+# Secrets: no env file ever enters the image (production reads the process environment only)
+**/.env
+**/.env.*
+**/*.env
+
+# Node / archives / editor noise
+**/node_modules
+*.zip
+.idea
+.vscode
