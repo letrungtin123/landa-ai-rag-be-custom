@@ -9,12 +9,21 @@ from __future__ import annotations
 
 import re
 import unicodedata
-from typing import Final
+from collections.abc import Iterable
+from dataclasses import dataclass
+from itertools import pairwise
+from typing import Final, Literal
 
 from app.idm.policy import (
     CAPABILITY_LEAD_INS,
+    CASE_DECISION_VERBS,
     GENERIC_TITLE_PATTERN,
     GENERIC_TITLES,
+    IDM_FAQ_MIN_PAIR_SUPPORT,
+    IDM_FAQ_MIN_WORD_SUPPORT,
+    IDM_FAQ_SENTENCE_MIN_PAIR_SUPPORT,
+    IDM_FAQ_SENTENCE_MIN_WORD_SUPPORT,
+    IDM_FAQ_SENTENCE_MIN_WORDS,
     UNMEASURABLE_VERBS,
 )
 
@@ -172,6 +181,19 @@ def must_do_title(statement: str) -> str:
     return _capitalized(_topic(fallback)) if fallback is not None else objective_title(text)
 
 
+def produces_output(statement: str, kind: str) -> bool:
+    """A Must Do of kind "do" whose action yields a work product (fill in, draft, map, sign ...).
+
+    Classifying, identifying or choosing is applying a rule to a case even when W1 marked it "do"
+    (spec §10.1): a scenario question practises it, a worksheet is not expected.
+    """
+
+    if kind != "do":
+        return False
+    folded = idm_fold(first_main_verb(statement))
+    return not any(folded == verb or folded.startswith(verb + " ") for verb in CASE_DECISION_VERBS)
+
+
 def is_unmeasurable_objective(statement: str) -> bool:
     """True when the main verb of an objective is not observable (spec §7.3)."""
 
@@ -214,3 +236,92 @@ def ngram_overlap(candidate: str, source: str, size: int = 8) -> float:
         return 0.0
     source_grams = set(word_ngrams(source, size))
     return sum(gram in source_grams for gram in candidate_grams) / len(candidate_grams)
+
+
+# --- Evidence grounding (FAQ guard, worksheet self-check) ---------------------------------------
+# Folded function words: connectives, pronouns, copulas and quantifiers carry no claim, so an answer
+# may add them freely ("Vì vậy", "Điều này giúp …"). Vietnamese compounds are two syllables, so word
+# pairs are the unit of support; a pair of two function words never counts.
+_FUNCTION_WORDS: Final = frozenset({
+    "la", "cua", "va", "cac", "nhung", "co", "khong", "duoc", "cho", "de", "voi", "thi", "ma", "mot", "nhu", "nay",
+    "do", "khi", "neu", "vi", "trong", "tren", "tu", "den", "ra", "vao", "se", "da", "dang", "can", "phai", "hay",
+    "hoac", "cung", "rat", "nhat", "moi", "tat", "ca", "chi", "con", "lai", "nen", "thay", "boi", "ve", "theo",
+    "tai", "bang", "qua", "sau", "truoc", "giua", "hon", "ban", "nguoi", "viec", "cach", "nao", "gi", "sao", "ai",
+    "day", "doi", "khac", "nhieu", "it", "dieu", "chung", "the", "van", "luon", "minh", "ho", "toi", "ta", "ay",
+    "kia", "bi", "o", "vay", "tuc", "gom", "them", "a", "an", "and", "or", "of", "to", "in", "on", "for", "with",
+    "is", "are", "be", "by", "as", "at", "this", "that", "from", "not", "no", "but", "if", "then", "so", "than",
+    "their", "its", "will", "should", "must", "does", "was", "were", "has", "have", "had", "which", "who", "what",
+    "when", "how", "why", "these", "those", "there", "here", "also", "only", "more", "most", "such", "into", "about",
+    "you", "your", "they",
+})
+_NUMBER_RE: Final = re.compile(r"\d+(?:[.,]\d+)*")
+_SENTENCE_END_RE: Final = re.compile(r"(?<=[.!?;:])\s+")
+_MIN_CONTENT_WORD_CHARS: Final = 2
+GroundingVerdict = Literal["grounded", "numbers", "support", "sentence"]
+
+
+def _normal_number(token: str) -> str:
+    whole, _, rest = token.replace(",", ".").partition(".")
+    return (whole.lstrip("0") or "0") + (f".{rest}" if rest else "")
+
+
+def _numbers(folded: str) -> set[str]:
+    return {_normal_number(token) for token in _NUMBER_RE.findall(folded)}
+
+
+def _content(word: str) -> bool:
+    return len(word) >= _MIN_CONTENT_WORD_CHARS and word not in _FUNCTION_WORDS and not word.isdigit()
+
+
+@dataclass(frozen=True)
+class EvidenceIndex:
+    """Folded words, adjacent word pairs and numbers of the facts a writer was given."""
+
+    words: frozenset[str]
+    pairs: frozenset[tuple[str, str]]
+    numbers: frozenset[str]
+
+
+def evidence_index(texts: Iterable[str], *, number_texts: Iterable[str] = ()) -> EvidenceIndex:
+    """Index the evidence once; ``number_texts`` (the approved plan) only add numbers."""
+
+    words: set[str] = set()
+    pairs: set[tuple[str, str]] = set()
+    numbers: set[str] = set()
+    for value in texts:
+        folded = idm_fold(value)
+        tokens = _WORD_RE.findall(folded)
+        words.update(tokens)
+        pairs.update(pairwise(tokens))
+        numbers.update(_numbers(folded))
+    for value in number_texts:
+        numbers.update(_numbers(idm_fold(value)))
+    return EvidenceIndex(frozenset(words), frozenset(pairs), frozenset(numbers))
+
+
+def claim_support(text: str, index: EvidenceIndex) -> tuple[float, float, int]:
+    """(content-word share, content-pair share, content-word count) of ``text`` found in the evidence."""
+
+    tokens = _WORD_RE.findall(idm_fold(text))
+    content = [word for word in tokens if _content(word)]
+    pairs = [pair for pair in pairwise(tokens) if _content(pair[0]) or _content(pair[1])]
+    word_share = sum(word in index.words for word in content) / len(content) if content else 1.0
+    pair_share = sum(pair in index.pairs for pair in pairs) / len(pairs) if pairs else word_share
+    return word_share, pair_share, len(content)
+
+
+def grounding_verdict(text: str, index: EvidenceIndex) -> GroundingVerdict:
+    """Whether ``text`` only restates the evidence: no new number, enough supported wording overall
+    and in every long sentence. Thresholds and their calibration live in ``app.idm.policy``."""
+
+    if _numbers(idm_fold(text)) - index.numbers:
+        return "numbers"
+    words, pairs, _count = claim_support(text, index)
+    if pairs < IDM_FAQ_MIN_PAIR_SUPPORT and words < IDM_FAQ_MIN_WORD_SUPPORT:
+        return "support"
+    for sentence in _SENTENCE_END_RE.split(" ".join(text.split())):
+        words, pairs, count = claim_support(sentence, index)
+        if (count >= IDM_FAQ_SENTENCE_MIN_WORDS and pairs < IDM_FAQ_SENTENCE_MIN_PAIR_SUPPORT
+                and words < IDM_FAQ_SENTENCE_MIN_WORD_SUPPORT):
+            return "sentence"
+    return "grounded"

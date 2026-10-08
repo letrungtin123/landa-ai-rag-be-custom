@@ -324,6 +324,15 @@ For each lesson:
    learner_action, result and Bloom level. Ids pt_1, pt_2, pt_3 inside each lesson. The practice must use the same
    kind of action as the Must Do (classify, sequence, decide, apply a rule, choose a message ...). Do not turn
    everything into recall questions.
+   Must Do of kind "do" that produces an output (fill in a form or canvas, draft a plan, write a commitment, map
+   resources, redesign a step; not classify, identify or choose): the main practice lets the learner DO it. Use
+   la_sortable when the action is a procedure whose order the source states; otherwise use a WORKSHEET, because no
+   allowed component records a free-text answer: in the practice unit put an html component with role "practice"
+   and the practice_id (the learner completes the task on their own copy: task and input, the template to fill in,
+   a short worked example, a self-check list built only from criteria_fact_keys), followed in the same unit by a
+   problem with role "practice" and the same practice_id in which the learner judges a sample answer against those
+   criteria (single choice). Must Do of kind "decide" and recognition of Must Know keep problem (scenario or
+   knowledge check).
 2. criteria_fact_keys: the source facts that decide what a correct answer is; non-empty; only facts of this
    lesson's blocks. If they do not exist, set hold = true and write hold_question for the SME, and do not create
    a practice component for it. Contexts, characters and example situations may be drafted by you
@@ -338,7 +347,8 @@ For each lesson:
    (only when the facts state the relations); annotated or worked example -> html; common confusions or
    mistakes -> la_faq; ordering steps -> la_sortable (only with source order); terminology to memorise ->
    la_crossword (at least 3 source definitions with short terms); knowledge check of a Must Know -> problem
-   (single choice); decision in a short situation -> problem as a scenario question{scenario_clause}.
+   (single choice); decision in a short situation -> problem as a scenario question{scenario_clause}; producing
+   an output (Must Do of kind "do") -> worksheet: html with role practice + problem that checks a sample answer.
 6. LAYOUT into units (each unit is a mini-cycle of at most 4 components; at most one component of each type per
    unit; html first; la_faq last): context (short, under 20% of the lesson) -> Must Know explain/show -> example ->
    practice -> feedback -> apply/next step. Typical units: "context_explain" (+ knowledge check), "example",
@@ -347,7 +357,9 @@ For each lesson:
    unit) and every block of a unit is used by at least one of its components. The main practice sits in a unit
    that contains at least one block of its Must Do. Facts that decide a practice must be taught in the same or an
    earlier unit. Never more than 5 explanation components in a row without a question or practice.
-   A practice component has role "practice" and practice_id set; other components have practice_id null.
+   A practice component has role "practice" and practice_id set; other components have practice_id null. Only
+   problem, la_sortable, la_crossword and the worksheet html may have role "practice"; a worksheet html always has
+   the problem that checks it in the same unit.
    component_index is the 1-based position inside the unit; unit_index is 1-based inside the lesson.
 7. For every component write the storyboard development notes in {locale_name(locale)} (author_review):
    purpose (which Must Do / practice / support it serves - required), example_scenario (the example or situation
@@ -402,10 +414,21 @@ Writing rules (learner-facing, {locale_name(locale)}):
   rewrite -> plain language with the same meaning. Keep every condition, negation, quantity, unit and exception
   that matters for the Must Do. Teach only what the practice needs (detail_level).
 - Context building stays under 20% of the unit text.
-- Practice slots contain context, task, the input the learner works with, exactly one correct answer, and feedback
-  that teaches. Single-choice: 3-4 options, plausible distractors that are wrong by the stated criterion, no
-  "all/none of the above", correct option not always first; the explanation states the criterion and why EACH
+- Practice slots of type problem, la_sortable or la_crossword contain context, task, the input the learner works
+  with, exactly one correct answer, and feedback that teaches. Single-choice: 3-4 options, plausible distractors
+  that are wrong by the stated criterion, no "all/none of the above", correct option not always first; the
+  explanation states the criterion and why EACH
   option is right or wrong ("A - ...; B - ..."). Never reveal the answer before the question.
+- An html slot whose role is "practice" is a WORKSHEET for its practice (the learner works on their own copy;
+  nothing is graded automatically): a section whose heading names the task with a "task" block (what to produce,
+  from which input); a section with the template to complete as a "table" block (label = the field or cell to
+  fill, value = the guiding question or what a good entry contains) or as "steps"; a section with a short worked
+  example of one or two filled entries (illustrative when the practice is ai_drafted; it never adds a rule); and a
+  final "Tự kiểm tra" / "Self-check" section with one "bullets" block whose items are the criteria, each taken
+  only from the practice criteria facts. Do not reveal the answer of the problem slot that follows it; that problem
+  asks the learner to judge a sample entry against the same criteria (exactly one option meets them).
+- la_faq answers restate only what SOURCE_FACTS or LESSON_CONTEXT_FACTS say: no number, example, reason, advice
+  or exception they do not state. When the facts cannot answer a question, ask a different question they answer.
 - Use drafted scenarios/examples only where the brief marks them ai_drafted; they must not add rules.
 - LESSON_CONTEXT_FACTS are read-only background from earlier units; use them for consistency and for the
   correctness criteria, do not re-teach them.
@@ -540,6 +563,12 @@ UNIT_RULE_TEXT: Final[dict[str, str]] = {
                                     "Correct/Incorrect",
     "IDM_W5_ANSWER_LEAK": "earlier html must not reveal the correct answer of this question",
     "IDM_W5_VERBATIM_COPY": "rewrite for the learner instead of copying the source text",
+    "IDM_W5_FAQ_UNGROUNDED": "answer only from these facts: rewrite each listed answer so it restates what "
+                             "SOURCE_FACTS or LESSON_CONTEXT_FACTS say, with no number, example, reason or advice "
+                             "they do not state; replace a question the facts cannot answer with one they do",
+    "IDM_W5_WORKSHEET_INCOMPLETE": "a worksheet slot needs a task block, the template to complete (table rows or "
+                                   "steps) and a final self-check bullets block whose items are the practice "
+                                   "criteria taken from the facts",
     "IDM_W6_Q1": "a learner can do the practice using only what this lesson taught",
     "IDM_W6_Q2": "rewrite for the learner; do not paste the source (exact rules and definitions may stay)",
     "IDM_W6_Q3": "context, task, input, one correct answer and feedback are present and consistent",
@@ -611,7 +640,9 @@ rewrite content. For each criterion return pass | minor | major | critical, the 
 the issue is in one component, and a witness of at most 300 characters quoting the unit.
  Q1_support_sufficient: a learner could do the practice using only what this lesson taught.
  Q2_not_copied: rewritten for the learner, not pasted source (exact rules/definitions are allowed).
- Q3_practice_complete: context, task, input, one correct answer and feedback are present and consistent.
+ Q3_practice_complete: context, task, input, one correct answer and feedback are present and consistent. A
+   worksheet (html slot with role practice) has no single answer: check its task, template, worked example and
+   self-check criteria, and the problem that checks it.
  Q4_feedback_teaches: feedback names the criterion and explains why each option is right or wrong.
  Q5_grounded_criteria: the correct answer follows from SOURCE_FACTS; no invented rule, threshold or exception.
  Q6_alignment: the practice matches the Must Do action type and Bloom level in the plan.

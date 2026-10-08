@@ -20,12 +20,16 @@ from app.idm.qa import (
     build_unit_quality,
     criteria_summary,
     deterministic_slot_findings,
+    faq_item_verdicts,
     learner_view,
     repair_targets,
     run_judge,
+    ungrounded_faq_items,
+    worksheet_complete,
     worst_counts,
 )
 from app.idm.runtime import IdmProviderError
+from app.idm.text import evidence_index
 from tests import idm_golden as g
 from tests import idm_golden_unit as gu
 from tests.idm_golden import FakeIdmProvider
@@ -155,6 +159,122 @@ class DeterministicSlotFindingTests(unittest.TestCase):
                          [])
 
 
+MISTAKE_FACTS = (
+    "Ví dụ: Nhân viên hứa hoàn tiền ngay khi khách hàng vừa gọi đến, trước khi xác minh đơn hàng; công ty phải chi "
+    "trả cho một đơn hàng không thuộc diện bồi thường.",
+    "Lưu ý: Nhiều nhân viên ghi nhận khiếu nại cấp 3 thành cấp 2 vì không kiểm tra yếu tố truyền thông.",
+    "HÀNH ĐỘNG CEO: Chọn 01 quy trình hay xảy ra sự cố nhất, áp dụng 5Why để tìm nguyên nhân gốc và ban hành cơ chế "
+    "phòng ngừa.",
+)
+GROUNDED_ANSWERS = (
+    "Không. Cần xác minh đơn hàng trước, nếu không công ty phải chi trả cho đơn hàng không thuộc diện bồi thường.",
+    "Vì nhân viên không kiểm tra yếu tố truyền thông khi ghi nhận khiếu nại cấp 3.",
+)
+
+
+def faq(*answers: str) -> dict[str, Any]:
+    return {"type": "la_faq", "title": "Nhầm lẫn thường gặp", "component_plan_id": "cp2_" + "c" * 32,
+            "source_fact_ids": [], "covered_source_fact_ids": [],
+            "items": [{"question": f"Câu hỏi thường gặp số {index}?", "answer": answer}
+                      for index, answer in enumerate(answers, start=1)]}
+
+
+class FaqGroundingTests(unittest.TestCase):
+    """QC course 234653 (R6): FAQ answers must restate the facts the writer was given."""
+
+    def setUp(self) -> None:
+        self.evidence = evidence_index(MISTAKE_FACTS, number_texts=["Chọn 1 quy trình hay lỗi nhất"])
+
+    def test_restated_answers_are_grounded(self) -> None:
+        self.assertEqual(faq_item_verdicts(faq(*GROUNDED_ANSWERS), self.evidence), ["grounded", "grounded"])
+        # Leading zeros and the approved plan's numbers are not new numbers.
+        self.assertEqual(faq_item_verdicts(faq("Chọn 1 quy trình hay xảy ra sự cố nhất rồi áp dụng 5Why để tìm "
+                                               "nguyên nhân gốc."), self.evidence), ["grounded"])
+
+    def test_new_numbers_new_advice_and_an_invented_sentence_are_not(self) -> None:
+        answers = (
+            # The QC example: the source never says where to stop asking "why".
+            "Có thể dừng ở tầng thứ 3 hoặc mở rộng tới tầng thứ 7 khi áp dụng 5Why để tìm nguyên nhân gốc.",
+            "Lãnh đạo nên tập trung truy vấn hệ thống nào bị hỏng thay vì quy chụp ai làm sai trong buổi họp giao ban.",
+            GROUNDED_ANSWERS[0] + " Ngoài ra hãy tặng phiếu giảm giá cho khách thân thiết để giữ chân họ lâu dài "
+                                  "hơn trong mùa mua sắm cao điểm.",
+        )
+        self.assertEqual(faq_item_verdicts(faq(*answers), self.evidence), ["numbers", "support", "sentence"])
+        self.assertEqual(ungrounded_faq_items(faq(GROUNDED_ANSWERS[0], answers[0], GROUNDED_ANSWERS[1]),
+                                              self.evidence), [1])
+        self.assertEqual(faq_item_verdicts({"type": "la_faq", "items": ["not-an-item"]}, self.evidence), ["support"])
+        self.assertEqual(faq_item_verdicts({"type": "la_faq"}, self.evidence), [])
+
+    def test_slot_finding_needs_the_evidence(self) -> None:
+        value = unit(faq(GROUNDED_ANSWERS[0], "Lãnh đạo nên tập trung truy vấn hệ thống nào bị hỏng thay vì quy chụp "
+                                              "ai làm sai trong buổi họp giao ban."))
+        self.assertEqual(deterministic_slot_findings(value, brief(), ["", ""], self.evidence),
+                         [SlotFinding("IDM_W5_FAQ_UNGROUNDED", 0)])
+        self.assertEqual(deterministic_slot_findings(value, brief(), ["", ""]), [])
+        grounded = unit(faq(*GROUNDED_ANSWERS))
+        self.assertEqual(deterministic_slot_findings(grounded, brief(), ["", ""], self.evidence), [])
+
+
+def worksheet_brief() -> IdmUnitBriefV1:
+    """lsn_002 unit 1 with its html slot turned into the worksheet of the unit's practice."""
+
+    source = brief()
+    first, second = source.components
+    return source.model_copy(update={"components": [
+        first.model_copy(update={"role": "practice", "practice": second.practice}), second]})
+
+
+def worksheet(*blocks: dict[str, Any]) -> dict[str, Any]:
+    value = html("x")
+    value["semantic_content"] = {"sections": [{"heading": f"Phần {index}", "learning_block_ids": [],
+                                               "blocks": [block]} for index, block in enumerate(blocks, start=1)]}
+    return value
+
+
+def block(kind: str, text: str | None = None, items: list[str] | None = None,
+          rows: list[tuple[str, str]] | None = None) -> dict[str, Any]:
+    return {"kind": kind, "text": text, "items": items or [],
+            "rows": [{"label": label, "value": value} for label, value in rows or []]}
+
+
+TASK = block("task", "Xác định cấp độ của ba khiếu nại dưới đây và ghi cách xử lý vào bảng.")
+TEMPLATE = block("table", rows=[("Khiếu nại 1: khách phàn nàn lần thứ hai", "Cấp độ nào? Dấu hiệu nào?"),
+                                ("Khiếu nại 2: liên quan pháp lý", "Cấp độ nào? Ai xử lý?")])
+CHECKLIST = block("bullets", items=["Cấp 2 khi khách hàng phàn nàn lần thứ hai.",
+                                    "Cấp 3 khi liên quan an toàn, pháp lý hoặc truyền thông."])
+LEVEL_FACTS = ("Row 3: Cấp 2 | Thiệt hại tài chính dưới 50 triệu đồng hoặc khách hàng phàn nàn lần thứ hai | "
+               "Thông báo trưởng nhóm",
+               "Row 4: Cấp 3 | Liên quan an toàn, pháp lý hoặc truyền thông | Escalate ngay cho quản lý")
+
+
+class WorksheetTests(unittest.TestCase):
+    """QC course 234653 (R5): the practice of a "do" Must Do is a worksheet checked by a problem."""
+
+    def test_structure_and_self_check_from_the_criteria(self) -> None:
+        evidence = evidence_index(LEVEL_FACTS)
+        complete = worksheet(TASK, TEMPLATE, block("paragraph", "Ví dụ: khiếu nại giao trễ lần đầu là cấp 1."),
+                             CHECKLIST)
+        self.assertTrue(worksheet_complete(complete, evidence))
+        steps_template = worksheet(TASK, block("steps", items=["Đọc mô tả", "Ghi cấp độ"]), CHECKLIST)
+        self.assertTrue(worksheet_complete(steps_template, None))
+        for broken in (worksheet(TEMPLATE, CHECKLIST), worksheet(TASK, CHECKLIST), worksheet(TASK, TEMPLATE),
+                       worksheet(TASK, TEMPLATE, block("bullets", items=["Chỉ một ý"])), {"type": "html"}):
+            self.assertFalse(worksheet_complete(broken, evidence))
+        invented = worksheet(TASK, TEMPLATE, block("bullets", items=[
+            "Bảng điền có màu sắc tươi sáng và chữ ký của giám đốc.", "Nộp bảng trước thứ sáu hằng tuần."]))
+        self.assertTrue(worksheet_complete(invented, None))
+        self.assertFalse(worksheet_complete(invented, evidence))
+
+    def test_only_a_practice_html_slot_is_a_worksheet(self) -> None:
+        evidence = evidence_index(LEVEL_FACTS)
+        plain = unit(html("Mỗi khiếu nại thuộc một trong ba cấp độ."), problem())
+        self.assertEqual(deterministic_slot_findings(plain, brief(), ["", ""], evidence), [])
+        self.assertEqual(deterministic_slot_findings(plain, worksheet_brief(), ["", ""], evidence),
+                         [SlotFinding("IDM_W5_WORKSHEET_INCOMPLETE", 0)])
+        complete = unit(worksheet(TASK, TEMPLATE, CHECKLIST), problem())
+        self.assertEqual(deterministic_slot_findings(complete, worksheet_brief(), ["", ""], evidence), [])
+
+
 class LearnerViewTests(unittest.TestCase):
     def test_view_carries_learner_text_and_no_identifiers(self) -> None:
         view = learner_view(unit(html("Mỗi khiếu nại thuộc một cấp độ."), problem(), "skip"))
@@ -244,6 +364,30 @@ class AuthorNoteAndQualityTests(unittest.TestCase):
                                              ai_drafted=False)
         self.assertEqual(en_fallback, "2 block(s) use the source-based fallback — edit them. "
                                       "Automatic checks still warn: A_CODE, B_CODE.")
+
+    def test_author_note_says_why_slots_fell_back(self) -> None:
+        # QC course 234653 (D16): "1 khối dùng bản dự phòng" never said why.
+        note = build_unit_author_note(
+            locale="vi", judge=JudgeOutcome("pass"), deterministic_codes=["HTML_SEMANTIC_INVALID"],
+            fallback_slots=[0], ai_drafted=False, review_slots=[2], slot_types=["html", "problem", "la_faq"],
+            slot_reasons={0: ["HTML_SEMANTIC_INVALID"], 2: ["IDM_W5_FAQ_UNGROUNDED"]},
+            failure_codes=["IDM_W5_REPAIR_INVALID", "not a code"], faq_items_dropped=1)
+        self.assertEqual(note, "QA tự động: không phát hiện vấn đề lớn. "
+                               "1 khối dùng bản dự phòng dựng từ tài liệu — cần biên tập. "
+                               "Lý do: khối 1 (Lý thuyết) — HTML_SEMANTIC_INVALID. "
+                               "Giữ bản AI để tác giả rà soát: khối 3 (Hỏi đáp) — IDM_W5_FAQ_UNGROUNDED. "
+                               "Sửa tự động không thành công: IDM_W5_REPAIR_INVALID. "
+                               "Đã bỏ 1 câu hỏi đáp có nội dung ngoài tài liệu. "
+                               "Kiểm tra tự động còn cảnh báo: HTML_SEMANTIC_INVALID.")
+        whole = build_unit_author_note(locale="en", judge=JudgeOutcome("not_run"),
+                                       deterministic_codes=["IDM_W5_INSTANCE_INVALID"], fallback_slots=[0, 1],
+                                       ai_drafted=False, slot_types=["html", "problem"],
+                                       failure_codes=["AI_PROVIDER_UNAVAILABLE"], whole_fallback=True)
+        self.assertEqual(whole, "The whole lesson uses the source-based fallback — edit it. "
+                                "Reason: AI_PROVIDER_UNAVAILABLE, IDM_W5_INSTANCE_INVALID.")
+        silent = build_unit_author_note(locale="en", judge=JudgeOutcome("not_run"), deterministic_codes=[],
+                                        fallback_slots=[], ai_drafted=False, failure_codes=["IDM_W5_REPAIR_INVALID"])
+        self.assertEqual(silent, "")
 
     def test_author_note_is_bounded_and_has_no_angle_brackets(self) -> None:
         many = JudgeOutcome("reject", [finding(criterion, "critical", 0, "<script>") for criterion in CRITERIA])

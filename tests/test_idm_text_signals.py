@@ -16,9 +16,12 @@ from app.idm.signals import (
 )
 from app.idm.text import (
     char_ngrams,
+    claim_support,
+    evidence_index,
     fallback_must_do_statement,
     fallback_objective_statement,
     first_main_verb,
+    grounding_verdict,
     idm_fold,
     is_generic_title,
     is_unmeasurable_objective,
@@ -26,6 +29,7 @@ from app.idm.text import (
     must_do_title,
     ngram_overlap,
     objective_title,
+    produces_output,
     sanitize_author_text,
     single_line,
 )
@@ -360,6 +364,33 @@ class TermAndStepHelperTests(unittest.TestCase):
         self.assertEqual(idm_relationship_pairs(["Tiếp nhận → Phân loại → Xử lý"]),
                          [("Tiếp nhận", "Phân loại", "→"), ("Phân loại", "Xử lý", "→")])
         self.assertEqual(idm_relationship_pairs(["Nhân viên tiếp nhận khiếu nại."]), [])
+
+
+class GroundingHelperTests(unittest.TestCase):
+    """Deterministic evidence support behind the FAQ guard and the worksheet self-check (QC 234653, R5/R6)."""
+
+    def test_function_words_and_numbers(self) -> None:
+        index = evidence_index(["Bắt buộc escalate khi giá trị thiệt hại từ 50 triệu đồng trở lên."],
+                               number_texts=["Chọn 01 quy trình, tối thiểu 30%"])
+        self.assertEqual(index.numbers, frozenset({"50", "1", "30"}))
+        self.assertIn(("bat", "buoc"), index.pairs)
+        words, pairs, count = claim_support("Vì vậy, bắt buộc escalate khi thiệt hại từ 50 triệu đồng.", index)
+        self.assertEqual((words, count), (1.0, 7))
+        self.assertGreater(pairs, 0.7)
+        self.assertEqual(claim_support("và là của", index), (1.0, 1.0, 0))
+        self.assertEqual(grounding_verdict("Bắt buộc escalate khi thiệt hại từ 50 triệu đồng.", index), "grounded")
+        self.assertEqual(grounding_verdict("Bắt buộc escalate khi thiệt hại từ 60 triệu đồng.", index), "numbers")
+        self.assertEqual(grounding_verdict("Chọn 1 quy trình và tăng 30,0% năng suất.", index), "numbers")
+        self.assertEqual(grounding_verdict("Tăng tối thiểu 30% khi chọn 001 quy trình.", index), "support")
+
+    def test_produces_output(self) -> None:
+        for statement in ("Điền hoàn chỉnh 9 ô nội dung trên bảng tự đánh giá CEO Change Mindset Canvas",
+                          "Lập bản đồ 3 nguồn lực bên ngoài cần liên minh",
+                          "Người học có thể soạn bản cam kết hành động", "Draft a 90-day plan"):
+            self.assertTrue(produces_output(statement, "do"), statement)
+        for statement, kind in (("Phân loại khiếu nại theo nhóm", "do"), ("Xác định vị trí hiện tại", "do"),
+                                ("Choose the next step", "do"), ("Điền hoàn chỉnh 9 ô", "decide")):
+            self.assertFalse(produces_output(statement, kind), statement)
 
 
 class TitleHelperTests(unittest.TestCase):

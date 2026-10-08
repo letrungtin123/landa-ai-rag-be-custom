@@ -132,7 +132,7 @@ class ValidateLessonTests(unittest.TestCase):
             self.assertIn("IDM_W3_PRACTICE_COMPONENT_MISSING", error_codes(issues))
         issues = check(0, edited("mod_01", duplicate))
         self.assertIn(IdmIssue("IDM_W3_PRACTICE_UNKNOWN", "lessons[0].practice_tasks"), issues)
-        self.assertEqual(PRACTICE_COMPONENT_TYPES, {"problem", "la_sortable", "la_crossword"})
+        self.assertEqual(PRACTICE_COMPONENT_TYPES, {"problem", "la_sortable", "la_crossword", "html"})
 
     def test_sentence_format_is_a_warning_in_both_locales(self) -> None:
         def no_shape(p: dict[str, Any]) -> None:
@@ -229,6 +229,32 @@ class ValidateLessonTests(unittest.TestCase):
         issues = check(2, edited("mod_03", long_theory))
         self.assertEqual(issues, [IdmIssue("IDM_W4_THEORY_RUN", "lessons[0].units[2].components[1]", "warning")])
 
+    def test_worksheet_practice_for_a_must_do_that_produces_an_output(self) -> None:
+        # QC course 234653 (R5): a "do" Must Do ("Điền hoàn chỉnh 9 ô ... Canvas") was only practised with a
+        # recognition question. No V2 component records a free-text answer, so the practice is a worksheet
+        # html (role practice) checked by a single-choice problem in the same unit (spec §10.1).
+        def practice_unit(*components: dict[str, Any]) -> Callable[[dict[str, Any]], None]:
+            def change(p: dict[str, Any]) -> None:
+                p["lessons"][0]["units"][1]["components"] = list(components)
+            return change
+
+        worksheet = component("html", "practice", ["cb_0008"], practice_id="pt_1")
+        check_item = component("problem", "practice", ["cb_0008"], practice_id="pt_1")
+        explain = component("html", "show", ["cb_0008"])
+        self.assertEqual(check(2, edited("mod_03", practice_unit(worksheet, check_item))), [])
+        self.assertEqual(check(2, edited("mod_03", practice_unit(worksheet))),
+                         [IdmIssue("IDM_W3_WORKSHEET_CHECK_MISSING", "lessons[0].units[1].components[0]")])
+        recognition_only = check(2, edited("mod_03", practice_unit(explain, check_item)))
+        self.assertEqual(recognition_only, [IdmIssue("IDM_W3_DO_PRACTICE_RECOGNITION_ONLY",
+                                                     "lessons[0].practice_tasks", "warning")])
+        # Without html among the allowed components no worksheet can be asked for.
+        no_html = check(2, edited("mod_03", practice_unit(explain, check_item)), allowed=ALLOWED - {"html"})
+        self.assertNotIn("IDM_W3_DO_PRACTICE_RECOGNITION_ONLY", [issue.code for issue in no_html])
+        # The golden la_sortable practice of the same Must Do already lets the learner do it.
+        self.assertEqual(check(2, module_response("mod_03")), [])
+        # Classifying a case ("Phân loại khiếu nại theo nhóm", kind do) keeps its scenario question.
+        self.assertEqual(check(0, module_response("mod_01")), [])
+
     def test_type_not_allowed_and_missing_purpose(self) -> None:
         issues = check(0, module_response("mod_01"), allowed=ALLOWED - {"problem"})
         self.assertEqual(error_codes(issues), {"IDM_W4_COMPONENT_TYPE_NOT_ALLOWED"})
@@ -301,6 +327,27 @@ class NormalizeLessonTests(unittest.TestCase):
         self.assertIn("Note: a practice sentence lacks", en.notes)
         plain = normalize_lesson(lesson_of(module_response("mod_01"), 0), self.plan(0, 0), "vi", [])
         self.assertEqual(plain.notes, "Bloom: Vận dụng · ước tính 4 khối.")
+
+    def test_worksheet_limit_and_recognition_warning_reach_the_notes(self) -> None:
+        def worksheet(p: dict[str, Any]) -> None:
+            p["lessons"][0]["units"][1]["components"] = [
+                component("html", "practice", ["cb_0008"], practice_id="pt_1"),
+                component("problem", "practice", ["cb_0008"], practice_id="pt_1")]
+
+        plan = self.plan(2, 0)
+        vi = normalize_lesson(lesson_of(edited("mod_03", worksheet), 0), plan, "vi", [])
+        self.assertIn("Practice dạng phiếu thực hành: hệ thống chưa chấm câu trả lời tự luận", vi.notes)
+        en = normalize_lesson(lesson_of(edited("mod_03", worksheet), 0), plan, "en",
+                              ["IDM_W3_DO_PRACTICE_RECOGNITION_ONLY"])
+        self.assertIn("Worksheet practice: the LMS does not grade free-text answers", en.notes)
+        self.assertIn("Note: the Must Do asks the learner to produce something", en.notes)
+        warned = normalize_lesson(lesson_of(module_response("mod_03"), 0), plan, "vi",
+                                  ["IDM_W3_DO_PRACTICE_RECOGNITION_ONLY"])
+        self.assertIn("nên bổ sung phiếu thực hành (worksheet)", warned.notes)
+        self.assertNotIn("Practice dạng phiếu thực hành", warned.notes)
+        fallback = fallback_lesson(plan, scope_of(2))
+        self.assertIn("cần bổ sung phiếu thực hành (worksheet)", fallback.notes)
+        self.assertNotIn("phiếu thực hành", fallback_lesson(self.plan(0, 0), scope_of(0)).notes)
 
 
 class ModuleScopeTests(unittest.TestCase):

@@ -30,6 +30,7 @@ from app.idm.html_rules import (
 )
 from app.idm.policy import (
     EXTRA_WORDS_PER_MUST_KNOW_BLOCK,
+    IDM_FAQ_MIN_ITEMS,
     IDM_UNIT_WRITER_MAX_OUTPUT_TOKENS,
     MAX_GENERATED_WORDS,
     MIN_GENERATED_WORDS,
@@ -48,6 +49,9 @@ from app.idm.prompts import (
     unit_writer_prompt,
 )
 from app.idm.qa import (
+    FAQ_ITEMS_DROPPED_CODE,
+    FAQ_UNGROUNDED_CODE,
+    WORKSHEET_INCOMPLETE_CODE,
     JudgeMode,
     JudgeOutcome,
     blocking_count,
@@ -56,6 +60,7 @@ from app.idm.qa import (
     deterministic_slot_findings,
     repair_targets,
     run_judge,
+    ungrounded_faq_items,
 )
 from app.idm.runtime import (
     IdmBudgetError,
@@ -69,6 +74,7 @@ from app.idm.runtime import (
     record_deterministic_fallback,
     repair_thinking,
 )
+from app.idm.text import evidence_index
 from app.instructional_density import INSTRUCTIONAL_DENSITY_POLICY_VERSION
 from app.lesson_author_orchestration_v2_provider import UnitGenerationContractV2
 from app.ordered_learning_content import bind_provider_semantic_versions
@@ -83,6 +89,10 @@ _SAFE_CODE_RE: Final = re.compile(r"^[A-Z][A-Z0-9_]{2,99}$")
 _SAFE_PATH_RE: Final = re.compile(r"^[A-Za-z0-9_.\[\]]{1,160}$")
 _MAX_LOGGED_DETAILS: Final = 16
 _FIELD_OF_PATH_RE: Final = re.compile(r"^components\[\d+\]\.?")
+# A worksheet that misses part of its structure keeps the provider slot for author review: the
+# source-locked html fallback would replace the practice with plain explanation.
+_REVIEW_FIRST_CODES: Final = frozenset({WORKSHEET_INCOMPLETE_CODE})
+_MAX_HINT_FACT_KEYS: Final = 24
 
 
 def safe_error_details(error: BaseException) -> list[dict[str, Any]]:
@@ -228,6 +238,8 @@ class _Draft:
     # Provider slots kept for author review: the shared payload validator accepts them, only IDM
     # pedagogy checks (spec §7.7.2(b)) still fail, and no source-locked rebuild exists for the slot.
     review_slots: list[int] = field(default_factory=list)
+    # Why each fallback or review slot was settled that way (validator codes; QC 234653, D16).
+    reasons: dict[int, list[str]] = field(default_factory=dict)
 
 
 class IdmUnitWriter:
@@ -244,7 +256,16 @@ class IdmUnitWriter:
         self.text_by_id = {fact.fact_key: fact.fact_text for fact in contract.source_facts}
         self.owned_text = [" ".join(self.text_by_id[key] for key in slot.owned_fact_keys if key in self.text_by_id)
                            for slot in brief.components]
+        # Everything the writer was given (SOURCE_FACTS + LESSON_CONTEXT_FACTS); numbers of the approved
+        # plan (Must Do, purpose, practice sentences) may be repeated too.
+        self.evidence = evidence_index(
+            [*(fact.fact_text for fact in contract.source_facts),
+             *(item.fact_text for item in brief.lesson_context_facts)],
+            number_texts=[brief.lesson_objective, brief.unit_purpose, *brief.lesson_practice_sentences])
         self.codes: list[str] = []
+        # Provider, time-budget and repair failures behind a fallback (codes only, never provider text).
+        self.failure_codes: list[str] = []
+        self.faq_items_dropped = 0
         self.budget: dict[str, Any] = self.expected["instructional_output_budget"]
         self.min_html_chars = minimum_visible_chars(self.budget.get("source_content_chars"))
         # Deterministic html fixes applied before validation (counted, never content).
@@ -304,10 +325,24 @@ class IdmUnitWriter:
                 explained.add("HTML_PRESENTATION_FORBIDDEN")
             for code, issue_index in issues:
                 if issue_index == index and code not in explained:
-                    field = _FIELD_OF_PATH_RE.sub("", locations.get((code, index), ""))
-                    lines.append(rule_line(slot, code, f"{slot}.{field}" if field else slot))
+                    if code == FAQ_UNGROUNDED_CODE and isinstance(component, dict):
+                        lines.append(self.faq_rule_line(slot, index, component))
+                    else:
+                        field = _FIELD_OF_PATH_RE.sub("", locations.get((code, index), ""))
+                        lines.append(rule_line(slot, code, f"{slot}.{field}" if field else slot))
                     explained.add(code)
         return lines
+
+    def faq_rule_line(self, slot: str, index: int, component: dict[str, Any]) -> str:
+        """Targeted repair: which answers to rewrite and which facts they may use (keys, never text)."""
+
+        items = ", ".join(f"{slot}.items[{item}]" for item in ungrounded_faq_items(component, self.evidence))
+        brief_slot = self.brief.components[index] if index < len(self.brief.components) else None
+        keys = list(dict.fromkeys([*brief_slot.owned_fact_keys, *brief_slot.supporting_fact_keys]))[
+            :_MAX_HINT_FACT_KEYS] if brief_slot else []
+        listed = ", ".join(f"[{key}]" for key in keys)
+        hint = f" Start from this slot's facts: {listed}." if keys else ""
+        return rule_line(slot, FAQ_UNGROUNDED_CODE, items or slot) + hint
 
     # -- acceptance --------------------------------------------------------------------------
     def normalize_component(self, index: int, component: Any) -> Any:
@@ -389,7 +424,7 @@ class IdmUnitWriter:
         finding = self.deps.validate_unit(draft.unit, expected)
         exempt = {*draft.fallback_slots, *draft.review_slots}
         idm = [(item.code, item.component_index)
-               for item in deterministic_slot_findings(draft.unit, self.brief, self.owned_text)
+               for item in deterministic_slot_findings(draft.unit, self.brief, self.owned_text, self.evidence)
                if item.component_index not in exempt]
         return finding, idm
 
@@ -426,7 +461,7 @@ class IdmUnitWriter:
             invocation_kind="repair",
         )
         return _Draft({**unit, "component_plan": list(self.plans)}, list(draft.fallback_slots), True,
-                      list(draft.review_slots))
+                      list(draft.review_slots), dict(draft.reasons))
 
     def fallback_component(self, index: int) -> dict[str, Any] | None:
         slots = self.deps.source_locked_components
@@ -436,7 +471,7 @@ class IdmUnitWriter:
         component = slots[index] if 0 <= index < len(slots) else None
         return dict(component) if component is not None else None
 
-    def fallback_slot(self, draft: _Draft, index: int) -> _Draft | None:
+    def fallback_slot(self, draft: _Draft, index: int, reasons: Sequence[str] = ()) -> _Draft | None:
         component = self.fallback_component(index)
         if component is None:
             return None
@@ -444,7 +479,32 @@ class IdmUnitWriter:
         components[index] = component
         record_deterministic_fallback(self.runtime, stage="idm_w5_slot", code="IDM_W5_SLOT_FALLBACK")
         return _Draft({**draft.unit, "components": components}, sorted({*draft.fallback_slots, index}),
-                      draft.repair_applied, [slot for slot in draft.review_slots if slot != index])
+                      draft.repair_applied, [slot for slot in draft.review_slots if slot != index],
+                      {**draft.reasons, index: list(dict.fromkeys(reasons))})
+
+    def keep_for_review(self, draft: _Draft, index: int, reasons: Sequence[str]) -> _Draft:
+        self.codes.extend(reasons)
+        return _Draft(draft.unit, list(draft.fallback_slots), draft.repair_applied,
+                      sorted({*draft.review_slots, index}), {**draft.reasons, index: list(dict.fromkeys(reasons))})
+
+    def prune_faq(self, draft: _Draft, index: int) -> _Draft | None:
+        """Drop the FAQ items the facts do not support while the slot keeps its minimum item count."""
+
+        components = list(draft.unit.get("components", []))
+        component = components[index] if 0 <= index < len(components) else None
+        items = component.get("items") if isinstance(component, dict) else None
+        if not isinstance(component, dict) or component.get("type") != "la_faq" or not isinstance(items, list):
+            return None
+        drop = set(ungrounded_faq_items(component, self.evidence))
+        keep = [item for position, item in enumerate(items) if position not in drop]
+        if not drop or len(keep) < IDM_FAQ_MIN_ITEMS:
+            return None
+        components[index] = {**component, "items": keep}
+        self.faq_items_dropped += len(drop)
+        self.codes.append(FAQ_ITEMS_DROPPED_CODE)
+        self.runtime.adjustments["w5_faq_items_dropped"] += len(drop)
+        return _Draft({**draft.unit, "components": components}, list(draft.fallback_slots), draft.repair_applied,
+                      list(draft.review_slots), dict(draft.reasons))
 
     async def settle(self, draft: _Draft) -> _Draft | None:
         """Repair once, then replace failing slots with the source-locked fallback.
@@ -472,12 +532,13 @@ class IdmUnitWriter:
         try:
             draft = await self.repair_slots(draft, issues, locations)
             repaired = True
-        except (IdmBudgetError, IdmResponseInvalidError):
-            pass  # falls through to the per-slot fallback below
+        except (IdmBudgetError, IdmResponseInvalidError) as error:
+            self.failure_codes.append(error.code)  # falls through to the per-slot fallback below
         except IdmProviderError as error:
             if error.terminal:
                 raise
-        # Each pass settles one slot (fallback or review), so the bound is never the limiting factor.
+            self.failure_codes.append(error.code)
+        # Each pass settles one slot (FAQ pruning, then fallback or review), so the bound never limits.
         for attempt in range(2 * len(self.plans) + 1):
             finding, idm = self.problems(draft)
             if finding is None and not idm:
@@ -487,16 +548,25 @@ class IdmUnitWriter:
             bad = _slot_of(finding) if finding is not None else idm[0][1]
             if bad is None or bad in draft.fallback_slots:
                 return None
-            replaced = self.fallback_slot(draft, bad)
+            reasons = [*([finding.code] if finding is not None else []),
+                       *(code for code, index in idm if index == bad)]
+            if finding is None:
+                # Still-ungrounded FAQ answers are dropped while the slot keeps two grounded items (R6).
+                pruned = self.prune_faq(draft, bad) if set(reasons) == {FAQ_UNGROUNDED_CODE} else None
+                if pruned is not None:
+                    draft = pruned
+                    continue
+                if set(reasons) <= _REVIEW_FIRST_CODES:
+                    draft = self.keep_for_review(draft, bad, reasons)
+                    continue
+            replaced = self.fallback_slot(draft, bad, reasons)
             if replaced is None:
                 if finding is not None:
                     return None
                 # No source-locked rebuild exists for this slot (spec §7.7.4 "returns None") and the
                 # shared validator accepts its payload: keep the provider slot as a reviewable draft
                 # instead of discarding the whole unit (which would end in FALLBACK_INVALID).
-                self.codes.extend(code for code, index in idm if index == bad)
-                draft = _Draft(draft.unit, list(draft.fallback_slots), draft.repair_applied,
-                               sorted({*draft.review_slots, bad}))
+                draft = self.keep_for_review(draft, bad, reasons)
                 continue
             draft = replaced
         return None
@@ -526,16 +596,23 @@ async def run_idm_unit(
                      for slot in brief.components)
     draft: _Draft | None = None
     judge = JudgeOutcome("not_run")
-    if not fallback_only:
+    if fallback_only:
+        writer.failure_codes.append("IDM_W5_FALLBACK_ONLY")
+    else:
         try:
             async with asyncio.timeout(max(0.001, runtime.remaining_seconds())):
                 draft = await _provider_draft(writer)
-        except (TimeoutError, IdmBudgetError):
+        except TimeoutError:
+            writer.failure_codes.append("IDM_DEADLINE_EXCEEDED")
+            draft = None
+        except IdmBudgetError as error:
+            writer.failure_codes.append(error.code)
             draft = None
         except IdmProviderError as error:
             # A definitive rejection (credentials, request) must reach Node's fast-fail path.
             if error.terminal:
                 raise
+            writer.failure_codes.append(error.code)
             draft = None
         if draft is not None:
             # QA runs on its own clock: running out of time never discards the accepted unit.
@@ -551,8 +628,11 @@ async def run_idm_unit(
                   or deps.evidence_review_required
                   or blocking_count(judge.findings) > 0
                   or (ai_drafted and _q5(judge) != "pass"))
-    note = build_unit_author_note(locale=runtime.locale, judge=judge, deterministic_codes=writer.codes,
-                                  fallback_slots=draft.fallback_slots, ai_drafted=ai_drafted)
+    note = build_unit_author_note(
+        locale=runtime.locale, judge=judge, deterministic_codes=writer.codes, fallback_slots=draft.fallback_slots,
+        ai_drafted=ai_drafted, slot_reasons=draft.reasons, review_slots=draft.review_slots,
+        slot_types=[plan["type"] for plan in writer.plans], failure_codes=writer.failure_codes,
+        whole_fallback=whole_fallback, faq_items_dropped=writer.faq_items_dropped)
     quality = build_unit_quality(mode=deps.judge_mode, judge=judge, repair_applied=draft.repair_applied,
                                  deterministic_codes=writer.codes, author_note=note)
     unit = {**draft.unit, "idm_quality": quality.model_dump(mode="json")}
@@ -570,6 +650,8 @@ async def run_idm_unit(
         "repair_applied": draft.repair_applied, "fallback_slots": draft.fallback_slots,
         "review_slots": draft.review_slots, "html_fixes": dict(sorted(writer.html_fixes.items())),
         "whole_fallback": whole_fallback, "codes": sorted(set(writer.codes)),
+        "failure_codes": sorted(set(writer.failure_codes)), "faq_items_dropped": writer.faq_items_dropped,
+        "slot_reasons": {str(index): codes for index, codes in sorted(draft.reasons.items())},
         "call_count": runtime.usage.calls, "duration_ms": int((time.perf_counter() - started) * _MS),
     })
     return {

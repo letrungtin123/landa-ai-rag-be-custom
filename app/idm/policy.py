@@ -115,7 +115,31 @@ IDM_NOTES_MODULE_MAX_CHARS: Final = 3_000
 IDM_NOTES_LESSON_MAX_CHARS: Final = 2_000
 IDM_NOTES_MAX_HOLD_ITEMS: Final = 15
 IDM_NOTES_MAX_SME_QUESTIONS: Final = 10
+# Nice to Know blocks stay out of the lessons (methodology W2); the author gets their names and a
+# one-line summary to add one back by hand (QC course 234653, R4). The full list is in the UI panel.
+IDM_NOTES_MAX_NICE_TO_KNOW: Final = 12
+IDM_NOTES_SUMMARY_CHARS: Final = 160
 IDM_UNIT_AUTHOR_NOTE_MAX_CHARS: Final = 1_500
+
+# --- FAQ evidence guard (QC course 234653, R6) ------------------------------------------------
+# An la_faq answer must restate what the facts given to the writer say. Calibrated on the 18 FAQ
+# answers of run e869f43a against the unit's facts: answers that only rephrase the source have
+# >= 0.18 of their content word-pairs in the facts; answers that add advice, reasons or examples
+# the source never states ("dừng ở tầng thứ 3 hoặc 7", "đội ngũ liên chức năng không cần tuyển
+# thêm người") have <= 0.12. Function words never count (short connective phrasing is free).
+IDM_FAQ_MIN_PAIR_SUPPORT: Final = 0.15
+# A short answer can rephrase every word without keeping a single word pair.
+IDM_FAQ_MIN_WORD_SUPPORT: Final = 0.6
+# One invented sentence inside an otherwise grounded answer: a sentence with at least this many
+# content words needs some support of its own.
+IDM_FAQ_SENTENCE_MIN_WORDS: Final = 8
+IDM_FAQ_SENTENCE_MIN_PAIR_SUPPORT: Final = 0.08
+IDM_FAQ_SENTENCE_MIN_WORD_SUPPORT: Final = 0.45
+# The shared payload validator needs two FAQ items; ungrounded items are only dropped above it.
+IDM_FAQ_MIN_ITEMS: Final = 2
+# Share of a worksheet's self-check items that must restate the facts (same test as an FAQ answer).
+IDM_WORKSHEET_MIN_GROUNDED_SHARE: Final = 0.5
+IDM_WORKSHEET_MIN_LIST_ITEMS: Final = 2
 
 # --- Methodology word lists (folded: lower case, no diacritics, d for đ) ----------------
 GENERIC_TITLES: Final = frozenset({
@@ -134,6 +158,21 @@ AI_DRAFTED_MARKER_VI: Final = "[AI soạn — cần SME xác nhận]"
 AI_DRAFTED_MARKER_EN: Final = "[AI-drafted — SME to confirm]"
 
 ALLOWED_COMPONENT_TYPES_IDM: Final = ("html", "problem", "la_faq", "la_sortable", "la_crossword", "la_diagram")
+# No V2 component records a free-text or form answer (component registry: problem is single choice
+# only, la_scenario_chat is manual-only). The practice of a Must Do of kind "do" is therefore a
+# worksheet (spec §10.1 "Tạo sản phẩm đầu ra"): an html slot with role practice (task, template,
+# worked example, self-check list from the criteria facts) checked by a single-choice problem on a
+# sample answer; ordered procedures keep la_sortable.
+WORKSHEET_COMPONENT_TYPE: Final = "html"
+GRADED_PRACTICE_TYPES: Final = frozenset({"problem", "la_sortable", "la_crossword"})
+DOING_PRACTICE_TYPES: Final = frozenset({WORKSHEET_COMPONENT_TYPE, "la_sortable"})
+# A "do" Must Do that classifies, identifies or chooses applies a rule to a case: spec §10.1 keeps a
+# single-choice problem for it ("Kiểm tra hiểu Must Know (nhận diện, phân loại)", "chọn bước tiếp,
+# quyết định"). Folded leading verbs.
+CASE_DECISION_VERBS: Final = (
+    "phan loai", "xac dinh", "nhan dien", "nhan biet", "lua chon", "chon", "quyet dinh", "danh gia",
+    "classify", "identify", "recognise", "recognize", "select", "choose", "decide", "evaluate", "assess",
+)
 MAX_COMPONENTS_PER_UNIT: Final = 4
 # Assessment obligations exist only for slots 1..3 (SQL CHECK, spec §4.3 / IDM-0.5).
 MAX_OBLIGATION_COMPONENT_INDEX: Final = 3

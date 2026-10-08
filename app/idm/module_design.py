@@ -37,9 +37,12 @@ from app.idm.module_layout import (
 from app.idm.policy import (
     AI_DRAFTED_MARKER_EN,
     AI_DRAFTED_MARKER_VI,
+    DOING_PRACTICE_TYPES,
+    GRADED_PRACTICE_TYPES,
     IDM_MODULE_MAX_OUTPUT_TOKENS,
     IDM_THEORY_RUN_MAX_COMPONENTS,
     THINKING_MODULE,
+    WORKSHEET_COMPONENT_TYPE,
 )
 from app.idm.prompts import COMPACT_MODULE, answer_repair, module_prompt, repair_suffix
 from app.idm.runtime import (
@@ -54,7 +57,7 @@ from app.idm.runtime import (
     repair_thinking,
 )
 from app.idm.signals import idm_has_ordered_steps, idm_relationship_pairs, idm_term_definitions
-from app.idm.text import idm_fold, sanitize_author_text, single_line
+from app.idm.text import idm_fold, produces_output, sanitize_author_text, single_line
 from app.idm.validation import IdmIssue, errors
 from app.lesson_author_orchestration_v2 import (
     ArchitectureComponentAuthorReviewV2,
@@ -63,7 +66,8 @@ from app.lesson_author_orchestration_v2 import (
 )
 from app.lesson_author_orchestration_v2_provider import ChapterShardPlanV2, SourceSnapshotFactV2
 
-PRACTICE_COMPONENT_TYPES: Final = frozenset({"problem", "la_sortable", "la_crossword"})
+# Graded practice types plus the worksheet html of a "do" Must Do (spec §10.1, QC 234653 R5).
+PRACTICE_COMPONENT_TYPES: Final = GRADED_PRACTICE_TYPES | {WORKSHEET_COMPONENT_TYPE}
 _MIN_TERM_DEFINITIONS: Final = 3
 _MS: Final = 1000
 _MAX_ACTIVITIES: Final = 3
@@ -108,6 +112,10 @@ def validate_lesson(
     if len(unit_blocks) != len(set(unit_blocks)) or set(unit_blocks) != lesson_blocks:
         issues.append(IdmIssue("IDM_W4_UNIT_BLOCK_PARTITION", f"{path}.units"))
     practice_unit: dict[str, int] = {}
+    # practice_id -> units holding a graded check / (unit, path) of each worksheet; types per practice.
+    graded_units: dict[str, set[int]] = {}
+    worksheets: list[tuple[str, int, str]] = []
+    practice_types: set[str] = set()
     unit_of_fact = {
         key: position
         for position, unit in enumerate(lesson.units)
@@ -152,10 +160,24 @@ def validate_lesson(
                     issues.append(IdmIssue("IDM_W3_HELD_PRACTICE_HAS_COMPONENT", component_path))
                 else:
                     practice_unit[linked.practice_id] = unit_position
+                    practice_types.add(component.type)
+                    if component.type == WORKSHEET_COMPONENT_TYPE:
+                        worksheets.append((linked.practice_id, unit_position, component_path))
+                    else:
+                        graded_units.setdefault(linked.practice_id, set()).add(unit_position)
             else:
                 theory_run += 1
                 if theory_run > IDM_THEORY_RUN_MAX_COMPONENTS:
                     issues.append(IdmIssue("IDM_W4_THEORY_RUN", component_path, "warning"))
+    # A worksheet is never graded by the LMS: the same unit checks it with a graded practice.
+    issues.extend(IdmIssue("IDM_W3_WORKSHEET_CHECK_MISSING", path_of)
+                  for practice_id, unit_position, path_of in worksheets
+                  if unit_position not in graded_units.get(practice_id, set()))
+    primary = plan.primary_must_do_id or ""
+    if (plan.kind == "learning" and WORKSHEET_COMPONENT_TYPE in allowed_types and practice_types
+            and produces_output(scope.must_do_statement.get(primary, ""), scope.must_do_kind.get(primary, ""))
+            and not practice_types & DOING_PRACTICE_TYPES):
+        issues.append(IdmIssue("IDM_W3_DO_PRACTICE_RECOGNITION_ONLY", f"{path}.practice_tasks", "warning"))
     for index, practice in enumerate(lesson.practice_tasks):
         if practice.hold:
             continue
@@ -242,7 +264,9 @@ def normalize_lesson(
             )
         )
     notes = sanitize_author_text(lesson.notes, 2000)
-    extra = _warning_notes(warnings, locale)
+    worksheet = any(component.type == WORKSHEET_COMPONENT_TYPE and component.role == "practice"
+                    for unit in lesson.units for component in unit.components)
+    extra = _warning_notes(warnings, locale, worksheet=worksheet)
     if extra:
         notes = sanitize_author_text(f"{notes}\n{extra}", 2000)
     return lesson.model_copy(
@@ -272,8 +296,24 @@ def normalize_lesson(
     )
 
 
-def _warning_notes(warnings: Sequence[str], locale: str) -> str:
+def _warning_notes(warnings: Sequence[str], locale: str, *, worksheet: bool = False) -> str:
     lines = []
+    if worksheet:
+        lines.append(
+            "Practice dạng phiếu thực hành: hệ thống chưa chấm câu trả lời tự luận — người học tự đối chiếu bài "
+            "làm với danh sách tự kiểm; câu hỏi đi kèm kiểm tra việc áp dụng tiêu chí."
+            if locale == "vi"
+            else "Worksheet practice: the LMS does not grade free-text answers — learners check their own work "
+            "against the self-check list; the question that follows checks how they apply the criteria."
+        )
+    if "IDM_W3_DO_PRACTICE_RECOGNITION_ONLY" in warnings:
+        lines.append(
+            "Lưu ý: Must Do loại làm nhưng bài luyện tập chỉ kiểm tra nhận biết — nên bổ sung phiếu thực hành "
+            "(worksheet) để người học tự làm sản phẩm."
+            if locale == "vi"
+            else "Note: the Must Do asks the learner to produce something, but the practice only checks "
+            "recognition — add a worksheet practice."
+        )
     if "IDM_W4_THEORY_RUN" in warnings:
         lines.append(
             "Cảnh báo: có hơn 5 khối giải thích liên tiếp không có câu hỏi."

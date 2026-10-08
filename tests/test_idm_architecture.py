@@ -16,6 +16,7 @@ from app.idm.architecture import (
     bind_idm_course_skeleton,
     block_scope_key,
     fallback_w4,
+    pending_objective_ids,
     project_course_skeleton,
     run_w4,
     validate_w4,
@@ -31,7 +32,14 @@ from app.idm.contracts import (
     IdmW4CourseResponseV1,
     design_hash_of,
 )
-from app.idm.notes import build_course_notes, build_lesson_notes, build_module_notes, scrub_internal_ids
+from app.idm.notes import (
+    HoldNote,
+    SkippedBlockNote,
+    build_course_notes,
+    build_lesson_notes,
+    build_module_notes,
+    scrub_internal_ids,
+)
 from app.idm.runtime import IdmProviderError, IdmRuntime, IdmStageError
 from app.idm.validation import errors
 from app.lesson_author_orchestration_v2 import CourseSkeletonV2
@@ -380,6 +388,27 @@ class SkeletonProjectionTests(unittest.TestCase):
         self.assertEqual(skeleton.learning_outcomes, [item.statement for item in design.learning_objectives])
         self.assertEqual(skeleton.title, W4_COURSE["course_title"])
 
+    def test_fully_held_objective_is_not_a_learner_outcome(self) -> None:
+        # QC course 234653 (R3): LO3's only Must Do was on Hold, yet LO3 was shown as a course outcome.
+        design, skeleton = self.project(blocked=["md_3", "md_5"])
+        statements = {item.lo_id: item.statement for item in design.learning_objectives}
+        self.assertEqual(pending_objective_ids(design.learning_objectives, design.must_dos,
+                                               design.blocked_must_do_ids), ["lo_2"])
+        self.assertEqual(skeleton.learning_outcomes, [statements["lo_1"], statements["lo_3"]])
+        self.assertNotIn(statements["lo_2"], [item for chapter in skeleton.chapters
+                                              for item in chapter.learning_outcomes])
+        self.assertEqual(skeleton.chapters[1].learning_outcomes, [statements["lo_1"]])
+        self.assertEqual([item.lo_id for item in design.learning_objectives], ["lo_1", "lo_2", "lo_3"])
+        self.assertIn("Mục tiêu học tập chờ SME", design.notes.course)
+        self.assertIn(statements["lo_2"], design.notes.course)
+        self.assertIn("(chờ SME — chưa có bài dạy)", design.notes.modules["mod_02"])
+        # A partly held objective (lo_3: md_5 held, md_4 taught) stays a learner outcome.
+        _design, golden = self.project()
+        self.assertEqual(golden.learning_outcomes, list(statements.values()))
+        # Every objective held: the projection keeps them all (the skeleton needs at least one outcome).
+        _design, everything = self.project(blocked=["md_1", "md_2", "md_3", "md_4", "md_5"])
+        self.assertEqual(everything.learning_outcomes, list(statements.values()))
+
     def test_target_audience_suffix_only_when_ai_proposed(self) -> None:
         _design, skeleton = self.project()
         self.assertEqual(skeleton.target_audience, "Nhân viên chăm sóc khách hàng tuyến đầu" + AI_SUFFIX_VI)
@@ -432,11 +461,41 @@ class NotesTests(unittest.TestCase):
         text = self.course_notes("vi")
         self.assert_clean(text, 7_000, ["d1-c7-f2"])
         for expected in ("[Thiết kế theo quy trình ID — idm-1]", "do AI đề xuất", "35 phút (5 mục, 3 chương)",
-                         "Chờ SME xác nhận (1):", "Câu hỏi khác cho SME:", "phương án dự phòng",
+                         "Cần chuyên gia bổ sung (Hold) — chờ SME xác nhận (1)", "Câu hỏi cho SME:", "24 hay 48 giờ?",
+                         "Câu hỏi khác cho SME:", "phương án dự phòng",
                          "Cấu trúc được thiết kế theo Must Do, không theo mục lục tài liệu."):
             self.assertIn(expected, text)
         self.assertEqual(text.count("Câu hỏi lo"), 0)
         self.assertEqual(text.count("Câu hỏi về"), 1)
+
+    def test_course_notes_list_blocked_must_dos_pending_objectives_and_nice_to_know(self) -> None:
+        # QC course 234653 (R3, R4): the author sees what Hold blocks and what was left out.
+        hold = HoldNote("Thời hạn phản hồi khiếu nại", "Mâu thuẫn 24 giờ và 48 giờ.", "Cấp 2 phản hồi trong bao lâu?",
+                        ("Phản hồi khách hàng đúng thời hạn",))
+        expectations = {
+            "vi": ("Must Do chưa dạy được: Phản hồi khách hàng đúng thời hạn.",
+                   "• Mục tiêu học tập chờ SME (chưa hiển thị là kết quả đầu ra của khoá học):",
+                   "• Nội dung tham khảo đã lược (Nice to know) — 2 khối, tác giả có thể bổ sung thủ công:"),
+            "en": ("Must Do not taught yet: Phản hồi khách hàng đúng thời hạn.",
+                   "• Learning objectives awaiting the SME (not shown as course outcomes):",
+                   "• Reference content left out (Nice to know) — 2 blocks the author may add back:"),
+        }
+        for locale, labels in expectations.items():
+            text = self.course_notes(locale, holds=[hold], pending_objectives=["Người học có thể phản hồi đúng hạn."],
+                                     nice_to_know=[SkippedBlockNote("Lịch sử phòng CSKH", "Thành lập năm 2009. " * 30),
+                                                   ("Bối cảnh cạnh tranh", "Thị trường thay đổi")])
+            self.assert_clean(text, 7_000, ["d1-c7-f2"])
+            for label in labels:
+                self.assertIn(label, text)
+            self.assertIn("Mâu thuẫn 24 giờ và 48 giờ.", text)
+            self.assertNotIn("48 giờ..", text)
+            self.assertIn("  - Người học có thể phản hồi đúng hạn.", text)
+            self.assertIn("  - Bối cảnh cạnh tranh: Thị trường thay đổi", text)
+            summary = next(line for line in text.splitlines() if "Lịch sử phòng CSKH" in line)
+            self.assertLessEqual(len(summary), len("  - Lịch sử phòng CSKH: ") + 160)
+        blank = self.course_notes("vi", holds=[HoldNote("Khối chưa rõ", "-", "-")])
+        self.assertIn("  1. Khối chưa rõ.", blank)
+        self.assertNotIn("Câu hỏi cho SME: -", blank)
 
     # Regression (fixed): scrub_internal_ids collapses every run of spaces, so the two-space list indentation of the
     # spec §8.4 template ("  1. {hold.name} — …") is lost before sanitize_author_text can keep it.
@@ -450,16 +509,20 @@ class NotesTests(unittest.TestCase):
                                  sme_questions=[f"Question number {n} for the SME?" for n in range(14)])
         self.assert_clean(text, 7_000, ["d1-c7-f2"])
         self.assertIn("[Designed with the ID workflow — idm-1]", text)
-        self.assertIn("Awaiting SME confirmation (20):", text)
+        self.assertIn("Needs SME input (Hold) — awaiting SME confirmation (20)", text)
         self.assertIn("and 5 more", text)
         self.assertNotIn("proposed by AI", text)
         self.assertEqual(text.count("Question number"), 10)
 
-    def test_course_notes_are_cut_to_the_limit(self) -> None:
+    def test_course_notes_fit_the_limit_and_count_what_does_not_fit(self) -> None:
         holds = [("Khối " + "a" * 170, "b" * 300, "c" * 400)] * 15
-        text = self.course_notes("vi", holds=holds)
-        self.assertEqual(len(text), 7_000)
-        self.assertTrue(text.endswith("…"))
+        text = self.course_notes("vi", holds=holds, nice_to_know=[("Khối tham khảo", "Tóm tắt")] * 5)
+        self.assertLessEqual(len(text), 7_000)
+        self.assertFalse(text.endswith("…"))
+        self.assertTrue(text.endswith("Cấu trúc được thiết kế theo Must Do, không theo mục lục tài liệu."))
+        shown = sum(line.startswith(f"  {index}. Khối") for line in text.splitlines() for index in range(1, 16))
+        self.assertGreater(shown, 0)
+        self.assertIn(f"  và {15 - shown} mục khác", text)
 
     def test_module_and_lesson_notes(self) -> None:
         for locale in ("vi", "en"):
@@ -489,9 +552,16 @@ class NotesTests(unittest.TestCase):
         design = assemble_idm_course_design(assembly_input(inputs))
         known = [fact.fact_key for fact in source_facts()]
         self.assert_clean(design.notes.course, 7_000, known)
+        statements = {item.must_do_id: item.statement for item in design.must_dos}
         for item in design.hold_items:
             self.assertIn(item.name, design.notes.course)
             self.assertIn(item.sme_question, design.notes.course)
+            for must_do_id in item.blocked_must_do_ids:
+                self.assertIn(statements[must_do_id], design.notes.course)
+        names = {block.block_id: block.name for block in design.blocks}
+        for row in design.blueprint:
+            if row.classification == "nice_to_know":
+                self.assertIn(names[row.block_id], design.notes.course)
         for text in design.notes.modules.values():
             self.assert_clean(text, 3_000, known)
         for text in design.notes.lessons.values():

@@ -27,7 +27,7 @@ from app.idm.contracts import (
     StageOrigin,
     design_hash_of,
 )
-from app.idm.notes import build_course_notes, build_lesson_notes, build_module_notes
+from app.idm.notes import HoldNote, SkippedBlockNote, build_course_notes, build_lesson_notes, build_module_notes
 from app.idm.policy import (
     IDM_CONTRACT_VERSION,
     IDM_DURATION_OVER_TARGET_RATIO,
@@ -63,6 +63,8 @@ from app.lesson_author_orchestration_v2 import CourseSkeletonChapterV2, CourseSk
 
 _AI_SUFFIX_VI: Final = " (Đề xuất bởi AI — cần xác nhận)"
 _AI_SUFFIX_EN: Final = " (Proposed by AI — please confirm)"
+_PENDING_VI: Final = " (chờ SME — chưa có bài dạy)"
+_PENDING_EN: Final = " (awaiting the SME — not taught yet)"
 _MAX_CHAPTER_OUTCOMES: Final = 12
 _MAX_PREREQUISITES: Final = 10
 _MAX_SECONDARY_MUST_DOS: Final = 2
@@ -74,6 +76,24 @@ class ArchitectureResult:
     origin: StageOrigin
     codes: dict[str, int]
     warnings: list[str]
+
+
+def pending_objective_ids(
+    objectives: Sequence[IdmLearningObjectiveV1], must_dos: Sequence[IdmMustDoV1], blocked: Sequence[str],
+) -> list[str]:
+    """Objectives whose every Must Do is blocked by a Hold: no lesson teaches them yet.
+
+    They stay in the design and in the author notes ("chờ SME") but are never presented to the
+    learner as a course or chapter outcome (QC course 234653, R3).
+    """
+
+    blocked_set = set(blocked)
+    pending = []
+    for objective in objectives:
+        ids = [must_do.must_do_id for must_do in must_dos if must_do.lo_id == objective.lo_id]
+        if ids and all(must_do_id in blocked_set for must_do_id in ids):
+            pending.append(objective.lo_id)
+    return pending
 
 
 def block_scope_key(source_snapshot_hash: str, block_id: str, fact_keys: Sequence[str]) -> str:
@@ -461,19 +481,29 @@ def _build_notes(data: AssemblyInput) -> IdmAuthorNotesV1:
     hold_ids = {item.block_id for item in data.holds}
     questions = [question for block in [*priority, *others] if block.block_id not in hold_ids
                  for question in block.sme_questions]
+    must_do_text = {item.must_do_id: item.statement for item in data.must_dos}
+    statements = {item.lo_id: item.statement for item in data.objectives}
+    row_by_id = {row.block_id: row for row in data.rows}
+    pending = pending_objective_ids(data.objectives, data.must_dos, data.blocked)
     course = build_course_notes(
         locale=locale, ai_proposed=ai_proposed, total_minutes=sum(lesson.est_minutes for lesson in lessons),
         lesson_count=len(lessons), module_count=len(data.plan.modules), reference_block_count=reference_count,
         excluded_block_count=excluded_count,
-        holds=[(item.name, item.reason, item.sme_question) for item in data.holds], sme_questions=questions,
+        holds=[HoldNote(item.name, item.reason, item.sme_question,
+                        tuple(must_do_text[md] for md in item.blocked_must_do_ids if md in must_do_text))
+               for item in data.holds],
+        sme_questions=questions,
         fallback_stages=[stage for stage, origin in data.stage_origins.items() if origin != "provider"],
         known_ids=known_ids,
+        pending_objectives=[statements[lo_id] for lo_id in pending],
+        nice_to_know=[SkippedBlockNote(block.name, block.summary) for block in data.blocks
+                      if block.block_id in row_by_id and row_by_id[block.block_id].classification == "nice_to_know"],
     )
-    statements = {item.lo_id: item.statement for item in data.objectives}
     blooms = {item.must_do_id: item.bloom for item in data.must_dos}
     modules = {module.module_key: build_module_notes(
         locale=locale, performance_goal=module.performance_goal,
-        objectives=[statements[lo_id] for lo_id in module.lo_ids if lo_id in statements],
+        objectives=[statements[lo_id] + ((_PENDING_VI if locale == "vi" else _PENDING_EN) if lo_id in pending else "")
+                    for lo_id in module.lo_ids if lo_id in statements],
         lesson_count=len(module.lessons), total_minutes=sum(lesson.est_minutes for lesson in module.lessons),
         known_ids=known_ids,
     ) for module in data.plan.modules}
@@ -492,7 +522,12 @@ def project_course_skeleton(design: IdmCourseDesignV1, plan: IdmW4CourseResponse
     ai_proposed = design.target_audience.origin == "ai_proposed"
     suffix = (_AI_SUFFIX_VI if vi else _AI_SUFFIX_EN) if ai_proposed else ""
     audience = single_line(design.target_audience.description, 2000 - len(suffix)) + suffix
-    statements = {item.lo_id: item.statement for item in design.learning_objectives}
+    pending = set(pending_objective_ids(design.learning_objectives, design.must_dos, design.blocked_must_do_ids))
+    # Learner-facing outcomes: objectives a lesson teaches. A fully held objective waits for the SME
+    # (notes); when every objective is held the projection keeps them all (the skeleton needs one).
+    taught = [item for item in design.learning_objectives if item.lo_id not in pending] or list(
+        design.learning_objectives)
+    statements = {item.lo_id: item.statement for item in taught}
     scope_of_block = {scope.block_id: scope.scope_key for scope in design.block_scopes}
     chapters = []
     for position, module in enumerate(design.modules):
@@ -500,7 +535,7 @@ def project_course_skeleton(design: IdmCourseDesignV1, plan: IdmW4CourseResponse
         chapters.append(CourseSkeletonChapterV2(
             chapter_key=f"chapter-{position + 1}", order=position, title=module.title,
             objective=module.performance_goal,
-            learning_outcomes=outcomes or [statements[design.learning_objectives[0].lo_id]],
+            learning_outcomes=outcomes or [taught[0].statement],
             source_scope_ids=[scope_of_block[block_id] for lesson in module.lessons for block_id in lesson.block_ids],
         ))
     assumptions = [f"IDM pipeline {IDM_PIPELINE_VERSION}"]
@@ -510,7 +545,7 @@ def project_course_skeleton(design: IdmCourseDesignV1, plan: IdmW4CourseResponse
         contract_version=2, source_snapshot_hash=design.source_snapshot_hash, locale=design.project_context.locale,
         title=plan.course_title, summary=plan.course_summary, target_audience=audience,
         prerequisites=list(plan.prerequisites),
-        learning_outcomes=[item.statement for item in design.learning_objectives],
+        learning_outcomes=[item.statement for item in taught],
         assessment_strategy=plan.assessment_strategy, assumptions=assumptions, chapters=chapters,
     )
     bind_idm_course_skeleton(skeleton, design)

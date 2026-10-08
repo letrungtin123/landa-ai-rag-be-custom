@@ -7,7 +7,7 @@ within the size budget (STD-5).
 from __future__ import annotations
 
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Final
 
 from app.idm.contracts import (
@@ -24,7 +24,7 @@ from app.idm.contracts import (
 )
 from app.idm.policy import MAX_OBLIGATION_COMPONENT_INDEX
 from app.idm.runtime import IdmStageError
-from app.idm.text import single_line
+from app.idm.text import produces_output, single_line
 from app.instructional_quality import build_source_grounded_single_choice
 from app.lesson_author_orchestration_v2 import (
     ArchitectureComponentAuthorReviewV2,
@@ -50,6 +50,8 @@ class ModuleScope:
     lesson_plans: list[IdmLessonPlanV1]
     must_do_statement: dict[str, str]
     locale: str
+    # Must Do id -> "do" | "decide": a "do" Must Do needs a practice that produces the output (R5).
+    must_do_kind: dict[str, str] = field(default_factory=dict)
 
     def block_texts(self, block_ids: Sequence[str]) -> list[str]:
         return [
@@ -98,6 +100,7 @@ def build_module_scope(
         lesson_plans=list(context.module.lessons),
         must_do_statement={item.must_do_id: item.statement for item in context.must_dos},
         locale=context.project_context.locale,
+        must_do_kind={item.must_do_id: item.kind for item in context.must_dos},
     )
 
 
@@ -169,6 +172,13 @@ def fallback_lesson(
     elif plan.kind == "learning":
         practices, units = _fallback_practice(plan, scope, units, objective)
     activities_hint = title_hint or plan.title
+    notes = _vi(locale, f"Bố cục dự phòng tự động cho: {activities_hint}. Cần rà soát.",
+                f"Automatic fallback layout for: {activities_hint}. Review needed.")
+    primary = plan.primary_must_do_id or ""
+    if plan.kind == "learning" and produces_output(scope.must_do_statement.get(primary, ""),
+                                                   scope.must_do_kind.get(primary, "")):
+        notes += " " + _vi(locale, "Must Do loại làm: cần bổ sung phiếu thực hành (worksheet) để người học tự làm.",
+                           "A doing Must Do: add a worksheet practice so the learner produces the output.")
     return IdmLessonDesignV1(
         lesson_key=plan.lesson_key,
         title=single_line(plan.title, 180).ljust(3, "."),
@@ -184,14 +194,7 @@ def fallback_lesson(
             500,
         ),
         units=units,
-        notes=single_line(
-            _vi(
-                locale,
-                f"Bố cục dự phòng tự động cho: {activities_hint}. Cần rà soát.",
-                f"Automatic fallback layout for: {activities_hint}. Review needed.",
-            ),
-            2000,
-        ),
+        notes=single_line(notes, 2000),
     )
 
 

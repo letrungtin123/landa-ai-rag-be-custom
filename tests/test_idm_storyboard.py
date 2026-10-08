@@ -81,6 +81,52 @@ def severity_writer(body: dict[str, Any], explanation: str | None = None) -> dic
                    "pháp lý hay truyền thông.")}}}
 
 
+UNGROUNDED_ANSWER = ("Nên tặng phiếu giảm giá 20% cho khách VIP để giữ chân họ lâu dài hơn trong mùa mua sắm cao "
+                     "điểm cuối năm.")
+
+
+def escalate_with_faq(body: dict[str, Any], *answers: str) -> dict[str, Any]:
+    writer = escalate_writer(body)
+    writer["components"]["c1"]["items"] = [
+        {"question": f"Điều gì dễ nhầm số {index} khi xử lý khiếu nại?", "answer": answer}
+        for index, answer in enumerate(answers, start=1)]
+    return writer
+
+
+def worksheet_body() -> dict[str, Any]:
+    """lsn_002 unit 1 with its html slot planned as the worksheet of the unit's practice (spec §10.1)."""
+
+    body = severity_body()
+    brief = body["unit_contract"]["idm_unit_brief"]
+    brief["components"][0].update(role="practice", practice=brief["components"][1]["practice"])
+    brief["brief_hash"] = brief_hash_of(brief)
+    rehash_contract(body["unit_contract"])
+    return body
+
+
+def worksheet_writer(body: dict[str, Any]) -> dict[str, Any]:
+    writer = severity_writer(body)
+    rows = writer["components"]["c0"]["semantic_content"]["sections"][0]["blocks"][1]["rows"]
+
+    def section(heading: str, block: dict[str, Any]) -> dict[str, Any]:
+        return {"heading": heading, "learning_block_ids": [], "blocks": [{"text": None, "items": [], "rows": [],
+                                                                         **block}]}
+
+    writer["components"]["c0"]["semantic_content"] = {"sections": [
+        section("Bạn cần làm gì với ba khiếu nại mẫu?", {"kind": "task", "text": (
+            "Đọc mô tả ba khiếu nại mẫu, xác định cấp độ của từng khiếu nại và ghi người cần xử lý vào bảng "
+            "của bạn. Dựa vào dấu hiệu của từng cấp độ trong bảng bên dưới.")}),
+        section("Bảng cần điền cho từng khiếu nại", {"kind": "table", "rows": rows}),
+        section("Ví dụ một dòng đã điền", {"kind": "paragraph", "text": (
+            "Khách hàng gọi lần thứ hai vì đơn giao trễ, chưa có thiệt hại tài chính: ghi cấp 2 và thông báo "
+            "trưởng nhóm.")}),
+        section("Tự kiểm tra bảng của bạn", {"kind": "bullets", "items": [
+            "Cấp 2 khi thiệt hại tài chính dưới 50 triệu đồng hoặc khách hàng phàn nàn lần thứ hai.",
+            "Cấp 3 khi liên quan an toàn, pháp lý hoặc truyền thông: escalate ngay cho quản lý."]}),
+    ]}
+    return writer
+
+
 def slot_repair(writer: dict[str, Any], index: int, **changes: Any) -> dict[str, Any]:
     payload = {k: v for k, v in writer["components"][f"c{index}"].items() if k != "covered_source_fact_ids"}
     return {"components": {f"c{index}": {**payload, **changes}}}
@@ -285,6 +331,11 @@ class UnitEndpointTests(StoryboardEndpointTestCase):
                 self.assertNotIn("source_locked_fallback", components[0])
                 self.assertTrue(components[1]["source_locked_fallback"])
                 self.assertIn("1 khối dùng bản dự phòng", quality.author_note)
+                # QC course 234653 (D16): the note says why the slot fell back.
+                self.assertIn("Lý do: khối 2 (Quiz) — IDM_W5_PRACTICE_INCOMPLETE.", quality.author_note)
+                repair_code = {"invalid": "IDM_W5_REPAIR_INVALID", "provider": "AI_PROVIDER_UNAVAILABLE"}.get(name)
+                if repair_code:
+                    self.assertIn(f"Sửa tự động không thành công: {repair_code}.", quality.author_note)
                 self.assertEqual(data["attempt_trace"][-2 if name != "provider" else -1]["failure_code"],
                                  "IDM_W5_SLOT_FALLBACK")
                 # A transient provider failure also blocks the judge call of the same task.
@@ -324,9 +375,86 @@ class UnitEndpointTests(StoryboardEndpointTestCase):
         self.assert_envelope(data, "structured_fallback", "review_required", "reserved_upper_bound")
         status, data, provider = await self.post(severity_body(), FakeGenerate(**{WRITER: [unavailable()]}))
         self.assertEqual((status, provider.names), (200, [WRITER]))
-        self.assert_envelope(data, "structured_fallback", "review_required", "reserved_upper_bound")
+        quality = self.assert_envelope(data, "structured_fallback", "review_required", "reserved_upper_bound")
+        self.assertEqual(quality.author_note, "Cả bài dùng bản dự phòng dựng từ tài liệu — cần biên tập. "
+                                              "Lý do: AI_PROVIDER_UNAVAILABLE.")
         self.assertEqual([(e["outcome"], e["failure_code"]) for e in data["attempt_trace"]],
                          [("failed", "AI_PROVIDER_UNAVAILABLE"), ("fallback", "IDM_W5_UNIT_FALLBACK")])
+
+    async def test_ungrounded_faq_answer_gets_a_targeted_repair(self) -> None:
+        # QC course 234653 (R6): an FAQ answer added a claim the source never makes.
+        body = escalate_body()
+        good = escalate_writer(body)
+        items = good["components"]["c1"]["items"]
+        bad = escalate_with_faq(body, items[0]["answer"], UNGROUNDED_ANSWER)
+        provider = FakeGenerate(**{WRITER: [bad], REPAIR: [slot_repair(good, 1)], JUDGE: [judge()]})
+        status, data, _ = await self.post(body, provider)
+        self.assertEqual(status, 200)
+        quality = self.assert_envelope(data, "provider_validated", "validated", "provider")
+        self.assertEqual(provider.names, [WRITER, REPAIR, JUDGE])
+        prompt = provider.calls[1]["prompt"]
+        self.assertIn('{"code":"IDM_W5_FAQ_UNGROUNDED","path":"components[1]"}', prompt)
+        self.assertIn("c1 IDM_W5_FAQ_UNGROUNDED at c1.items[1]: answer only from these facts", prompt)
+        self.assertIn("Start from this slot's facts: [", prompt)
+        self.assertNotIn(UNGROUNDED_ANSWER, prompt.split("REPAIR_REQUIREMENTS")[1])
+        self.assertIn("la_faq answers restate only what SOURCE_FACTS or LESSON_CONTEXT_FACTS say", prompt)
+        self.assertEqual(quality.deterministic_codes, ["IDM_W5_FAQ_UNGROUNDED"])
+        self.assertEqual(data["unit"]["components"][1]["items"], items)
+
+    async def test_still_ungrounded_faq_items_are_dropped_while_two_grounded_items_remain(self) -> None:
+        body = escalate_body()
+        grounded = [item["answer"] for item in escalate_writer(body)["components"]["c1"]["items"]]
+        bad = escalate_with_faq(body, grounded[0], UNGROUNDED_ANSWER, grounded[1])
+        provider = FakeGenerate(**{WRITER: [bad], REPAIR: [slot_repair(bad, 1)], JUDGE: [judge()]})
+        status, data, _ = await self.post(body, provider)
+        self.assertEqual(status, 200)
+        quality = self.assert_envelope(data, "provider_validated", "validated", "provider")
+        self.assertEqual([item["answer"] for item in data["unit"]["components"][1]["items"]], grounded)
+        self.assertEqual(quality.deterministic_codes, ["IDM_W5_FAQ_ITEMS_DROPPED", "IDM_W5_FAQ_UNGROUNDED"])
+        self.assertIn("Đã bỏ 1 câu hỏi đáp có nội dung ngoài tài liệu.", quality.author_note)
+        self.assertNotIn("fallback", [e["outcome"] for e in data["attempt_trace"]])
+
+    async def test_faq_without_two_grounded_items_follows_the_slot_fallback_rules(self) -> None:
+        # No source-locked FAQ can be built for this unit: the slot is kept for author review, with the reason.
+        body = escalate_body()
+        grounded = escalate_writer(body)["components"]["c1"]["items"][0]["answer"]
+        bad = escalate_with_faq(body, grounded, UNGROUNDED_ANSWER)
+        provider = FakeGenerate(**{WRITER: [bad], REPAIR: [slot_repair(bad, 1)], JUDGE: [judge()]})
+        status, data, _ = await self.post(body, provider)
+        self.assertEqual(status, 200)
+        quality = self.assert_envelope(data, "provider_validated", "review_required", "provider")
+        self.assertEqual(len(data["unit"]["components"][1]["items"]), 2)
+        self.assertIn("Giữ bản AI để tác giả rà soát: khối 2 (Hỏi đáp) — IDM_W5_FAQ_UNGROUNDED.",
+                      quality.author_note)
+        self.assertEqual(quality.deterministic_codes, ["IDM_W5_FAQ_UNGROUNDED"])
+
+    async def test_worksheet_slot_for_a_doing_must_do(self) -> None:
+        # QC course 234653 (R5): the html practice slot is written as a worksheet the problem then checks.
+        body = worksheet_body()
+        provider = FakeGenerate(**{WRITER: [worksheet_writer(body)], JUDGE: [judge()]})
+        status, data, _ = await self.post(body, provider)
+        self.assertEqual(status, 200, data)
+        self.assert_envelope(data, "provider_validated", "validated", "provider")
+        self.assertEqual(provider.names, [WRITER, JUDGE])
+        prompt = provider.calls[0]["prompt"]
+        self.assertIn('is a WORKSHEET for its practice', prompt)
+        self.assertIn('"role":"practice","title"', prompt)
+        kinds = [block["kind"] for section in data["unit"]["components"][0]["semantic_content"]["sections"]
+                 for block in section["blocks"]]
+        self.assertEqual(kinds, ["task", "table", "paragraph", "bullets"])
+
+    async def test_incomplete_worksheet_is_kept_for_review_not_replaced(self) -> None:
+        body = worksheet_body()
+        plain = severity_writer(body)
+        provider = FakeGenerate(**{WRITER: [plain], REPAIR: [slot_repair(plain, 0)], JUDGE: [judge()]})
+        status, data, _ = await self.post(body, provider)
+        self.assertEqual(status, 200)
+        quality = self.assert_envelope(data, "provider_validated", "review_required", "provider")
+        self.assertIn("c0 IDM_W5_WORKSHEET_INCOMPLETE at c0: a worksheet slot needs a task block",
+                      provider.calls[1]["prompt"])
+        self.assertNotIn("source_locked_fallback", data["unit"]["components"][0])
+        self.assertIn("Giữ bản AI để tác giả rà soát: khối 1 (Lý thuyết) — IDM_W5_WORKSHEET_INCOMPLETE.",
+                      quality.author_note)
 
     async def test_brief_mismatch_is_422_without_provider_call(self) -> None:
         body = escalate_body()
