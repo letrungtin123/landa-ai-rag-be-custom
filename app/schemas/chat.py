@@ -1,10 +1,10 @@
-"""Request models of ``/v1/chat`` (also the base of every RAG-backed request)."""
+"""Request and response models of ``/v1/chat`` (the request is the base of every RAG request)."""
 
 from __future__ import annotations
 
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field, SecretStr, field_validator
+from pydantic import BaseModel, ConfigDict, Field, SecretStr, field_validator
 
 from app.core.config import settings
 from app.schemas.common import validate_uuid_string
@@ -85,3 +85,14 @@ class RagChatRequest(BaseModel):
         if len(value) > MAX_SOURCE_DOCUMENTS:
             raise ValueError("Tối đa 20 tài liệu nguồn cho mỗi request RAG.")
         return value
+
+
+class ChatResponse(BaseModel):
+    """``/v1/chat`` answer (field order is the wire order)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    text: str
+    usage: dict[str, Any]
+    sources: list[dict[str, Any]]
+    retrieval: dict[str, Any]

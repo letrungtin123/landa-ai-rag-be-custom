@@ -13,6 +13,7 @@ from app.schemas.orchestration_v2 import (
     RagLessonAuthorCourseSkeletonV2Request,
     RagLessonAuthorSourceSnapshotV2Request,
     RagLessonAuthorUnitV2Request,
+    SourceSnapshotV2Response,
 )
 from app.services.orchestration_v2 import chapter_shard as chapter_shard_service
 from app.services.orchestration_v2 import course_skeleton as course_skeleton_service
@@ -23,8 +24,10 @@ from app.services.orchestration_v2 import unit as unit_service
 async def lesson_author_orchestration_v2_source_snapshot(
     request: RagLessonAuthorSourceSnapshotV2Request,
     pool: Annotated[asyncpg.Pool, Depends(get_db)],
-) -> dict[str, Any]:
-    return await source_snapshot_service.lesson_author_orchestration_v2_source_snapshot(request, pool)
+) -> SourceSnapshotV2Response:
+    return SourceSnapshotV2Response.model_validate(
+        await source_snapshot_service.lesson_author_orchestration_v2_source_snapshot(request, pool),
+    )
 
 
 async def lesson_author_orchestration_v2_course_skeleton(

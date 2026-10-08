@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from typing import Any
 
 from fastapi import Depends, FastAPI
 from fastapi.responses import JSONResponse, Response
@@ -15,6 +14,7 @@ from app.core.config import settings
 from app.core.errors import error_payload
 from app.core.logging import SERVICE_LOGGER_NAME
 from app.repositories import health as health_repository
+from app.schemas.health import HealthResponse, ServiceMetaResponse
 from app.services import runtime as service_runtime
 from app.services.meta import API_VERSION, BUILD_SHA_PATTERN, SERVICE_NAME, service_contract_versions
 from app.services.runtime import SCHEMA_CHECK_TIMEOUT_SECONDS
@@ -22,9 +22,9 @@ from app.services.runtime import SCHEMA_CHECK_TIMEOUT_SECONDS
 logger = logging.getLogger(SERVICE_LOGGER_NAME)
 
 
-async def healthz() -> dict[str, str]:
+async def healthz() -> HealthResponse:
     """Liveness only: the process is serving requests. Never touches dependencies."""
-    return {"status": "ok"}
+    return HealthResponse(status="ok")
 
 
 async def readyz() -> JSONResponse:
@@ -49,10 +49,10 @@ async def readyz() -> JSONResponse:
     return JSONResponse(content={"status": "ready"})
 
 
-async def service_meta() -> dict[str, Any]:
+async def service_meta() -> ServiceMetaResponse:
     """Build and contract identity so the backend can detect a version skew between servers."""
     build_sha = settings.build_sha.strip()
-    return {
+    return ServiceMetaResponse.model_validate({
         "service": SERVICE_NAME,
         "build_sha": build_sha if BUILD_SHA_PATTERN.fullmatch(build_sha) else "unknown",
         "api_version": API_VERSION,
@@ -63,7 +63,7 @@ async def service_meta() -> dict[str, Any]:
         },
         "database": {"state": service_runtime.database.state if service_runtime.database is not None else "idle"},
         "schema_check": service_runtime.schema_guard.summary(),
-    }
+    })
 
 
 async def metrics_endpoint() -> Response:

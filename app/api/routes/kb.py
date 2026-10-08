@@ -2,30 +2,40 @@
 
 from __future__ import annotations
 
-from typing import Annotated, Any
+from typing import Annotated
 
 import asyncpg
 from fastapi import Depends, FastAPI
 
 from app.api.deps import get_db, require_internal_token
-from app.schemas.kb import RagDeleteDocumentRequest, RagDeleteKbRequest, RagIndexRequest
+from app.schemas.kb import (
+    INDEX_DOCUMENT_RESPONSE,
+    DeleteResponse,
+    IndexDocumentResponse,
+    RagDeleteDocumentRequest,
+    RagDeleteKbRequest,
+    RagIndexRequest,
+)
 from app.services.ingestion import documents as documents_service
 from app.services.ingestion import index as index_service
 
 
-async def index_document(request: RagIndexRequest, pool: Annotated[asyncpg.Pool, Depends(get_db)]) -> dict[str, Any]:
-    return await index_service.index_document(request, pool)
+async def index_document(
+    request: RagIndexRequest,
+    pool: Annotated[asyncpg.Pool, Depends(get_db)],
+) -> IndexDocumentResponse:
+    return INDEX_DOCUMENT_RESPONSE.validate_python(await index_service.index_document(request, pool))
 
 
 async def delete_document(
     request: RagDeleteDocumentRequest,
     pool: Annotated[asyncpg.Pool, Depends(get_db)],
-) -> dict[str, bool]:
-    return await documents_service.delete_document(request, pool)
+) -> DeleteResponse:
+    return DeleteResponse.model_validate(await documents_service.delete_document(request, pool))
 
 
-async def delete_kb(request: RagDeleteKbRequest, pool: Annotated[asyncpg.Pool, Depends(get_db)]) -> dict[str, bool]:
-    return await documents_service.delete_kb(request, pool)
+async def delete_kb(request: RagDeleteKbRequest, pool: Annotated[asyncpg.Pool, Depends(get_db)]) -> DeleteResponse:
+    return DeleteResponse.model_validate(await documents_service.delete_kb(request, pool))
 
 
 def register(app: FastAPI) -> None:

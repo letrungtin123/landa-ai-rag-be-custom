@@ -1,10 +1,10 @@
-"""Request models of the knowledge-base indexing and deletion routes."""
+"""Request and response models of the knowledge-base indexing and deletion routes."""
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, Field, SecretStr, field_validator
+from pydantic import BaseModel, ConfigDict, Field, SecretStr, TypeAdapter, field_validator
 
 from app.schemas.common import validate_uuid_string
 
@@ -45,3 +45,37 @@ class RagDeleteKbRequest(BaseModel):
     @classmethod
     def validate_required_uuid(cls, value: str, info: Any) -> str:
         return validate_uuid_string(value, info.field_name) or ""
+
+
+# ---- responses (field order is the wire order) ------------------------------------------------
+class IndexLearnedResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    status: Literal["learned"]
+    chunk_count: int
+    structure_source: Any
+    structure_confidence: Any
+    structure_node_count: int
+    diagnostics: dict[str, Any]
+    usage: dict[str, Any]
+
+
+class IndexFailedResponse(BaseModel):
+    """A handled indexing failure: the index row is marked with the safe ``error_reason`` code."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    status: Literal["error"]
+    chunk_count: int
+    usage: dict[str, Any]
+    error_reason: str
+
+
+IndexDocumentResponse = Annotated[IndexLearnedResponse | IndexFailedResponse, Field(discriminator="status")]
+INDEX_DOCUMENT_RESPONSE: TypeAdapter[IndexLearnedResponse | IndexFailedResponse] = TypeAdapter(IndexDocumentResponse)
+
+
+class DeleteResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    deleted: bool

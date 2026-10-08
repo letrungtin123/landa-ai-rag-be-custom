@@ -2,18 +2,18 @@
 
 from __future__ import annotations
 
-from typing import Annotated, Any
+from typing import Annotated
 
 import asyncpg
 from fastapi import Depends, FastAPI
 
 from app.api.deps import get_db, require_internal_token
-from app.schemas.chat import RagChatRequest
+from app.schemas.chat import ChatResponse, RagChatRequest
 from app.services.chat import service as chat_service
 
 
-async def chat(request: RagChatRequest, pool: Annotated[asyncpg.Pool, Depends(get_db)]) -> dict[str, Any]:
-    return await chat_service.chat(request, pool)
+async def chat(request: RagChatRequest, pool: Annotated[asyncpg.Pool, Depends(get_db)]) -> ChatResponse:
+    return ChatResponse.model_validate(await chat_service.chat(request, pool))
 
 
 def register(app: FastAPI) -> None:

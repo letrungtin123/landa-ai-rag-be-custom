@@ -14,7 +14,7 @@ strict_paths="app/core app/infra app/idm app/prompt_safety.py app/__main__.py ap
 # The legacy lesson-author pipeline (app/services/lesson_author) keeps the mypy "no new errors"
 # baseline (pyproject overrides) until PRD-3 deletes it.
 mypy_strict_paths="app/services/provider.py app/services/chat app/services/retrieval app/services/ingestion app/services/orchestration_v2"
-strict_tests="tests/test_prd0_security.py tests/test_document_limits.py tests/test_architecture_layers.py tests/test_prd1_runtime.py tests/test_prd1_endpoints.py tests/test_characterization_ingestion.py tests/test_characterization_retrieval_chat.py tests/idm_golden.py tests/idm_golden_module.py tests/idm_golden_unit.py tests/idm_test_support.py tests/idm_contract_bridge.py tests/test_route_snapshots.py tests/test_repository_sql.py"
+strict_tests="tests/test_prd0_security.py tests/test_document_limits.py tests/test_architecture_layers.py tests/test_prd1_runtime.py tests/test_prd1_endpoints.py tests/test_characterization_ingestion.py tests/test_characterization_retrieval_chat.py tests/idm_golden.py tests/idm_golden_module.py tests/idm_golden_unit.py tests/idm_test_support.py tests/idm_contract_bridge.py tests/test_route_snapshots.py tests/test_repository_sql.py tests/test_response_models.py"
 # Every IDM test file is held to the strict lint profile.
 for test_file in "$repo_root"/tests/test_idm_*.py; do
   [ "$(basename "$test_file")" = "test_idm_foundation.py" ] || strict_tests="$strict_tests tests/$(basename "$test_file")"

@@ -1,11 +1,11 @@
-"""Request models of the orchestration-v2 routes."""
+"""Request models of the orchestration-v2 routes and the source-snapshot response."""
 
 from __future__ import annotations
 
 from typing import Any, Literal
 from uuid import UUID
 
-from pydantic import ConfigDict, Field, SecretStr, model_validator
+from pydantic import BaseModel, ConfigDict, Field, SecretStr, model_validator
 
 from app.idm.contracts import IdmCourseSkeletonRequestV1, IdmModuleContextV1
 from app.lesson_author_orchestration_v2 import CourseSkeletonV2
@@ -112,3 +112,19 @@ class RagLessonAuthorUnitV2Request(RagChatRequest):
                 or any(fact.document_id not in document_ids for fact in self.unit_contract.source_facts)):
             raise ValueError("ORCHESTRATION_V2_UNIT_REQUEST_INVALID")
         return self
+
+
+class SourceSnapshotV2Response(BaseModel):
+    """One deterministic source page (field order is the wire order)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    contract_version: Literal[2]
+    source_snapshot_hash: str
+    source_revision: str
+    source_authority: dict[str, Any]
+    facts: list[dict[str, Any]]
+    next_cursor: dict[str, Any] | None
+    has_more: bool
+    page_content_bytes: int
+    usage: dict[str, Any]
