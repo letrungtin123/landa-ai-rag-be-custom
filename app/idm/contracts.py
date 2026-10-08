@@ -48,11 +48,21 @@ SignalFlag = Literal["H", "T", "S", "R", "E", "M", "D", "V"]
 Origin = Literal["client", "ai_proposed"]
 StageOrigin = Literal["provider", "partial_fallback", "deterministic_fallback"]
 IdmComponentType = Literal["html", "problem", "la_faq", "la_sortable", "la_crossword", "la_diagram"]
+# Keys of the stored quality summary (``IdmUnitQualityV1.criteria``; Node mirror ``IDM_JUDGE_CRITERIA``).
 JudgeCriterion = Literal[
     "Q1_support_sufficient", "Q2_not_copied", "Q3_practice_complete", "Q4_feedback_teaches",
     "Q5_grounded_criteria", "Q6_alignment", "Q7_cognitive_load", "Q8_language", "Q9_traceability",
 ]
 JudgeSeverity = Literal["pass", "minor", "major", "critical"]
+# What the judge answers (provider response only, never stored as such; QC course 364564, N7): one more
+# criterion, summarised under Q9_traceability, and "not_applicable" for the practice criteria of a unit
+# without a practice slot, which never counts as a finding.
+JudgeAnswerCriterion = Literal[
+    "Q1_support_sufficient", "Q2_not_copied", "Q3_practice_complete", "Q4_feedback_teaches",
+    "Q5_grounded_criteria", "Q6_alignment", "Q7_cognitive_load", "Q8_language", "Q9_traceability",
+    "Q10_title_matches",
+]
+JudgeAnswerSeverity = Literal["pass", "minor", "major", "critical", "not_applicable"]
 Locale = Literal["vi", "en"]
 
 # --- Shared constrained strings ------------------------------------------------------------
@@ -428,8 +438,8 @@ class IdmUnitBriefV1(IdmModel):
 
 
 class IdmJudgeFindingV1(IdmModel):
-    criterion: JudgeCriterion
-    severity: JudgeSeverity
+    criterion: JudgeAnswerCriterion
+    severity: JudgeAnswerSeverity
     component_index: int | None = Field(default=None, ge=0, le=3)
     witness: str = Field(max_length=300)
 

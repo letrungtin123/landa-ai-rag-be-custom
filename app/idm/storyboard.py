@@ -70,6 +70,7 @@ from app.idm.qa import (
     build_unit_quality,
     deterministic_slot_findings,
     final_unit_findings,
+    has_practice_slot,
     repair_targets,
     run_judge,
     settled_codes,
@@ -845,14 +846,20 @@ async def _judge_and_repair(writer: IdmUnitWriter, draft: _Draft, mode: JudgeMod
                 for key in slot.practice.criteria_fact_keys}
     facts.extend((item.fact_key, item.fact_text) for item in writer.brief.lesson_context_facts
                  if item.fact_key in criteria)
+    practice_slot = has_practice_slot(writer.brief)
     summary = {
-        "segment": writer.brief.unit_segment, "purpose": writer.brief.unit_purpose,
-        "must_do": writer.brief.lesson_objective, "practices": writer.brief.lesson_practice_sentences,
+        "unit_title": writer.contract.unit_title, "segment": writer.brief.unit_segment,
+        "purpose": writer.brief.unit_purpose, "must_do": writer.brief.lesson_objective,
+        # Only this unit's own practice: the lesson's practice sentences made the judge grade practice that
+        # sits in another unit and reject teach-only units (QC course 364564, N7).
+        "practices": [slot.practice.sentence for slot in writer.brief.components if slot.practice is not None],
+        "has_practice_slot": practice_slot,
         "slots": [{"index": index, "type": slot.type, "role": slot.role, "title": slot.title,
                    "treatments": [item.model_dump(mode="json") for item in slot.treatments]}
                   for index, slot in enumerate(writer.brief.components)],
     }
-    judge = await run_judge(writer.runtime, mode=mode, plan_summary=summary, facts=facts, unit=draft.unit)
+    judge = await run_judge(writer.runtime, mode=mode, plan_summary=summary, facts=facts, unit=draft.unit,
+                            practice_slot=practice_slot)
     targets = [index for index in repair_targets(judge.findings) if index not in draft.fallback_slots]
     if mode != "repair" or not targets:
         return draft, judge
@@ -866,7 +873,8 @@ async def _judge_and_repair(writer: IdmUnitWriter, draft: _Draft, mode: JudgeMod
     finding, idm = writer.problems(repaired)
     if finding is not None or idm:
         return draft, judge
-    second = await run_judge(writer.runtime, mode=mode, plan_summary=summary, facts=facts, unit=repaired.unit)
+    second = await run_judge(writer.runtime, mode=mode, plan_summary=summary, facts=facts, unit=repaired.unit,
+                             practice_slot=practice_slot)
     if second.status in {"pass", "review_required", "reject"} and (
             blocking_count(second.findings) < blocking_count(judge.findings)):
         return repaired, second

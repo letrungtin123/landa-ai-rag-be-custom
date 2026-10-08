@@ -126,11 +126,14 @@ class DeterministicSlotFindingTests(unittest.TestCase):
             self.assertEqual(self.findings(unit(html("Ba cấp độ."), value)),
                              [SlotFinding("IDM_W5_PRACTICE_INCOMPLETE", 1)])
         by_text = ("Phương án Cấp 2 vì khách hàng phàn nàn lần thứ hai là đúng; phương án Cấp 3 vì cần escalate ngay "
-                   "cho quản lý là sai vì không có yếu tố an toàn.")
-        self.assertEqual(self.findings(unit(problem(by_text))), [])
+                   "cho quản lý là sai vì không có yếu tố an toàn")
+        self.assertEqual(self.findings(unit(problem(by_text + "; phương án Cấp 1 vì chưa có thiệt hại tài chính là "
+                                                              "sai vì đây là lần phàn nàn thứ hai."))), [])
+        # QC course 364564 (N10): an explanation that skips an option (here the first) is incomplete.
+        self.assertEqual(self.findings(unit(problem(by_text + "."))), [SlotFinding("IDM_W5_PRACTICE_INCOMPLETE", 0)])
 
     def test_feedback_not_teaching(self) -> None:
-        self.assertEqual(self.findings(unit(problem("A — sai; B — đúng."))),
+        self.assertEqual(self.findings(unit(problem("A — sai; B — đúng; C — sai."))),
                          [SlotFinding("IDM_W5_FEEDBACK_NOT_TEACHING", 0)])
         self.assertEqual(self.findings(unit(problem("Đúng!"))),
                          [SlotFinding("IDM_W5_PRACTICE_INCOMPLETE", 0), SlotFinding("IDM_W5_FEEDBACK_NOT_TEACHING", 0)])

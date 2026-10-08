@@ -111,6 +111,15 @@ def relabel_explanation(text: str, new_letter: Mapping[str, str]) -> str:
     return _LETTER_RE.sub(swap, text)
 
 
+def labelled_letters(text: str) -> set[str]:
+    """Option letters ``text`` uses as labels ("A -", "phương án B", "A và C", "Đáp án đúng là D."); the same
+    reading ``relabel_explanation`` applies after the options were shuffled (QC course 364564, N10)."""
+
+    normalized = unicodedata.normalize("NFC", text)
+    return {match.group(1) for match in _LETTER_RE.finditer(normalized)
+            if _is_label(normalized, match.start(), match.end())}
+
+
 def _ordered_segments(text: str, relabelled: str, count: int, new_letter: Mapping[str, str]) -> str | None:
     """``relabelled`` with its per-option segments in A, B, C ... order, when that is safe.
 
@@ -188,5 +197,5 @@ def answer_length_cue(component: Mapping[str, Any]) -> bool:
 
 __all__ = [
     "ANSWER_LENGTH_CUE_CODE", "LABELS_STRIPPED_CODE", "OPTION_LETTERS", "RELABELLED_CODE", "SHUFFLED_CODE",
-    "answer_length_cue", "normalize_single_choice", "option_order", "relabel_explanation",
+    "answer_length_cue", "labelled_letters", "normalize_single_choice", "option_order", "relabel_explanation",
 ]

@@ -417,8 +417,10 @@ Writing rules (learner-facing, {locale_name(locale)}):
 - Practice slots of type problem, la_sortable or la_crossword contain context, task, the input the learner works
   with, exactly one correct answer, and feedback that teaches. Single-choice: 3-4 options, plausible distractors
   that are wrong by the stated criterion, no "all/none of the above", correct option not always first; the
-  explanation states the criterion and why EACH
-  option is right or wrong ("A - ...; B - ..."). Never reveal the answer before the question.
+  explanation states the criterion and why EACH option is right or wrong ("A - ...; B - ...; C - ...", every
+  option named by its letter); each reason must agree with that option's own text and with the answer key
+  (never call a distractor that meets the criterion wrong, or the reverse). Never reveal the answer before the
+  question.
 - An html slot whose role is "practice" is a WORKSHEET for its practice (the learner works on their own copy;
   nothing is graded automatically): a section whose heading names the task with a "task" block (what to produce,
   from which input); a section with the template to complete as a "table" block (label = the field or cell to
@@ -603,8 +605,9 @@ UNIT_RULE_TEXT: Final[dict[str, str]] = {
     "COMPONENT_COVERAGE_MISSING": "covered_source_fact_ids lists exactly the owned fact keys of this slot",
     "COMPONENT_COVERAGE_INCOMPLETE": "covered_source_fact_ids lists exactly the owned fact keys of this slot",
     "INVALID_FACT_ID_ARRAY": "covered_source_fact_ids lists exactly the owned fact keys of this slot",
-    "IDM_W5_PRACTICE_INCOMPLETE": "exactly one correct choice, and an explanation that labels each option "
-                                  "(A - ...; B - ...) and says why it is right or wrong",
+    "IDM_W5_PRACTICE_INCOMPLETE": "exactly one correct choice, and an explanation that names EVERY option by its "
+                                  "letter (A - ...; B - ...; C - ...) and says why it is right or wrong, in "
+                                  "agreement with that option's text and the answer key",
     "IDM_W5_FEEDBACK_NOT_TEACHING": "feedback of at least 60 characters that names the criterion; never only "
                                     "Correct/Incorrect",
     "IDM_W5_ANSWER_LEAK": "earlier html must not reveal the correct answer of this question",
@@ -618,12 +621,15 @@ UNIT_RULE_TEXT: Final[dict[str, str]] = {
     "IDM_W6_Q1": "a learner can do the practice using only what this lesson taught",
     "IDM_W6_Q2": "rewrite for the learner; do not paste the source (exact rules and definitions may stay)",
     "IDM_W6_Q3": "context, task, input, one correct answer and feedback are present and consistent",
-    "IDM_W6_Q4": "feedback names the criterion and explains why each option is right or wrong",
+    "IDM_W6_Q4": "feedback names the criterion and explains why each option is right or wrong; the explanation "
+                 "of each option agrees with that option's text and with the answer key",
     "IDM_W6_Q5": "the correct answer follows from the source facts; no invented rule, threshold or exception",
     "IDM_W6_Q6": "the practice matches the Must Do action type and Bloom level",
     "IDM_W6_Q7": "no long theory runs; context under 20%; detail matches detail_level",
     "IDM_W6_Q8": "clear language for the audience; terms explained; no internal IDs or citations",
     "IDM_W6_Q9": "every component serves the stated Must Do, practice or support",
+    "IDM_W6_Q10": "make the slot title and section headings name what the content teaches, or teach what the "
+                  "title promises (every item of a list it names)",
 }
 # A condensed slot aims below the hard limit, so a near miss does not fail again.
 DENSITY_TARGET_SHARE: Final = 0.9
@@ -682,21 +688,33 @@ def judge_prompt(
 ) -> str:
     return preamble(locale) + f"""
 TASK: Review ONE generated unit against its approved plan as a senior instructional-design reviewer. Do not
-rewrite content. For each criterion return pass | minor | major | critical, the component index (0-based) when
-the issue is in one component, and a witness of at most 300 characters quoting the unit.
- Q1_support_sufficient: a learner could do the practice using only what this lesson taught.
+rewrite content. For each criterion return pass | minor | major | critical (or not_applicable, only as allowed
+below), the component index (0-based) when the issue is in one component, and a witness of at most 300
+characters quoting the unit. Judge only this unit: PLAN.practices lists the practice of this unit only, and
+PLAN.has_practice_slot says whether this unit contains a practice or question slot. Practice that sits in
+another unit of the lesson is never a finding here.
+ Q1_support_sufficient: a learner could do this unit's practice using only what this lesson taught (a unit
+   without a practice slot: its teaching achieves PLAN.purpose).
  Q2_not_copied: rewritten for the learner, not pasted source (exact rules/definitions are allowed).
  Q3_practice_complete: context, task, input, one correct answer and feedback are present and consistent. A
    worksheet (html slot with role practice) has no single answer: check its task, template, worked example and
    self-check criteria, and the problem that checks it.
- Q4_feedback_teaches: feedback names the criterion and explains why each option is right or wrong.
- Q5_grounded_criteria: the correct answer follows from SOURCE_FACTS; no invented rule, threshold or exception.
+ Q4_feedback_teaches: feedback names the criterion and explains why each option is right or wrong; the
+   explanation of EACH option agrees with that option's own text and with the answer key (an explanation that
+   calls a correct-by-the-criterion option wrong, or a wrong option right, is major).
+ Q5_grounded_criteria: the correct answer follows from SOURCE_FACTS; no invented rule, threshold or exception;
+   a quotation or callout states only what SOURCE_FACTS say.
  Q6_alignment: the practice matches the Must Do action type and Bloom level in the plan.
+ Q3, Q4 and Q6 grade this unit's own practice: when PLAN.has_practice_slot is false return not_applicable for
+   them. not_applicable is never allowed for any other criterion.
  Q7_cognitive_load: no long theory runs; context under 20%; detail matches detail_level.
  Q8_language: clear, suited to the audience, terms explained, no internal IDs or citations.
  Q9_traceability: every component serves the stated Must Do, practice or support.
-Return one finding per criterion. verdict = pass (no major/critical) | review_required (any major) |
-reject (any critical).
+ Q10_title_matches: PLAN.unit_title, the slot titles and the section headings name what the content actually
+   teaches; a title that promises a topic or a list ("Tổng quan 5 chuyển dịch") the content does not present
+   is major; an FAQ title that does not match its questions is major.
+Return one finding per criterion (Q1-Q10). verdict = pass (no major/critical) | review_required (any major) |
+reject (any critical); not_applicable never counts.
 
 {untrusted_block("PLAN_CONTEXT", "PLAN=" + _json(plan_summary))}
 {untrusted_block("SOURCE_FACTS", fact_lines(facts))}

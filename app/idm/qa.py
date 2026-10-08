@@ -14,11 +14,13 @@ from app.idm.contracts import (
     IdmJudgeResponseV1,
     IdmUnitBriefV1,
     IdmUnitQualityV1,
+    JudgeAnswerCriterion,
     JudgeCriterion,
     JudgeSeverity,
 )
-from app.idm.mcq import ANSWER_LENGTH_CUE_CODE, answer_length_cue
+from app.idm.mcq import ANSWER_LENGTH_CUE_CODE, OPTION_LETTERS, answer_length_cue, labelled_letters
 from app.idm.policy import (
+    GRADED_PRACTICE_TYPES,
     IDM_ANSWER_LEAK_MIN_NGRAMS,
     IDM_ANSWER_LEAK_MIN_SHARE,
     IDM_ANSWER_LEAK_NGRAM,
@@ -46,7 +48,8 @@ JudgeMode = Literal["off", "observe", "repair"]
 JudgeStatus = Literal["not_run", "pass", "review_required", "reject", "skipped_budget", "failed"]
 
 MIN_FEEDBACK_CHARS: Final = 60
-MIN_EXPLAINED_OPTIONS: Final = 2
+# An option is named by its text when the explanation contains the start of it (accent-folded).
+_OPTION_TEXT_PREFIX: Final = 40
 VERBATIM_MIN_CHARS: Final = 300
 VERBATIM_MAX_OVERLAP: Final = 0.7
 ANSWER_LEAK_MIN_CHARS: Final = 12
@@ -54,6 +57,20 @@ CRITERIA: Final[tuple[JudgeCriterion, ...]] = (
     "Q1_support_sufficient", "Q2_not_copied", "Q3_practice_complete", "Q4_feedback_teaches",
     "Q5_grounded_criteria", "Q6_alignment", "Q7_cognitive_load", "Q8_language", "Q9_traceability",
 )
+# QC course 364564 (N7): the unit title "Tổng quan 5 chuyển dịch" taught something else and no criterion
+# caught it. The judge answers a tenth criterion; the stored summary (Node reads exactly the nine keys
+# above) records it under Q9_traceability, so the cross-language contract is unchanged.
+TITLE_CRITERION: Final = "Q10_title_matches"
+JUDGE_CRITERIA: Final[tuple[JudgeAnswerCriterion, ...]] = (*CRITERIA, TITLE_CRITERION)
+_STORED_CRITERION: Final[dict[str, JudgeCriterion]] = {
+    **{criterion: criterion for criterion in CRITERIA}, TITLE_CRITERION: "Q9_traceability"}
+# QC course 364564 (N7): two teach-only units (html + FAQ) were rejected for Q3/Q4/Q6 because the judge saw
+# the lesson's practice. A unit without a practice slot cannot fail these: they are "not_applicable",
+# which never counts as a finding and never reaches the stored summary.
+PRACTICE_CRITERIA: Final = frozenset({"Q3_practice_complete", "Q4_feedback_teaches", "Q6_alignment"})
+NOT_APPLICABLE: Final = "not_applicable"
+_STORED_SEVERITY: Final[dict[str, JudgeSeverity]] = {
+    "pass": "pass", "minor": "minor", "major": "major", "critical": "critical"}
 _CRITERION_LABEL_VI: Final = {
     "Q1_support_sufficient": "phần hỗ trợ chưa đủ cho bài luyện tập",
     "Q2_not_copied": "nội dung còn chép nguyên văn tài liệu",
@@ -64,6 +81,7 @@ _CRITERION_LABEL_VI: Final = {
     "Q7_cognitive_load": "lượng lý thuyết quá dài",
     "Q8_language": "ngôn ngữ chưa phù hợp người học",
     "Q9_traceability": "có khối không phục vụ Must Do",
+    TITLE_CRITERION: "tiêu đề không khớp nội dung được dạy",
 }
 _CRITERION_LABEL_EN: Final = {
     "Q1_support_sufficient": "support is not enough for the practice",
@@ -75,13 +93,13 @@ _CRITERION_LABEL_EN: Final = {
     "Q7_cognitive_load": "too much theory in a row",
     "Q8_language": "language does not suit the learner",
     "Q9_traceability": "a block does not serve the Must Do",
+    TITLE_CRITERION: "a title does not match what the unit teaches",
 }
 _SEVERITY_RANK: Final = {"pass": 0, "minor": 1, "major": 2, "critical": 3}
 FAQ_UNGROUNDED_CODE: Final = "IDM_W5_FAQ_UNGROUNDED"
 FAQ_ITEMS_DROPPED_CODE: Final = "IDM_W5_FAQ_ITEMS_DROPPED"
 WORKSHEET_INCOMPLETE_CODE: Final = "IDM_W5_WORKSHEET_INCOMPLETE"
 ANSWER_LEAK_CODE: Final = "IDM_W5_ANSWER_LEAK"
-_OPTION_LABEL_RE: Final = re.compile(r"(?:^|[\s(;,.])([A-F])\s*(?:[—\-:.)]|là\b|is\b)")
 
 
 @dataclass(frozen=True)
@@ -101,15 +119,25 @@ def _correct_choices(component: dict[str, Any]) -> list[dict[str, Any]]:
     return [choice for choice in choices if isinstance(choice, dict) and choice.get("correct") is True]
 
 
-def _explained_option_count(component: dict[str, Any]) -> int:
+def unexplained_options(component: dict[str, Any]) -> list[int]:
+    """Options the explanation never names, by letter or by their own text (QC course 364564, N10).
+
+    The prompt asks for "A - ...; B - ..." with every option; an explanation that skips one cannot
+    tell the learner why that option is right or wrong. Letters are read as ``app.idm.mcq`` reads them
+    when it relabels the explanation after the seeded shuffle, so they are the served letters.
+    """
+
     explanation = str(component.get("explanation") or "")
     choices = [choice for choice in component.get("choices") or [] if isinstance(choice, dict)]
-    labels = {match.group(1) for match in _OPTION_LABEL_RE.finditer(explanation)}
+    letters = labelled_letters(explanation)
     folded = idm_fold(explanation)
-    texts = sum(1 for choice in choices
-                if len(idm_fold(str(choice.get("text") or ""))) >= ANSWER_LEAK_MIN_CHARS
-                and idm_fold(str(choice.get("text") or ""))[:40] in folded)
-    return max(len(labels), texts)
+    missing = []
+    for index, choice in enumerate(choices):
+        text = idm_fold(str(choice.get("text") or ""))
+        by_letter = index < len(OPTION_LETTERS) and OPTION_LETTERS[index] in letters
+        if not by_letter and not (len(text) >= ANSWER_LEAK_MIN_CHARS and text[:_OPTION_TEXT_PREFIX] in folded):
+            missing.append(index)
+    return missing
 
 
 def faq_item_verdicts(component: dict[str, Any], evidence: EvidenceIndex) -> list[str]:
@@ -190,7 +218,7 @@ def deterministic_slot_findings(
         elif kind == "problem":
             explanation = " ".join(str(component.get("explanation") or "").split())
             correct = _correct_choices(component)
-            if len(correct) != 1 or _explained_option_count(component) < MIN_EXPLAINED_OPTIONS:
+            if len(correct) != 1 or unexplained_options(component):
                 findings.append(SlotFinding("IDM_W5_PRACTICE_INCOMPLETE", index))
             if len(explanation) < MIN_FEEDBACK_CHARS or idm_fold(explanation).strip(" .!") in {
                     "dung", "sai", "correct", "incorrect", "dung roi", "chua dung"}:
@@ -265,12 +293,37 @@ def worst_counts(findings: Sequence[IdmJudgeFindingV1]) -> IdmFindingCountsV1:
 
 
 def criteria_summary(findings: Sequence[IdmJudgeFindingV1]) -> dict[JudgeCriterion, JudgeSeverity]:
+    """Worst severity per stored criterion; "not_applicable" is left out and Q10 counts as Q9 (N7)."""
+
     summary: dict[JudgeCriterion, JudgeSeverity] = {}
     for finding in findings:
-        current = summary.get(finding.criterion, "pass")
-        if _SEVERITY_RANK[finding.severity] >= _SEVERITY_RANK[current]:
-            summary[finding.criterion] = finding.severity
+        severity = _STORED_SEVERITY.get(finding.severity)
+        if severity is None:
+            continue
+        criterion = _STORED_CRITERION[finding.criterion]
+        current = summary.get(criterion, "pass")
+        if _SEVERITY_RANK[severity] >= _SEVERITY_RANK[current]:
+            summary[criterion] = severity
     return summary
+
+
+def has_practice_slot(brief: IdmUnitBriefV1) -> bool:
+    """The unit holds a practice (role practice, a worksheet) or a question the learner answers."""
+
+    return any(slot.role == "practice" or slot.type in GRADED_PRACTICE_TYPES for slot in brief.components)
+
+
+def settle_applicability(findings: Sequence[IdmJudgeFindingV1], *, practice_slot: bool) -> list[IdmJudgeFindingV1]:
+    """Q3/Q4/Q6 of a unit without a practice slot become "not_applicable" whatever the judge answered;
+    "not_applicable" on any other criterion is no verdict and is dropped (QC course 364564, N7)."""
+
+    settled: list[IdmJudgeFindingV1] = []
+    for finding in findings:
+        if finding.criterion in PRACTICE_CRITERIA and not practice_slot:
+            settled.append(finding.model_copy(update={"severity": NOT_APPLICABLE}))
+        elif finding.severity != NOT_APPLICABLE:
+            settled.append(finding)
+    return settled
 
 
 @dataclass
@@ -286,8 +339,13 @@ async def run_judge(
     plan_summary: dict[str, Any],
     facts: Sequence[tuple[str, str]],
     unit: dict[str, Any],
+    practice_slot: bool = True,
 ) -> JudgeOutcome:
-    """One bounded judge call; never raises for provider/budget/response problems."""
+    """One bounded judge call; never raises for provider/budget/response problems.
+
+    ``practice_slot`` is False for a unit without a practice or question slot: its practice criteria
+    are not applicable (QC course 364564, N7).
+    """
 
     if mode == "off":
         return JudgeOutcome("not_run")
@@ -308,7 +366,7 @@ async def run_judge(
         return JudgeOutcome("failed")
     component_count = len(unit.get("components", []))
     findings = [finding.model_copy(update={"witness": sanitize_author_text(finding.witness, 300)})
-                for finding in response.findings
+                for finding in settle_applicability(response.findings, practice_slot=practice_slot)
                 if finding.component_index is None or finding.component_index < component_count]
     counts = worst_counts(findings)
     status: JudgeStatus = "reject" if counts.critical else "review_required" if counts.major else "pass"
@@ -374,7 +432,7 @@ def build_unit_author_note(
     parts: list[str] = []
     if judge.status in {"pass", "review_required", "reject"}:
         if problems:
-            described = "; ".join(f"{labels[finding.criterion]} ({finding.criterion[:2]})"
+            described = "; ".join(f"{labels[finding.criterion]} ({finding.criterion.split('_')[0]})"
                                   for finding in problems[:4])
             parts.append(f"QA tự động: {len(problems)} vấn đề cần xem — {described}." if vi
                          else f"Automatic QA: {len(problems)} issue(s) to review — {described}.")
@@ -496,8 +554,10 @@ def blocking_count(findings: Sequence[IdmJudgeFindingV1]) -> int:
 
 
 __all__ = [
-    "ANSWER_LEAK_CODE", "CRITERIA", "FAQ_ITEMS_DROPPED_CODE", "FAQ_UNGROUNDED_CODE", "WORKSHEET_INCOMPLETE_CODE",
+    "ANSWER_LEAK_CODE", "CRITERIA", "FAQ_ITEMS_DROPPED_CODE", "FAQ_UNGROUNDED_CODE", "JUDGE_CRITERIA", "NOT_APPLICABLE",
+    "PRACTICE_CRITERIA", "TITLE_CRITERION", "WORKSHEET_INCOMPLETE_CODE",
     "JudgeOutcome", "SlotFinding", "advisory_slot_findings", "blocking_count", "build_unit_author_note",
     "build_unit_quality", "copied_options", "deterministic_slot_findings", "faq_item_verdicts", "final_unit_findings",
-    "learner_view", "repair_targets", "run_judge", "settled_codes", "ungrounded_faq_items", "worksheet_complete",
+    "has_practice_slot", "learner_view", "repair_targets", "run_judge", "settle_applicability", "settled_codes",
+    "unexplained_options", "ungrounded_faq_items", "worksheet_complete",
 ]
