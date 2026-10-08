@@ -42,6 +42,8 @@ from app.services.lesson_author.proposal_validation import (
     MIN_STAGED_LESSON_AUTHOR_HTML_TEXT_CHARS,
     SEMANTIC_LEARNING_HTML_LIMITS,
 )
+from app.services.lesson_author.staged import provider_schemas as staged_schemas
+from app.services.lesson_author.staged import validation as staged_validation
 from app.workflows.contracts import WorkflowFailure
 from tests.idm_test_support import make_runtime
 from tests.test_idm_storyboard import (
@@ -87,7 +89,7 @@ def shared_reason(value: Any) -> str | None:
 
 
 def payload_code(value: Any) -> str | None:
-    return main.staged_component_payload_code({"type": "html", "semantic_content": copy.deepcopy(value)})
+    return staged_schemas.staged_component_payload_code({"type": "html", "semantic_content": copy.deepcopy(value)})
 
 
 def codes(value: Any, **kwargs: Any) -> list[str]:
@@ -188,7 +190,7 @@ class ValidatorParityTests(unittest.TestCase):
         for count, expected in ((30, None), (31, "HTML_INSTRUCTIONAL_DENSITY_EXCEEDED")):
             value = semantic(section("Tiêu đề không được tính", para(" ".join(["từ"] * count))))
             component = {"type": "html", "semantic_content": value}
-            finding = main.staged_instructional_finding(component, 0, None, budget, None)
+            finding = staged_validation.staged_instructional_finding(component, 0, None, budget, None)
             with self.subTest(words=count):
                 self.assertEqual(None if finding is None else finding.code,
                                  None if expected is None else expected)
@@ -200,7 +202,8 @@ class ValidatorParityTests(unittest.TestCase):
                                           f"words=31/30;characters={len(visible_text(value))}/400")
         short = semantic(section("H", para("Ngắn.")))
         self.assertEqual(codes(short, min_chars=20), ["HTML_INSUFFICIENT_DEPTH"])
-        finding = main.staged_instructional_finding({"type": "html", "semantic_content": short}, 0, None, budget, None)
+        finding = staged_validation.staged_instructional_finding({"type": "html", "semantic_content": short}, 0, None,
+                                                                 budget, None)
         self.assertEqual(finding.code if finding else None, "HTML_INSUFFICIENT_DEPTH")
 
 

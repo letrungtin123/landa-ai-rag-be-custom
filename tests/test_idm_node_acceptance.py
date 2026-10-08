@@ -35,6 +35,7 @@ from app.idm.source_locked import idm_source_faq
 from app.idm.storyboard import acceptance_context, parse_brief, run_idm_unit
 from app.lesson_author_orchestration_v2_provider import UnitGenerationContractV2
 from app.schemas.orchestration_v2 import RagLessonAuthorUnitV2Request
+from app.services.orchestration_v2 import source_locked as v2_source_locked
 from tests.idm_test_support import make_runtime
 from tests.test_idm_storyboard import (
     JUDGE,
@@ -293,7 +294,7 @@ class FallbackOnlyTests(unittest.IsolatedAsyncioTestCase):
         request = RagLessonAuthorUnitV2Request.model_validate(body)
         deps = main._idm_unit_deps(request)
         deps = dataclasses.replace(deps, source_locked_components=slots, source_locked_unit=(
-            main.build_orchestration_v2_source_locked_unit(request.unit_contract, "vi", components=slots)))
+            v2_source_locked.build_orchestration_v2_source_locked_unit(request.unit_contract, "vi", components=slots)))
         return await run_idm_unit(contract=request.unit_contract, runtime=make_runtime(AsyncMock(), allowance=None),
                                   deps=deps, fallback_only=True)
 
@@ -321,7 +322,8 @@ class FallbackOnlyTests(unittest.IsolatedAsyncioTestCase):
         request = RagLessonAuthorUnitV2Request.model_validate(body)
         slots = list(main._idm_unit_deps(request).source_locked_components or [])
         # The shared validator reads "trạng" with its accent; Node folds it to "trang" + a number (a page locator).
-        located = {**slots[0], "html": slots[0]["html"].replace("</td>", " Hiện trạng 3 lần</td>", 1)}  # type: ignore[index]
+        located = {**slots[0], "html": slots[0]["html"].replace("</td>", " Hiện trạng 3 lần</td>",
+                                                                1)}  # type: ignore[index]
         self.assertNotEqual(located["html"], slots[0]["html"])  # type: ignore[index]
         with self.assertLogs("app.idm", level="INFO") as logs, self.assertRaises(IdmStageError) as caught:
             await self.run_fallback_only(body, [located, slots[1]])

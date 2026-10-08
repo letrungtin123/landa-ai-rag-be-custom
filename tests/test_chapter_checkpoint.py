@@ -18,6 +18,8 @@ from tests.test_lesson_prompt_policy import request_and_unit
 from app.schemas.common import AiUsage
 from app.schemas.lesson_author import RagLessonAuthorCheckpointRequest, RagLessonAuthorRequest
 from app.api import deps as api_deps
+from app.services.lesson_author.staged import skeleton as staged_skeleton
+from app.services.lesson_author.staged import source_locked as staged_source_locked
 
 
 def fixture(count=5, *, action="generate_unit", index=0):
@@ -257,8 +259,8 @@ class ChapterCheckpointTests(unittest.TestCase):
 
     def test_assembly_is_indexed_transactional_and_never_partial(self):
         request, units, manifest = fixture(count=2)
-        skeleton = main.build_source_locked_staged_skeleton(request, manifest)
-        expected = [u for b in main.extract_lesson_author_unit_batches(skeleton, manifest) for u in b]
+        skeleton = staged_source_locked.build_source_locked_staged_skeleton(request, manifest)
+        expected = [u for b in staged_skeleton.extract_lesson_author_unit_batches(skeleton, manifest) for u in b]
         before = deepcopy(skeleton)
         checkpoints = [ChapterCheckpointUnit(unit_index=i, unit=u) for i, u in enumerate(units)]
         result = assemble_checkpoint_chapter(skeleton, expected, list(reversed(checkpoints)))

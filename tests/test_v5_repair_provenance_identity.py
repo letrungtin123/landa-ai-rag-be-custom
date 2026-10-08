@@ -8,10 +8,12 @@ from app.assessment_planner import compile_v5_assessment_plan
 from app.main import (
     _assert_v5_primary_provenance_preserved,
     _v5_prepare_semantic_repair_targets,
-    allocate_source_map_architecture_facts,
     apply_course_architecture_repair_patches,
-    validate_course_architecture_evidence_scope,
     validate_v5_instructional_coherence,
+)
+from app.services.lesson_author.evidence_scope import (
+    allocate_source_map_architecture_facts,
+    validate_course_architecture_evidence_scope,
 )
 from app.source_map import build_source_map
 from app.workflows.contracts import WorkflowFailure

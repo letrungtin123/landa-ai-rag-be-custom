@@ -6,14 +6,16 @@ import unittest
 
 from app.main import (
     apply_course_architecture_repair_patches,
-    allocate_blueprint_source_fact_ids,
-    allocate_source_map_architecture_facts,
     build_course_architecture_repair_prompt,
     deterministic_factless_unit_removal_repair,
     validate_course_architecture_repair_candidate,
-    validate_course_architecture_semantic_scope,
     validate_course_architecture_workflow,
 )
+from app.services.lesson_author.evidence_scope import (
+    allocate_source_map_architecture_facts,
+    validate_course_architecture_semantic_scope,
+)
+from app.services.lesson_author.granularity import allocate_blueprint_source_fact_ids
 from app.lesson_author_blueprint import (
     LessonAuthorBlueprintValidationError,
     parse_and_validate_lesson_author_blueprint,

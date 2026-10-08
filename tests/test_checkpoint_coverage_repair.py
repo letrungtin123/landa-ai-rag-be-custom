@@ -20,6 +20,9 @@ from tests.test_chapter_checkpoint import checkpoint_result
 from tests.test_lesson_prompt_policy import content_payload
 from app.schemas.common import AiUsage
 from app.services.lesson_author.errors import LessonAuthorProposalValidationError
+from app.services.lesson_author.staged.provider_schemas import STAGED_COMPONENT_COVERAGE_REPAIR_CONTRACT_VERSION
+from app.services.lesson_author.staged import provider_schemas as staged_schemas
+from app.services.lesson_author.staged import validation as staged_validation
 
 
 def coverage_fixture():
@@ -54,12 +57,12 @@ def coverage_fixture():
 class CheckpointCoverageRepairTests(unittest.TestCase):
     def test_partial_claim_is_not_ownership_mutation_and_only_crossword_is_targeted(self):
         _, _, broken, scope, _, _ = coverage_fixture()
-        self.assertIsNone(main.staged_component_repair_guard(broken, scope, allow_partial_coverage=True))
-        finding = main.validate_staged_unit_content(broken, scope, strict_payload=True)
+        self.assertIsNone(staged_validation.staged_component_repair_guard(broken, scope, allow_partial_coverage=True))
+        finding = staged_validation.validate_staged_unit_content(broken, scope, strict_payload=True)
         self.assertEqual(finding.code, "COMPONENT_COVERAGE_INCOMPLETE")
         self.assertTrue(finding.repairable)
-        self.assertEqual(main.staged_component_repair_targets(broken, scope), [2])
-        self.assertEqual(main.staged_coverage_repair_diagnostics(broken, [2]), [{
+        self.assertEqual(staged_validation.staged_component_repair_targets(broken, scope), [2])
+        self.assertEqual(staged_validation.staged_coverage_repair_diagnostics(broken, [2]), [{
             "code": "COMPONENT_COVERAGE_INCOMPLETE", "component_index": 2, "component_type": "la_crossword",
             "owned_count": 23, "covered_owned_count": 14, "missing_count": 9,
         }])
@@ -83,7 +86,7 @@ class CheckpointCoverageRepairTests(unittest.TestCase):
             self.assertEqual(actual[2][key], before["components"][2][key])
         self.assertEqual(actual[2]["words"], delta["components"][0]["words"])
         self.assertEqual(actual[2]["covered_source_fact_ids"], delta["components"][0]["covered_source_fact_ids"])
-        self.assertIsNone(main.validate_staged_unit_content(result["unit"], scope, strict_payload=True))
+        self.assertIsNone(staged_validation.validate_staged_unit_content(result["unit"], scope, strict_payload=True))
         repair = provider.await_args_list[1]
         self.assertEqual(repair.kwargs["request_timeout_ms"], 180000)
         wire = json.dumps(repair.kwargs["response_schema"].model_json_schema())
@@ -93,7 +96,7 @@ class CheckpointCoverageRepairTests(unittest.TestCase):
         safe = "\n".join(logs.output)
         self.assertIn('"coverage_repair_component_indices": [2]', safe)
         self.assertIn('"missing_count": 9', safe)
-        self.assertIn(main.STAGED_COMPONENT_COVERAGE_REPAIR_CONTRACT_VERSION, safe)
+        self.assertIn(STAGED_COMPONENT_COVERAGE_REPAIR_CONTRACT_VERSION, safe)
         self.assertNotIn(delta["components"][0]["words"][0]["clue"], safe)
 
     def test_bad_claim_or_id_only_repair_fails_closed_in_existing_one_call_budget(self):
@@ -119,7 +122,7 @@ class CheckpointCoverageRepairTests(unittest.TestCase):
                 elif mutation == "ownership": change["source_fact_ids"] = ["PRIVATE_UNKNOWN_FACT"]
                 elif mutation == "other_component": change["component_index"] = 0
                 provider = AsyncMock(side_effect=[(json.dumps(instance_wire(broken)), AiUsage()), (json.dumps(delta), AiUsage())])
-                with patch("app.services.provider.generate_content", provider), patch("app.main.build_source_locked_html_unit") as fallback:
+                with patch("app.services.provider.generate_content", provider), patch("app.services.lesson_author.staged.source_locked.build_source_locked_html_unit") as fallback:
                     with self.assertRaises(WorkflowFailure) as failure:
                         asyncio.run(checkpoint_result(request, manifest))
                 self.assertEqual(provider.await_count, 2)
@@ -136,7 +139,7 @@ class CheckpointCoverageRepairTests(unittest.TestCase):
             elif mutation == "duplicate": broken["components"][2]["source_fact_ids"] *= 2
             elif mutation == "support_claim": broken["components"][3]["covered_source_fact_ids"] = ["synthetic-fact-0"]
             else: broken["components"][2]["source_fact_ids"] = ["PRIVATE_UNKNOWN_FACT"]
-            self.assertEqual(main.staged_component_repair_targets(broken, scope), [])
+            self.assertEqual(staged_validation.staged_component_repair_targets(broken, scope), [])
             # Wire binding rejects ownership injection before the repair guard.
             wire = instance_wire(broken)
             if mutation in ("ownership", "duplicate"): wire["components"]["c2"]["source_fact_ids"] = broken["components"][2]["source_fact_ids"]
@@ -150,10 +153,10 @@ class CheckpointCoverageRepairTests(unittest.TestCase):
         _, _, broken, _, _, delta = coverage_fixture()
         before = deepcopy(broken)
         with self.assertRaisesRegex(LessonAuthorProposalValidationError, "PROTECTED_FIELD"):
-            main.merge_staged_component_payload_delta(broken, delta, [2])
+            staged_validation.merge_staged_component_payload_delta(broken, delta, [2])
         delta["components"][0]["words"] = []
         with self.assertRaises(LessonAuthorProposalValidationError):
-            main.merge_staged_component_payload_delta(broken, delta, [2], coverage_targets=[2])
+            staged_validation.merge_staged_component_payload_delta(broken, delta, [2], coverage_targets=[2])
         self.assertEqual(broken, before)
 
     def test_valid_output_does_not_repair(self):
@@ -165,7 +168,7 @@ class CheckpointCoverageRepairTests(unittest.TestCase):
         self.assertEqual(provider.await_count, 1)
 
     def test_actual_sdk_serializes_selected_repair_schema_without_protected_fields(self):
-        schema = main.build_staged_lesson_content_response_model(["la_crossword"], payload_only=True, coverage_repair=True)
+        schema = staged_schemas.build_staged_lesson_content_response_model(["la_crossword"], payload_only=True, coverage_repair=True)
         client = genai.Client(api_key="offline-placeholder")
         wire = models._GenerateContentConfig_to_mldev(client._api_client, types.GenerateContentConfig(response_schema=schema))["responseSchema"]
         fields = wire.properties["components"].items.properties

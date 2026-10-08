@@ -11,12 +11,12 @@ from app.lesson_prompt_policy import (
     component_instructional_brief, instructional_contract_review_signals,
 )
 from app.main import (
-    build_course_architect_prompt,
     build_lesson_generation_repair_prompt,
     generate_staged_lesson_author_proposal,
     generate_validated_lesson_author_blueprint,
-    enrich_lesson_author_blueprint_media_review,
 )
+from app.services.lesson_author.media_review import enrich_lesson_author_blueprint_media_review
+from app.services.lesson_author.prompts import build_course_architect_prompt
 from app.schemas.common import AiUsage
 from app.workflows.contracts import WorkflowFailure
 from tests.test_lesson_author_blueprint import blueprint_request, proposal_request, valid_blueprint

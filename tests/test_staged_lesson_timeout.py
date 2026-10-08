@@ -10,10 +10,10 @@ from unittest.mock import AsyncMock, patch
 from fastapi import HTTPException
 
 from app.core.config import settings
-from app.main import (
+from app.main import generate_staged_lesson_author_proposal
+from app.services.lesson_author.staged.plan import (
     STAGED_LESSON_WORKFLOW_TIMEOUT_MAX_MS,
     StagedLessonWorkflowDeadline,
-    generate_staged_lesson_author_proposal,
     staged_lesson_content_output_tokens,
 )
 from app.services.provider import call_provider_with_timeout, is_non_retryable_provider_error
@@ -190,7 +190,7 @@ class StagedLessonTimeoutTests(unittest.TestCase):
         self.assertEqual(self._last_provider.await_count, 3)
 
     def test_workflow_budget_bounds_multiple_stage_two_batches_before_node_envelope(self) -> None:
-        with patch("app.main.perf_counter", side_effect=[100.0, 100.0, 580.1]):
+        with patch("app.services.lesson_author.staged.plan.perf_counter", side_effect=[100.0, 100.0, 580.1]):
             deadline = StagedLessonWorkflowDeadline()
             first_timeout_ms, first_remaining_ms = deadline.stage_two_provider_timeout_ms()
             self.assertEqual(first_timeout_ms, 180_000)

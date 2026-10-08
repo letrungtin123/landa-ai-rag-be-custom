@@ -23,12 +23,12 @@ from app.lesson_author_orchestration_v2_provider import (
     unit_contract_manifest_v2,
     unit_contract_v5_architecture_v2,
 )
-from app.main import (
+from app.services.lesson_author.staged.provider_schemas import (
     bind_staged_instance_payload,
     build_staged_instance_response_model,
     staged_response_schema_diagnostics,
-    validate_staged_unit_content,
 )
+from app.services.lesson_author.staged.validation import validate_staged_unit_content
 
 
 FIXTURE_PATH = Path(__file__).parent / "fixtures" / "ai_id_cp2a_boundary_replay_fixture.json"

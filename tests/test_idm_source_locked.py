@@ -14,15 +14,18 @@ import unittest
 from typing import Any
 from unittest.mock import patch
 
-from app import main
+from app import instructional_quality, main
 from app.idm.source_locked import idm_source_grounded_single_choice, render_idm_source_locked_html
 from app.instructional_quality import render_source_locked_html
 from app.schemas.orchestration_v2 import RagLessonAuthorUnitV2Request
+from app.services.lesson_author.staged import validation as staged_validation
+from app.services.orchestration_v2 import source_locked as v2_source_locked
 from tests.test_idm_storyboard import severity_body
 
 
 def finding(component: dict[str, Any], plan: dict[str, Any] | None = None) -> str | None:
-    result = main.staged_instructional_finding({"source_locked_fallback": True, **component}, 0, plan, None, None)
+    result = staged_validation.staged_instructional_finding({"source_locked_fallback": True, **component}, 0, plan,
+                                                            None, None)
     return None if result is None else result.code
 
 
@@ -158,14 +161,14 @@ class IdmWiringTests(unittest.TestCase):
                 patch("app.main.idm_source_grounded_single_choice",
                       wraps=idm_source_grounded_single_choice) as question:
             deps = main._idm_unit_deps(request)
-            legacy = main.build_orchestration_v2_source_locked_components(request.unit_contract, "vi")
+            legacy = v2_source_locked.build_orchestration_v2_source_locked_components(request.unit_contract, "vi")
         self.assertEqual((renderer.call_count, question.call_count), (1, 1))
         assert deps.source_locked_components is not None
         html_slot = deps.source_locked_components[0]
         legacy_slot = legacy[0]
         assert html_slot is not None and legacy_slot is not None
         plan = request.unit_contract.component_plan[0]
-        facts = main.clean_source_facts([fact.fact_text for fact in request.unit_contract.source_facts
+        facts = instructional_quality.clean_source_facts([fact.fact_text for fact in request.unit_contract.source_facts
                                          if fact.fact_key in plan.source_fact_ids], preserve_table_numeric=True)
         self.assertEqual(legacy_slot["html"], render_source_locked_html(
             legacy_slot["title"], facts, locale="vi", required_artifacts=plan.required_artifacts))

@@ -11,19 +11,21 @@ from google import genai
 from google.genai import models, types
 from pydantic import create_model, ValidationError
 
-from app.main import (
+from app.main import generate_staged_lesson_author_proposal
+from app.services.lesson_author.prompts import ARCHITECT_COMPONENT_OPPORTUNITY_POLICY
+from app.services.lesson_author.staged.provider_schemas import (
     build_staged_lesson_content_response_model,
-    generate_staged_lesson_author_proposal,
     staged_response_schema_diagnostics,
-    validate_staged_unit_content,
     staged_component_payload_code,
     staged_component_contract_prompt,
+)
+from app.services.lesson_author.staged.validation import (
+    validate_staged_unit_content,
     staged_component_repair_targets,
     merge_staged_component_repair,
     merge_staged_component_payload_delta,
     staged_evidence_scope_diagnostics,
     staged_payload_diagnostics,
-    ARCHITECT_COMPONENT_OPPORTUNITY_POLICY,
 )
 from app.services.lesson_author.errors import LessonAuthorProposalValidationError
 from app.services.lesson_author.proposal_validation import semantic_learning_visible_text

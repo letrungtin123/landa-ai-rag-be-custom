@@ -20,6 +20,7 @@ from app.idm.diagram import idm_diagram_relationships, idm_source_step_diagram
 from app.idm.storyboard import build_idm_expected, parse_brief, run_idm_unit
 from app.instructional_quality import clean_source_facts, source_relationship_pairs
 from app.schemas.orchestration_v2 import RagLessonAuthorUnitV2Request
+from app.services.orchestration_v2 import source_locked as v2_source_locked
 from tests.idm_test_support import make_runtime, rehash_contract
 from tests.test_idm_storyboard import REPAIR, WRITER, FakeGenerate, severity_body, severity_writer
 
@@ -81,7 +82,7 @@ def diagram_writer(body: dict[str, Any], names: list[str]) -> dict[str, Any]:
 class StepDiagramBuilderTests(unittest.TestCase):
     def test_slogan_heading_and_sentences_never_become_nodes(self) -> None:
         facts = clean_source_facts(STEP_FACTS, preserve_table_numeric=True)
-        legacy = main._orchestration_v2_source_relationship_diagram("Dòng chảy", facts, "vi")
+        legacy = v2_source_locked._orchestration_v2_source_relationship_diagram("Dòng chảy", facts, "vi")
         self.assertIn("Vòng Lặp Cải Tiến: Không Đo Lường", labels(legacy))  # the published garbage node
         self.assertIn(("Vòng Lặp Cải Tiến: Không Đo Lường", "Không Cải Tiến", "→"), source_relationship_pairs(facts))
         diagram = idm_source_step_diagram("Dòng chảy", facts, "vi")
@@ -130,13 +131,13 @@ class StepDiagramBuilderTests(unittest.TestCase):
 
     def test_idm_units_inject_the_step_builder_and_legacy_defaults_are_unchanged(self) -> None:
         request = RagLessonAuthorUnitV2Request.model_validate(diagram_body(STEP_FACTS))
-        legacy = main.build_orchestration_v2_source_locked_components(request.unit_contract, "vi")[1]
+        legacy = v2_source_locked.build_orchestration_v2_source_locked_components(request.unit_contract, "vi")[1]
         idm = main._idm_unit_deps(request).source_locked_components
         assert legacy is not None and idm is not None and idm[1] is not None
         plan = request.unit_contract.component_plan[1]
         facts = clean_source_facts([fact.fact_text for fact in request.unit_contract.source_facts
                                     if fact.fact_key in plan.supporting_evidence_fact_ids], preserve_table_numeric=True)
-        expected_legacy = main._orchestration_v2_source_relationship_diagram(legacy["title"], facts, "vi")
+        expected_legacy = v2_source_locked._orchestration_v2_source_relationship_diagram(legacy["title"], facts, "vi")
         self.assertEqual({key: legacy[key] for key in ("name", "nodes", "edges")}, expected_legacy)
         self.assertEqual(labels(idm[1]), CHAIN)
         self.assertEqual({key: value for key, value in idm[1].items() if key not in {"name", "nodes", "edges"}},
@@ -145,7 +146,8 @@ class StepDiagramBuilderTests(unittest.TestCase):
         slots = main._idm_unit_deps(none_request).source_locked_components
         assert slots is not None
         self.assertIsNone(slots[1])
-        self.assertIsNotNone(main.build_orchestration_v2_source_locked_components(none_request.unit_contract, "vi")[1])
+        self.assertIsNotNone(
+            v2_source_locked.build_orchestration_v2_source_locked_components(none_request.unit_contract, "vi")[1])
 
 
 class DiagramSlotFlowTests(unittest.IsolatedAsyncioTestCase):

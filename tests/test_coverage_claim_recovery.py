@@ -14,6 +14,8 @@ from tests.test_chapter_checkpoint import checkpoint_result
 from tests import test_checkpoint_provider_sdk as sdk_fixture
 from tests.staged_schema_probe import capture_sdk_body, visit_schema
 from app.schemas.common import AiUsage
+from app.services.lesson_author.staged import provider_schemas as staged_schemas
+from app.services.lesson_author.staged import validation as staged_validation
 
 
 def repaired_payload(unit):
@@ -32,11 +34,11 @@ class CoverageClaimRecoveryTests(unittest.TestCase):
         for claim, reason in cases:
             baseline = {"source_fact_ids": ["f"], "covered_source_fact_ids": claim}
             before = deepcopy(baseline)
-            finding = main.staged_coverage_claim_diagnostic(baseline)
+            finding = staged_validation.staged_coverage_claim_diagnostic(baseline)
             self.assertIn(reason, finding["reason_codes"])
             self.assertNotIn("PRIVATE", json.dumps(finding))
             self.assertEqual(baseline, before)
-        self.assertEqual(main.staged_coverage_claim_diagnostic({"source_fact_ids": ["f"]})["reason_codes"][0], "FIELD_MISSING")
+        self.assertEqual(staged_validation.staged_coverage_claim_diagnostic({"source_fact_ids": ["f"]})["reason_codes"][0], "FIELD_MISSING")
 
     def test_malformed_claim_recovers_once_and_passes_full_chapter_without_mutation(self):
         for mode in ("duplicate", "null", "object", "non_string", "empty_string", "empty", "missing", "partial", "scalar"):
@@ -113,7 +115,7 @@ class CoverageClaimRecoveryTests(unittest.TestCase):
                 elif mode == "ownership": change["source_fact_ids"] = unit["source_fact_ids"]
                 else: change["semantic_content"] = {"version": 2, "sections": []}
                 provider = AsyncMock(side_effect=[(json.dumps(wire), AiUsage()), (json.dumps(delta), AiUsage())])
-                with patch("app.services.provider.generate_content", provider), patch("app.main.build_source_locked_html_unit") as fallback:
+                with patch("app.services.provider.generate_content", provider), patch("app.services.lesson_author.staged.source_locked.build_source_locked_html_unit") as fallback:
                     with self.assertRaises(WorkflowFailure) as failure:
                         asyncio.run(checkpoint_result(request, manifest))
                 self.assertEqual(provider.await_count, 2)
@@ -126,7 +128,7 @@ class CoverageClaimRecoveryTests(unittest.TestCase):
     def test_actual_sdk_wire_allows_only_owned_ids_initial_and_repair(self):
         request, unit, _, _ = uat_fixture()
         plans = [p.model_dump() for p in request.blueprint_architecture.lessons[0].units[0].component_plan]
-        models = [main.build_staged_instance_response_model(plans), main.build_staged_lesson_content_response_model(
+        models = [staged_schemas.build_staged_instance_response_model(plans), staged_schemas.build_staged_lesson_content_response_model(
             ["html"], payload_only=True, coverage_repair=True, coverage_allowed_ids=unit["source_fact_ids"])]
         for model in models:
             projected, _ = staged_provider_response_model(model)
@@ -161,19 +163,19 @@ class CoverageClaimRecoveryTests(unittest.TestCase):
         for claim in (facts + [f" {facts[0]}"], facts + [f"[{facts[0]}]"], facts + ["PRIVATE_OTHER_SECTION"]):
             broken = deepcopy(unit)
             broken["components"][0]["covered_source_fact_ids"] = claim
-            self.assertEqual(main.staged_component_repair_targets(broken, scope), [])
-            finding = main.validate_staged_unit_content(broken, scope, strict_payload=True)
+            self.assertEqual(staged_validation.staged_component_repair_targets(broken, scope), [])
+            finding = staged_validation.validate_staged_unit_content(broken, scope, strict_payload=True)
             self.assertEqual(finding.code, "COMPONENT_COVERAGE_OUT_OF_SCOPE")
             self.assertFalse(finding.repairable)
         # A malformed claim cannot hide mutation of a later component's owner.
         broken = deepcopy(unit)
         broken["components"][0]["covered_source_fact_ids"] = None
         broken["components"][2]["source_fact_ids"] = facts[:1]
-        self.assertEqual(main.staged_component_repair_targets(broken, scope), [])
+        self.assertEqual(staged_validation.staged_component_repair_targets(broken, scope), [])
 
     def test_1001_reference_schema_and_diagnostics_are_deterministic(self):
         facts = [f"synthetic-{i}" for i in range(1001)]
-        model = main.build_staged_lesson_content_response_model(["html"], payload_only=True,
+        model = staged_schemas.build_staged_lesson_content_response_model(["html"], payload_only=True,
                     coverage_repair=True, coverage_allowed_ids=facts)
         projected, _ = staged_provider_response_model(model)
         first = capture_sdk_body(projected)
@@ -181,9 +183,9 @@ class CoverageClaimRecoveryTests(unittest.TestCase):
         self.assertLess(len(json.dumps(first)), 40000)
         component = {"source_fact_ids": facts, "covered_source_fact_ids": facts + facts[:1]}
         before = deepcopy(component)
-        finding = main.staged_coverage_claim_diagnostic(component)
-        self.assertEqual(finding, main.staged_coverage_claim_diagnostic(component))
+        finding = staged_validation.staged_coverage_claim_diagnostic(component)
+        self.assertEqual(finding, staged_validation.staged_coverage_claim_diagnostic(component))
         self.assertEqual(finding["duplicate_count"], 1)
         self.assertEqual(finding["missing_count"], 0)
-        self.assertTrue(main.staged_coverage_claim_repairable(component))
+        self.assertTrue(staged_validation.staged_coverage_claim_repairable(component))
         self.assertEqual(component, before)

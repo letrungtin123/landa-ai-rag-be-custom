@@ -3,12 +3,12 @@ from __future__ import annotations
 import copy
 import unittest
 
-from app.main import (
-    allocate_blueprint_source_fact_ids,
+from app.main import validate_course_architecture_workflow
+from app.services.lesson_author.evidence_scope import (
     allocate_source_map_architecture_facts,
     validate_course_architecture_evidence_scope,
-    validate_course_architecture_workflow,
 )
+from app.services.lesson_author.granularity import allocate_blueprint_source_fact_ids
 from app.source_map import build_course_architect_context, build_source_map
 
 

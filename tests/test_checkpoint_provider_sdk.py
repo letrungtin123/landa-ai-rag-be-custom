@@ -15,6 +15,7 @@ from tests.test_chapter_checkpoint import checkpoint_result
 from fastapi import HTTPException
 from app.api import deps as api_deps
 from app.services import provider as provider_service
+from app.services.lesson_author.staged import provider_schemas as staged_schemas
 
 
 def response(status, body):
@@ -52,7 +53,7 @@ class CheckpointProviderSDKTests(unittest.TestCase):
         self.assertEqual(error.code, 400)
         self.assertFalse(hasattr(error, "status_code"))
         self.assertEqual(provider_service.provider_http_error_status(error), 400)
-        self.assertTrue(main.is_stage_two_provider_schema_error(error))
+        self.assertTrue(staged_schemas.is_stage_two_provider_schema_error(error))
         diagnostics = provider_service.safe_provider_error_diagnostics(error)
         self.assertEqual(diagnostics["provider_schema_constraint"], "MAX_ITEMS")
         self.assertNotIn("PRIVATE_SOURCE", json.dumps(diagnostics))
@@ -100,7 +101,7 @@ class CheckpointProviderSDKTests(unittest.TestCase):
         body = {"error": {"status": "INVALID_ARGUMENT",
                           "message": "JSON schema maxItems must be greater than zero PRIVATE_SOURCE"}}
         alternate = errors.ClientError(400, body, response(400, body))
-        self.assertTrue(main.is_stage_two_provider_schema_error(alternate))
+        self.assertTrue(staged_schemas.is_stage_two_provider_schema_error(alternate))
         diagnostics = provider_service.safe_provider_error_diagnostics(alternate)
         self.assertIn("POSITIVE_BOUND", diagnostics["provider_error_markers"])
         self.assertNotIn("PRIVATE_SOURCE", json.dumps(diagnostics))

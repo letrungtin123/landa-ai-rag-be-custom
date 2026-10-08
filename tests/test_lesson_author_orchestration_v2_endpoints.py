@@ -8,13 +8,13 @@ from fastapi import HTTPException
 
 from app.main import (
     ORCHESTRATION_V2_UNIT_FALLBACK_RESPONSE_HEADROOM_MS,
-    STAGED_COMPONENT_PAYLOAD_FIELDS,
-    validate_staged_unit_content,
     lesson_author_orchestration_v2_chapter_shard,
     lesson_author_orchestration_v2_course_skeleton,
     lesson_author_orchestration_v2_source_snapshot,
     lesson_author_orchestration_v2_unit,
 )
+from app.services.lesson_author.staged.provider_schemas import STAGED_COMPONENT_PAYLOAD_FIELDS
+from app.services.lesson_author.staged.validation import validate_staged_unit_content
 from app.schemas.common import AiUsage
 from app.schemas.orchestration_v2 import (
     RagLessonAuthorChapterShardV2Request,

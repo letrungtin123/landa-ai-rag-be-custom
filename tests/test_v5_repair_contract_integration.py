@@ -29,9 +29,9 @@ from app.main import (
     apply_course_architecture_repair_patches,
     build_course_architecture_repair_prompt,
     lesson_author_blueprint,
-    match_staged_unit_by_title,
     validate_v5_post_allocation_instructional_depth,
 )
+from app.services.lesson_author.staged.skeleton import match_staged_unit_by_title
 from app.schemas.common import AiUsage
 from app.workflows.contracts import WorkflowFailure
 from app.workflows.course_architecture import classify_course_repair_targets

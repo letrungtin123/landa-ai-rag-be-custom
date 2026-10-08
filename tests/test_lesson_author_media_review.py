@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import unittest
 
-from app.main import enrich_lesson_author_blueprint_media_review
+from app.services.lesson_author.media_review import enrich_lesson_author_blueprint_media_review
 
 
 def blueprint(units: list[dict]) -> dict:

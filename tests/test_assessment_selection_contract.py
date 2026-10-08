@@ -10,10 +10,12 @@ from app.assessment_selection_contract import build_assessment_selection_contrac
 from app.assessment_planner import compile_v5_assessment_plan
 from app.main import (
     apply_course_architecture_repair_patches,
-    allocate_source_map_architecture_facts,
     lesson_author_blueprint,
-    validate_course_architecture_evidence_scope,
     validate_v5_instructional_coherence,
+)
+from app.services.lesson_author.evidence_scope import (
+    allocate_source_map_architecture_facts,
+    validate_course_architecture_evidence_scope,
 )
 from app.schemas.common import AiUsage
 from app.workflows.contracts import WorkflowFailure

@@ -495,7 +495,7 @@ class LessonAuthorOrchestrationV2ProviderTests(unittest.TestCase):
             UnitGenerationContractV2.model_validate({**wrong_type, "contract_hash": canonical_hash(wrong_type)})
 
     def test_actual_stage_two_contract_receives_structured_evidence_without_new_ownership(self) -> None:
-        from app.main import build_staged_instructional_contract
+        from app.services.lesson_author.staged.source_locked import build_staged_instructional_contract
 
         source_revision = "e" * 64
         asset_revision = "f" * 64

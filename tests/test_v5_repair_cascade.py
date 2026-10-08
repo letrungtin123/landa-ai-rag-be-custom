@@ -27,18 +27,20 @@ from app.main import (
     _v5_prepare_evidence_alignment_targets,
     _v5_prepare_assessment_alignment_targets,
     _v5_prepare_semantic_repair_targets,
-    allocate_blueprint_source_fact_ids,
-    allocate_source_map_architecture_facts,
     apply_course_architecture_repair_patches,
-    build_course_architect_prompt,
     build_course_architecture_repair_prompt,
     build_v5_scoped_repair_source_context,
     generate_validated_lesson_author_blueprint,
-    validate_course_architecture_evidence_scope,
     validate_course_architecture_workflow,
     validate_v5_instructional_coherence,
     validate_v5_post_allocation_instructional_depth,
 )
+from app.services.lesson_author.evidence_scope import (
+    allocate_source_map_architecture_facts,
+    validate_course_architecture_evidence_scope,
+)
+from app.services.lesson_author.granularity import allocate_blueprint_source_fact_ids
+from app.services.lesson_author.prompts import build_course_architect_prompt
 from app.services.lesson_author.architecture_shape import _workflow_issue_from_blueprint_validation_error
 from app.services.lesson_author.source_context import (
     assert_v5_immutable_source_context,

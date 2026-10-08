@@ -15,6 +15,9 @@ from tests.staged_schema_probe import capture_sdk_body
 from tests import test_checkpoint_provider_sdk as sdk_fixture
 from app.schemas.common import AiUsage
 from app.services.lesson_author.errors import LessonAuthorProposalValidationError
+from app.services.lesson_author.staged.provider_schemas import STAGED_COMPONENT_PAYLOAD_FIELDS
+from app.services.lesson_author.staged import provider_schemas as staged_schemas
+from app.services.lesson_author.staged import validation as staged_validation
 
 
 def fixture():
@@ -46,7 +49,7 @@ def fixture():
     for section in broken['components'][0]['semantic_content']['sections']:
         section['learning_block_ids'] = []
     broken['components'][3]['covered_source_fact_ids'] = owned[:26]
-    diagram_payload = {k: deepcopy(v) for k, v in diagram.items() if k in main.STAGED_COMPONENT_PAYLOAD_FIELDS['la_diagram']}
+    diagram_payload = {k: deepcopy(v) for k, v in diagram.items() if k in STAGED_COMPONENT_PAYLOAD_FIELDS['la_diagram']}
     diagram_payload['nodes'][0]['tooltip'] = 'Inspect documented conditions before the authorized action.'
     delta = {'components': {
         'c0': {'semantic_content': deepcopy(valid['components'][0]['semantic_content'])},
@@ -77,7 +80,7 @@ class MultiComponentRepairSlotTests(unittest.TestCase):
             delta['components']['c0']['html'] = None
             delta['components']['c3'].setdefault('name', None)
             # Prove the SDK parsed branch is eligible, not just raw fallback.
-            model = main.build_staged_multi_repair_model(broken, [0, 3], [3])
+            model = staged_schemas.build_staged_multi_repair_model(broken, [0, 3], [3])
             model.model_validate(delta)
             if mode == 'extra_slot': delta['components']['PRIVATE'] = {}
             elif mode == 'extra_field': delta['components']['c3']['PRIVATE'] = 'PRIVATE'
@@ -97,9 +100,9 @@ class MultiComponentRepairSlotTests(unittest.TestCase):
 
     def test_uat_two_targets_pass_real_unit_and_full_chapter_acceptance(self):
         request, valid, broken, scope, manifest, delta = fixture()
-        self.assertEqual(main.staged_component_repair_targets(broken, scope), [0, 3])
-        self.assertEqual(main.validate_staged_unit_content(broken, scope, strict_payload=True).code, 'HTML_TEACHING_GROUP_MISSING')
-        self.assertEqual(main.staged_coverage_repair_diagnostics(broken, [3])[0]['missing_count'], 6)
+        self.assertEqual(staged_validation.staged_component_repair_targets(broken, scope), [0, 3])
+        self.assertEqual(staged_validation.validate_staged_unit_content(broken, scope, strict_payload=True).code, 'HTML_TEACHING_GROUP_MISSING')
+        self.assertEqual(staged_validation.staged_coverage_repair_diagnostics(broken, [3])[0]['missing_count'], 6)
         before = deepcopy(broken)
         with self.assertLogs('app.main', 'INFO') as logs:
             result, final, provider, *_ = asyncio.run(endpoint_fixture())
@@ -112,7 +115,7 @@ class MultiComponentRepairSlotTests(unittest.TestCase):
             for key in ('type', 'component_plan_id', 'source_fact_ids', 'supporting_evidence_fact_ids'):
                 self.assertEqual(actual[i][key], valid['components'][i][key])
         self.assertEqual(broken, before)
-        self.assertIsNone(main.validate_staged_unit_content(result['unit'], scope, strict_payload=True))
+        self.assertIsNone(staged_validation.validate_staged_unit_content(result['unit'], scope, strict_payload=True))
         self.assertEqual(provider.await_args.kwargs['request_timeout_ms'], 180000)
         self.assertEqual(provider.await_args.kwargs['max_output_tokens'], provider.await_args_list[0].kwargs['max_output_tokens'])
         self.assertIn('"expected_slot_count": 2', '\n'.join(logs.output))
@@ -120,7 +123,7 @@ class MultiComponentRepairSlotTests(unittest.TestCase):
 
     def test_projected_actual_sdk_wire_keeps_required_typed_slots_and_per_target_claim_enum(self):
         _, _, broken, _, _, _ = fixture()
-        model = main.build_staged_multi_repair_model(broken, [0, 3], [3])
+        model = staged_schemas.build_staged_multi_repair_model(broken, [0, 3], [3])
         projected, _ = staged_provider_response_model(model)
         wire = capture_sdk_body(projected)['generationConfig']['responseSchema']
         slots = wire['properties']['components']
@@ -150,13 +153,13 @@ class MultiComponentRepairSlotTests(unittest.TestCase):
         for value, code in cases:
             diagnostics = {}
             with self.subTest(code=code), self.assertRaisesRegex(LessonAuthorProposalValidationError, code):
-                main.decode_staged_multi_repair(json.dumps(value), broken, [0, 3], [3], diagnostics)
+                staged_schemas.decode_staged_multi_repair(json.dumps(value), broken, [0, 3], [3], diagnostics)
             self.assertNotIn('PRIVATE', json.dumps(diagnostics))
             self.assertEqual(diagnostics['expected_slot_count'], 2)
         for text in ('{"components":{"c0":{},"c0":{},"c3":{}}}', '{"components":{},"components":{}}'):
             diagnostics = {}
             with self.assertRaisesRegex(LessonAuthorProposalValidationError, 'COMPONENT_REPAIR_DUPLICATE_JSON_KEY'):
-                main.decode_staged_multi_repair(text, broken, [0, 3], [3], diagnostics)
+                staged_schemas.decode_staged_multi_repair(text, broken, [0, 3], [3], diagnostics)
             self.assertEqual(diagnostics['duplicate_key_count'], 1)
         self.assertEqual(broken, before)
 
@@ -170,7 +173,7 @@ class MultiComponentRepairSlotTests(unittest.TestCase):
             else: delta['components']['c0']['semantic_content'] = broken['components'][0]['semantic_content']
             provider = AsyncMock(side_effect=[(json.dumps(instance_wire(broken)), AiUsage()), (json.dumps(delta), AiUsage())])
             before = deepcopy(broken)
-            with patch('app.services.provider.generate_content', provider), patch('app.main.build_source_locked_html_unit') as fallback:
+            with patch('app.services.provider.generate_content', provider), patch('app.services.lesson_author.staged.source_locked.build_source_locked_html_unit') as fallback:
                 with self.assertRaises(WorkflowFailure) as caught:
                     asyncio.run(checkpoint_result(request, manifest))
             self.assertEqual(caught.exception.internal_code, 'CHAPTER_COMPONENT_REPAIR_EXHAUSTED')
@@ -183,13 +186,13 @@ class MultiComponentRepairSlotTests(unittest.TestCase):
     def test_all_component_types_serialize_and_duplicate_types_keep_separate_slots(self):
         kinds = ['html', 'problem', 'la_faq', 'la_sortable', 'la_crossword', 'la_diagram', 'html']
         baseline = {'components': [{'type': kind, 'source_fact_ids': [f'fact-{i}']} for i, kind in enumerate(kinds)]}
-        model = main.build_staged_multi_repair_model(baseline, list(range(len(kinds))), [0, 6])
+        model = staged_schemas.build_staged_multi_repair_model(baseline, list(range(len(kinds))), [0, 6])
         projected, _ = staged_provider_response_model(model)
         slots = capture_sdk_body(projected)['generationConfig']['responseSchema']['properties']['components']
         self.assertEqual(slots['required'], [f'c{i}' for i in range(len(kinds))])
         for i, kind in enumerate(kinds):
             props = slots['properties'][f'c{i}']['properties']
-            self.assertLessEqual(set(props), main.STAGED_COMPONENT_PAYLOAD_FIELDS[kind] | {'title', 'selection_rationale', 'covered_source_fact_ids'})
+            self.assertLessEqual(set(props), STAGED_COMPONENT_PAYLOAD_FIELDS[kind] | {'title', 'selection_rationale', 'covered_source_fact_ids'})
         self.assertEqual(slots['properties']['c0']['properties']['covered_source_fact_ids']['items']['enum'], ['fact-0'])
         self.assertEqual(slots['properties']['c6']['properties']['covered_source_fact_ids']['items']['enum'], ['fact-6'])
 

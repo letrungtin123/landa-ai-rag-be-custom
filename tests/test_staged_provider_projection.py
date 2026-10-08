@@ -5,11 +5,11 @@ import unittest
 
 from pydantic import BaseModel, Field, ValidationError
 
-from app import main
 from app.lesson_author_provider_schema import staged_provider_response_model
 from tests.staged_schema_probe import BOUNDS, capture_sdk_body, isolated_bound_variant, schema_cases, schema_metadata
 from tests.test_checkpoint_component_quality_repair import instance_wire
 from tests.test_staged_instance_output import checkpoint_instance_fixture
+from app.services.lesson_author.staged import provider_schemas as staged_schemas
 
 
 class StagedProviderProjectionTests(unittest.TestCase):
@@ -37,7 +37,7 @@ class StagedProviderProjectionTests(unittest.TestCase):
     def test_local_validation_retains_fact_cardinality_length_and_numeric_limits(self):
         request, unit, _, _ = checkpoint_instance_fixture()
         plans = request.blueprint_architecture.lessons[0].units[0].component_plan
-        original = main.build_staged_instance_response_model([p.model_dump() for p in plans])
+        original = staged_schemas.build_staged_instance_response_model([p.model_dump() for p in plans])
         projected, _ = staged_provider_response_model(original)
         valid = instance_wire(unit)
         # Fixture omits nullable wire fields. Populate only for typed-model test;
@@ -79,7 +79,7 @@ class StagedProviderProjectionTests(unittest.TestCase):
 
     def test_existing_payload_repair_uses_same_projection_without_losing_address(self):
         for kind in ("html", "problem", "la_faq", "la_crossword", "la_diagram", "la_sortable"):
-            original = main.build_staged_lesson_content_response_model([kind], payload_only=True)
+            original = staged_schemas.build_staged_lesson_content_response_model([kind], payload_only=True)
             projected, _ = staged_provider_response_model(original)
             body = capture_sdk_body(projected)
             component = body["generationConfig"]["responseSchema"]["properties"]["components"]["items"]

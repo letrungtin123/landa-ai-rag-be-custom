@@ -14,9 +14,9 @@ from app.main import (
     _architecture_repair_preserves_unaffected_snapshot,
     _v5_deterministic_assessment_alignment_payload,
     _v5_prepare_semantic_repair_targets,
-    allocate_source_map_architecture_facts,
     apply_course_architecture_repair_patches,
 )
+from app.services.lesson_author.evidence_scope import allocate_source_map_architecture_facts
 from app.source_map import build_source_map
 from app.workflows.course_architecture import classify_course_repair_targets
 from app.workflows.course_architecture import CourseArchitectureWorkflowCallbacks, run_course_architecture_workflow
@@ -222,7 +222,8 @@ class V5AssessmentPlannerTests(unittest.TestCase):
         self.assertEqual(len(checks), 2)
         self.assertEqual([b['learning_objective_refs'] for b in checks], [['lo_1'], ['lo_2']])
         self.assertEqual(compile_v5_assessment_plan(compiled.blueprint).blueprint, compiled.blueprint)
-        from app.main import validate_course_architecture_evidence_scope, validate_v5_instructional_coherence
+        from app.main import validate_v5_instructional_coherence
+        from app.services.lesson_author.evidence_scope import validate_course_architecture_evidence_scope
         self.assertFalse(validate_course_architecture_evidence_scope(compiled.blueprint, source_map).errors)
         self.assertFalse(validate_v5_instructional_coherence(compiled.blueprint).errors)
         allocated = allocate_source_map_architecture_facts(compiled.blueprint, source_map, manifest)

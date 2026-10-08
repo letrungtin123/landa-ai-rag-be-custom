@@ -13,6 +13,7 @@ import httpx
 from pydantic import create_model
 
 from app import main
+from app.services.lesson_author.staged import provider_schemas as staged_schemas
 
 
 KINDS = ("html", "problem", "la_faq", "la_crossword", "la_diagram", "la_sortable")
@@ -29,8 +30,8 @@ def synthetic_plans(kinds):
 def schema_cases():
     cases = {"control": create_model("ProbeControl", result=(str, ...))}
     for kind in KINDS:
-        cases[kind] = main.build_staged_instance_response_model(synthetic_plans([kind]))
-    cases["mixed"] = main.build_staged_instance_response_model(
+        cases[kind] = staged_schemas.build_staged_instance_response_model(synthetic_plans([kind]))
+    cases["mixed"] = staged_schemas.build_staged_instance_response_model(
         synthetic_plans(["html", "problem", "la_diagram", "la_faq"]))
     return cases
 

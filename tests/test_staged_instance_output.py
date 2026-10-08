@@ -17,6 +17,9 @@ from tests.test_chapter_checkpoint import fixture as checkpoint_fixture, checkpo
 from app.schemas.common import AiUsage
 from app.schemas.lesson_author import RagLessonAuthorCheckpointRequest
 from app.api import deps as api_deps
+from app.services.lesson_author.staged.provider_schemas import STAGED_COMPONENT_PAYLOAD_FIELDS
+from app.services.lesson_author.staged import provider_schemas as staged_schemas
+from app.services.lesson_author.staged import validation as staged_validation
 
 
 def checkpoint_instance_fixture():
@@ -37,7 +40,7 @@ class StagedInstanceOutputTests(unittest.TestCase):
     def test_sdk_has_per_instance_required_payloads_without_ownership_or_union(self):
         _, _, scope, _ = fixture()
         plans = deepcopy(scope["component_plan"])
-        schema = main.build_staged_instance_response_model(plans)
+        schema = staged_schemas.build_staged_instance_response_model(plans)
         client = genai.Client(api_key="test-key")
         wire = models._GenerateContentConfig_to_mldev(client._api_client, types.GenerateContentConfig(response_schema=schema))["responseSchema"]
         slots = wire.properties["components"]
@@ -51,10 +54,10 @@ class StagedInstanceOutputTests(unittest.TestCase):
         for slot in slots.properties.values():
             self.assertFalse({"type", "source_fact_ids", "supporting_evidence_fact_ids", "component_plan_id"}.intersection(slot.properties))
             self.assertIn("covered_source_fact_ids", slot.required)
-        self.assertTrue(main.staged_response_schema_diagnostics(schema)["schema_valid"])
+        self.assertTrue(staged_schemas.staged_response_schema_diagnostics(schema)["schema_valid"])
         for kinds in (("html", "la_sortable", "la_crossword", "la_faq"), ("html", "html", "problem", "la_faq")):
             extra_plans = [{**deepcopy(plans[i]), "type": kind} for i, kind in enumerate(kinds)]
-            other = main.build_staged_instance_response_model(extra_plans)
+            other = staged_schemas.build_staged_instance_response_model(extra_plans)
             other_wire = models._GenerateContentConfig_to_mldev(client._api_client, types.GenerateContentConfig(response_schema=other))["responseSchema"]
             other_slots = other_wire.properties["components"].properties
             if kinds[1] == "la_sortable":
@@ -71,15 +74,15 @@ class StagedInstanceOutputTests(unittest.TestCase):
         wire = instance_wire(valid)
         wire["components"]["c0"]["covered_source_fact_ids"] = []
         before = deepcopy(wire)
-        bound = main.bind_staged_instance_payload(wire, expected)
+        bound = staged_schemas.bind_staged_instance_payload(wire, expected)
         self.assertEqual(bound["components"][0]["source_fact_ids"], scope["component_plan"][0]["source_fact_ids"])
         self.assertEqual(bound["components"][0]["covered_source_fact_ids"], [])
-        self.assertEqual(main.staged_component_repair_guard(bound, expected)["code"], "COMPONENT_COVERAGE_INCOMPLETE")
+        self.assertEqual(staged_validation.staged_component_repair_guard(bound, expected)["code"], "COMPONENT_COVERAGE_INCOMPLETE")
         self.assertEqual(wire, before)
         del wire["components"]["c0"]["covered_source_fact_ids"]
-        bound = main.bind_staged_instance_payload(wire, expected)
+        bound = staged_schemas.bind_staged_instance_payload(wire, expected)
         self.assertNotIn("covered_source_fact_ids", bound["components"][0])
-        self.assertEqual(main.validate_staged_unit_content(bound, expected, strict_payload=True).code, "COMPONENT_COVERAGE_MISSING")
+        self.assertEqual(staged_validation.validate_staged_unit_content(bound, expected, strict_payload=True).code, "COMPONENT_COVERAGE_MISSING")
 
     def test_unknown_slots_or_protected_fields_are_never_silently_dropped(self):
         _, valid, scope, _ = fixture()
@@ -93,7 +96,7 @@ class StagedInstanceOutputTests(unittest.TestCase):
                 key = {"owned": "source_fact_ids", "identity": "component_plan_id", "type": "type", "asset": "asset_url"}[change]
                 wire["components"]["c2"][key] = "PRIVATE_VALUE"
             with self.assertRaises(WorkflowFailure) as failure:
-                main.bind_staged_instance_payload(wire, expected)
+                staged_schemas.bind_staged_instance_payload(wire, expected)
             self.assertNotIn("PRIVATE", json.dumps(failure.exception.diagnostics))
 
     def test_every_repair_authority_rejection_has_a_safe_reason(self):
@@ -108,15 +111,15 @@ class StagedInstanceOutputTests(unittest.TestCase):
         for key, value, reason in cases:
             broken = deepcopy(valid)
             broken["components"][2][key] = value
-            diagnostic = main.staged_component_repair_guard(broken, scope)
+            diagnostic = staged_validation.staged_component_repair_guard(broken, scope)
             self.assertEqual(diagnostic["code"], reason)
-            self.assertEqual(main.staged_component_repair_targets(broken, scope), [])
+            self.assertEqual(staged_validation.staged_component_repair_targets(broken, scope), [])
             self.assertNotIn("PRIVATE", json.dumps(diagnostic))
         broken = deepcopy(valid)
         broken["components"][0]["covered_source_fact_ids"] = []
-        self.assertEqual(main.staged_component_repair_guard(broken, scope)["code"], "COMPONENT_COVERAGE_INCOMPLETE")
+        self.assertEqual(staged_validation.staged_component_repair_guard(broken, scope)["code"], "COMPONENT_COVERAGE_INCOMPLETE")
         broken["components"].pop()
-        self.assertEqual(main.staged_component_repair_guard(broken, scope)["code"], "COMPONENT_COUNT_MISMATCH")
+        self.assertEqual(staged_validation.staged_component_repair_guard(broken, scope)["code"], "COMPONENT_COUNT_MISMATCH")
 
     def test_uat_missing_edges_repairs_diagram_only_and_final_chapter_validates(self):
         request, valid, scope, manifest = checkpoint_instance_fixture()
@@ -135,7 +138,7 @@ class StagedInstanceOutputTests(unittest.TestCase):
         for i, actual in enumerate(result["unit"]["components"]):
             self.assertEqual(actual["source_fact_ids"], scope["component_plan"][i]["source_fact_ids"])
             self.assertEqual(actual["supporting_evidence_fact_ids"], scope["component_plan"][i]["supporting_evidence_fact_ids"])
-            for key in main.STAGED_COMPONENT_PAYLOAD_FIELDS[actual["type"]]:
+            for key in STAGED_COMPONENT_PAYLOAD_FIELDS[actual["type"]]:
                 self.assertEqual(actual.get(key), valid["components"][i].get(key))
         self.assertIn('"repair_component_indices": [2]', "\n".join(logs.output))
         self.assertIn('"repair_guard_finding": null', "\n".join(logs.output))

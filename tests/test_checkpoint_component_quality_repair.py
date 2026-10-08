@@ -13,6 +13,9 @@ from tests.test_staged_recovery_identity import fixture as original_fixture
 from tests.test_chapter_checkpoint import fixture as endpoint_fixture
 from app.schemas.common import AiUsage
 from fastapi import HTTPException
+from app.services.lesson_author.staged.provider_schemas import STAGED_COMPONENT_PAYLOAD_FIELDS
+from app.services.lesson_author.staged import provider_schemas as staged_schemas
+from app.services.lesson_author.staged import validation as staged_validation
 
 
 def fixture():
@@ -51,14 +54,14 @@ def run(request, manifest):
 def instance_wire(unit):
     """Provider-shaped fixture for the server-owned checkpoint output contract."""
     return {"components": {f"c{i}": {k: deepcopy(v) for k, v in component.items()
-              if k in main.STAGED_COMPONENT_PAYLOAD_FIELDS[component["type"]] | {"title", "selection_rationale", "covered_source_fact_ids"}}
+              if k in STAGED_COMPONENT_PAYLOAD_FIELDS[component["type"]] | {"title", "selection_rationale", "covered_source_fact_ids"}}
             for i, component in enumerate(unit["components"])}}
 
 
 class CheckpointComponentQualityRepairTests(unittest.TestCase):
     def test_valid_dense_unit_bypasses_repair(self):
         request, unit, scope, manifest = fixture()
-        self.assertIsNone(main.validate_staged_unit_content(unit, scope, strict_payload=True))
+        self.assertIsNone(staged_validation.validate_staged_unit_content(unit, scope, strict_payload=True))
         provider = AsyncMock(return_value=(json.dumps(instance_wire(unit)), AiUsage()))
         with patch("app.services.provider.generate_content", provider):
             result, _ = run(request, manifest)
@@ -70,7 +73,7 @@ class CheckpointComponentQualityRepairTests(unittest.TestCase):
         broken = deepcopy(valid)
         broken["components"][2]["items"] = [{"text": "PRIVATE_ONLY_TWO_ITEMS"}] * 2
         baseline = deepcopy(broken)
-        self.assertEqual(main.staged_component_repair_targets(broken, scope), [2])
+        self.assertEqual(staged_validation.staged_component_repair_targets(broken, scope), [2])
         delta = {"components": [{"component_index": 2, "items": valid["components"][2]["items"]}]}
         provider = AsyncMock(side_effect=[(json.dumps(instance_wire(broken)), AiUsage()), (json.dumps(delta), AiUsage())])
         with patch("app.services.provider.generate_content", provider), self.assertLogs("app.main", "INFO") as logs:
@@ -101,9 +104,9 @@ class CheckpointComponentQualityRepairTests(unittest.TestCase):
                 else:
                     broken["components"][3]["items"][0]["answer"] = "PRIVATE_THIN"
                     fields = {"items": valid["components"][3]["items"]}
-                finding = main.validate_staged_unit_content(broken, scope, strict_payload=True)
+                finding = staged_validation.validate_staged_unit_content(broken, scope, strict_payload=True)
                 self.assertEqual(finding.code, code)
-                self.assertEqual(main.staged_component_repair_targets(broken, scope), [target])
+                self.assertEqual(staged_validation.staged_component_repair_targets(broken, scope), [target])
                 delta = {"components": [{"component_index": target, **fields}]}
                 provider = AsyncMock(side_effect=[(json.dumps(instance_wire(broken)), AiUsage()), (json.dumps(delta), AiUsage())])
                 with patch("app.services.provider.generate_content", provider), self.assertLogs("app.main", "INFO") as logs:
@@ -119,9 +122,9 @@ class CheckpointComponentQualityRepairTests(unittest.TestCase):
         leaked = deepcopy(valid["components"][0]["semantic_content"])
         leaked["sections"][0]["heading"] = "Câu hỏi thường gặp về nội dung"
         broken["components"][0]["semantic_content"] = leaked
-        finding = main.validate_staged_unit_content(broken, scope, strict_payload=True)
+        finding = staged_validation.validate_staged_unit_content(broken, scope, strict_payload=True)
         self.assertEqual(finding.code, "HTML_FAQ_BOUNDARY_VIOLATION")
-        self.assertEqual(main.staged_component_repair_targets(broken, scope), [0])
+        self.assertEqual(staged_validation.staged_component_repair_targets(broken, scope), [0])
         delta = {"components": [{"component_index": 0,
                                   "semantic_content": valid["components"][0]["semantic_content"]}]}
         provider = AsyncMock(side_effect=[(json.dumps(instance_wire(broken)), AiUsage()),
@@ -135,10 +138,10 @@ class CheckpointComponentQualityRepairTests(unittest.TestCase):
         reflective["semantic_content"]["sections"][0]["blocks"].append({
             "kind": "task", "text": "Bạn sẽ áp dụng nguyên tắc này vào tình huống nào? Hãy giải thích bằng bằng chứng trong tài liệu."
         })
-        self.assertFalse(main.staged_html_contains_faq(reflective))
+        self.assertFalse(staged_validation.staged_html_contains_faq(reflective))
 
     def test_html_contract_explicitly_separates_faq_component_content(self):
-        contract = main.staged_component_contract_prompt(["html", "la_faq"])
+        contract = staged_schemas.staged_component_contract_prompt(["html", "la_faq"])
         for phrase in ("must NEVER contain an FAQ", "Câu hỏi thường gặp", "only a selected la_faq component"):
             self.assertIn(phrase, contract)
 
@@ -152,7 +155,7 @@ class CheckpointComponentQualityRepairTests(unittest.TestCase):
                 for index in range(4)
             ],
         }]}
-        self.assertIsNone(main.validate_staged_unit_content(oversized, scope, strict_payload=True))
+        self.assertIsNone(staged_validation.validate_staged_unit_content(oversized, scope, strict_payload=True))
         scope["instructional_output_budget"] = {
             "policy_version": "unit-content-v3-density-1",
             "source_content_chars": 80,
@@ -161,21 +164,21 @@ class CheckpointComponentQualityRepairTests(unittest.TestCase):
             "max_words": 600,
         }
 
-        finding = main.validate_staged_unit_content(oversized, scope, strict_payload=True)
+        finding = staged_validation.validate_staged_unit_content(oversized, scope, strict_payload=True)
         self.assertEqual(finding.code, "HTML_INSTRUCTIONAL_DENSITY_EXCEEDED")
-        self.assertEqual(main.staged_component_repair_targets(oversized, scope), [0])
+        self.assertEqual(staged_validation.staged_component_repair_targets(oversized, scope), [0])
 
         scope["instructional_output_budget"]["max_words"] = 0
-        invalid = main.validate_staged_unit_content(valid, scope, strict_payload=True)
+        invalid = staged_validation.validate_staged_unit_content(valid, scope, strict_payload=True)
         self.assertEqual(invalid.code, "INSTRUCTIONAL_OUTPUT_BUDGET_INVALID")
-        self.assertEqual(main.staged_component_repair_targets(valid, scope), [])
+        self.assertEqual(staged_validation.staged_component_repair_targets(valid, scope), [])
 
     def test_required_source_artifact_must_survive_semantic_rendering(self):
         _, valid, scope, _ = fixture()
         scope["component_plan"][0]["required_artifacts"] = [{"type": "table", "minimum_items": 2}]
-        finding = main.validate_staged_unit_content(valid, scope, strict_payload=True)
+        finding = staged_validation.validate_staged_unit_content(valid, scope, strict_payload=True)
         self.assertEqual(finding.code, "REQUIRED_ARTIFACT_NOT_PRESERVED")
-        self.assertEqual(main.staged_component_repair_targets(valid, scope), [0])
+        self.assertEqual(staged_validation.staged_component_repair_targets(valid, scope), [0])
 
         preserved = deepcopy(valid)
         preserved["components"][0]["semantic_content"]["sections"][0]["blocks"].append({
@@ -185,7 +188,7 @@ class CheckpointComponentQualityRepairTests(unittest.TestCase):
                 {"label": "Verification", "value": "Recorded result"},
             ],
         })
-        self.assertIsNone(main.validate_staged_unit_content(preserved, scope, strict_payload=True))
+        self.assertIsNone(staged_validation.validate_staged_unit_content(preserved, scope, strict_payload=True))
 
     def test_sortable_shape_metadata_is_bounded_and_redacted(self):
         cases = [(None, "ARRAY_REQUIRED"), ([], "CARDINALITY"),
@@ -193,7 +196,7 @@ class CheckpointComponentQualityRepairTests(unittest.TestCase):
                  ([{"text": "PRIVATE" * 100}] * 3, "TEXT_TOO_LONG"),
                  (["PRIVATE_VALUE"] * 3, "FIELD_TYPE_INVALID")]
         for items, reason in cases:
-            result = main.staged_sortable_shape_diagnostics({"items": items})
+            result = staged_validation.staged_sortable_shape_diagnostics({"items": items})
             self.assertEqual(result[0]["reason"], reason)
             self.assertLessEqual(len(result), 8)
             self.assertNotIn("PRIVATE", json.dumps(result))
@@ -224,7 +227,7 @@ class CheckpointComponentQualityRepairTests(unittest.TestCase):
             baseline = deepcopy(broken)
             provider = AsyncMock(side_effect=[(json.dumps(instance_wire(broken)), AiUsage()),
                                              (json.dumps({"components": [change]}), AiUsage())])
-            with patch("app.services.provider.generate_content", provider), patch("app.main.build_source_locked_html_unit") as fallback:
+            with patch("app.services.provider.generate_content", provider), patch("app.services.lesson_author.staged.source_locked.build_source_locked_html_unit") as fallback:
                 with self.assertRaises(WorkflowFailure) as failure:
                     run(request, manifest)
             self.assertEqual(failure.exception.internal_code, "CHAPTER_COMPONENT_REPAIR_EXHAUSTED")
@@ -238,8 +241,8 @@ class CheckpointComponentQualityRepairTests(unittest.TestCase):
 
     def test_instructional_diagnostics_handle_invalid_structure_and_remain_bounded(self):
         for value in (None, {}, {"components": None}, {"components": 5}):
-            self.assertEqual(main.staged_instructional_diagnostics(value), [])
-        result = main.staged_instructional_diagnostics({"components": [{"type": "la_sortable", "items": []}] * 40})
+            self.assertEqual(staged_validation.staged_instructional_diagnostics(value), [])
+        result = staged_validation.staged_instructional_diagnostics({"components": [{"type": "la_sortable", "items": []}] * 40})
         self.assertEqual(len(result), 16)
 
     def test_endpoint_preserves_typed_terminal_stage_and_metadata_without_private_payload(self):

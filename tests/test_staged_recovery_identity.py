@@ -10,12 +10,14 @@ from unittest.mock import AsyncMock, patch
 from google import genai
 from google.genai import models, types
 
-from app.main import (
-    build_staged_lesson_content_response_model,
-    generate_staged_lesson_author_proposal,
+from app.main import generate_staged_lesson_author_proposal
+from app.services.lesson_author.staged.provider_schemas import build_staged_lesson_content_response_model
+from app.services.lesson_author.staged.skeleton import (
     match_staged_unit_by_title,
     staged_unit_candidates,
     staged_unit_match_diagnostics,
+)
+from app.services.lesson_author.staged.validation import (
     staged_component_repair_targets,
     staged_fact_membership_equal,
     staged_payload_diagnostics,

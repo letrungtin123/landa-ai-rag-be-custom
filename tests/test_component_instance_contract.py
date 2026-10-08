@@ -10,15 +10,17 @@ from unittest.mock import AsyncMock, patch
 from app.component_capabilities import ComponentCapabilities, validate_instance_plan
 from app.assessment_planner import compile_v5_assessment_plan
 from app.main import (
-    _locked_component_plan,
-    allocate_source_map_architecture_facts,
     generate_staged_lesson_author_proposal,
-    build_source_locked_unit,
-    validate_course_architecture_evidence_scope,
     validate_v5_instructional_coherence,
-    validate_staged_unit_content,
     validate_course_architecture_workflow,
 )
+from app.services.lesson_author.evidence_scope import (
+    allocate_source_map_architecture_facts,
+    validate_course_architecture_evidence_scope,
+)
+from app.services.lesson_author.staged.skeleton import _locked_component_plan
+from app.services.lesson_author.staged.source_locked import build_source_locked_unit
+from app.services.lesson_author.staged.validation import validate_staged_unit_content
 from app.schemas.common import AiUsage
 from app.schemas.lesson_author import RagLessonAuthorRequest
 from app.lesson_quality import validate_lesson_pedagogical_quality

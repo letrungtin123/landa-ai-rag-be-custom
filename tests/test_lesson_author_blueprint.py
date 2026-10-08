@@ -20,28 +20,35 @@ from app.lesson_author_blueprint import (
 from app.main import (
     CourseArchitectSemanticScopeError,
     LessonAuthorBlueprintGenerationError,
-    build_lesson_author_blueprint_prompt,
-    allocate_blueprint_source_fact_ids,
-    apply_phase_one_blueprint_component_contract,
-    build_lesson_author_proposal_response_schema,
-    build_source_locked_staged_skeleton,
-    build_staged_component_plan,
-    consolidate_staged_thin_units,
-    extract_lesson_author_unit_batches,
-    build_lesson_author_skeleton_response_schema,
-    build_lesson_author_unit_response_schema,
-    build_source_locked_html_unit,
     drop_invalid_lesson_author_source_refs,
     enforce_lesson_author_source_structure,
-    ensure_blueprint_source_granularity,
     generate_staged_lesson_author_proposal,
     generate_validated_lesson_author_blueprint,
-    prepare_source_locked_expected,
+)
+from app.services.lesson_author.granularity import (
+    allocate_blueprint_source_fact_ids,
+    apply_phase_one_blueprint_component_contract,
+    ensure_blueprint_source_granularity,
+)
+from app.services.lesson_author.prompts import build_lesson_author_blueprint_prompt
+from app.services.lesson_author.staged.plan import build_staged_component_plan, consolidate_staged_thin_units
+from app.services.lesson_author.staged.provider_schemas import (
+    build_lesson_author_proposal_response_schema,
+    build_lesson_author_skeleton_response_schema,
+    build_lesson_author_unit_response_schema,
+)
+from app.services.lesson_author.staged.skeleton import (
+    extract_lesson_author_unit_batches,
     should_stage_lesson_author_proposal,
-    staged_unit_source_material,
-    validate_staged_unit_content,
     validate_staged_skeleton_source_facts,
 )
+from app.services.lesson_author.staged.source_locked import (
+    build_source_locked_staged_skeleton,
+    build_source_locked_html_unit,
+    prepare_source_locked_expected,
+    staged_unit_source_material,
+)
+from app.services.lesson_author.staged.validation import validate_staged_unit_content
 from app.services.retrieval.source_coverage import restrict_blueprint_draft_source_manifest
 from app.services.lesson_author.errors import LessonAuthorProposalValidationError
 from app.services.lesson_author.proposal_validation import (

@@ -10,7 +10,7 @@ from app.lesson_author_orchestration_v2_provider import (
     unit_contract_manifest_v2,
     unit_contract_v5_architecture_v2,
 )
-from app.main import build_staged_instructional_contract
+from app.services.lesson_author.staged.source_locked import build_staged_instructional_contract
 
 
 def main() -> None:

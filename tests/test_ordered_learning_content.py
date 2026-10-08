@@ -2,7 +2,7 @@
 from copy import deepcopy
 import unittest
 
-from app.main import staged_instructional_finding, staged_component_repair_targets
+from app.services.lesson_author.staged.validation import staged_instructional_finding, staged_component_repair_targets
 from app.services.lesson_author.proposal_validation import semantic_learning_visible_text
 from app.ordered_learning_content import ordered_content_fields
 from app.lesson_content_observation import observe_lesson_content
