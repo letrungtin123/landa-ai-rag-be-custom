@@ -6,6 +6,7 @@ import hashlib
 import html
 import io
 import json
+import logging
 import random
 import re
 import shutil
@@ -246,7 +247,10 @@ app.add_exception_handler(Exception, unhandled_error_handler)
 app.add_exception_handler(RequestValidationError, request_validation_error_handler)
 
 
-logger = configure_application_logging(__name__)
+# Configure the package logger so every app.* module (app.idm, app.core.request_context, ...)
+# emits through the JSON handler, not only this module.
+configure_application_logging("app")
+logger = logging.getLogger(__name__)
 T = TypeVar("T")
 db_pool: asyncpg.Pool | None = None
 supabase_client: Any | None = None
