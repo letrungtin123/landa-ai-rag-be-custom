@@ -10,8 +10,8 @@ from app.assessment_planner import materialize_assessment_source_refs
 from app.assessment_selection_contract import build_assessment_selection_contract
 from app.component_capabilities import ComponentCapabilities
 from app.lesson_author_blueprint import _semantic_learning_block_response_schema
-from app.main import lesson_author_blueprint
 from app.schemas.common import AiUsage
+from app.services.lesson_author.blueprint_workflow import lesson_author_blueprint
 from app.services.lesson_author.repair.semantic_delta import apply_course_architecture_repair_patches
 from app.workflows.contracts import WorkflowFailure
 from tests.test_assessment_canonical_provenance import fixture

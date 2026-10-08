@@ -16,6 +16,7 @@ from app.api import deps as api_deps
 from app.lesson_author_checkpoint import ChapterCheckpointUnit, assemble_checkpoint_chapter, select_checkpoint_unit
 from app.schemas.common import AiUsage
 from app.schemas.lesson_author import RagLessonAuthorCheckpointRequest, RagLessonAuthorRequest
+from app.services.lesson_author import chapter_checkpoint as chapter_checkpoint_service
 from app.services.lesson_author import checkpoint as checkpoint_service
 from app.services.lesson_author.staged import skeleton as staged_skeleton
 from app.services.lesson_author.staged import source_locked as staged_source_locked
@@ -180,9 +181,9 @@ class ChapterCheckpointTests(unittest.TestCase):
         request, _, _ = fixture(index=3)
         failure = HTTPException(504, {"code": "AI_PROVIDER_TIMEOUT", "message": "safe"})
         provider_boundary = AsyncMock(side_effect=failure)
-        with patch("app.main.lesson_author_proposal", provider_boundary):
+        with patch("app.services.lesson_author.proposal.lesson_author_proposal", provider_boundary):
             with self.assertRaises(HTTPException) as raised:
-                asyncio.run(main.lesson_author_chapter_checkpoint(request, pool=None))
+                asyncio.run(chapter_checkpoint_service.lesson_author_chapter_checkpoint(request, pool=None))
         self.assertEqual(provider_boundary.await_count, 1)
         self.assertEqual(raised.exception.detail["code"], "PROVIDER_ERROR")
         self.assertEqual(raised.exception.detail["internal_failure_code"], "AI_PROVIDER_TIMEOUT")
@@ -194,8 +195,8 @@ class ChapterCheckpointTests(unittest.TestCase):
         async def slow(*args):
             await asyncio.sleep(1)
         boundary = AsyncMock(side_effect=slow)
-        with patch("app.main.lesson_author_proposal", boundary), self.assertRaises(HTTPException) as raised:
-            asyncio.run(main.lesson_author_chapter_checkpoint(request, pool=None))
+        with patch("app.services.lesson_author.proposal.lesson_author_proposal", boundary), self.assertRaises(HTTPException) as raised:
+            asyncio.run(chapter_checkpoint_service.lesson_author_chapter_checkpoint(request, pool=None))
         self.assertEqual(raised.exception.detail["internal_failure_code"], "AI_STAGED_LESSON_WORKFLOW_TIMEOUT")
         self.assertEqual(boundary.await_count, 1)
 
@@ -205,7 +206,7 @@ class ChapterCheckpointTests(unittest.TestCase):
              patch("app.services.retrieval.search.target_source_scope_is_incomplete", return_value=False), \
              patch("app.services.lesson_author.checkpoint.build_lesson_author_checkpoint_result", AsyncMock()) as generation:
             with self.assertRaises(HTTPException) as raised:
-                asyncio.run(main.lesson_author_chapter_checkpoint(request, pool=None))
+                asyncio.run(chapter_checkpoint_service.lesson_author_chapter_checkpoint(request, pool=None))
         generation.assert_not_called()
         self.assertEqual(raised.exception.detail["code"], "SOURCE_EVIDENCE_INSUFFICIENT")
         self.assertEqual(raised.exception.detail["failure_stage"], "chapter_checkpoint_evidence_validation")

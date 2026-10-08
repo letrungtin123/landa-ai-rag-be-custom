@@ -9,8 +9,8 @@ from unittest.mock import AsyncMock, patch
 
 from fastapi import HTTPException
 
-from app import main
 from app.schemas.common import AiUsage
+from app.services.lesson_author import chapter_checkpoint as chapter_checkpoint_service
 from app.services.lesson_author.staged import provider_schemas as staged_schemas
 from app.services.lesson_author.staged import validation as staged_validation
 from app.services.lesson_author.staged import writer as staged_writer
@@ -253,9 +253,9 @@ class CheckpointComponentQualityRepairTests(unittest.TestCase):
                                   failure_stage="chapter_component_repair_revalidation",
                                   diagnostics={"repair_scope": "components", "repair_component_indices": [2],
                                                "validation_finding": {"code": "SORTABLE_STEP_FRAGMENT", "path": "components[2].items", "repairable": True}})
-        with patch("app.main.lesson_author_proposal", AsyncMock(side_effect=failure)), self.assertLogs("app.main", "INFO") as logs:
+        with patch("app.services.lesson_author.proposal.lesson_author_proposal", AsyncMock(side_effect=failure)), self.assertLogs("app.main", "INFO") as logs:
             with self.assertRaises(HTTPException) as result:
-                asyncio.run(main.lesson_author_chapter_checkpoint(request, pool=None))
+                asyncio.run(chapter_checkpoint_service.lesson_author_chapter_checkpoint(request, pool=None))
         self.assertEqual(result.exception.status_code, 422)
         self.assertEqual(result.exception.detail["internal_failure_code"], failure.internal_code)
         self.assertIn("SORTABLE_STEP_FRAGMENT", "\n".join(logs.output))

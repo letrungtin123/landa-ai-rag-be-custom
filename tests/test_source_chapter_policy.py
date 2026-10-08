@@ -6,10 +6,10 @@ import unittest
 from unittest.mock import AsyncMock, patch
 
 from app.lesson_author_blueprint import LessonAuthorBlueprintValidationError
-from app.main import lesson_author_blueprint
 from app.schemas.common import AiUsage
 from app.services.ingestion.extract import ExtractedSection
 from app.services.lesson_author.blueprint import generate_validated_lesson_author_blueprint
+from app.services.lesson_author.blueprint_workflow import lesson_author_blueprint
 from app.services.retrieval.structure import build_source_structure_context
 from app.source_chapter_policy import bind_source_chapters, resolve_source_chapter_policy
 from app.source_map import build_course_architect_context, build_source_map
