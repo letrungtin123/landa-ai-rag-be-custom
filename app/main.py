@@ -6,29 +6,26 @@ import html
 import io
 import json
 import logging
-import random
 import re
 import shutil
 import tempfile
-from collections.abc import Awaitable
 from copy import deepcopy
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
 from pathlib import Path
 from time import monotonic, perf_counter
-from typing import Annotated, Any, Callable, ClassVar, Literal, TypeVar
+from typing import Annotated, Any, Callable, ClassVar, Literal
 from uuid import UUID
 
 import asyncpg
-from fastapi import Depends, FastAPI, HTTPException, Request
+from fastapi import Depends, FastAPI, HTTPException
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import JSONResponse, Response
-from google.genai import errors as genai_errors
 from google.genai import types
-from pydantic import BaseModel, Field, SecretStr, ValidationError, create_model, model_validator
-from supabase import create_client
+from pydantic import BaseModel, Field, ValidationError, create_model, model_validator
 
+from app.api.deps import get_db, require_internal_token
+from app.api.routes import health
 from app.assessment_planner import (
     assessment_intent_repair_options,
     assessment_plan_fingerprint,
@@ -42,8 +39,8 @@ from app.assessment_selection_contract import VERSION as ASSESSMENT_SELECTION_CO
 from app.assessment_selection_contract import build_assessment_selection_contract
 from app.component_capabilities import validate_instance_plan
 from app.core import metrics
-from app.core.concurrency import ConcurrencyRuntime, deadline_seconds
-from app.core.config import settings, validate_startup_settings
+from app.core.concurrency import deadline_seconds
+from app.core.config import settings
 from app.core.document_limits import (
     INDEX_DOCUMENT_SUFFIXES,
     UnsupportedDocumentTypeError,
@@ -57,20 +54,16 @@ from app.core.errors import (
     AppError,
     DocumentLimitError,
     app_error_handler,
-    error_payload,
     request_validation_error_handler,
     unhandled_error_handler,
 )
-from app.core.lifespan import RuntimeState, build_lifespan
+from app.core.lifespan import build_lifespan
 from app.core.logging import configure_application_logging, redact_secret_like_values
 from app.core.middleware import RequestBodyLimitMiddleware
 from app.core.request_context import DisconnectCancellationMiddleware, RequestContextMiddleware
-from app.core.security import require_configured_service_auth
-from app.core.security import require_internal_auth as verify_internal_auth
 from app.idm.course_design import run_idm_course_design
 from app.idm.diagram import idm_source_step_diagram
 from app.idm.module_design import run_idm_module_design
-from app.idm.policy import IDM_CONTRACT_VERSION, IDM_PIPELINE_VERSION, IDM_PROMPT_POLICY_VERSION
 from app.idm.runtime import (
     RUN_STOPPING_PROVIDER_CODES,
     TRANSIENT_PROVIDER_CODES,
@@ -82,12 +75,8 @@ from app.idm.runtime import (
 )
 from app.idm.source_locked import idm_source_faq, idm_source_grounded_single_choice, render_idm_source_locked_html
 from app.idm.storyboard import IdmUnitDeps, run_idm_unit
-from app.infra import db as db_infra
-from app.infra import gemini as gemini_infra
-from app.infra import schema_check as schema_infra
 from app.infra import storage as storage_infra
 from app.infra.pdf_layout import column_reading_order
-from app.infra.provider_limits import RATE_LIMITED_CODE, classify_provider_limit
 from app.instructional_density import (
     INSTRUCTIONAL_DENSITY_POLICY_VERSION,
     SOURCE_SCOPE_CHUNKS_PER_GROUP,
@@ -128,7 +117,6 @@ from app.lesson_author_blueprint import (
     LessonAuthorBlueprintValidationError,
     build_course_architecture_repair_response_schema,
     build_v5_semantic_delta_repair_response_schema,
-    describe_lesson_author_blueprint_response,
     ensure_lesson_author_blueprint_faqs,
     parse_and_validate_lesson_author_blueprint,
     parse_lesson_author_blueprint_candidate,
@@ -141,12 +129,11 @@ from app.lesson_author_checkpoint import (
     checkpoint_expected_units,
     select_checkpoint_unit,
 )
-from app.lesson_author_orchestration_v2 import ORCHESTRATION_CONTRACT_VERSION, OrchestrationContractError
+from app.lesson_author_orchestration_v2 import OrchestrationContractError
 from app.lesson_author_orchestration_v2 import canonical_hash as orchestration_v2_canonical_hash
 from app.lesson_author_orchestration_v2_provider import (
     CHAPTER_SHARD_PROVIDER_SCHEMA_METADATA,
     COURSE_SKELETON_PROVIDER_SCHEMA_METADATA,
-    ORCHESTRATION_V2_PROVIDER_SCHEMA_PROJECTION_VERSION,
     ChapterShardProviderWireV2,
     CourseSkeletonDraftV2,
     CourseSkeletonProviderWireV2,
@@ -213,6 +200,23 @@ from app.semantic_review import (
     semantic_review_config_hash,
     validate_semantic_review_response,
 )
+from app.services import provider
+from app.services import runtime as service_runtime
+from app.services.deadlines import record_fallback, run_with_deadline
+from app.services.meta import API_VERSION
+from app.services.provider import (
+    PROVIDER_TRANSIENT_MAX_ATTEMPTS,
+    combine_usage,
+    emit_safe_provider_telemetry,
+    estimate_tokens,
+    is_non_retryable_provider_error,
+    normalize_embedding_model,
+    provider_http_error_status,
+    require_provider_api_key,
+    safe_provider_error_diagnostics,
+)
+from app.services.runtime import storage_policy
+from app.services.text import clean_text
 from app.source_chapter_policy import bind_source_chapters, resolve_source_chapter_policy
 from app.source_map import build_course_architect_context, build_source_map
 from app.source_readiness import collect_pdf_visual_regions
@@ -240,29 +244,17 @@ from app.workflows.course_architecture import (
 )
 from app.workflows.lesson_generation import LessonGenerationWorkflowCallbacks, run_lesson_generation_workflow
 
-runtime_state = RuntimeState()
-
-
-concurrency = ConcurrencyRuntime(
-    provider_limit=settings.max_concurrent_provider_calls,
-    index_limit=settings.max_concurrent_index_jobs,
-    cpu_workers=settings.cpu_workers,
-    acquire_timeout_seconds=settings.limiter_acquire_timeout_ms / 1000,
-    extraction_executor=settings.extraction_executor,
-)
-
-
 app = FastAPI(
     title="Internal AI RAG Service",
-    version="0.1.0",
+    version=API_VERSION,
     docs_url="/docs" if settings.is_development else None,
     redoc_url="/redoc" if settings.is_development else None,
     openapi_url="/openapi.json" if settings.is_development else None,
     # Resolved at call time: startup/shutdown are defined further down.
     lifespan=build_lifespan(
-        state=runtime_state,
-        startup=lambda: startup(),
-        shutdown=lambda: shutdown(),
+        state=service_runtime.runtime_state,
+        startup=lambda: service_runtime.startup(),
+        shutdown=lambda: service_runtime.shutdown(),
         grace_seconds=settings.shutdown_grace_seconds,
     ),
 )
@@ -280,7 +272,7 @@ app.add_middleware(
 )
 
 
-app.add_middleware(RequestContextMiddleware, state=runtime_state)
+app.add_middleware(RequestContextMiddleware, state=service_runtime.runtime_state)
 
 
 app.add_exception_handler(AppError, app_error_handler)
@@ -292,20 +284,15 @@ app.add_exception_handler(Exception, unhandled_error_handler)
 app.add_exception_handler(RequestValidationError, request_validation_error_handler)
 
 
+app.include_router(health.router)
+
+
 # Configure the package logger so every app.* module (app.idm, app.core.request_context, ...)
 # emits through the JSON handler, not only this module.
 configure_application_logging("app")
 
 
 logger = logging.getLogger(__name__)
-T = TypeVar("T")
-db_pool: asyncpg.Pool | None = None
-supabase_client: Any | None = None
-DEFAULT_EMBEDDING_MODEL = "gemini-embedding-001"
-PROVIDER_TRANSIENT_MAX_ATTEMPTS = settings.provider_max_attempts
-PROVIDER_TRANSIENT_RETRY_DELAY_SECONDS = settings.provider_retry_base_ms / 1000
-PROVIDER_RATE_LIMIT_MIN_WAIT_SECONDS = 1.0
-PROVIDER_RETRY_HINT_PATTERN = re.compile(r"^\s*(\d+(?:\.\d+)?)\s*s?\s*$")
 MAX_SOURCE_STRUCTURE_DOCUMENTS = 40
 MAX_SOURCE_OUTLINE_CHARS = 16000
 MAX_WORKFLOW_REPAIR_TARGET_CHARS = 24000
@@ -317,11 +304,6 @@ SOURCE_RANGE_RE = re.compile(
     r"(?:đến|den|to)\s+(?:(?:slide|slides|trang|page|pages)\s+)?(\d+)\b",
     flags=re.IGNORECASE,
 )
-
-
-LEGACY_EMBEDDING_MODEL_ALIASES = {
-    "text-embedding-004": DEFAULT_EMBEDDING_MODEL,
-}
 
 
 def _v5_source_context_payload(
@@ -586,337 +568,12 @@ KEYWORD_STOPWORDS = {
 }
 
 
-def require_provider_api_key(api_key: str | SecretStr) -> str:
-    value = api_key.get_secret_value().strip() if isinstance(api_key, SecretStr) else api_key.strip()
-    if not value:
-        raise ValueError("Google AI Studio API key chưa được cấu hình.")
-    return value
-
-
 @dataclass
 class ExtractedSection:
     text: str
     page: int | None = None
     section: str | None = None
     metadata: dict[str, Any] = field(default_factory=dict)
-
-
-def estimate_tokens(text: str | None) -> int:
-    if not text:
-        return 0
-    return max(1, (len(text) + 3) // 4)
-
-
-def normalize_usage(
-    *,
-    input_tokens: int = 0,
-    output_tokens: int = 0,
-    embedding_tokens: int = 0,
-    total_tokens: int | None = None,
-) -> AiUsage:
-    total = total_tokens if total_tokens is not None else input_tokens + output_tokens + embedding_tokens
-    return AiUsage(
-        inputTokens=max(0, int(input_tokens)),
-        outputTokens=max(0, int(output_tokens)),
-        embeddingTokens=max(0, int(embedding_tokens)),
-        totalTokens=max(0, int(total)),
-    )
-
-
-def combine_usage(*items: AiUsage) -> AiUsage:
-    return normalize_usage(
-        input_tokens=sum(item.inputTokens for item in items),
-        output_tokens=sum(item.outputTokens for item in items),
-        embedding_tokens=sum(item.embeddingTokens for item in items),
-        total_tokens=sum(item.totalTokens for item in items),
-    )
-
-
-def usage_from_google_response(response: Any, fallback_prompt: str, fallback_output: str) -> AiUsage:
-    meta = getattr(response, "usage_metadata", None)
-    input_tokens = getattr(meta, "prompt_token_count", None)
-    output_tokens = getattr(meta, "candidates_token_count", None)
-    total_tokens = getattr(meta, "total_token_count", None)
-    return normalize_usage(
-        input_tokens=input_tokens if input_tokens is not None else estimate_tokens(fallback_prompt),
-        output_tokens=output_tokens if output_tokens is not None else estimate_tokens(fallback_output),
-        total_tokens=total_tokens,
-    )
-
-
-def normalize_provider_finish_reason(response: Any) -> str | None:
-    """Read the provider's completion status without interpreting its content."""
-
-    candidates = getattr(response, "candidates", None) or []
-    if not candidates:
-        return None
-    finish_reason = getattr(candidates[0], "finish_reason", None)
-    if finish_reason is None:
-        return None
-    value = str(finish_reason).strip()
-    return value[:96] if value else None
-
-
-def provider_response_telemetry(
-    response: Any,
-    *,
-    model: str,
-    max_output_tokens: int,
-    prompt: str,
-    response_text: str,
-    duration_ms: int,
-) -> dict[str, Any]:
-    """Return safe, response-derived telemetry without logging model output."""
-
-    meta = getattr(response, "usage_metadata", None)
-    provider_input = getattr(meta, "prompt_token_count", None)
-    provider_output = getattr(meta, "candidates_token_count", None)
-    provider_total = getattr(meta, "total_token_count", None)
-    has_provider_usage = any(value is not None for value in (provider_input, provider_output, provider_total))
-    return {
-        "provider": "google_ai_studio",
-        "model": model,
-        "configured_max_output_tokens": max_output_tokens,
-        "provider_http_status": 200,
-        "provider_finish_reason": normalize_provider_finish_reason(response),
-        "provider_finish_reason_available": normalize_provider_finish_reason(response) is not None,
-        "usage_source": "provider" if has_provider_usage else "local_estimate",
-        # Never label estimates as Gemini/provider usage.
-        "provider_input_tokens": int(provider_input) if provider_input is not None else None,
-        "provider_output_tokens": int(provider_output) if provider_output is not None else None,
-        "provider_total_tokens": int(provider_total) if provider_total is not None else None,
-        "local_estimated_input_tokens": None if has_provider_usage else estimate_tokens(prompt),
-        "local_estimated_output_tokens": None if has_provider_usage else estimate_tokens(response_text),
-        "response_chars": len(response_text),
-        "response_bytes": len(response_text.encode("utf-8")),
-        "duration_ms": duration_ms,
-    }
-
-
-def emit_safe_provider_telemetry(
-    callback: Callable[[dict[str, Any]], None] | None,
-    payload: dict[str, Any],
-) -> None:
-    """Diagnostics are best effort and must never change generation behavior."""
-
-    if callback is None:
-        return
-    try:
-        callback(payload)
-    except Exception as error:  # pragma: no cover - defensive logging boundary
-        logger.warning("lesson_author_provider_telemetry_emit_failed error_type=%s", type(error).__name__)
-
-
-def require_settings() -> None:
-    validate_startup_settings(settings)
-    require_configured_service_auth(
-        auth_mode=settings.auth_mode,
-        service_token=settings.service_token,
-        hmac_secrets=settings.service_hmac_secrets,
-    )
-
-
-async def require_internal_token(request: Request) -> None:
-    await verify_internal_auth(
-        request,
-        auth_mode=settings.auth_mode,
-        service_token=settings.service_token,
-        hmac_secrets=settings.service_hmac_secrets,
-        clock_skew_seconds=settings.auth_clock_skew_seconds,
-        replay_ttl_seconds=settings.auth_replay_ttl_seconds,
-    )
-
-
-async def get_db() -> asyncpg.Pool:
-    if db_pool is None:
-        # The pool is (re)connecting in the background; the backend's durable workers retry 503.
-        raise AppError("DATABASE_NOT_READY", 503, "The database connection is not ready.")
-    return db_pool
-
-
-# --- database, storage and schema runtime (SEP-1) -------------------------------------------
-SERVICE_NAME = "landa-ai-rag"
-
-
-SCHEMA_CHECK_TIMEOUT_SECONDS = 10.0
-
-
-# 2: /v1/kb/documents/index accepts source_download_url (backend-signed storage URL).
-RAG_INDEX_REQUEST_VERSION = 2
-
-
-BUILD_SHA_PATTERN = re.compile(r"^[0-9A-Za-z._-]{1,64}$")
-database: db_infra.DatabaseRuntime | None = None
-schema_guard = schema_infra.SchemaGuard()
-
-
-def database_config() -> db_infra.DatabaseConfig:
-    return db_infra.DatabaseConfig(
-        dsn=settings.database_url,
-        production=settings.is_production,
-        pool_min=settings.db_pool_min,
-        pool_max=settings.db_pool_max,
-        ssl_mode=settings.db_ssl_mode,
-        ssl_root_cert=settings.db_ssl_root_cert,
-        statement_cache_size=settings.db_statement_cache_size,
-        connect_timeout_seconds=float(settings.db_connect_timeout_seconds),
-        command_timeout_seconds=float(settings.database_command_timeout_seconds),
-        tcp_keepalives_idle_seconds=settings.db_tcp_keepalives_idle_seconds,
-    )
-
-
-def storage_policy() -> storage_infra.StoragePolicy:
-    return storage_infra.StoragePolicy(
-        allowed_origins=storage_infra.parse_allowed_origins(settings.storage_allowed_origins, settings.supabase_url),
-        bucket=settings.supabase_storage_bucket,
-        max_bytes=settings.max_document_bytes,
-        timeout_seconds=float(settings.storage_download_timeout_seconds),
-        ca_file=settings.storage_ca_file,
-    )
-
-
-async def _on_database_connected(pool: Any) -> None:
-    global db_pool
-    db_pool = pool
-    await schema_guard.refresh(pool, timeout_seconds=SCHEMA_CHECK_TIMEOUT_SECONDS)
-
-
-async def startup() -> None:
-    global database, supabase_client
-    require_settings()
-    try:
-        allowed_origins = storage_infra.parse_allowed_origins(settings.storage_allowed_origins, settings.supabase_url)
-    except ValueError:
-        raise RuntimeError("AI_RAG_STORAGE_ALLOWED_ORIGINS is invalid.") from None
-    supabase_client = None
-    if settings.supabase_url and settings.supabase_service_key:
-        # Legacy download path for index requests without a signed URL (removed once the
-        # backend sends one everywhere and SUPABASE_SERVICE_KEY is dropped from this service).
-        supabase_client = create_client(settings.supabase_url, settings.supabase_service_key)
-    logger.info(
-        "storage_access_configured",
-        extra={"event": "storage_access_configured", "legacy_service_key": supabase_client is not None,
-               "allowed_origin_count": len(allowed_origins)},
-    )
-    config = database_config()
-    logger.info(
-        "database_configured",
-        extra={"event": "database_configured", "ssl_mode": db_infra.effective_ssl_mode(config),
-               "pool_min": config.pool_min, "pool_max": config.pool_max,
-               "statement_cache_size": config.statement_cache_size},
-    )
-    schema_guard.reset()
-    # Never crash-loops: an unreachable database leaves /readyz at 503 and retries in the background.
-    database = db_infra.DatabaseRuntime(
-        create_pool=db_infra.create_pool_factory(config),
-        on_connected=_on_database_connected,
-        retry_max_seconds=float(settings.db_connect_retry_max_seconds),
-    )
-    await database.start()
-
-
-async def shutdown() -> None:
-    global db_pool, database
-    runtime, database = database, None
-    if runtime is not None:
-        await runtime.close()
-    elif db_pool is not None:
-        await db_pool.close()
-    db_pool = None
-    gemini_infra.client_pool.clear()
-    concurrency.shutdown()
-
-
-@app.get("/healthz")
-async def healthz() -> dict[str, str]:
-    """Liveness only: the process is serving requests. Never touches dependencies."""
-    return {"status": "ok"}
-
-
-@app.get("/readyz")
-async def readyz() -> JSONResponse:
-    """Readiness: started, not draining, database reachable and the schema check passed."""
-    pool = db_pool
-    ready = runtime_state.started and not runtime_state.draining and pool is not None
-    code = "NOT_READY"
-    if ready and pool is not None:
-        try:
-            async with asyncio.timeout(settings.readiness_db_timeout_ms / 1000):
-                await pool.fetchval("SELECT 1")
-        except Exception:
-            logger.warning("readiness_database_unavailable", extra={"event": "readiness_database_unavailable"})
-            ready = False
-    if ready and pool is not None:
-        schema = await schema_guard.current(pool, timeout_seconds=SCHEMA_CHECK_TIMEOUT_SECONDS)
-        if not schema.ok:
-            ready = False
-            code = schema.code or "SCHEMA_CHECK_FAILED"
-    if not ready:
-        return JSONResponse(status_code=503, content=error_payload(code, "The service is not ready."))
-    return JSONResponse(content={"status": "ready"})
-
-
-def service_contract_versions() -> dict[str, Any]:
-    return {
-        "orchestration_v2_contract_version": ORCHESTRATION_CONTRACT_VERSION,
-        "orchestration_v2_provider_schema_projection": ORCHESTRATION_V2_PROVIDER_SCHEMA_PROJECTION_VERSION,
-        "idm_pipeline_version": IDM_PIPELINE_VERSION,
-        "idm_contract_version": IDM_CONTRACT_VERSION,
-        "idm_prompt_policy_version": IDM_PROMPT_POLICY_VERSION,
-        "rag_index_request_version": RAG_INDEX_REQUEST_VERSION,
-    }
-
-
-@app.get("/v1/meta", dependencies=[Depends(require_internal_token)])
-async def service_meta() -> dict[str, Any]:
-    """Build and contract identity so the backend can detect a version skew between servers."""
-    build_sha = settings.build_sha.strip()
-    return {
-        "service": SERVICE_NAME,
-        "build_sha": build_sha if BUILD_SHA_PATTERN.fullmatch(build_sha) else "unknown",
-        "api_version": app.version,
-        "contracts": service_contract_versions(),
-        "capabilities": {
-            "index_source_download_url": True,
-            "legacy_storage_service_key": supabase_client is not None,
-        },
-        "database": {"state": database.state if database is not None else "idle"},
-        "schema_check": schema_guard.summary(),
-    }
-
-
-@app.get("/metrics", dependencies=[Depends(require_internal_token)])
-async def metrics_endpoint() -> Response:
-    body, content_type = metrics.render_metrics()
-    return Response(content=body, media_type=content_type)
-
-
-def record_fallback(stage: str, result: Any) -> None:
-    if isinstance(result, dict) and result.get("content_origin") == "structured_fallback":
-        metrics.FALLBACKS.labels(stage=stage).inc()
-
-
-async def run_with_deadline(route: str, deadline_ms: int, work: Awaitable[T]) -> T:
-    """Bound a whole route. Only the deadline's own expiry maps to 504."""
-    timeout = asyncio.timeout(deadline_seconds(deadline_ms))
-    try:
-        async with timeout:
-            return await work
-    except TimeoutError:
-        if not timeout.expired():
-            raise
-        metrics.DEADLINE_EXCEEDED.labels(route=route).inc()
-        logger.warning("request_deadline_exceeded", extra={"event": "request_deadline_exceeded", "route": route})
-        raise AppError("REQUEST_DEADLINE_EXCEEDED", 504, "The request exceeded its processing deadline.") from None
-
-
-def clean_text(value: str) -> str:
-    value = html.unescape(value)
-    value = re.sub(r"<[^>]+>", " ", value)
-    value = value.replace("\x00", " ")
-    value = re.sub(r"[ \t]+", " ", value)
-    value = re.sub(r"\n{3,}", "\n\n", value)
-    return value.strip()
 
 
 def decode_bytes(buffer: bytes) -> str:
@@ -1617,573 +1274,14 @@ def vector_literal(values: list[float]) -> str:
     return "[" + ",".join(f"{float(value):.8f}" for value in values) + "]"
 
 
-def get_embedding_values(item: Any) -> list[float]:
-    values = getattr(item, "values", None)
-    if values is None and isinstance(item, dict):
-        values = item.get("values")
-    if values is None:
-        raise ValueError("Google AI Studio không trả embedding hợp lệ.")
-    return [float(value) for value in values]
-
-
-def normalize_embedding_model(model: str) -> str:
-    return LEGACY_EMBEDDING_MODEL_ALIASES.get(model.strip(), model.strip())
-
-
-def embedding_batch_size(model: str) -> int:
-    if model == "gemini-embedding-2":
-        return 1
-    return max(1, min(settings.embedding_batch_size, 100))
-
-
-def provider_http_error_status(error: Exception) -> int | None:
-    """SDK 1.0 APIError uses .code, not the HTTP wrapper's .status_code."""
-    status = error.code if isinstance(error, genai_errors.APIError) else getattr(error, "status_code", None)
-    return status if type(status) is int and 400 <= status <= 599 else None
-
-
-def safe_provider_error_diagnostics(error: Exception) -> dict[str, Any]:
-    """Classify locally; never emit exception messages, bodies, URLs or headers."""
-    status = None if isinstance(error, HTTPException) else provider_http_error_status(error)
-    details = getattr(error, "details", None)
-    envelope = details if isinstance(details, dict) else {}
-    error_body = envelope.get("error", envelope)
-    error_body = error_body if isinstance(error_body, dict) else {}
-    message_value = error_body.get("message")
-    structured_details = error_body.get("details", [])
-    generic_message = isinstance(message_value, str) and message_value.strip().casefold() in {
-        "request contains an invalid argument.", "request contains an invalid argument", "invalid argument."
-    }
-    message = str(error).casefold()
-    # Gemini may say "JSON schema"/"controlled generation" without naming
-    # response_schema. Match diagnostic categories, never log the message.
-    schema_error = status == 400 and any(key in message for key in ("schema", "controlled generation", "constrained decoding"))
-    compact_message = re.sub(r"[\s_]", "", message)
-    markers = [code for code, needles in (
-        ("MAX_ITEMS", ("maxitems", "maximumitems")), ("MIN_ITEMS", ("minitems", "minimumitems")),
-        ("COMPLEXITY", ("toocomplex", "toomanystates", "nesting", "complexity")),
-        ("UNSUPPORTED", ("unsupported", "notsupported", "unknownname")),
-        ("POSITIVE_BOUND", ("greaterthan0", "greaterthanzero", "positiveinteger", "mustbepositive")),
-        ("NULLABLE", ("nullable",)), ("ANY_OF", ("anyof",)), ("ONE_OF", ("oneof",)),
-        ("MIN_LENGTH", ("minlength",)), ("MAX_LENGTH", ("maxlength",)),
-        ("TOKEN_LIMIT", ("tokenlimit", "maxtokens", "maxoutputtokens")),
-        ("THINKING_CONFIG", ("thinkingconfig", "includethoughts", "thinkingbudget")),
-        ("ENUM", ("enum",)), ("PROPERTY_ORDERING", ("propertyordering",)),
-        ("MODEL_UNSUPPORTED", ("modeldoesnotsupport", "modelisnotsupported")),
-    ) if any(needle in compact_message for needle in needles)]
-    constraint = "UNAVAILABLE"
-    if schema_error:
-        for code, constraint_markers in (
-            ("MAX_ITEMS", ("max_items", "maxitems", "max items")),
-            ("MIN_ITEMS", ("min_items", "minitems", "min items")),
-            ("ARRAY_ITEMS", ("items",)),
-            ("SCHEMA_COMPLEXITY", ("too complex", "too many states", "nesting")),
-            ("UNSUPPORTED_FIELD", ("unknown name", "unsupported", "not supported")),
-        ):
-            if any(marker in message for marker in constraint_markers):
-                constraint = code
-                break
-    provider_status = getattr(error, "status", None)
-    known_statuses = {"INVALID_ARGUMENT", "RESOURCE_EXHAUSTED", "UNAVAILABLE", "INTERNAL", "DEADLINE_EXCEEDED",
-                      "PERMISSION_DENIED", "UNAUTHENTICATED", "NOT_FOUND", "FAILED_PRECONDITION"}
-    # Type names are operational metadata, but never trust a dynamically created
-    # exception type to be free of customer-controlled content.
-    error_type = type(error).__name__
-    known_types = {"ClientError", "ServerError", "APIError", "TimeoutError", "Timeout", "ReadTimeout", "ConnectTimeout",
-                   "ConnectionError", "ConnectError", "RemoteProtocolError", "SSLError", "TypeError", "ValueError",
-                   "ValidationError", "RuntimeError", "HTTPException", "AttributeError", "KeyError"}
-    return {
-        "provider_http_status": status,
-        "provider_error_type": error_type if error_type in known_types else "OtherException",
-        "provider_status": provider_status if isinstance(provider_status, str) and provider_status in known_statuses else "unavailable",
-        "provider_error_category": "RESPONSE_SCHEMA_INVALID" if schema_error else "HTTP_ERROR" if status else "SDK_OR_TRANSPORT_ERROR",
-        "provider_schema_constraint": constraint,
-        "provider_error_markers": markers,
-        "provider_message_class": "GENERIC_INVALID_ARGUMENT" if generic_message else "REDACTED_OTHER",
-        "provider_error_detail_count": len(structured_details) if isinstance(structured_details, list) else 0,
-        "usage_source": "unavailable",
-    }
-
-
-def provider_retry_delay_seconds(attempt: int) -> float:
-    """Exponential backoff with +/-20% jitter, capped by the configured maximum."""
-    base = PROVIDER_TRANSIENT_RETRY_DELAY_SECONDS * (2 ** max(0, attempt))
-    jittered = base * random.uniform(0.8, 1.2)  # noqa: S311 - jitter, not security
-    return max(0.0, min(jittered, settings.provider_retry_max_ms / 1000))
-
-
-def provider_retry_hint_seconds(error: Exception) -> float | None:
-    """Read a server retry hint (google.rpc.RetryInfo or Retry-After) without logging content."""
-    details = getattr(error, "details", None)
-    envelope = details if isinstance(details, dict) else {}
-    body = envelope.get("error", envelope)
-    entries = body.get("details", []) if isinstance(body, dict) else []
-    for entry in entries if isinstance(entries, list) else []:
-        if isinstance(entry, dict) and str(entry.get("@type", "")).endswith("google.rpc.RetryInfo"):
-            match = PROVIDER_RETRY_HINT_PATTERN.match(str(entry.get("retryDelay", "")))
-            if match:
-                return float(match.group(1))
-    response = getattr(error, "response", None)
-    headers = getattr(response, "headers", None)
-    if headers is not None:
-        try:
-            value = headers.get("retry-after")
-        except Exception:
-            value = None
-        if isinstance(value, str):
-            match = PROVIDER_RETRY_HINT_PATTERN.match(value)
-            if match:
-                return float(match.group(1))
-    return None
-
-
-async def call_provider_with_timeout(
-    run: Any,
-    model: str,
-    *,
-    request_timeout_ms: int | None = None,
-    on_provider_diagnostic: Callable[[dict[str, Any]], None] | None = None,
-    operation: Literal["generate", "embed"] = "generate",
-    rate_limit_max_wait_ms: int | None = None,
-) -> Any:
-    """Bound provider calls and retry only transient 5xx responses once.
-
-    ``asyncio.wait_for(asyncio.to_thread(...))`` bounds this coroutine, but a
-    timeout cannot prove that a synchronous Google client request already
-    running in the worker thread was cancelled at HTTP level.  The provider
-    client's ``HttpOptions(timeout=...)`` remains the request-level bound; do
-    not treat cancellation of this await as hard provider cancellation.
-
-    A 429 is classified by ``classify_provider_limit``: an exhausted key raises
-    ``AI_PROVIDER_QUOTA_EXHAUSTED`` at once, a rate limit raises
-    ``AI_PROVIDER_RATE_LIMITED`` (both 503). By default a rate limit is retried
-    once when the server hint is short (legacy behaviour). A caller that passes
-    ``rate_limit_max_wait_ms`` (IDM) waits the server hint (or a backoff) as
-    often as the cumulative wait stays within that bound; those waits do not use
-    up the transient-retry attempts.
-    """
-    timeout_ms = max(1, request_timeout_ms or settings.provider_request_timeout_ms)
-    max_attempts = max(1, PROVIDER_TRANSIENT_MAX_ATTEMPTS)
-    rate_limit_waited_seconds = 0.0
-    rate_limit_retries = 0
-    attempt = -1
-    while attempt + 1 < max_attempts:
-        attempt += 1
-        emit_safe_provider_telemetry(on_provider_diagnostic, {
-            "event": "provider_http_attempt_started",
-            "provider_attempt": attempt + 1,
-            "model": model,
-            "usage_source": "unavailable",
-        })
-        attempt_started = perf_counter()
-        outcome = "error"
-        try:
-            async with concurrency.provider.slot(max_wait_seconds=timeout_ms / 1000):
-                response = await asyncio.wait_for(
-                    asyncio.to_thread(run),
-                    timeout=timeout_ms / 1000,
-                )
-            outcome = "success"
-            emit_safe_provider_telemetry(on_provider_diagnostic, {
-                "event": "provider_http_attempt_succeeded",
-                "provider_attempt": attempt + 1,
-                "model": model,
-                "usage_source": "unavailable",
-            })
-            return response
-        except AppError:
-            outcome = "busy"
-            raise
-        except asyncio.TimeoutError as error:
-            outcome = "timeout"
-            if on_provider_diagnostic is not None:
-                emit_safe_provider_telemetry(on_provider_diagnostic, {
-                    "event": "provider_timeout",
-                    "internal_failure_code": "AI_PROVIDER_TIMEOUT",
-                    "model": model,
-                    "provider_http_status": None,
-                    "provider_attempt": attempt + 1,
-                    "timeout_ms": timeout_ms,
-                    "usage_source": "unavailable",
-                })
-            else:
-                logger.error(
-                    "ai_provider_timeout model=%s timeout_ms=%s",
-                    model,
-                    timeout_ms,
-                )
-            raise HTTPException(
-                status_code=504,
-                detail={
-                    "code": "AI_PROVIDER_TIMEOUT",
-                    "message": "AI provider phản hồi quá lâu. Vui lòng thử lại sau.",
-                },
-            ) from error
-        except Exception as error:
-            status_code = provider_http_error_status(error)
-            provider_error = str(error)
-            if status_code == 429 or "RESOURCE_EXHAUSTED" in provider_error:
-                retry_hint = provider_retry_hint_seconds(error)
-                # The provider message is classified in memory and never logged; only the
-                # category and the hint seconds leave this function.
-                limit = classify_provider_limit(error, retry_hint)
-                retry_after = limit.retry_after_seconds
-                wait_seconds: float | None = None
-                if limit.kind == "rate_limited":
-                    if rate_limit_max_wait_ms is not None:
-                        # The floor keeps a "retry in 0s" hint from looping without using the bound.
-                        candidate = max(PROVIDER_RATE_LIMIT_MIN_WAIT_SECONDS,
-                                        retry_after if retry_after is not None
-                                        else provider_retry_delay_seconds(rate_limit_retries))
-                        if rate_limit_waited_seconds + candidate <= rate_limit_max_wait_ms / 1000:
-                            wait_seconds = candidate
-                    elif (retry_after is not None and retry_after <= settings.provider_retry_max_ms / 1000
-                          and attempt + 1 < max_attempts):
-                        # Legacy: one retry when the per-minute limit clears quickly.
-                        wait_seconds = retry_after
-                if wait_seconds is not None:
-                    outcome = "rate_limited_retry"
-                    emit_safe_provider_telemetry(on_provider_diagnostic, {
-                        "event": "provider_rate_limited_retry",
-                        "model": model,
-                        "provider_http_status": status_code,
-                        "provider_attempt": attempt + 1,
-                        "provider_limit_category": limit.kind,
-                        "retry_after_ms": round(wait_seconds * 1000),
-                        "usage_source": "unavailable",
-                    })
-                    logger.warning(
-                        "ai_provider_rate_limited category=%s retry_after_s=%.1f waited_s=%.1f model=%s",
-                        limit.kind,
-                        wait_seconds,
-                        rate_limit_waited_seconds,
-                        model,
-                    )
-                    await asyncio.sleep(wait_seconds)
-                    if rate_limit_max_wait_ms is not None:
-                        # Bounded by the cumulative wait, not by the transient attempts.
-                        rate_limit_waited_seconds += wait_seconds
-                        rate_limit_retries += 1
-                        attempt -= 1
-                    continue
-                outcome = limit.kind
-                if on_provider_diagnostic is not None:
-                    emit_safe_provider_telemetry(on_provider_diagnostic, {
-                        "event": "provider_quota_exhausted" if limit.kind == "quota_exhausted"
-                        else "provider_rate_limited",
-                        "model": model,
-                        "provider_http_status": status_code,
-                        "provider_attempt": attempt + 1,
-                        "provider_error_type": type(error).__name__,
-                        "provider_limit_category": limit.kind,
-                        "retry_after_ms": round(retry_after * 1000) if retry_after is not None else None,
-                        "usage_source": "unavailable",
-                    })
-                else:
-                    logger.error(
-                        "ai_provider_%s model=%s error_type=%s retry_after_s=%s waited_s=%.1f",
-                        limit.kind,
-                        model,
-                        type(error).__name__,
-                        f"{retry_after:.1f}" if retry_after is not None else "none",
-                        rate_limit_waited_seconds,
-                    )
-                if limit.kind == "rate_limited":
-                    raise HTTPException(
-                        status_code=503,
-                        detail={
-                            "code": RATE_LIMITED_CODE,
-                            "message": "AI provider đang giới hạn tần suất gọi. Vui lòng thử lại sau ít phút.",
-                        },
-                    ) from error
-                raise HTTPException(
-                    status_code=503,
-                    detail={
-                        "code": "AI_PROVIDER_QUOTA_EXHAUSTED",
-                        "message": "AI provider đã hết hạn mức. Vui lòng nạp thêm hạn mức hoặc đổi API key trước khi thử lại.",
-                    },
-                ) from error
-            is_transient = (isinstance(status_code, int) and status_code >= 500) or "UNAVAILABLE" in provider_error
-            if is_transient and attempt + 1 < max_attempts:
-                outcome = "transient_retry"
-                if on_provider_diagnostic is not None:
-                    emit_safe_provider_telemetry(on_provider_diagnostic, {
-                        "event": "provider_transient_retry",
-                        "model": model,
-                        "provider_http_status": status_code,
-                        "provider_attempt": attempt + 1,
-                        "provider_error_type": type(error).__name__,
-                        "usage_source": "unavailable",
-                    })
-                else:
-                    logger.warning(
-                        "ai_provider_transient_retry model=%s attempt=%s status_code=%s",
-                        model,
-                        attempt + 1,
-                        status_code,
-                    )
-                await asyncio.sleep(provider_retry_delay_seconds(attempt))
-                continue
-            if is_transient:
-                outcome = "unavailable"
-                if on_provider_diagnostic is not None:
-                    emit_safe_provider_telemetry(on_provider_diagnostic, {
-                        "event": "provider_unavailable",
-                        "model": model,
-                        "provider_http_status": status_code,
-                        "provider_attempt": attempt + 1,
-                        "provider_error_type": type(error).__name__,
-                        "usage_source": "unavailable",
-                    })
-                else:
-                    logger.error(
-                        "ai_provider_unavailable model=%s status_code=%s error_type=%s",
-                        model,
-                        status_code,
-                        type(error).__name__,
-                    )
-                raise HTTPException(
-                    status_code=503,
-                    detail={
-                        "code": "AI_PROVIDER_UNAVAILABLE",
-                        "message": "AI provider hiện không khả dụng. Vui lòng thử lại sau.",
-                    },
-                ) from error
-            emit_safe_provider_telemetry(on_provider_diagnostic, {
-                "event": "provider_request_failed",
-                "model": model,
-                "provider_attempt": attempt + 1,
-                **safe_provider_error_diagnostics(error),
-            })
-            raise
-        finally:
-            metrics.PROVIDER_CALLS.labels(operation=operation, outcome=outcome).inc()
-            metrics.PROVIDER_CALL_DURATION.labels(operation=operation).observe(perf_counter() - attempt_started)
-    raise RuntimeError("Provider retry loop exhausted without a result.")
-
-
-async def embed_text_batch(
-    api_key: str,
-    model: str,
-    contents: list[str],
-    *,
-    task_type: str | None = None,
-    output_dimensionality: int = 768,
-) -> tuple[list[list[float]], AiUsage]:
-    effective_model = normalize_embedding_model(model)
-    safe_api_key = require_provider_api_key(api_key)
-
-    def run() -> Any:
-        client = gemini_infra.gemini_client(safe_api_key, settings.provider_request_timeout_ms)
-        config_args: dict[str, Any] = {"outputDimensionality": output_dimensionality}
-        if effective_model == "gemini-embedding-001" and task_type:
-            config_args["taskType"] = task_type
-        config = types.EmbedContentConfig(**config_args)
-        return client.models.embed_content(model=effective_model, contents=contents, config=config)
-
-    response = await call_provider_with_timeout(run, effective_model, operation="embed")
-    raw_embeddings = getattr(response, "embeddings", None)
-    if raw_embeddings is None and isinstance(response, dict):
-        raw_embeddings = response.get("embeddings")
-    if raw_embeddings is None:
-        raw_embeddings = [response]
-    embeddings = [get_embedding_values(item) for item in raw_embeddings]
-    usage = normalize_usage(embedding_tokens=sum(estimate_tokens(content) for content in contents))
-    metrics.PROVIDER_TOKENS.labels(operation="embed", kind="embedding").inc(usage.embeddingTokens)
-    return embeddings, usage
-
-
-async def embed_texts(
-    api_key: str,
-    model: str,
-    contents: list[str],
-    *,
-    task_type: str | None = None,
-    output_dimensionality: int = 768,
-) -> tuple[list[list[float]], AiUsage]:
-    if not contents:
-        return [], AiUsage()
-
-    effective_model = normalize_embedding_model(model)
-    batch_size = embedding_batch_size(effective_model)
-    embeddings: list[list[float]] = []
-    usage = AiUsage()
-    for start in range(0, len(contents), batch_size):
-        batch_embeddings, batch_usage = await embed_text_batch(
-            api_key,
-            effective_model,
-            contents[start : start + batch_size],
-            task_type=task_type,
-            output_dimensionality=output_dimensionality,
-        )
-        embeddings.extend(batch_embeddings)
-        usage = combine_usage(usage, batch_usage)
-    return embeddings, usage
-
-
-async def generate_content(
-    api_key: str,
-    model: str,
-    prompt: str,
-    *,
-    max_output_tokens: int,
-    json_mode: bool = False,
-    response_schema: types.Schema | type[BaseModel] | None = None,
-    thinking_config: types.ThinkingConfig | dict[str, Any] | None = None,
-    thinking_level: Literal["low", "medium", "high"] | None = None,
-    request_timeout_ms: int | None = None,
-    on_provider_telemetry: Callable[[dict[str, Any]], None] | None = None,
-    rate_limit_max_wait_ms: int | None = None,
-) -> tuple[str, AiUsage]:
-    safe_api_key = require_provider_api_key(api_key)
-    if response_schema is not None and not json_mode:
-        raise ValueError("response_schema requires JSON mode.")
-    provider_timeout_ms = max(1, request_timeout_ms or settings.provider_request_timeout_ms)
-
-    model_id = model.strip().lower().split("/")[-1]
-    gemini_38 = model_id == "gemini-3.8-flash"
-
-    def run() -> Any:
-        client = gemini_infra.gemini_client(safe_api_key, provider_timeout_ms)
-        config: dict[str, Any] = {"max_output_tokens": max_output_tokens}
-        if gemini_38:
-            # Gemini 3.8 rejects legacy sampling parameters. Use its supported
-            # reasoning-level contract and deliberately ignore old
-            # include-thoughts-only configs supplied by legacy call sites.
-            config["thinking_config"] = {
-                "thinking_level": thinking_level or settings.gemini_38_thinking_level,
-            }
-        else:
-            config["temperature"] = settings.generation_temperature
-        if json_mode:
-            config["response_mime_type"] = "application/json"
-        if response_schema is not None:
-            config["response_schema"] = response_schema
-        if thinking_config is not None and not gemini_38:
-            config["thinking_config"] = thinking_config
-        return client.models.generate_content(model=model, contents=prompt, config=config)
-
-    provider_started = perf_counter()
-    last_provider_attempt = 0
-    if on_provider_telemetry is not None:
-        # Size measurements only. Never emit schema text, prompts or local token
-        # estimates under provider usage. Failure to measure must not affect AI.
-        try:
-            schema_object = (
-                response_schema.model_json_schema()
-                if isinstance(response_schema, type) and issubclass(response_schema, BaseModel)
-                else response_schema.model_dump(mode="json", exclude_none=True)
-                if isinstance(response_schema, BaseModel) else None
-            )
-            schema_wire = json.dumps(schema_object, ensure_ascii=False, separators=(",", ":")) if schema_object is not None else ""
-            emit_safe_provider_telemetry(on_provider_telemetry, {
-                "stage": "provider_transport", "event": "provider_request_started",
-                "model": model, "prompt_chars": len(prompt),
-                "prompt_bytes": len(prompt.encode("utf-8")),
-                "response_schema_chars": len(schema_wire),
-                "schema_measurement_source": "local_declared_schema_not_sdk_wire",
-                "response_schema_sha256": hashlib.sha256(schema_wire.encode("utf-8")).hexdigest(),
-                "configured_max_output_tokens": max_output_tokens,
-                "provider_timeout_ms": provider_timeout_ms,
-                "usage_source": "unavailable",
-            })
-        except Exception:
-            emit_safe_provider_telemetry(on_provider_telemetry, {
-                "stage": "provider_transport", "event": "request_size_unavailable",
-                "usage_source": "unavailable",
-            })
-    def on_provider_diagnostic(metadata: dict[str, Any]) -> None:
-        nonlocal last_provider_attempt
-        provider_attempt = metadata.get("provider_attempt")
-        if type(provider_attempt) is int and provider_attempt > 0:
-            last_provider_attempt = provider_attempt
-        emit_safe_provider_telemetry(
-            on_provider_telemetry,
-            {
-                "stage": "provider_transport",
-                "configured_max_output_tokens": max_output_tokens,
-                "duration_ms": int((perf_counter() - provider_started) * 1000),
-                **metadata,
-            },
-        )
-
-    response = await call_provider_with_timeout(
-        run,
-        model,
-        request_timeout_ms=provider_timeout_ms,
-        on_provider_diagnostic=on_provider_diagnostic if on_provider_telemetry is not None else None,
-        **({"rate_limit_max_wait_ms": rate_limit_max_wait_ms} if rate_limit_max_wait_ms is not None else {}),
-    )
-    # Capture real provider metadata before SDK response access/parsing can fail.
-    # An HTTP success is not a validated lesson, nor permission to persist it.
-    received = provider_response_telemetry(response, model=model, max_output_tokens=max_output_tokens,
-                                          prompt=prompt, response_text="", duration_ms=round((perf_counter() - provider_started) * 1000))
-    emit_safe_provider_telemetry(on_provider_telemetry, {
-        **{key: value for key, value in received.items() if key.startswith("provider_") or key in {"model", "duration_ms", "configured_max_output_tokens"}},
-        "usage_source": "provider" if received["usage_source"] == "provider" else "unavailable",
-        "event": "provider_response_received",
-        "provider_attempt": last_provider_attempt or 1,
-    })
-    text = getattr(response, "text", "") or ""
-    parsed = getattr(response, "parsed", None)
-    if parsed is not None:
-        if isinstance(parsed, BaseModel) and not getattr(response_schema, "retain_raw_provider_text", False):
-            # Do not synthesize optional response fields from Pydantic defaults.
-            # In particular, v4 Course Architect output must stay semantic-only
-            # until the deterministic server allocator injects canonical facts.
-            text = json.dumps(parsed.model_dump(mode="json", exclude_unset=True), ensure_ascii=False, separators=(",", ":"))
-        elif isinstance(parsed, (dict, list)):
-            text = json.dumps(parsed, ensure_ascii=False, separators=(",", ":"))
-    elif response_schema is not None:
-        diagnostics = describe_lesson_author_blueprint_response(text)
-        candidates = getattr(response, "candidates", None) or []
-        if on_provider_telemetry is not None:
-            emit_safe_provider_telemetry(on_provider_telemetry, {
-                "stage": "provider_response",
-                "event": "structured_response_unparsed",
-                "schema": getattr(response_schema, "__name__", type(response_schema).__name__),
-                "model": model,
-                "candidate_count": len(candidates),
-                "finish_reasons": [str(getattr(candidate, "finish_reason", None))[:80] for candidate in candidates[:3]],
-                "has_prompt_feedback": bool(getattr(response, "prompt_feedback", None)),
-                # This helper already reports only structural counters/types.
-                "response_diagnostics": diagnostics,
-            })
-        else:
-            logger.warning(
-                "structured_response_unparsed schema=%s model=%s candidates=%s finish_reasons=%s prompt_feedback=%s diagnostics=%s",
-                getattr(response_schema, "__name__", type(response_schema).__name__),
-                model,
-                len(candidates),
-                [str(getattr(candidate, "finish_reason", None))[:80] for candidate in candidates[:3]],
-                bool(getattr(response, "prompt_feedback", None)),
-                diagnostics,
-            )
-    emit_safe_provider_telemetry(
-        on_provider_telemetry,
-        provider_response_telemetry(
-            response,
-            model=model,
-            max_output_tokens=max_output_tokens,
-            prompt=prompt,
-            response_text=text,
-            duration_ms=max(0, round((perf_counter() - provider_started) * 1000)),
-        ),
-    )
-    usage = usage_from_google_response(response, prompt, text)
-    metrics.PROVIDER_TOKENS.labels(operation="generate", kind="input").inc(usage.inputTokens)
-    metrics.PROVIDER_TOKENS.labels(operation="generate", kind="output").inc(usage.outputTokens)
-    return text, usage
-
-
 def download_storage_object(storage_path: str) -> bytes:
     """Legacy download with SUPABASE_SERVICE_KEY, used only when the request has no signed URL."""
-    if supabase_client is None:
+    if service_runtime.supabase_client is None:
         raise AppError(
             "SOURCE_DOWNLOAD_URL_REQUIRED", 422,
             "The index request must include a signed source download URL.",
         )
-    return supabase_client.storage.from_(settings.supabase_storage_bucket).download(storage_path)
+    return service_runtime.supabase_client.storage.from_(settings.supabase_storage_bucket).download(storage_path)
 
 
 async def fetch_index_source(request: RagIndexRequest, storage_path: str, destination: Path) -> int:
@@ -2414,7 +1512,7 @@ async def delete_previous_structure_nodes_if_available(
 async def index_document(request: RagIndexRequest, pool: asyncpg.Pool = Depends(get_db)) -> dict[str, Any]:
     # Bounded concurrency: a saturated indexer answers SERVICE_BUSY (503) so the
     # backend's durable KB worker retries later instead of piling up memory.
-    async with concurrency.index.slot():
+    async with service_runtime.concurrency.index.slot():
         return await _index_document(request, pool)
 
 
@@ -2453,7 +1551,7 @@ async def _index_document(request: RagIndexRequest, pool: asyncpg.Pool) -> dict[
                     assert_document_size(raw_bytes, maximum=settings.max_document_bytes)
                 index_id = await start_index_row(pool, row, effective_embedding_model)
                 if source_path is not None:
-                    sections = await concurrency.run_extraction(extract_sections, source_path, source_path.name)
+                    sections = await service_runtime.concurrency.run_extraction(extract_sections, source_path, source_path.name)
                 else:
                     sections = [ExtractedSection(text=clean_text(row["content"] or ""))]
             logger.info(
@@ -2461,8 +1559,8 @@ async def _index_document(request: RagIndexRequest, pool: asyncpg.Pool) -> dict[
                 extra={"event": "rag_index_extracted", "tenant_id": request.tenant_id,
                        "document_id": request.document_id, "section_count": len(sections)},
             )
-            structure = await concurrency.run_cpu(analyze_source_structure, sections)
-            chunks = await concurrency.run_cpu(build_chunks, sections, structure)
+            structure = await service_runtime.concurrency.run_cpu(analyze_source_structure, sections)
+            chunks = await service_runtime.concurrency.run_cpu(build_chunks, sections, structure)
             if not chunks:
                 raise ValueError("Không tạo được đoạn kiến thức nào từ tài liệu.")
             index_diagnostics = build_index_diagnostics(
@@ -2477,7 +1575,7 @@ async def _index_document(request: RagIndexRequest, pool: asyncpg.Pool) -> dict[
                        "document_id": request.document_id, "chunk_count": len(chunks)},
             )
 
-            embeddings, embedding_usage = await embed_texts(
+            embeddings, embedding_usage = await provider.embed_texts(
                 request.api_key,
                 effective_embedding_model,
                 [chunk["content"] for chunk in chunks],
@@ -3360,7 +2458,7 @@ async def retrieve_chunks(
 
     limits = retrieval_limits(request)
     query_texts = build_retrieval_query_texts(request)
-    embeddings, usage = await embed_texts(
+    embeddings, usage = await provider.embed_texts(
         request.api_key,
         request.embedding_model,
         query_texts,
@@ -6558,7 +5656,7 @@ async def _chat(request: RagChatRequest, pool: asyncpg.Pool) -> dict[str, Any]:
             "retrieval": retrieval,
         }
     prompt = build_chat_prompt(request, context, structure_context.get("outline", ""))
-    text, generation_usage = await generate_content(
+    text, generation_usage = await provider.generate_content(
         request.api_key,
         request.model,
         prompt,
@@ -6982,21 +6080,6 @@ class LessonAuthorProposalValidationError(ValueError):
     def __init__(self, message: str, *, code: str = "UNIT_SHAPE_INVALID", path: str = "unit", repairable: bool = False):
         super().__init__(message)
         self.code, self.path, self.repairable = code, path, repairable
-
-
-NON_RETRYABLE_PROVIDER_ERROR_CODES = frozenset({
-    "AI_PROVIDER_QUOTA_EXHAUSTED",
-    # Classified out of AI_PROVIDER_QUOTA_EXHAUSTED; legacy flows keep treating both alike.
-    "AI_PROVIDER_RATE_LIMITED",
-    "AI_PROVIDER_UNAVAILABLE",
-    "AI_PROVIDER_TIMEOUT",
-    "AI_STAGED_LESSON_WORKFLOW_TIMEOUT",
-})
-
-
-def is_non_retryable_provider_error(error: HTTPException) -> bool:
-    detail = error.detail if isinstance(error.detail, dict) else {}
-    return detail.get("code") in NON_RETRYABLE_PROVIDER_ERROR_CODES
 
 
 MIN_LESSON_AUTHOR_HTML_TEXT_CHARS = 180
@@ -11447,7 +10530,7 @@ async def generate_staged_lesson_author_proposal(
     skeleton_text = ""
     total_usage = AiUsage()
     if not use_direct_v5_skeleton:
-        skeleton_text, skeleton_usage = await generate_content(
+        skeleton_text, skeleton_usage = await provider.generate_content(
             request.api_key,
             request.model,
             skeleton_prompt,
@@ -11602,7 +10685,7 @@ async def generate_staged_lesson_author_proposal(
 
         started_at = perf_counter()
         try:
-            content_text, content_usage = await generate_content(
+            content_text, content_usage = await provider.generate_content(
                 request.api_key,
                 request.model,
                 prompt,
@@ -11791,7 +10874,7 @@ async def generate_staged_lesson_author_proposal(
             if part
         )
         try:
-            recovery_text, recovery_usage = await generate_content(
+            recovery_text, recovery_usage = await provider.generate_content(
                 request.api_key,
                 request.model,
                 recovery_prompt,
@@ -12785,7 +11868,7 @@ async def generate_validated_lesson_author_blueprint(
             ]
         )
         try:
-            text, usage = await generate_content(
+            text, usage = await provider.generate_content(
                 request.api_key,
                 request.model,
                 attempt_prompt,
@@ -17808,7 +16891,7 @@ async def _lesson_author_proposal(
                     "Regenerate one complete, compact proposal now. Preserve the requested scope, include every chapter, lesson, unit and component required by the schema, ensure every lesson has at least one non-empty unit, use plain title fields without structural numbering, and return only one JSON object.",
                     f"Validation feedback from the previous response: {last_error}. Correct this exact issue in the new JSON; do not repeat the invalid component." if last_error else "",
                 ])
-                text, generation_usage = await generate_content(
+                text, generation_usage = await provider.generate_content(
                     request.api_key,
                     request.model,
                     attempt_prompt,
@@ -17850,7 +16933,7 @@ async def _lesson_author_proposal(
             evidence_context=context,
             locale=request.locale,
         )
-        text, repair_usage = await generate_content(
+        text, repair_usage = await provider.generate_content(
             request.api_key,
             request.model,
             repair_prompt,
@@ -17977,7 +17060,7 @@ async def _orchestration_v2_generate_content(
     """
 
     try:
-        return await generate_content(
+        return await provider.generate_content(
             api_key,
             model,
             prompt,
@@ -18360,7 +17443,7 @@ async def _idm_generate(api_key: str, model: str, prompt: str, **options: Any) -
     """
 
     try:
-        return await generate_content(api_key, model, prompt, **options)
+        return await provider.generate_content(api_key, model, prompt, **options)
     except HTTPException as error:
         code = str((error.detail if isinstance(error.detail, dict) else {}).get("code") or "AI_PROVIDER_UNAVAILABLE")
         if code in RUN_STOPPING_PROVIDER_CODES:
@@ -19119,7 +18202,7 @@ async def _lesson_author_orchestration_v2_unit_legacy(
             })
 
         try:
-            text, invocation_usage = await generate_content(
+            text, invocation_usage = await provider.generate_content(
                 request.api_key,
                 semantic_review_model,
                 prompt,
@@ -19956,7 +19039,7 @@ async def _lesson_author_blueprint(
                     # still be visible as an executed call in terminal state.
                     executed_provider_call_count = operation_index
                     total_repair_provider_calls = prior_repair_provider_calls + executed_provider_call_count
-                    text, usage = await generate_content(
+                    text, usage = await provider.generate_content(
                         request.api_key,
                         request.model,
                         prompt,
@@ -20247,7 +19330,7 @@ async def _lesson_author_blueprint(
                 prepare_repair_targets=prepare_course_repair_targets,
                 deterministic_repair=deterministic_repair_course,
                 emit_diagnostic=emit_blueprint_diagnostic,
-                run_blocking=concurrency.run_cpu,
+                run_blocking=service_runtime.concurrency.run_cpu,
             ),
             request_context={
                 "correlation_id": request.correlation_id,
@@ -20278,7 +19361,7 @@ async def _lesson_author_blueprint(
         if not isinstance(source_map, dict):
             # The graph owns the map in state; recompute deterministically only
             # for its response contract, never from top-K retrieval.
-            source_map = await concurrency.run_cpu(build_global_source_map)
+            source_map = await service_runtime.concurrency.run_cpu(build_global_source_map)
         source_map_coverage = source_map.get("coverage") if isinstance(source_map.get("coverage"), dict) else {}
         retrieval.update({
             "source_map_version": source_map.get("version"),

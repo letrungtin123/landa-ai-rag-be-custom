@@ -8,6 +8,7 @@ from unittest.mock import patch
 import httpx
 
 from app import main
+from app.api import deps as api_deps
 
 
 class IdmFoundationTests(unittest.IsolatedAsyncioTestCase):
@@ -19,8 +20,8 @@ class IdmFoundationTests(unittest.IsolatedAsyncioTestCase):
             "/v1/lesson-author/proposal",
             "/v1/lesson-author/blueprint",
         )
-        main.app.dependency_overrides[main.require_internal_token] = lambda: None
-        main.app.dependency_overrides[main.get_db] = lambda: None
+        main.app.dependency_overrides[api_deps.require_internal_token] = lambda: None
+        main.app.dependency_overrides[api_deps.get_db] = lambda: None
         try:
             async with httpx.AsyncClient(
                 transport=httpx.ASGITransport(app=main.app), base_url="http://test",
@@ -35,8 +36,8 @@ class IdmFoundationTests(unittest.IsolatedAsyncioTestCase):
                         self.assertNotIn(secret, response.text)
                         self.assertNotIn("private-source-content", response.text)
         finally:
-            main.app.dependency_overrides.pop(main.require_internal_token, None)
-            main.app.dependency_overrides.pop(main.get_db, None)
+            main.app.dependency_overrides.pop(api_deps.require_internal_token, None)
+            main.app.dependency_overrides.pop(api_deps.get_db, None)
 
     async def test_index_temp_path_uses_document_id_and_safe_extractor_suffix(self) -> None:
         document_id = "00000000-0000-4000-8000-000000000001"

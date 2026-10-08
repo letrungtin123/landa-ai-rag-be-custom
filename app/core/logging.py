@@ -10,6 +10,11 @@ from typing import Any
 request_id_var: ContextVar[str | None] = ContextVar("request_id", default=None)
 correlation_id_var: ContextVar[str | None] = ContextVar("correlation_id", default=None)
 
+# Logger name of the HTTP service code split out of the former ``app/main.py`` (PRD-2).
+# Log pipelines, alerts and tests select service events by ``logger == "app.main"``, so
+# every module that used the module-level ``logger`` of ``app.main`` keeps this name.
+SERVICE_LOGGER_NAME = "app.main"
+
 REDACTED = "<redacted>"
 SENSITIVE_FIELD_PATTERN = re.compile(
     r"(?:api[_-]?key|authorization|password|secret|token|x-landa-[a-z0-9-]+)",

@@ -96,7 +96,7 @@ class StagedOrderedWriterTests(unittest.TestCase):
                                   "covered_source_fact_ids": valid["source_fact_ids"][:]}]}
         before = deepcopy(broken)
         provider = AsyncMock(side_effect=[(json.dumps(broken), AiUsage()), (json.dumps(delta), AiUsage())])
-        with patch("app.main.generate_content", provider), self.assertLogs("app.main", "INFO") as logs:
+        with patch("app.services.provider.generate_content", provider), self.assertLogs("app.main", "INFO") as logs:
             result = asyncio.run(checkpoint_result(request, manifest))
             final_request = request.model_copy(update={
                 "checkpoint_action": "validate_chapter", "checkpoint_unit_index": None,
@@ -127,7 +127,7 @@ class StagedOrderedWriterTests(unittest.TestCase):
         wire["components"]["c0"]["semantic_content"]["heading"] = "PRIVATE_CONFLICT"
         delta = {"components": [{"component_index": 0, "semantic_content": wire["components"]["c0"]["semantic_content"]}]}
         provider = AsyncMock(side_effect=[(json.dumps(wire), AiUsage()), (json.dumps(delta), AiUsage())])
-        with patch("app.main.generate_content", provider), self.assertRaises(WorkflowFailure) as failure:
+        with patch("app.services.provider.generate_content", provider), self.assertRaises(WorkflowFailure) as failure:
             asyncio.run(checkpoint_result(request, manifest))
         self.assertEqual(provider.await_count, 2)
         self.assertEqual(failure.exception.internal_code, "CHAPTER_COMPONENT_REPAIR_EXHAUSTED")

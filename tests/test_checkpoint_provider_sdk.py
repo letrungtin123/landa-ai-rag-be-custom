@@ -12,6 +12,9 @@ from app import main
 from tests.test_staged_instance_output import checkpoint_instance_fixture
 from tests.test_checkpoint_component_quality_repair import instance_wire
 from tests.test_chapter_checkpoint import checkpoint_result
+from fastapi import HTTPException
+from app.api import deps as api_deps
+from app.services import provider as provider_service
 
 
 def response(status, body):
@@ -29,7 +32,7 @@ class CheckpointProviderSDKTests(unittest.TestCase):
             return await checkpoint_result(req, manifest)
 
         async def run():
-            main.app.dependency_overrides[main.get_db] = lambda: None
+            main.app.dependency_overrides[api_deps.get_db] = lambda: None
             try:
                 async with httpx.AsyncClient(transport=httpx.ASGITransport(app=main.app), base_url="http://test") as client:
                     payload = request.model_dump(mode="json")
@@ -37,7 +40,7 @@ class CheckpointProviderSDKTests(unittest.TestCase):
                     return await client.post("/v1/lesson-author/chapter-checkpoint", json=payload,
                                              headers={"X-Landa-AI-Service-Token": "offline-token"})
             finally:
-                main.app.dependency_overrides.pop(main.get_db, None)
+                main.app.dependency_overrides.pop(api_deps.get_db, None)
 
         with patch.object(main.settings, "service_token", "offline-token"), patch("app.main.lesson_author_proposal", generation):
             return asyncio.run(run())
@@ -48,9 +51,9 @@ class CheckpointProviderSDKTests(unittest.TestCase):
         error = errors.ClientError(400, body, response(400, body))
         self.assertEqual(error.code, 400)
         self.assertFalse(hasattr(error, "status_code"))
-        self.assertEqual(main.provider_http_error_status(error), 400)
+        self.assertEqual(provider_service.provider_http_error_status(error), 400)
         self.assertTrue(main.is_stage_two_provider_schema_error(error))
-        diagnostics = main.safe_provider_error_diagnostics(error)
+        diagnostics = provider_service.safe_provider_error_diagnostics(error)
         self.assertEqual(diagnostics["provider_schema_constraint"], "MAX_ITEMS")
         self.assertNotIn("PRIVATE_SOURCE", json.dumps(diagnostics))
 
@@ -68,11 +71,11 @@ class CheckpointProviderSDKTests(unittest.TestCase):
                 self.models = Models()
 
         with patch("google.genai.Client", Client), patch.object(main.settings, "gemini_38_thinking_level", "medium"):
-            asyncio.run(main.generate_content("offline-key", "gemini-3.8-flash", "prompt", max_output_tokens=1024,
+            asyncio.run(provider_service.generate_content("offline-key", "gemini-3.8-flash", "prompt", max_output_tokens=1024,
                                               thinking_config={"include_thoughts": False}))
-            asyncio.run(main.generate_content("offline-key", "gemini-3.8-flash", "prompt", max_output_tokens=1024,
+            asyncio.run(provider_service.generate_content("offline-key", "gemini-3.8-flash", "prompt", max_output_tokens=1024,
                                               thinking_level="high"))
-            asyncio.run(main.generate_content("offline-key", "gemini-3.5-flash", "prompt", max_output_tokens=1024,
+            asyncio.run(provider_service.generate_content("offline-key", "gemini-3.5-flash", "prompt", max_output_tokens=1024,
                                               thinking_config={"include_thoughts": False}, thinking_level="high"))
         modern = calls[0]["config"]
         explicit = calls[1]["config"]
@@ -90,7 +93,7 @@ class CheckpointProviderSDKTests(unittest.TestCase):
         ):
             body = {"error": {"message": message, "details": detail_list}}
             error = errors.ClientError(400, body, response(400, body))
-            diagnostics = main.safe_provider_error_diagnostics(error)
+            diagnostics = provider_service.safe_provider_error_diagnostics(error)
             self.assertEqual(diagnostics["provider_message_class"], message_class)
             self.assertEqual(diagnostics["provider_error_detail_count"], len(detail_list))
             self.assertNotIn("PRIVATE", json.dumps(diagnostics))
@@ -98,7 +101,7 @@ class CheckpointProviderSDKTests(unittest.TestCase):
                           "message": "JSON schema maxItems must be greater than zero PRIVATE_SOURCE"}}
         alternate = errors.ClientError(400, body, response(400, body))
         self.assertTrue(main.is_stage_two_provider_schema_error(alternate))
-        diagnostics = main.safe_provider_error_diagnostics(alternate)
+        diagnostics = provider_service.safe_provider_error_diagnostics(alternate)
         self.assertIn("POSITIVE_BOUND", diagnostics["provider_error_markers"])
         self.assertNotIn("PRIVATE_SOURCE", json.dumps(diagnostics))
 
@@ -182,9 +185,9 @@ class CheckpointProviderSDKTests(unittest.TestCase):
             events = []
             body = {"error": {"code": status, "message": "PRIVATE", "status": "RESOURCE_EXHAUSTED" if status == 429 else "UNAVAILABLE"}}
             with patch("httpx.Client.send", return_value=response(status, body)) as transport, \
-                    patch("app.main.PROVIDER_TRANSIENT_RETRY_DELAY_SECONDS", 0):
-                with self.assertRaises(main.HTTPException) as failure:
-                    asyncio.run(main.generate_content("offline-key", "offline-model", "PRIVATE", max_output_tokens=30000,
+                    patch("app.services.provider.PROVIDER_TRANSIENT_RETRY_DELAY_SECONDS", 0):
+                with self.assertRaises(HTTPException) as failure:
+                    asyncio.run(provider_service.generate_content("offline-key", "offline-model", "PRIVATE", max_output_tokens=30000,
                                                       on_provider_telemetry=events.append))
             self.assertEqual(failure.exception.detail["code"], expected)
             self.assertEqual(transport.call_count, attempts)

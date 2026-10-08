@@ -35,6 +35,7 @@ from tests.test_characterization_ingestion import (
     index_request,
 )
 from app.schemas.kb import RagIndexRequest
+from app.services import runtime as runtime_service
 
 ORIGIN = "https://storage.internal:8443"
 BUCKET = "landa-storage"
@@ -235,7 +236,7 @@ class IndexRouteSignedUrlTests(unittest.TestCase):
         handler_obj = Capture()
         logging.getLogger("app").addHandler(handler_obj)
         try:
-            with patch("app.main.embed_texts", new=FakeEmbedder()), \
+            with patch("app.services.provider.embed_texts", new=FakeEmbedder()), \
                     patch("app.main.download_storage_object", new=legacy), \
                     patch.object(main.storage_infra, "download_to_file", new=injected), \
                     patch.object(main.settings, "supabase_url", ORIGIN), \
@@ -286,8 +287,8 @@ class IndexRouteSignedUrlTests(unittest.TestCase):
     def test_without_url_or_service_key_the_request_is_refused(self) -> None:
         db = FakeDb(document=document_row(file_path=f"{TENANT_ID}/kb-files/notes.txt", content=None))
         with (
-            patch.object(main, "supabase_client", None),
-            patch("app.main.embed_texts", new=FakeEmbedder()),
+            patch.object(runtime_service, "supabase_client", None),
+            patch("app.services.provider.embed_texts", new=FakeEmbedder()),
             self.assertRaises(AppError) as caught,
         ):
             asyncio.run(main.index_document(index_request(), pool=db))
@@ -299,7 +300,7 @@ class IndexRouteSignedUrlTests(unittest.TestCase):
         bucket.download.return_value = b"legacy body"
         client = Mock()
         client.storage.from_.return_value = bucket
-        with patch.object(main, "supabase_client", client):
+        with patch.object(runtime_service, "supabase_client", client):
             self.assertEqual(main.download_storage_object(f"{TENANT_ID}/kb-files/notes.txt"), b"legacy body")
         client.storage.from_.assert_called_once_with(main.settings.supabase_storage_bucket)
 

@@ -27,33 +27,41 @@ class ArchitectureLayerTests(unittest.TestCase):
         self.assertEqual(offenders, [])
 
     def test_all_non_health_routes_declare_internal_auth_dependency(self) -> None:
-        path = APP_ROOT / "main.py"
-        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        # Routes are declared on ``app`` (app/main.py) or on a route module's ``router`` (PRD-2).
+        paths = [APP_ROOT / "main.py", *sorted((APP_ROOT / "api" / "routes").glob("*.py"))]
         offenders = []
-        for node in tree.body:
-            if not isinstance(node, (ast.AsyncFunctionDef, ast.FunctionDef)):
-                continue
-            for decorator in node.decorator_list:
-                if not isinstance(decorator, ast.Call) or not isinstance(decorator.func, ast.Attribute):
+        declared = 0
+        for path in paths:
+            tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+            for node in tree.body:
+                if not isinstance(node, (ast.AsyncFunctionDef, ast.FunctionDef)):
                     continue
-                if not isinstance(decorator.func.value, ast.Name) or decorator.func.value.id != "app":
-                    continue
-                if decorator.func.attr not in {"get", "post", "put", "patch", "delete"}:
-                    continue
-                route = (
-                    decorator.args[0].value
-                    if decorator.args and isinstance(decorator.args[0], ast.Constant)
-                    else ""
-                )
-                if route in {"/healthz", "/readyz"}:
-                    continue
-                dependencies = next(
-                    (keyword.value for keyword in decorator.keywords if keyword.arg == "dependencies"),
-                    None,
-                )
-                if dependencies is None or "require_internal_token" not in ast.unparse(dependencies):
-                    offenders.append(f"{route}:{node.lineno}")
+                for decorator in node.decorator_list:
+                    if not isinstance(decorator, ast.Call) or not isinstance(decorator.func, ast.Attribute):
+                        continue
+                    if not isinstance(decorator.func.value, ast.Name) or decorator.func.value.id not in {
+                        "app", "router",
+                    }:
+                        continue
+                    if decorator.func.attr not in {"get", "post", "put", "patch", "delete"}:
+                        continue
+                    declared += 1
+                    route = (
+                        decorator.args[0].value
+                        if decorator.args and isinstance(decorator.args[0], ast.Constant)
+                        else ""
+                    )
+                    if route in {"/healthz", "/readyz"}:
+                        continue
+                    dependencies = next(
+                        (keyword.value for keyword in decorator.keywords if keyword.arg == "dependencies"),
+                        None,
+                    )
+                    if dependencies is None or "require_internal_token" not in ast.unparse(dependencies):
+                        offenders.append(f"{path.name}:{route}:{node.lineno}")
         self.assertEqual(offenders, [])
+        # Guard against the scan silently finding nothing after a move.
+        self.assertGreaterEqual(declared, 15)
 
     def test_idm_package_never_imports_web_framework_or_service_module(self) -> None:
         # §19.2: app/idm receives its runtime by injection and stays framework free.

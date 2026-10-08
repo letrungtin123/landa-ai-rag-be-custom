@@ -34,6 +34,7 @@ from app.idm.runtime import IdmStageError
 from app.idm.source_locked import idm_source_faq
 from app.idm.storyboard import acceptance_context, parse_brief, run_idm_unit
 from app.lesson_author_orchestration_v2_provider import UnitGenerationContractV2
+from app.schemas.orchestration_v2 import RagLessonAuthorUnitV2Request
 from tests.idm_test_support import make_runtime
 from tests.test_idm_storyboard import (
     JUDGE,
@@ -289,7 +290,7 @@ class WriterIntegrationTests(StoryboardEndpointTestCase):
 
 class FallbackOnlyTests(unittest.IsolatedAsyncioTestCase):
     async def run_fallback_only(self, body: dict[str, Any], slots: list[dict[str, Any] | None]) -> dict[str, Any]:
-        request = main.RagLessonAuthorUnitV2Request.model_validate(body)
+        request = RagLessonAuthorUnitV2Request.model_validate(body)
         deps = main._idm_unit_deps(request)
         deps = dataclasses.replace(deps, source_locked_components=slots, source_locked_unit=(
             main.build_orchestration_v2_source_locked_unit(request.unit_contract, "vi", components=slots)))
@@ -299,7 +300,7 @@ class FallbackOnlyTests(unittest.IsolatedAsyncioTestCase):
     async def test_fallback_only_uses_the_idm_faq_rebuild(self) -> None:
         # Run c2e5ac41 (5Why unit): only the la_faq slot had no rebuild, so fallback_only returned 422.
         body = escalate_body()
-        request = main.RagLessonAuthorUnitV2Request.model_validate(body)
+        request = RagLessonAuthorUnitV2Request.model_validate(body)
         slots = list(main._idm_unit_deps(request).source_locked_components or [])
         self.assertEqual([slot is None for slot in slots], [True, False])
         practice = {**slots[1], **severity_writer(severity_body())["components"]["c1"]}  # type: ignore[dict-item]
@@ -317,7 +318,7 @@ class FallbackOnlyTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_a_whole_fallback_node_would_reject_is_422_with_the_reason_logged(self) -> None:
         body = severity_body()
-        request = main.RagLessonAuthorUnitV2Request.model_validate(body)
+        request = RagLessonAuthorUnitV2Request.model_validate(body)
         slots = list(main._idm_unit_deps(request).source_locked_components or [])
         # The shared validator reads "trạng" with its accent; Node folds it to "trang" + a number (a page locator).
         located = {**slots[0], "html": slots[0]["html"].replace("</td>", " Hiện trạng 3 lần</td>", 1)}  # type: ignore[index]

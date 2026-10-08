@@ -89,7 +89,7 @@ def draft_fixture(payload: dict) -> dict:
         api_key="test-key", max_output_tokens=8192, blueprint_architecture=architecture,
     )
     provider = AsyncMock(return_value=(json.dumps(generated), AiUsage(inputTokens=1, outputTokens=1, totalTokens=2)))
-    with patch("app.main.generate_content", new=provider):
+    with patch("app.services.provider.generate_content", new=provider):
         proposal, _usage = asyncio.run(generate_staged_lesson_author_proposal(
             request, "Synthetic context", "", "", source_rows=[], source_coverage_manifest=manifest,
         ))

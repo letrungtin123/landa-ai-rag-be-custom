@@ -16,6 +16,7 @@ from tests.test_checkpoint_component_quality_repair import instance_wire
 from tests.test_chapter_checkpoint import fixture as checkpoint_fixture, checkpoint_result
 from app.schemas.common import AiUsage
 from app.schemas.lesson_author import RagLessonAuthorCheckpointRequest
+from app.api import deps as api_deps
 
 
 def checkpoint_instance_fixture():
@@ -123,7 +124,7 @@ class StagedInstanceOutputTests(unittest.TestCase):
         del broken["components"]["c2"]["edges"]
         delta = {"components": [{"component_index": 2, "edges": valid["components"][2]["edges"]}]}
         provider = AsyncMock(side_effect=[(json.dumps(broken), AiUsage()), (json.dumps(delta), AiUsage())])
-        with patch("app.main.generate_content", provider), self.assertLogs("app.main", "INFO") as logs:
+        with patch("app.services.provider.generate_content", provider), self.assertLogs("app.main", "INFO") as logs:
             result = asyncio.run(checkpoint_result(request, manifest))
             final_request = request.model_copy(update={"checkpoint_action": "validate_chapter", "checkpoint_unit_index": None,
                 "checkpoint_units": [main.ChapterCheckpointUnit(unit_index=0, unit=result["unit"])]})
@@ -145,7 +146,7 @@ class StagedInstanceOutputTests(unittest.TestCase):
         wire["components"]["c2"].pop("edges")
         wire["components"]["c2"]["covered_source_fact_ids"] = ["fact-0"]
         provider = AsyncMock(return_value=(json.dumps(wire), AiUsage()))
-        with patch("app.main.generate_content", provider), self.assertLogs("app.main", "INFO") as logs:
+        with patch("app.services.provider.generate_content", provider), self.assertLogs("app.main", "INFO") as logs:
             with self.assertRaises(WorkflowFailure) as failure:
                 asyncio.run(checkpoint_result(request, manifest))
         self.assertEqual(provider.await_count, 1)
@@ -158,7 +159,7 @@ class StagedInstanceOutputTests(unittest.TestCase):
         async def generation(req, _pool):
             return await checkpoint_result(req, manifest)
         async def send():
-            main.app.dependency_overrides[main.get_db] = lambda: None
+            main.app.dependency_overrides[api_deps.get_db] = lambda: None
             try:
                 async with httpx.AsyncClient(transport=httpx.ASGITransport(app=main.app), base_url="http://test") as client:
                     payload = request.model_dump(mode="json")
@@ -166,8 +167,8 @@ class StagedInstanceOutputTests(unittest.TestCase):
                     return await client.post("/v1/lesson-author/chapter-checkpoint", json=payload,
                                              headers={"X-Landa-AI-Service-Token": "fixture-internal-token"})
             finally:
-                main.app.dependency_overrides.pop(main.get_db, None)
-        with patch.object(main.settings, "service_token", "fixture-internal-token"), patch("app.main.generate_content", provider), \
+                main.app.dependency_overrides.pop(api_deps.get_db, None)
+        with patch.object(main.settings, "service_token", "fixture-internal-token"), patch("app.services.provider.generate_content", provider), \
                 patch("app.main.lesson_author_proposal", generation), self.assertLogs("app.main", "INFO") as logs:
             result = asyncio.run(send())
         self.assertEqual(result.status_code, 422)

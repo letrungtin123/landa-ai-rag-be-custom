@@ -45,7 +45,7 @@ def run(payload):
         def forbidden(*_args, **_kwargs):
             raise AssertionError("REAL_PROVIDER_OR_DATABASE_ACCESS_FORBIDDEN")
         events = []
-        with patch("asyncpg.create_pool", forbidden), patch("app.main.generate_content", provider):
+        with patch("asyncpg.create_pool", forbidden), patch("app.services.provider.generate_content", provider):
             generated = asyncio.run(checkpoint_result(request, manifest, events))
             completed = request.model_copy(update={"checkpoint_action": "validate_chapter", "checkpoint_unit_index": None,
                 "checkpoint_units": [main.ChapterCheckpointUnit(unit_index=0, unit=deepcopy(generated["unit"]))]})
@@ -64,7 +64,7 @@ def run(payload):
     provider = provider_result(units[index]) if index is not None else None
     def forbidden(*_args, **_kwargs):
         raise AssertionError("REAL_PROVIDER_OR_DATABASE_ACCESS_FORBIDDEN")
-    with patch("asyncpg.create_pool", forbidden), patch("app.main.generate_content", provider or forbidden):
+    with patch("asyncpg.create_pool", forbidden), patch("app.services.provider.generate_content", provider or forbidden):
         result = asyncio.run(checkpoint_result(request, manifest))
     return {"result": result, "provider_calls": provider.await_count if provider else 0}
 

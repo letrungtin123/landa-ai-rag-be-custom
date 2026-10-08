@@ -15,6 +15,7 @@ import httpx
 from fastapi import HTTPException
 
 from app import main
+from app.api import deps as api_deps
 from app.core.errors import AppError
 from app.idm.contracts import IdmCourseDesignV1, IdmShardDesignV1
 from app.idm.runtime import IdmBudgetError, IdmProviderError, IdmStageError
@@ -79,13 +80,14 @@ def legacy_shard_body() -> dict[str, Any]:
 
 class EndpointTestCase(unittest.IsolatedAsyncioTestCase):
     def setUp(self) -> None:
-        main.app.dependency_overrides[main.require_internal_token] = lambda: None
+        main.app.dependency_overrides[api_deps.require_internal_token] = lambda: None
 
     def tearDown(self) -> None:
-        main.app.dependency_overrides.pop(main.require_internal_token, None)
+        main.app.dependency_overrides.pop(api_deps.require_internal_token, None)
 
     async def post(self, url: str, body: dict[str, Any], provider: Any = None) -> httpx.Response:
-        with patch("app.main.generate_content", provider or AsyncMock(side_effect=AssertionError("no call"))):
+        fake = provider or AsyncMock(side_effect=AssertionError("no call"))
+        with patch("app.services.provider.generate_content", fake):
             async with httpx.AsyncClient(transport=httpx.ASGITransport(app=main.app), base_url="http://t") as client:
                 return await client.post(url, json=body)
 
@@ -178,11 +180,11 @@ class LegacyDispatchTests(unittest.IsolatedAsyncioTestCase):
     """Requests without IDM fields must produce exactly the legacy response."""
 
     async def compare(self, endpoint: Any, legacy: Any, request: Any, answers: list[Any]) -> dict[str, Any]:
-        with patch("app.main.generate_content", AsyncMock(side_effect=copy.deepcopy(answers))), \
+        with patch("app.services.provider.generate_content", AsyncMock(side_effect=copy.deepcopy(answers))), \
                 patch("app.main.run_idm_course_design", AsyncMock()) as course, \
                 patch("app.main.run_idm_module_design", AsyncMock()) as module:
             dispatched = await endpoint(request)
-        with patch("app.main.generate_content", AsyncMock(side_effect=copy.deepcopy(answers))):
+        with patch("app.services.provider.generate_content", AsyncMock(side_effect=copy.deepcopy(answers))):
             direct = await legacy(request=request)
         course.assert_not_awaited()
         module.assert_not_awaited()
@@ -213,14 +215,14 @@ class LegacyDispatchTests(unittest.IsolatedAsyncioTestCase):
 
 class TransportMappingTests(unittest.IsolatedAsyncioTestCase):
     async def mapped(self, error: Exception) -> IdmProviderError:
-        with patch("app.main.generate_content", AsyncMock(side_effect=error)), \
+        with patch("app.services.provider.generate_content", AsyncMock(side_effect=error)), \
                 self.assertRaises(IdmProviderError) as caught:
             await main._idm_generate("key", "model", "prompt", json_mode=True)
         return caught.exception
 
     async def test_success_passes_options_through(self) -> None:
         generate = AsyncMock(return_value=("{}", AiUsage(outputTokens=1)))
-        with patch("app.main.generate_content", generate):
+        with patch("app.services.provider.generate_content", generate):
             self.assertEqual((await main._idm_generate("key", "model", "prompt", thinking_level="low"))[0], "{}")
         generate.assert_awaited_once_with("key", "model", "prompt", thinking_level="low")
 

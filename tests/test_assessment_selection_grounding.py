@@ -177,7 +177,7 @@ class GroundedSelectionEndpointTests(unittest.IsolatedAsyncioTestCase):
                 structure = {"source_structure_nodes": nodes, "source_coverage_manifest": manifest,
                              "known_source_refs": {n["source_ref"] for n in nodes}}
                 with patch("app.main.retrieve_chunks", new=AsyncMock(return_value=([], AiUsage(), structure))), \
-                     patch("app.main.generate_content", new=AsyncMock(side_effect=provider)), \
+                     patch("app.services.provider.generate_content", new=AsyncMock(side_effect=provider)), \
                      patch("app.main.logger.info", side_effect=capture):
                     result = await lesson_author_blueprint(request, pool=object())
                 self.assertEqual(result["blueprint"]["source_fact_allocation"]["allocated_count"], count)

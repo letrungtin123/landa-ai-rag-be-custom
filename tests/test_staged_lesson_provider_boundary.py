@@ -94,7 +94,7 @@ class StagedLessonProviderBoundaryTests(unittest.TestCase):
         for repaired in (True, False):
             delta = {"components": [{"component_index": 0, "semantic_content": generated["components"][0]["semantic_content"] if repaired else {}}]}
             provider = AsyncMock(side_effect=[(json.dumps(broken), AiUsage()), (json.dumps(delta), AiUsage())])
-            with patch("app.main.generate_content", provider), self.assertLogs("app.main", level="INFO") as logs:
+            with patch("app.services.provider.generate_content", provider), self.assertLogs("app.main", level="INFO") as logs:
                 if repaired:
                     result, _ = asyncio.run(generate_staged_lesson_author_proposal(request, "Synthetic", "", "", source_rows=[], source_coverage_manifest=manifest))
                     self.assertEqual(result["chapters"][0]["lessons"][0]["units"][0]["components"], generated["components"])
@@ -213,7 +213,7 @@ class StagedLessonProviderBoundaryTests(unittest.TestCase):
                    if k not in {"type", "component_plan_id", "source_fact_ids", "covered_source_fact_ids", "supporting_evidence_fact_ids"}}}]}
         manifest = {"facts": [{"fact_id": "fact-1", "source_page": 1, "text": "Check the conditions before acting."}]}
         provider = AsyncMock(side_effect=[(json.dumps(broken), AiUsage()), (json.dumps(repair), AiUsage())])
-        with patch("app.main.generate_content", new=provider):
+        with patch("app.services.provider.generate_content", new=provider):
             result, _ = asyncio.run(generate_staged_lesson_author_proposal(request, "Synthetic", "", "", source_rows=[], source_coverage_manifest=manifest))
         self.assertEqual(provider.await_count, 2)
         produced = result["chapters"][0]["lessons"][0]["units"][0]["components"]
@@ -225,7 +225,7 @@ class StagedLessonProviderBoundaryTests(unittest.TestCase):
         failed_delta = deepcopy(repair)
         failed_delta["components"][0]["choices"] = []
         failed = AsyncMock(side_effect=[(json.dumps(broken), AiUsage()), (json.dumps(failed_delta), AiUsage())])
-        with patch("app.main.generate_content", new=failed):
+        with patch("app.services.provider.generate_content", new=failed):
             with self.assertRaises(LessonAuthorProposalValidationError):
                 asyncio.run(generate_staged_lesson_author_proposal(request, "Synthetic", "", "", source_rows=[], source_coverage_manifest=manifest))
         self.assertEqual(failed.await_count, 2)
@@ -272,7 +272,7 @@ class StagedLessonProviderBoundaryTests(unittest.TestCase):
         broken["components"][0]["semantic_content"] = {"paragraphs": [{"text": "Invalid string-array item"}]}
         delta = {"components": [{"component_index": 0, "semantic_content": generated[2]["components"][0]["semantic_content"]}]}
         provider = AsyncMock(side_effect=[(json.dumps(value), AiUsage()) for value in [generated[0], generated[1], broken, delta]])
-        with patch("app.main.generate_content", provider):
+        with patch("app.services.provider.generate_content", provider):
             result, _ = asyncio.run(generate_staged_lesson_author_proposal(request, "Synthetic", "", "", source_rows=[], source_coverage_manifest=manifest))
         self.assertEqual(provider.await_count, 4)
         units = result["chapters"][0]["lessons"][0]["units"]
@@ -487,7 +487,7 @@ class StagedLessonProviderBoundaryTests(unittest.TestCase):
             "text": "Synthetic evidence only for an offline provider-boundary regression test.",
         }]}
 
-        with patch("app.main.generate_content", new=provider):
+        with patch("app.services.provider.generate_content", new=provider):
             with self.assertRaises(WorkflowFailure) as raised:
                 asyncio.run(generate_staged_lesson_author_proposal(
                     staged_request(),
@@ -532,7 +532,7 @@ class StagedLessonProviderBoundaryTests(unittest.TestCase):
             status_code = 400
 
         provider = AsyncMock(side_effect=ProviderSchemaError("response_schema array items missing"))
-        with patch("app.main.generate_content", new=provider):
+        with patch("app.services.provider.generate_content", new=provider):
             with self.assertRaises(WorkflowFailure) as raised:
                 asyncio.run(generate_staged_lesson_author_proposal(
                     request, "Synthetic context", "", "", source_rows=[], source_coverage_manifest=manifest,
@@ -600,7 +600,7 @@ class StagedLessonProviderBoundaryTests(unittest.TestCase):
             generated_unit("fixture-fact-1"),
             generated_unit("fixture-fact-2"),
         ])
-        with patch("app.main.generate_content", new=provider):
+        with patch("app.services.provider.generate_content", new=provider):
             proposal, _usage = asyncio.run(generate_staged_lesson_author_proposal(
                 request,
                 "Synthetic context",
@@ -720,7 +720,7 @@ class StagedLessonProviderBoundaryTests(unittest.TestCase):
             (teaching, AiUsage(inputTokens=1, outputTokens=1, totalTokens=2)),
             (supporting_check, AiUsage(inputTokens=1, outputTokens=1, totalTokens=2)),
         ])
-        with patch("app.main.generate_content", new=provider):
+        with patch("app.services.provider.generate_content", new=provider):
             proposal, _usage = asyncio.run(generate_staged_lesson_author_proposal(
                 request, "Synthetic context", "", "", source_rows=[], source_coverage_manifest=manifest,
             ))

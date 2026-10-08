@@ -67,7 +67,7 @@ class CheckpointCoverageRepairTests(unittest.TestCase):
         request, valid, broken, scope, manifest, delta = coverage_fixture()
         before = deepcopy(broken)
         provider = AsyncMock(side_effect=[(json.dumps(instance_wire(broken)), AiUsage()), (json.dumps(delta), AiUsage())])
-        with patch("app.main.generate_content", provider), self.assertLogs("app.main", "INFO") as logs:
+        with patch("app.services.provider.generate_content", provider), self.assertLogs("app.main", "INFO") as logs:
             result = asyncio.run(checkpoint_result(request, manifest))
             final_request = request.model_copy(update={"checkpoint_action": "validate_chapter", "checkpoint_unit_index": None,
                 "checkpoint_units": [main.ChapterCheckpointUnit(unit_index=0, unit=result["unit"])]})
@@ -118,7 +118,7 @@ class CheckpointCoverageRepairTests(unittest.TestCase):
                 elif mutation == "ownership": change["source_fact_ids"] = ["PRIVATE_UNKNOWN_FACT"]
                 elif mutation == "other_component": change["component_index"] = 0
                 provider = AsyncMock(side_effect=[(json.dumps(instance_wire(broken)), AiUsage()), (json.dumps(delta), AiUsage())])
-                with patch("app.main.generate_content", provider), patch("app.main.build_source_locked_html_unit") as fallback:
+                with patch("app.services.provider.generate_content", provider), patch("app.main.build_source_locked_html_unit") as fallback:
                     with self.assertRaises(WorkflowFailure) as failure:
                         asyncio.run(checkpoint_result(request, manifest))
                 self.assertEqual(provider.await_count, 2)
@@ -140,7 +140,7 @@ class CheckpointCoverageRepairTests(unittest.TestCase):
             wire = instance_wire(broken)
             if mutation in ("ownership", "duplicate"): wire["components"]["c2"]["source_fact_ids"] = broken["components"][2]["source_fact_ids"]
             provider = AsyncMock(return_value=(json.dumps(wire), AiUsage()))
-            with patch("app.main.generate_content", provider):
+            with patch("app.services.provider.generate_content", provider):
                 with self.assertRaises(WorkflowFailure):
                     asyncio.run(checkpoint_result(request, manifest))
             self.assertEqual(provider.await_count, 1)
@@ -158,7 +158,7 @@ class CheckpointCoverageRepairTests(unittest.TestCase):
     def test_valid_output_does_not_repair(self):
         request, valid, _, _, manifest, _ = coverage_fixture()
         provider = AsyncMock(return_value=(json.dumps(instance_wire(valid)), AiUsage()))
-        with patch("app.main.generate_content", provider):
+        with patch("app.services.provider.generate_content", provider):
             result = asyncio.run(checkpoint_result(request, manifest))
         self.assertEqual(result["status"], "unit_ready")
         self.assertEqual(provider.await_count, 1)

@@ -13,11 +13,10 @@ from app.core.config import settings
 from app.main import (
     STAGED_LESSON_WORKFLOW_TIMEOUT_MAX_MS,
     StagedLessonWorkflowDeadline,
-    call_provider_with_timeout,
     generate_staged_lesson_author_proposal,
-    is_non_retryable_provider_error,
     staged_lesson_content_output_tokens,
 )
+from app.services.provider import call_provider_with_timeout, is_non_retryable_provider_error
 from app.schemas.common import AiUsage
 from app.schemas.lesson_author import RagLessonAuthorRequest
 
@@ -73,7 +72,7 @@ class StagedLessonTimeoutTests(unittest.TestCase):
         usage = AiUsage(inputTokens=1, outputTokens=1, totalTokens=2)
         provider = AsyncMock(side_effect=[("{", usage), ("{", usage), stage_two_result])
         self._last_provider = provider
-        with patch("app.main.generate_content", new=provider):
+        with patch("app.services.provider.generate_content", new=provider):
             result = asyncio.run(generate_staged_lesson_author_proposal(
                 staged_request(),
                 "Nguồn liên quan",
@@ -156,7 +155,7 @@ class StagedLessonTimeoutTests(unittest.TestCase):
             timeout_error,
         ])
 
-        with patch("app.main.generate_content", new=provider):
+        with patch("app.services.provider.generate_content", new=provider):
             with self.assertRaises(HTTPException) as raised:
                 asyncio.run(generate_staged_lesson_author_proposal(
                     staged_request(max_output_tokens=30_000),

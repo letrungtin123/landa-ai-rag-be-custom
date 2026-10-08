@@ -8,9 +8,9 @@ import unittest
 from typing import Any
 from unittest.mock import patch
 
+from fastapi import HTTPException
 from pydantic import ValidationError
 
-from app import main
 from app.idm.architecture import _lesson_chunks, validate_w4
 from app.idm.blueprint import validate_w2
 from app.idm.content_map import FactIndex, map_sections, page_furniture_keys
@@ -195,7 +195,7 @@ class EndpointRobustnessTests(EndpointTestCase):
 
 class UnitRobustnessTests(StoryboardEndpointTestCase):
     async def test_terminal_writer_rejection_reaches_node(self) -> None:
-        rejected = main.HTTPException(status_code=502, detail={"code": "AI_PROVIDER_AUTH_REJECTED", "message": "x"})
+        rejected = HTTPException(status_code=502, detail={"code": "AI_PROVIDER_AUTH_REJECTED", "message": "x"})
         status, data, _provider = await self.post(escalate_body(), FakeGenerate(**{WRITER: [rejected]}))
         self.assertEqual(status, 502)
         self.assertEqual(data["detail"]["code"], "AI_PROVIDER_AUTH_REJECTED")

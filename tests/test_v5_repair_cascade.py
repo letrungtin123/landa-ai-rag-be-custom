@@ -1553,7 +1553,7 @@ class V5RepairCascadeTests(unittest.IsolatedAsyncioTestCase):
     async def test_v5_invalid_architect_attempts_never_take_legacy_source_locked_fallback(self) -> None:
         context, _source_map, _manifest_value = self._context(20, 2)
         usage = AiUsage(inputTokens=1, outputTokens=1, totalTokens=2)
-        with patch("app.main.generate_content", new=AsyncMock(side_effect=[("{", usage), ("{", usage)])) as generate:
+        with patch("app.services.provider.generate_content", new=AsyncMock(side_effect=[("{", usage), ("{", usage)])) as generate:
             with self.assertRaises(LessonAuthorBlueprintGenerationError) as raised:
                 await generate_validated_lesson_author_blueprint(
                     blueprint_request(),
@@ -1572,7 +1572,7 @@ class V5RepairCascadeTests(unittest.IsolatedAsyncioTestCase):
         lesson = candidate["chapters"][0]["lessons"][0]  # type: ignore[index]
         lesson["units"] = [copy.deepcopy(lesson["units"][0]) for _ in range(4)]
         usage = AiUsage(inputTokens=4, outputTokens=8, totalTokens=12)
-        with patch("app.main.generate_content", new=AsyncMock(return_value=(json.dumps(candidate), usage))) as generate:
+        with patch("app.services.provider.generate_content", new=AsyncMock(return_value=(json.dumps(candidate), usage))) as generate:
             deferred, returned_usage = await generate_validated_lesson_author_blueprint(
                 blueprint_request(),
                 "SERVER MODE: COURSE_BLUEPRINT.",

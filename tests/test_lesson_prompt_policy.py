@@ -140,7 +140,7 @@ class LessonPromptPolicyTests(unittest.TestCase):
         request = request.model_copy(update={"correlation_id": "11111111-1111-4111-8111-111111111111"})
         before = deepcopy(generated)
         provider = AsyncMock(return_value=(json.dumps(generated), AiUsage()))
-        with patch("app.main.generate_content", provider), patch("app.main.logger.info") as log:
+        with patch("app.services.provider.generate_content", provider), patch("app.main.logger.info") as log:
             proposal, _ = asyncio.run(generate_staged_lesson_author_proposal(
                 request, "PRIVATE_SOURCE", "", source_rows=[],
                 source_coverage_manifest={"facts": [{"fact_id": "fact-1", "text": "PRIVATE_SOURCE"}]},
@@ -181,7 +181,7 @@ class LessonPromptPolicyTests(unittest.TestCase):
             request = blueprint_request("SERVER POLICY VERSION: v5-blueprint-policy-1.\n<STORED_TEACHING_POLICY>\nSafe teaching policy.\n</STORED_TEACHING_POLICY>").model_copy(update={"locale": locale})
             prompt = build_course_architect_prompt(request, "Synthetic evidence only.")
             provider = AsyncMock(return_value=(json.dumps(valid_blueprint()), AiUsage()))
-            with patch("app.main.generate_content", provider):
+            with patch("app.services.provider.generate_content", provider):
                 asyncio.run(generate_validated_lesson_author_blueprint(request, prompt))
             self.assertEqual(provider.await_count, 1)
             sent = provider.await_args.args[2]
@@ -200,7 +200,7 @@ class LessonPromptPolicyTests(unittest.TestCase):
                     with self.subTest(source=source_locale, output=output_locale, component=component_type):
                         request, generated = request_and_unit(component_type, output_locale)
                         provider = AsyncMock(return_value=(json.dumps(generated, ensure_ascii=False), AiUsage()))
-                        with patch("app.main.generate_content", provider):
+                        with patch("app.services.provider.generate_content", provider):
                             proposal, _ = asyncio.run(generate_staged_lesson_author_proposal(
                                 request, source, "", source_rows=[], source_coverage_manifest={
                                     "facts": [{"fact_id": "fact-1", "source_page": 1, "text": source}],
@@ -229,7 +229,7 @@ class LessonPromptPolicyTests(unittest.TestCase):
         request, generated = request_and_unit("html", "en")
         invalid = {**generated, "components": []}
         provider = AsyncMock(side_effect=[(json.dumps(invalid), AiUsage()), (json.dumps(generated), AiUsage())])
-        with patch("app.main.generate_content", provider):
+        with patch("app.services.provider.generate_content", provider):
             proposal, _ = asyncio.run(generate_staged_lesson_author_proposal(
                 request, "Kiểm tra điều kiện.", "", source_rows=[],
                 source_coverage_manifest={"facts": [{"fact_id": "fact-1", "text": "Kiểm tra điều kiện."}]},
@@ -246,7 +246,7 @@ class LessonPromptPolicyTests(unittest.TestCase):
         from tests.test_staged_lesson_timeout import staged_request, staged_content
         request = staged_request().model_copy(update={"locale": "en"})
         provider = AsyncMock(side_effect=[("{", AiUsage()), ("{", AiUsage()), (staged_content(), AiUsage())])
-        with patch("app.main.generate_content", provider):
+        with patch("app.services.provider.generate_content", provider):
             asyncio.run(generate_staged_lesson_author_proposal(
                 request, "Synthetic source", "", source_rows=[], source_coverage_manifest={
                     "facts": [{"fact_id": "p10-f1", "source_page": 10, "text": "Nhận diện mối nguy"}],

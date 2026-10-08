@@ -214,7 +214,7 @@ class LessonAuthorOrchestrationV2EndpointTests(unittest.IsolatedAsyncioTestCase)
 
         provider = AsyncMock(side_effect=generate)
 
-        with patch("app.main.generate_content", provider):
+        with patch("app.services.provider.generate_content", provider):
             response = await lesson_author_orchestration_v2_unit(
                 RagLessonAuthorUnitV2Request.model_validate(request_payload),
             )
@@ -564,7 +564,7 @@ class LessonAuthorOrchestrationV2EndpointTests(unittest.IsolatedAsyncioTestCase)
 
         with patch("app.main.settings.semantic_review_mode", "repair"), \
                 patch("app.main.generate_staged_lesson_author_proposal", staged), \
-                patch("app.main.generate_content", semantic_provider):
+                patch("app.services.provider.generate_content", semantic_provider):
             response = await lesson_author_orchestration_v2_unit(request)
 
         self.assertEqual(response["semantic_review"]["status"], "passed")
@@ -603,7 +603,7 @@ class LessonAuthorOrchestrationV2EndpointTests(unittest.IsolatedAsyncioTestCase)
 
         with patch("app.main.settings.semantic_review_mode", "repair"), \
                 patch("app.main.generate_staged_lesson_author_proposal", staged), \
-                patch("app.main.generate_content", failed_semantic_provider):
+                patch("app.services.provider.generate_content", failed_semantic_provider):
             response = await lesson_author_orchestration_v2_unit(request)
 
         self.assertEqual(response["unit"]["components"], [component])
@@ -668,8 +668,8 @@ class LessonAuthorOrchestrationV2EndpointTests(unittest.IsolatedAsyncioTestCase)
                 after_chunk = int(args[4])
                 return [row for row in chunks if int(row["chunk_no"]) > after_chunk]
 
-        with patch("app.main.generate_content", AsyncMock()) as provider, \
-                patch("app.main.embed_texts", AsyncMock()) as embedder:
+        with patch("app.services.provider.generate_content", AsyncMock()) as provider, \
+                patch("app.services.provider.embed_texts", AsyncMock()) as embedder:
             response = await lesson_author_orchestration_v2_source_snapshot(request, pool=Pool())
             next_request = RagLessonAuthorSourceSnapshotV2Request.model_validate({
                 **request_data, "cursor": response["next_cursor"],
@@ -828,7 +828,7 @@ class LessonAuthorOrchestrationV2EndpointTests(unittest.IsolatedAsyncioTestCase)
         })
         draft = {key: value for key, value in skeleton_wire().items()
                  if key not in {"contract_version", "source_snapshot_hash", "locale"}}
-        with patch("app.main.generate_content", AsyncMock(return_value=(json.dumps(draft), AiUsage(outputTokens=20)))) as provider:
+        with patch("app.services.provider.generate_content", AsyncMock(return_value=(json.dumps(draft), AiUsage(outputTokens=20)))) as provider:
             response = await lesson_author_orchestration_v2_course_skeleton(request)
         provider.assert_awaited_once()
         self.assertIs(provider.await_args.kwargs["response_schema"], CourseSkeletonProviderWireV2)
@@ -843,7 +843,7 @@ class LessonAuthorOrchestrationV2EndpointTests(unittest.IsolatedAsyncioTestCase)
                                "fact_count": 1, "content_chars": 5}], "max_attempts": 1,
         })
         provider_error = type("ProviderError", (Exception,), {"status_code": 400})("PRIVATE_PROVIDER_BODY")
-        with patch("app.main.generate_content", AsyncMock(side_effect=provider_error)), \
+        with patch("app.services.provider.generate_content", AsyncMock(side_effect=provider_error)), \
                 self.assertLogs("app.main", "WARNING") as logs, self.assertRaises(HTTPException) as failure:
             await lesson_author_orchestration_v2_course_skeleton(request)
         self.assertEqual(failure.exception.status_code, 502)
@@ -861,7 +861,7 @@ class LessonAuthorOrchestrationV2EndpointTests(unittest.IsolatedAsyncioTestCase)
                  "fact_count": 1, "content_chars": 5},
             ], "max_attempts": 2,
         })
-        with patch("app.main.generate_content", AsyncMock(return_value=("{}", AiUsage(outputTokens=3)))) as provider:
+        with patch("app.services.provider.generate_content", AsyncMock(return_value=("{}", AiUsage(outputTokens=3)))) as provider:
             response = await lesson_author_orchestration_v2_course_skeleton(request)
         self.assertEqual(provider.await_count, 2)
         self.assertEqual(response["usage"]["outputTokens"], 6)
@@ -882,7 +882,7 @@ class LessonAuthorOrchestrationV2EndpointTests(unittest.IsolatedAsyncioTestCase)
         provider_failure = HTTPException(status_code=504, detail={
             "code": "AI_PROVIDER_TIMEOUT", "message": "private",
         })
-        with patch("app.main.generate_content", AsyncMock(side_effect=provider_failure)):
+        with patch("app.services.provider.generate_content", AsyncMock(side_effect=provider_failure)):
             response = await lesson_author_orchestration_v2_course_skeleton(request)
         self.assertEqual(response["usage_source"], "reserved_upper_bound")
         self.assertFalse(response["usage_complete"])
@@ -899,7 +899,7 @@ class LessonAuthorOrchestrationV2EndpointTests(unittest.IsolatedAsyncioTestCase)
                               "source_chunk": 0, "locator": {}}],
             "max_attempts": 2,
         })
-        with patch("app.main.generate_content", AsyncMock(return_value=(
+        with patch("app.services.provider.generate_content", AsyncMock(return_value=(
             json.dumps({"lessons": [lesson_wire(["scope-1"])]}), AiUsage(outputTokens=20),
         ))) as provider:
             response = await lesson_author_orchestration_v2_chapter_shard(request)
@@ -918,7 +918,7 @@ class LessonAuthorOrchestrationV2EndpointTests(unittest.IsolatedAsyncioTestCase)
                               "source_chunk": 0, "locator": {}}],
             "max_attempts": 1,
         })
-        with patch("app.main.generate_content", AsyncMock(return_value=(
+        with patch("app.services.provider.generate_content", AsyncMock(return_value=(
             json.dumps({"lessons": [{"invalid": True}]}), AiUsage(outputTokens=20),
         ))) as provider:
             response = await lesson_author_orchestration_v2_chapter_shard(request)
@@ -949,7 +949,7 @@ class LessonAuthorOrchestrationV2EndpointTests(unittest.IsolatedAsyncioTestCase)
         invalid_unit["component_plan"][0]["source_scope_ids"] = ["scope-2"]
         invalid_unit.pop("purpose")
         provider_lesson["units"].append(invalid_unit)
-        with patch("app.main.generate_content", AsyncMock(return_value=(
+        with patch("app.services.provider.generate_content", AsyncMock(return_value=(
             json.dumps({"lessons": [provider_lesson]}, ensure_ascii=False), AiUsage(outputTokens=20),
         ))) as provider:
             response = await lesson_author_orchestration_v2_chapter_shard(request)
@@ -991,7 +991,7 @@ class LessonAuthorOrchestrationV2EndpointTests(unittest.IsolatedAsyncioTestCase)
             (json.dumps({"lessons": [provider_lesson]}, ensure_ascii=False), AiUsage(outputTokens=20)),
             (json.dumps({"lessons": [{"invalid": True}]}), AiUsage(outputTokens=10)),
         ]
-        with patch("app.main.generate_content", AsyncMock(side_effect=responses)) as provider:
+        with patch("app.services.provider.generate_content", AsyncMock(side_effect=responses)) as provider:
             response = await lesson_author_orchestration_v2_chapter_shard(request)
 
         self.assertEqual(provider.await_count, 2)
@@ -1017,7 +1017,7 @@ class LessonAuthorOrchestrationV2EndpointTests(unittest.IsolatedAsyncioTestCase)
         provider_failure = HTTPException(status_code=503, detail={
             "code": "AI_PROVIDER_UNAVAILABLE", "message": "private",
         })
-        with patch("app.main.generate_content", AsyncMock(side_effect=provider_failure)):
+        with patch("app.services.provider.generate_content", AsyncMock(side_effect=provider_failure)):
             response = await lesson_author_orchestration_v2_chapter_shard(request)
         self.assertEqual(response["usage_source"], "reserved_upper_bound")
         self.assertFalse(response["usage_complete"])

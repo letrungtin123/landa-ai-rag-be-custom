@@ -16,9 +16,13 @@ from fastapi import HTTPException
 from app import main
 from app.core import metrics
 from app.core.errors import AppError
+from app.infra import gemini as gemini_infra
 from app.infra.schema_check import SchemaCheckResult
 from app.schemas.chat import RagChatRequest
 from app.schemas.kb import RagIndexRequest
+from app.services import deadlines as deadlines_service
+from app.services import provider as provider_service
+from app.services import runtime as runtime_service
 
 APP_ROOT = Path(__file__).resolve().parents[1] / "app"
 TOKEN = "prd1-test-token-0123456789"
@@ -53,14 +57,14 @@ class AsgiTestCase(unittest.TestCase):
         ]
         for item in self.patches:
             item.start()
-        main.runtime_state.reset()
+        runtime_service.runtime_state.reset()
 
     def tearDown(self) -> None:
         for item in reversed(self.patches):
             item.stop()
-        main.runtime_state.reset()
-        main.db_pool = None
-        main.schema_guard.reset()
+        runtime_service.runtime_state.reset()
+        runtime_service.db_pool = None
+        runtime_service.schema_guard.reset()
 
     def request(self, method: str, path: str, **kwargs: Any) -> httpx.Response:
         async def scenario() -> httpx.Response:
@@ -79,28 +83,28 @@ class HealthAndReadinessTests(AsgiTestCase):
 
     def test_readyz_requires_started_runtime_and_database(self) -> None:
         self.assertEqual(self.request("GET", "/readyz").status_code, 503)
-        main.runtime_state.started = True
-        main.db_pool = ReadyPool()  # type: ignore[assignment]
+        runtime_service.runtime_state.started = True
+        runtime_service.db_pool = ReadyPool()  # type: ignore[assignment]
         # SEP-1: readiness also requires a passed schema check (covered in test_sep1_runtime).
-        main.schema_guard.record(SchemaCheckResult(status="ok"))
+        runtime_service.schema_guard.record(SchemaCheckResult(status="ok"))
         response = self.request("GET", "/readyz")
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json(), {"status": "ready"})
 
     def test_readyz_reports_draining_and_database_failures_without_details(self) -> None:
-        main.runtime_state.started = True
-        main.db_pool = ReadyPool(fail=True)  # type: ignore[assignment]
+        runtime_service.runtime_state.started = True
+        runtime_service.db_pool = ReadyPool(fail=True)  # type: ignore[assignment]
         response = self.request("GET", "/readyz")
         self.assertEqual(response.status_code, 503)
         self.assertEqual(response.json()["detail"]["code"], "NOT_READY")
         self.assertNotIn("unreachable", response.text)
-        main.db_pool = ReadyPool()  # type: ignore[assignment]
-        main.runtime_state.draining = True
+        runtime_service.db_pool = ReadyPool()  # type: ignore[assignment]
+        runtime_service.runtime_state.draining = True
         self.assertEqual(self.request("GET", "/readyz").status_code, 503)
 
     def test_readyz_times_out_slow_database(self) -> None:
-        main.runtime_state.started = True
-        main.db_pool = ReadyPool(delay=1.0)  # type: ignore[assignment]
+        runtime_service.runtime_state.started = True
+        runtime_service.db_pool = ReadyPool(delay=1.0)  # type: ignore[assignment]
         with patch.object(main.settings, "readiness_db_timeout_ms", 100):
             self.assertEqual(self.request("GET", "/readyz").status_code, 503)
 
@@ -127,29 +131,29 @@ class LifespanTests(unittest.TestCase):
         pool.close = AsyncMock()
         with (
             patch.object(main.asyncpg, "create_pool", AsyncMock(return_value=pool)) as create_pool,
-            patch.object(main, "create_client", MagicMock(return_value="supabase")),
-            patch.object(main, "require_settings", MagicMock()),
+            patch.object(runtime_service, "create_client", MagicMock(return_value="supabase")),
+            patch.object(runtime_service, "require_settings", MagicMock()),
             # SEP-1: the legacy storage client exists only while a service key is configured.
             patch.object(main.settings, "supabase_url", "http://127.0.0.1:54321"),
             patch.object(main.settings, "supabase_service_key", "legacy-service-key"),
-            patch.object(main.schema_guard, "refresh", AsyncMock()),
-            patch.object(main.gemini_infra.client_pool, "clear") as clear_clients,
-            patch.object(main.concurrency, "shutdown") as shutdown_executors,
+            patch.object(runtime_service.schema_guard, "refresh", AsyncMock()),
+            patch.object(gemini_infra.client_pool, "clear") as clear_clients,
+            patch.object(runtime_service.concurrency, "shutdown") as shutdown_executors,
         ):
             async def scenario() -> None:
                 async with main.app.router.lifespan_context(main.app):
-                    self.assertIs(main.db_pool, pool)
-                    self.assertEqual(main.supabase_client, "supabase")
-                    self.assertTrue(main.runtime_state.started)
+                    self.assertIs(runtime_service.db_pool, pool)
+                    self.assertEqual(runtime_service.supabase_client, "supabase")
+                    self.assertTrue(runtime_service.runtime_state.started)
 
             asyncio.run(scenario())
         create_pool.assert_awaited_once()
         pool.close.assert_awaited_once()
         clear_clients.assert_called_once()
         shutdown_executors.assert_called_once()
-        self.assertIsNone(main.db_pool)
-        self.assertTrue(main.runtime_state.draining)
-        main.runtime_state.reset()
+        self.assertIsNone(runtime_service.db_pool)
+        self.assertTrue(runtime_service.runtime_state.draining)
+        runtime_service.runtime_state.reset()
 
 
 class DeadlineTests(unittest.TestCase):
@@ -160,7 +164,7 @@ class DeadlineTests(unittest.TestCase):
             await asyncio.sleep(1)
 
         with self.assertRaises(AppError) as raised:
-            asyncio.run(main.run_with_deadline("/x", 10, slow()))
+            asyncio.run(deadlines_service.run_with_deadline("/x", 10, slow()))
         self.assertEqual((raised.exception.code, raised.exception.http_status), ("REQUEST_DEADLINE_EXCEEDED", 504))
         self.assertEqual(metric("ai_rag_deadline_exceeded_total", {"route": "/x"}), before + 1)
 
@@ -168,7 +172,7 @@ class DeadlineTests(unittest.TestCase):
             raise TimeoutError
 
         with self.assertRaises(TimeoutError):
-            asyncio.run(main.run_with_deadline("/x", 10_000, inner_timeout()))
+            asyncio.run(deadlines_service.run_with_deadline("/x", 10_000, inner_timeout()))
 
     def test_chat_route_is_bounded_by_its_deadline(self) -> None:
         async def slow_retrieve(*args: Any, **kwargs: Any) -> Any:
@@ -196,7 +200,7 @@ class IndexRuntimeTests(unittest.TestCase):
 
     def test_saturated_indexer_answers_service_busy(self) -> None:
         async def scenario() -> str:
-            limiter = main.concurrency.index
+            limiter = runtime_service.concurrency.index
             held = [limiter.slot() for _ in range(limiter.limit)]
             for slot in held:
                 await slot.__aenter__()
@@ -266,7 +270,8 @@ class IndexRuntimeTests(unittest.TestCase):
                 patch.object(main, "start_index_row", AsyncMock(return_value="55555555-5555-4555-8555-555555555555")),
                 patch.object(main, "mark_index_error", AsyncMock()),
                 patch.object(main, "analyze_source_structure", busy_structure),
-                patch.object(main, "embed_texts", AsyncMock(side_effect=RuntimeError("stop after offloaded steps"))),
+                patch.object(provider_service, "embed_texts",
+                             AsyncMock(side_effect=RuntimeError("stop after offloaded steps"))),
             ):
                 asyncio.run(scenario(), debug=True)
         finally:
@@ -277,11 +282,11 @@ class IndexRuntimeTests(unittest.TestCase):
 
 class ProviderRetryPolicyTests(unittest.TestCase):
     def test_backoff_grows_with_jitter_and_respects_cap(self) -> None:
-        with patch.object(main, "PROVIDER_TRANSIENT_RETRY_DELAY_SECONDS", 1.0), \
+        with patch.object(provider_service, "PROVIDER_TRANSIENT_RETRY_DELAY_SECONDS", 1.0), \
                 patch.object(main.settings, "provider_retry_max_ms", 3_000):
-            first = main.provider_retry_delay_seconds(0)
-            second = main.provider_retry_delay_seconds(1)
-            capped = main.provider_retry_delay_seconds(5)
+            first = provider_service.provider_retry_delay_seconds(0)
+            second = provider_service.provider_retry_delay_seconds(1)
+            capped = provider_service.provider_retry_delay_seconds(5)
         self.assertTrue(0.8 <= first <= 1.2)
         self.assertTrue(1.6 <= second <= 2.4)
         self.assertEqual(capped, 3.0)
@@ -291,11 +296,11 @@ class ProviderRetryPolicyTests(unittest.TestCase):
         error.details = {  # type: ignore[attr-defined]
             "error": {"details": [{"@type": "type.googleapis.com/google.rpc.RetryInfo", "retryDelay": "2s"}]},
         }
-        self.assertEqual(main.provider_retry_hint_seconds(error), 2.0)
+        self.assertEqual(provider_service.provider_retry_hint_seconds(error), 2.0)
         header_error = Exception("rate limited")
         header_error.response = MagicMock(headers={"retry-after": "3"})
-        self.assertEqual(main.provider_retry_hint_seconds(header_error), 3.0)
-        self.assertIsNone(main.provider_retry_hint_seconds(Exception("none")))
+        self.assertEqual(provider_service.provider_retry_hint_seconds(header_error), 3.0)
+        self.assertIsNone(provider_service.provider_retry_hint_seconds(Exception("none")))
 
     def test_short_rate_limit_hint_retries_then_succeeds(self) -> None:
         calls = {"count": 0}
@@ -316,7 +321,8 @@ class ProviderRetryPolicyTests(unittest.TestCase):
             return "ok"
 
         events: list[dict[str, Any]] = []
-        result = asyncio.run(main.call_provider_with_timeout(run, "m", on_provider_diagnostic=events.append))
+        result = asyncio.run(
+            provider_service.call_provider_with_timeout(run, "m", on_provider_diagnostic=events.append))
         self.assertEqual(result, "ok")
         self.assertIn("provider_rate_limited_retry", [event["event"] for event in events])
 
@@ -328,18 +334,19 @@ class ProviderRetryPolicyTests(unittest.TestCase):
             raise QuotaExhausted("RESOURCE_EXHAUSTED")
 
         with self.assertRaises(HTTPException) as raised:
-            asyncio.run(main.call_provider_with_timeout(run, "m", on_provider_diagnostic=lambda event: None))
+            asyncio.run(
+                provider_service.call_provider_with_timeout(run, "m", on_provider_diagnostic=lambda event: None))
         self.assertEqual(raised.exception.detail["code"], "AI_PROVIDER_QUOTA_EXHAUSTED")
 
     def test_provider_calls_are_counted_by_operation_and_outcome(self) -> None:
         labels = {"operation": "embed", "outcome": "success"}
         before = metric("ai_rag_provider_calls_total", labels)
-        asyncio.run(main.call_provider_with_timeout(lambda: "ok", "m", operation="embed"))
+        asyncio.run(provider_service.call_provider_with_timeout(lambda: "ok", "m", operation="embed"))
         self.assertEqual(metric("ai_rag_provider_calls_total", labels), before + 1)
 
     def test_saturated_provider_limiter_answers_service_busy(self) -> None:
         async def scenario() -> str:
-            limiter = main.concurrency.provider
+            limiter = runtime_service.concurrency.provider
             held = [limiter.slot() for _ in range(limiter.limit)]
             for slot in held:
                 await slot.__aenter__()
@@ -348,7 +355,7 @@ class ProviderRetryPolicyTests(unittest.TestCase):
                     patch.object(limiter, "acquire_timeout_seconds", 0.01),
                     self.assertRaises(AppError) as raised,
                 ):
-                    await main.call_provider_with_timeout(lambda: "ok", "m")
+                    await provider_service.call_provider_with_timeout(lambda: "ok", "m")
                 return raised.exception.code
             finally:
                 for slot in held:
@@ -366,10 +373,10 @@ class EmbeddingTransportTests(unittest.TestCase):
         labels = {"operation": "embed", "kind": "embedding"}
         before = metric("ai_rag_provider_tokens_total", labels)
         with patch("app.infra.gemini.genai.Client", factory):
-            vectors, usage = asyncio.run(main.embed_text_batch(
+            vectors, usage = asyncio.run(provider_service.embed_text_batch(
                 "embed-key", "gemini-embedding-001", ["xin chào", "an toàn"], task_type="RETRIEVAL_DOCUMENT",
             ))
-            asyncio.run(main.embed_text_batch("embed-key", "gemini-embedding-001", ["lần hai"]))
+            asyncio.run(provider_service.embed_text_batch("embed-key", "gemini-embedding-001", ["lần hai"]))
         self.assertEqual(vectors, [[0.1, 0.2], [0.1, 0.2]])
         self.assertGreater(usage.embeddingTokens, 0)
         self.assertEqual(factory.call_count, 1)  # second batch reuses the pooled client
@@ -381,9 +388,9 @@ class EmbeddingTransportTests(unittest.TestCase):
 class FallbackMetricTests(unittest.TestCase):
     def test_structured_fallback_results_are_counted_per_stage(self) -> None:
         before = metric("ai_rag_fallbacks_total", {"stage": "unit"})
-        main.record_fallback("unit", {"content_origin": "structured_fallback"})
-        main.record_fallback("unit", {"content_origin": "provider_validated"})
-        main.record_fallback("unit", None)
+        deadlines_service.record_fallback("unit", {"content_origin": "structured_fallback"})
+        deadlines_service.record_fallback("unit", {"content_origin": "provider_validated"})
+        deadlines_service.record_fallback("unit", None)
         self.assertEqual(metric("ai_rag_fallbacks_total", {"stage": "unit"}), before + 1)
 
 

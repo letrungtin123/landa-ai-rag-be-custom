@@ -17,6 +17,7 @@ from app.workflows.contracts import WorkflowFailure, WorkflowValidationResult
 from tests.test_lesson_prompt_policy import request_and_unit
 from app.schemas.common import AiUsage
 from app.schemas.lesson_author import RagLessonAuthorCheckpointRequest, RagLessonAuthorRequest
+from app.api import deps as api_deps
 
 
 def fixture(count=5, *, action="generate_unit", index=0):
@@ -93,7 +94,7 @@ class ChapterCheckpointTests(unittest.TestCase):
         request = RagLessonAuthorCheckpointRequest.model_validate({**request.model_dump(), "blueprint_architecture": architecture})
         before = request.model_dump()
         events = []
-        with patch("app.main.generate_content", AsyncMock()) as provider, self.assertRaises(WorkflowFailure) as raised:
+        with patch("app.services.provider.generate_content", AsyncMock()) as provider, self.assertRaises(WorkflowFailure) as raised:
             asyncio.run(checkpoint_result(request, manifest, events))
         provider.assert_not_called()
         self.assertEqual(raised.exception.internal_code, "CHAPTER_INSTRUCTIONAL_PLAN_INVALID")
@@ -127,7 +128,7 @@ class ChapterCheckpointTests(unittest.TestCase):
     def test_unit_response_is_exact_selected_position_not_duplicate_title(self):
         request, units, manifest = fixture(index=3)
         provider = provider_result(units[3])
-        with patch("app.main.generate_content", provider):
+        with patch("app.services.provider.generate_content", provider):
             result = asyncio.run(checkpoint_result(request, manifest))
         self.assertEqual(provider.await_count, 1)
         self.assertEqual(result["unit_index"], 3)
@@ -143,7 +144,7 @@ class ChapterCheckpointTests(unittest.TestCase):
         for index in (3, 4):
             request, units, manifest = fixture(index=index)
             provider = provider_result(units[index])
-            with patch("app.main.generate_content", provider):
+            with patch("app.services.provider.generate_content", provider):
                 result = asyncio.run(checkpoint_result(request, manifest))
             generated.append(result["unit_index"])
             self.assertEqual(provider.await_count, 1)
@@ -158,7 +159,7 @@ class ChapterCheckpointTests(unittest.TestCase):
         manifest["facts"] += [{"fact_id": f, "text": "Other unit evidence.", "source_page": 5} for f in dense]
         request = RagLessonAuthorCheckpointRequest.model_validate({**request.model_dump(), "blueprint_architecture": architecture})
         provider = provider_result(units[0])
-        with patch("app.main.generate_content", provider):
+        with patch("app.services.provider.generate_content", provider):
             asyncio.run(checkpoint_result(request, manifest))
         self.assertEqual(provider.await_args.kwargs["max_output_tokens"], min(request.max_output_tokens, 8192))
         self.assertLessEqual(provider.await_args.kwargs["request_timeout_ms"], 180_000)
@@ -167,7 +168,7 @@ class ChapterCheckpointTests(unittest.TestCase):
         request, units, manifest = fixture()
         request = request.model_copy(update={"remaining_workflow_budget_ms": 12_000})
         provider = provider_result(units[0])
-        with patch("app.main.generate_content", provider):
+        with patch("app.services.provider.generate_content", provider):
             asyncio.run(checkpoint_result(request, manifest))
         self.assertLessEqual(provider.await_args.kwargs["request_timeout_ms"], 12_000)
         self.assertGreater(provider.await_args.kwargs["request_timeout_ms"], 0)
@@ -209,18 +210,18 @@ class ChapterCheckpointTests(unittest.TestCase):
     def test_estimated_or_retried_provider_usage_does_not_claim_complete_accounting(self):
         request, units, manifest = fixture()
         for known, retry in ((False, False), (True, True)):
-            with patch("app.main.generate_content", provider_result(units[0], known=known, retry=retry)):
+            with patch("app.services.provider.generate_content", provider_result(units[0], known=known, retry=retry)):
                 result = asyncio.run(checkpoint_result(request, manifest))
             self.assertFalse(result["usage_complete"])
             self.assertNotEqual(result["usage_source"], "provider")
-        with patch("app.main.generate_content", provider_result(units[0])):
+        with patch("app.services.provider.generate_content", provider_result(units[0])):
             result = asyncio.run(checkpoint_result(request, manifest, retrieval_usage=AiUsage(embeddingTokens=4, totalTokens=4)))
         self.assertFalse(result["usage_complete"])
 
     def test_full_completion_uses_all_existing_quality_gates_and_no_generation(self):
         request, _, manifest = fixture(count=1, action="validate_chapter")
         events = []
-        with patch("app.main.generate_content", AsyncMock(side_effect=AssertionError("No provider allowed"))) as provider:
+        with patch("app.services.provider.generate_content", AsyncMock(side_effect=AssertionError("No provider allowed"))) as provider:
             result = asyncio.run(checkpoint_result(request, manifest, events))
         provider.assert_not_called()
         self.assertEqual(result["status"], "ready")
@@ -240,7 +241,7 @@ class ChapterCheckpointTests(unittest.TestCase):
     def test_full_quality_failure_cannot_finalize_or_repair_immutable_units(self):
         request, _, manifest = fixture(count=1, action="validate_chapter")
         bad = WorkflowValidationResult([{"code": "ASSESSMENT_NOT_ALIGNED", "severity": "error"}])
-        with patch("app.main.pedagogical_validation_result", return_value=bad), patch("app.main.generate_content", AsyncMock()) as provider:
+        with patch("app.main.pedagogical_validation_result", return_value=bad), patch("app.services.provider.generate_content", AsyncMock()) as provider:
             with self.assertRaises(WorkflowFailure) as raised:
                 asyncio.run(checkpoint_result(request, manifest))
         self.assertEqual(raised.exception.failure_stage, "chapter_checkpoint_pedagogical_validation")
@@ -273,14 +274,14 @@ class ChapterCheckpointTests(unittest.TestCase):
         data = request.model_dump()
         data.update(api_key="synthetic-secret-do-not-echo", checkpoint_unit_index=100)
         async def request_http():
-            main.app.dependency_overrides[main.require_internal_token] = lambda: None
-            main.app.dependency_overrides[main.get_db] = lambda: None
+            main.app.dependency_overrides[api_deps.require_internal_token] = lambda: None
+            main.app.dependency_overrides[api_deps.get_db] = lambda: None
             try:
                 async with httpx.AsyncClient(transport=httpx.ASGITransport(app=main.app), base_url="http://test") as client:
                     return await client.post("/v1/lesson-author/chapter-checkpoint", json=data)
             finally:
-                main.app.dependency_overrides.pop(main.require_internal_token, None)
-                main.app.dependency_overrides.pop(main.get_db, None)
+                main.app.dependency_overrides.pop(api_deps.require_internal_token, None)
+                main.app.dependency_overrides.pop(api_deps.get_db, None)
         response = asyncio.run(request_http())
         self.assertEqual(response.status_code, 422)
         self.assertNotIn("synthetic-secret", response.text)
@@ -289,15 +290,15 @@ class ChapterCheckpointTests(unittest.TestCase):
     def test_internal_token_is_still_required_before_generation(self):
         request, _, _ = fixture()
         async def request_http():
-            main.app.dependency_overrides[main.get_db] = lambda: None
+            main.app.dependency_overrides[api_deps.get_db] = lambda: None
             try:
                 async with httpx.AsyncClient(transport=httpx.ASGITransport(app=main.app), base_url="http://test") as client:
                     payload = request.model_dump(mode="json")
                     payload["api_key"] = request.api_key.get_secret_value()
                     return await client.post("/v1/lesson-author/chapter-checkpoint", json=payload)
             finally:
-                main.app.dependency_overrides.pop(main.get_db, None)
-        with patch.object(main.settings, "service_token", "test-only-internal-token"), patch("app.main.generate_content", AsyncMock()) as provider:
+                main.app.dependency_overrides.pop(api_deps.get_db, None)
+        with patch.object(main.settings, "service_token", "test-only-internal-token"), patch("app.services.provider.generate_content", AsyncMock()) as provider:
             response = asyncio.run(request_http())
         self.assertIn(response.status_code, (401, 403))
         provider.assert_not_called()
@@ -324,7 +325,7 @@ class ChapterCheckpointTests(unittest.TestCase):
         manifest["facts"] = manifest["facts"][:1]
         manifest["supporting_evidence_facts"] = deepcopy(manifest["facts"])
         request = RagLessonAuthorCheckpointRequest.model_validate({**request.model_dump(), "blueprint_architecture": architecture})
-        with patch("app.main.generate_content", provider_result(units[1])):
+        with patch("app.services.provider.generate_content", provider_result(units[1])):
             result = asyncio.run(checkpoint_result(request, manifest))
         self.assertEqual(result["unit"]["source_fact_ids"], [])
         self.assertEqual(result["unit"]["supporting_evidence_fact_ids"], ["fixture-fact-0"])

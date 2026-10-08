@@ -75,7 +75,7 @@ class StagedRecoveryIdentityTests(unittest.TestCase):
         self.assertEqual(staged_component_repair_targets(broken, scope), [2])
         delta = {"components": [{"component_index": 2, "nodes": valid["components"][2]["nodes"], "edges": valid["components"][2]["edges"]}]}
         provider = AsyncMock(side_effect=[(json.dumps(broken), AiUsage()), (json.dumps(delta), AiUsage())])
-        with patch("app.main.generate_content", provider), self.assertLogs("app.main", level="INFO") as logs:
+        with patch("app.services.provider.generate_content", provider), self.assertLogs("app.main", level="INFO") as logs:
             result, _ = asyncio.run(generate_staged_lesson_author_proposal(request, "Synthetic", "", "", source_rows=[], source_coverage_manifest=manifest))
         actual = result["chapters"][0]["lessons"][0]["units"][0]
         self.assertEqual(actual["components"], valid["components"])
@@ -161,7 +161,7 @@ class StagedRecoveryIdentityTests(unittest.TestCase):
         # Force genuine unit/plan recovery, not payload-only repair.
         broken = {**deepcopy(valid), "components": []}
         provider = AsyncMock(side_effect=[(json.dumps(broken), AiUsage()), (json.dumps({"units": [valid]}), AiUsage())])
-        with patch("app.main.generate_content", provider):
+        with patch("app.services.provider.generate_content", provider):
             result, _ = asyncio.run(generate_staged_lesson_author_proposal(request, "Synthetic", "", "", source_rows=[], source_coverage_manifest=manifest))
         self.assertEqual(result["chapters"][0]["lessons"][0]["units"][0]["components"], valid["components"])
         self.assertEqual(provider.await_count, 2)
@@ -182,7 +182,7 @@ class StagedRecoveryIdentityTests(unittest.TestCase):
         cases.append((broken, {"components": [{"component_index": 2, "source_fact_ids": ["unknown"]}]}, "COMPONENT_REPAIR_PROTECTED_FIELD_EMITTED"))
         for initial, recovery, reason in cases:
             provider = AsyncMock(side_effect=[(json.dumps(initial), AiUsage()), (json.dumps(recovery), AiUsage())])
-            with patch("app.main.generate_content", provider), self.assertLogs("app.main", level="INFO") as logs:
+            with patch("app.services.provider.generate_content", provider), self.assertLogs("app.main", level="INFO") as logs:
                 with self.assertRaises(LessonAuthorProposalValidationError):
                     asyncio.run(generate_staged_lesson_author_proposal(request, "Synthetic", "", "", source_rows=[], source_coverage_manifest=manifest))
             self.assertEqual(provider.await_count, 2)

@@ -22,6 +22,7 @@ from app import main
 from app.schemas.chat import RagChatMessage, RagChatRequest, RagSourceDocument
 from app.schemas.common import AiUsage
 from app.schemas.lesson_author import RagLessonAuthorBlueprintRequest, RagLessonAuthorRequest
+from app.services import provider as provider_service
 from app.source_structure import PARSER_VERSION
 
 TENANT_ID = "11111111-1111-4111-8111-111111111111"
@@ -256,8 +257,8 @@ class PinnedTestCase(unittest.TestCase):
             self.enterContext(patch.object(main.settings, name, value))
         self.embed = EmbedRecorder()
         self.generate = GenerateRecorder()
-        self.enterContext(patch("app.main.embed_texts", self.embed))
-        self.enterContext(patch("app.main.generate_content", self.generate))
+        self.enterContext(patch("app.services.provider.embed_texts", self.embed))
+        self.enterContext(patch("app.services.provider.generate_content", self.generate))
 
     def assert_tenant_scoped(self, pool: FakePool) -> None:
         self.assertTrue(pool.calls)
@@ -464,16 +465,16 @@ class EmbedTextsTests(unittest.TestCase):
             n = len(contents)
             return [[float(len(text))] for text in contents], AiUsage(embeddingTokens=2 * n, totalTokens=2 * n)
 
-        self.enterContext(patch("app.main.embed_text_batch", fake_batch))
+        self.enterContext(patch("app.services.provider.embed_text_batch", fake_batch))
 
     def test_empty_input_returns_empty_and_zero_usage_without_provider_call(self) -> None:
-        self.assertEqual(run(main.embed_texts("key", "gemini-embedding-001", [])), ([], AiUsage()))
+        self.assertEqual(run(provider_service.embed_texts("key", "gemini-embedding-001", [])), ([], AiUsage()))
         self.assertEqual(self.batches, [])
 
     def test_batches_by_embedding_batch_size_and_combines_usage(self) -> None:
         with patch.object(main.settings, "embedding_batch_size", 2):
             vectors, usage = run(
-                main.embed_texts(
+                provider_service.embed_texts(
                     "key",
                     " text-embedding-004 ",
                     ["a", "bb", "ccc", "dddd", "eeeee"],
@@ -492,14 +493,14 @@ class EmbedTextsTests(unittest.TestCase):
 
     def test_batch_size_rules(self) -> None:
         with patch.object(main.settings, "embedding_batch_size", 32):
-            run(main.embed_texts("key", "gemini-embedding-2", ["a", "b", "c"]))
+            run(provider_service.embed_texts("key", "gemini-embedding-2", ["a", "b", "c"]))
         self.assertEqual([batch["size"] for batch in self.batches], [1, 1, 1])  # model forces batch size 1
         for configured, expected in ((500, 100), (0, 1), (-3, 1)):
             with self.subTest(configured=configured), patch.object(main.settings, "embedding_batch_size", configured):
-                self.assertEqual(main.embedding_batch_size("gemini-embedding-001"), expected)
+                self.assertEqual(provider_service.embedding_batch_size("gemini-embedding-001"), expected)
         self.batches.clear()
         with patch.object(main.settings, "embedding_batch_size", 500):
-            run(main.embed_texts("key", "gemini-embedding-001", [str(i) for i in range(101)]))
+            run(provider_service.embed_texts("key", "gemini-embedding-001", [str(i) for i in range(101)]))
         self.assertEqual([batch["size"] for batch in self.batches], [100, 1])
 
 

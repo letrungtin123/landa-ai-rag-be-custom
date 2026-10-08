@@ -14,8 +14,10 @@ from typing import Any
 from unittest.mock import AsyncMock, patch
 
 import httpx
+from fastapi import HTTPException
 
 from app import main
+from app.api import deps as api_deps
 from app.idm.contracts import IdmTreatmentRefV1, IdmUnitBriefV1, IdmUnitQualityV1, brief_hash_of
 from app.idm.runtime import IdmStageError
 from app.idm.storyboard import build_idm_expected, output_budget, parse_brief, run_idm_unit
@@ -144,7 +146,7 @@ def judge(*overrides: tuple[str, str, int | None]) -> dict[str, Any]:
 
 
 def unavailable() -> Exception:
-    return main.HTTPException(status_code=503, detail={"code": "AI_PROVIDER_UNAVAILABLE", "message": "private"})
+    return HTTPException(status_code=503, detail={"code": "AI_PROVIDER_UNAVAILABLE", "message": "private"})
 
 
 class FakeGenerate:
@@ -171,15 +173,16 @@ class FakeGenerate:
 
 class StoryboardEndpointTestCase(unittest.IsolatedAsyncioTestCase):
     def setUp(self) -> None:
-        main.app.dependency_overrides[main.require_internal_token] = lambda: None
+        main.app.dependency_overrides[api_deps.require_internal_token] = lambda: None
 
     def tearDown(self) -> None:
-        main.app.dependency_overrides.pop(main.require_internal_token, None)
+        main.app.dependency_overrides.pop(api_deps.require_internal_token, None)
 
     async def post(self, body: dict[str, Any], provider: FakeGenerate | None = None, *,
                    mode: str = "observe") -> tuple[int, dict[str, Any], FakeGenerate]:
         provider = provider or FakeGenerate()
-        with patch("app.main.generate_content", provider), patch.object(main.settings, "idm_judge_mode", mode):
+        with patch("app.services.provider.generate_content", provider), \
+                patch.object(main.settings, "idm_judge_mode", mode):
             async with httpx.AsyncClient(transport=httpx.ASGITransport(app=main.app), base_url="http://t") as client:
                 reply = await client.post(URL, json=body)
         return reply.status_code, reply.json(), provider

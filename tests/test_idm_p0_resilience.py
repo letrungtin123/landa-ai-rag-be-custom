@@ -53,6 +53,7 @@ from app.idm.runtime import (
 from app.infra.provider_limits import classify_provider_limit
 from app.schemas.common import AiUsage
 from app.schemas.orchestration_v2 import RagLessonAuthorChapterShardV2Request
+from app.services import provider as provider_service
 from tests import idm_golden as g
 from tests.idm_test_support import ALLOWANCE, assert_node_trace, make_runtime
 from tests.test_idm_endpoints import (
@@ -343,7 +344,8 @@ class UnitProviderStopTests(StoryboardEndpointTestCase):
             calls.append({"prompt": prompt, **options})
             return answers.pop(0)(options), AiUsage(inputTokens=100, outputTokens=50, totalTokens=150)
 
-        with patch("app.main.generate_content", generate), patch.object(main.settings, "idm_judge_mode", "off"):
+        with patch("app.services.provider.generate_content", generate), \
+                patch.object(main.settings, "idm_judge_mode", "off"):
             async with httpx.AsyncClient(transport=httpx.ASGITransport(app=main.app), base_url="http://t") as client:
                 reply = await client.post("/v1/lesson-author/orchestration-v2/unit", json=body)
         self.assertEqual(reply.status_code, 200)
@@ -411,7 +413,7 @@ class ProviderRetryLoopTests(unittest.TestCase):
 
         with patch("app.main.asyncio.sleep", sleep):
             try:
-                result: Any = asyncio.run(main.call_provider_with_timeout(
+                result: Any = asyncio.run(provider_service.call_provider_with_timeout(
                     run, "m", on_provider_diagnostic=events.append, **options))
             except HTTPException as error:
                 result = error
@@ -448,7 +450,7 @@ class ProviderRetryLoopTests(unittest.TestCase):
 
     def test_legacy_code_sets_treat_a_rate_limit_like_the_quota_code_they_knew(self) -> None:
         error = HTTPException(503, {"code": "AI_PROVIDER_RATE_LIMITED"})
-        self.assertTrue(main.is_non_retryable_provider_error(error))
+        self.assertTrue(provider_service.is_non_retryable_provider_error(error))
         self.assertIn("AI_PROVIDER_RATE_LIMITED", main.ORCHESTRATION_V2_PROVIDER_FALLBACK_CODES)
 
 

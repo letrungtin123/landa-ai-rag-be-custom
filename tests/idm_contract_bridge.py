@@ -34,8 +34,10 @@ from typing import Any
 from unittest.mock import patch
 
 import httpx
+from fastapi import HTTPException
 
 from app import main
+from app.api import deps as api_deps
 from app.idm.node_acceptance import node_acceptance_findings
 from app.idm.storyboard import acceptance_context, parse_brief
 from app.lesson_author_orchestration_v2_provider import UnitGenerationContractV2
@@ -168,7 +170,7 @@ class UnitGenerate:
             text = json.dumps(self.writer.pop(0) if self.writer else writer_answer(self.request), ensure_ascii=False)
         elif name.startswith("StagedMultiRepair"):
             if not self.repair:
-                raise main.HTTPException(status_code=503, detail={"code": "AI_PROVIDER_UNAVAILABLE",
+                raise HTTPException(status_code=503, detail={"code": "AI_PROVIDER_UNAVAILABLE",
                                                                   "message": "bridge has no repair answer"})
             text = json.dumps(self.repair.pop(0), ensure_ascii=False)
         elif name.startswith("IdmJudgeResponseV1"):
@@ -235,14 +237,14 @@ async def run(stage: str, request: dict[str, Any], options: dict[str, Any]) -> d
         fake = UnitGenerate(request, options)
     else:
         raise ValueError(f"unknown stage {stage}")
-    main.app.dependency_overrides[main.require_internal_token] = lambda: None
+    main.app.dependency_overrides[api_deps.require_internal_token] = lambda: None
     try:
         transport = httpx.ASGITransport(app=main.app)
-        with patch("app.main.generate_content", fake):
+        with patch("app.services.provider.generate_content", fake):
             async with httpx.AsyncClient(transport=transport, base_url="http://bridge") as client:
                 reply = await client.post(ROUTES[stage], json=request)
     finally:
-        main.app.dependency_overrides.pop(main.require_internal_token, None)
+        main.app.dependency_overrides.pop(api_deps.require_internal_token, None)
     return {"status": reply.status_code, "response": reply.json(), "calls": fake.calls}
 
 

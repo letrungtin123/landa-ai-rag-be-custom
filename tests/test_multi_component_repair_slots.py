@@ -59,7 +59,7 @@ async def endpoint_fixture(delta_mutator=None):
     if delta_mutator:
         delta_mutator(delta)
     provider = AsyncMock(side_effect=[(json.dumps(instance_wire(broken)), AiUsage()), (json.dumps(delta), AiUsage())])
-    with patch('app.main.generate_content', provider):
+    with patch('app.services.provider.generate_content', provider):
         result = await checkpoint_result(request, manifest)
         final = await checkpoint_result(request.model_copy(update={
             'checkpoint_action': 'validate_chapter', 'checkpoint_unit_index': None,
@@ -169,7 +169,7 @@ class MultiComponentRepairSlotTests(unittest.TestCase):
             else: delta['components']['c0']['semantic_content'] = broken['components'][0]['semantic_content']
             provider = AsyncMock(side_effect=[(json.dumps(instance_wire(broken)), AiUsage()), (json.dumps(delta), AiUsage())])
             before = deepcopy(broken)
-            with patch('app.main.generate_content', provider), patch('app.main.build_source_locked_html_unit') as fallback:
+            with patch('app.services.provider.generate_content', provider), patch('app.main.build_source_locked_html_unit') as fallback:
                 with self.assertRaises(WorkflowFailure) as caught:
                     asyncio.run(checkpoint_result(request, manifest))
             self.assertEqual(caught.exception.internal_code, 'CHAPTER_COMPONENT_REPAIR_EXHAUSTED')

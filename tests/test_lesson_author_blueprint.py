@@ -33,10 +33,8 @@ from app.main import (
     build_lesson_author_unit_response_schema,
     build_source_locked_html_unit,
     drop_invalid_lesson_author_source_refs,
-    embed_text_batch,
     enforce_lesson_author_source_structure,
     ensure_blueprint_source_granularity,
-    generate_content,
     generate_staged_lesson_author_proposal,
     generate_validated_lesson_author_blueprint,
     normalize_lesson_author_proposal_tree,
@@ -48,6 +46,7 @@ from app.main import (
     validate_staged_skeleton_source_facts,
     validate_lesson_author_proposal_shape,
 )
+from app.services.provider import embed_text_batch, generate_content
 from app.schemas.common import AiUsage
 from app.schemas.lesson_author import RagLessonAuthorBlueprintRequest, RagLessonAuthorRequest
 from app.workflows.contracts import WorkflowValidationResult
@@ -536,7 +535,7 @@ class LessonAuthorBlueprintContractTests(unittest.TestCase):
         usage = AiUsage(inputTokens=1, outputTokens=1, totalTokens=2)
 
         with patch(
-            "app.main.generate_content",
+            "app.services.provider.generate_content",
             new=AsyncMock(side_effect=[("{", usage), ("{", usage), (content, usage)]),
         ) as generate:
             proposal, combined_usage = asyncio.run(generate_staged_lesson_author_proposal(
@@ -585,7 +584,7 @@ class LessonAuthorBlueprintContractTests(unittest.TestCase):
         usage = AiUsage(inputTokens=1, outputTokens=1, totalTokens=2)
 
         with patch(
-            "app.main.generate_content",
+            "app.services.provider.generate_content",
             new=AsyncMock(side_effect=[("{", usage)] * 6),
         ) as generate:
             proposal, combined_usage = asyncio.run(generate_staged_lesson_author_proposal(
@@ -1810,7 +1809,7 @@ class LessonAuthorBlueprintRetryTests(unittest.IsolatedAsyncioTestCase):
         first_usage = AiUsage(inputTokens=12, outputTokens=3, totalTokens=15)
         second_usage = AiUsage(inputTokens=14, outputTokens=7, totalTokens=21)
         with patch(
-            "app.main.generate_content",
+            "app.services.provider.generate_content",
             new=AsyncMock(side_effect=[("{", first_usage), (json.dumps(valid_blueprint()), second_usage)]),
         ) as generate:
             blueprint, usage = await generate_validated_lesson_author_blueprint(
@@ -1842,7 +1841,7 @@ class LessonAuthorBlueprintRetryTests(unittest.IsolatedAsyncioTestCase):
         usage = AiUsage(inputTokens=10, outputTokens=10, totalTokens=20)
 
         with patch(
-            "app.main.generate_content",
+            "app.services.provider.generate_content",
             new=AsyncMock(side_effect=[
                 (json.dumps(invalid_candidate, ensure_ascii=False), usage),
                 (json.dumps(repaired_candidate, ensure_ascii=False), usage),
@@ -1860,7 +1859,7 @@ class LessonAuthorBlueprintRetryTests(unittest.IsolatedAsyncioTestCase):
     async def test_persistent_invalid_candidates_raise_safe_error_with_usage(self) -> None:
         attempt_usage = AiUsage(inputTokens=10, outputTokens=2, totalTokens=12)
         with patch(
-            "app.main.generate_content",
+            "app.services.provider.generate_content",
             new=AsyncMock(side_effect=[("{", attempt_usage), ("{", attempt_usage)]),
         ) as generate:
             with self.assertRaises(LessonAuthorBlueprintGenerationError) as raised:
@@ -1902,7 +1901,7 @@ class LessonAuthorBlueprintRetryTests(unittest.IsolatedAsyncioTestCase):
             return WorkflowValidationResult([semantic_issue] if validation_calls == 1 else [])
 
         with patch(
-            "app.main.generate_content",
+            "app.services.provider.generate_content",
             new=AsyncMock(side_effect=[
                 (json.dumps(valid_blueprint(), ensure_ascii=False), usage),
                 (json.dumps(valid_blueprint(), ensure_ascii=False), usage),
@@ -1945,7 +1944,7 @@ class LessonAuthorBlueprintRetryTests(unittest.IsolatedAsyncioTestCase):
         }
 
         with patch(
-            "app.main.generate_content",
+            "app.services.provider.generate_content",
             new=AsyncMock(side_effect=[
                 (json.dumps(valid_blueprint(), ensure_ascii=False), usage),
                 (json.dumps(valid_blueprint(), ensure_ascii=False), usage),
@@ -1970,7 +1969,7 @@ class LessonAuthorBlueprintRetryTests(unittest.IsolatedAsyncioTestCase):
             "path": "chapter_1.lesson_1.unit_1.block_1",
         }
         with patch(
-            "app.main.generate_content",
+            "app.services.provider.generate_content",
             new=AsyncMock(side_effect=[(json.dumps(valid_blueprint()), usage), ("{", usage)]),
         ):
             with self.assertRaises(LessonAuthorBlueprintGenerationError) as raised:
@@ -1988,7 +1987,7 @@ class LessonAuthorBlueprintRetryTests(unittest.IsolatedAsyncioTestCase):
             "path": "chapter_1.lesson_1.unit_1.block_1",
         }
         with patch(
-            "app.main.generate_content",
+            "app.services.provider.generate_content",
             new=AsyncMock(side_effect=[("{", usage), (json.dumps(valid_blueprint()), usage)]),
         ):
             with self.assertRaises(CourseArchitectSemanticScopeError) as raised:
@@ -2009,7 +2008,7 @@ class LessonAuthorBlueprintRetryTests(unittest.IsolatedAsyncioTestCase):
         attempt_usage = AiUsage(inputTokens=10, outputTokens=2, totalTokens=12)
 
         with patch(
-            "app.main.generate_content",
+            "app.services.provider.generate_content",
             new=AsyncMock(side_effect=[("{", attempt_usage), ("{", attempt_usage)]),
         ) as generate:
             blueprint, usage = await generate_validated_lesson_author_blueprint(

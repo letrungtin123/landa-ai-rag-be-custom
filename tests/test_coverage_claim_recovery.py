@@ -54,7 +54,7 @@ class CoverageClaimRecoveryTests(unittest.TestCase):
                 before = deepcopy(broken)
                 delta = repaired_payload(unit)
                 provider = AsyncMock(side_effect=[(json.dumps(broken), AiUsage()), (json.dumps(delta), AiUsage())])
-                with patch("app.main.generate_content", provider), self.assertLogs("app.main", "INFO") as logs:
+                with patch("app.services.provider.generate_content", provider), self.assertLogs("app.main", "INFO") as logs:
                     result = asyncio.run(checkpoint_result(request, manifest))
                     final_request = request.model_copy(update={"checkpoint_action": "validate_chapter", "checkpoint_unit_index": None,
                         "checkpoint_units": [main.ChapterCheckpointUnit(unit_index=0, unit=result["unit"])]})
@@ -88,7 +88,7 @@ class CoverageClaimRecoveryTests(unittest.TestCase):
                 elif mode == "other_component": wire["components"]["c2"]["component_plan_id"] = "PRIVATE_TARGET"
                 else: wire["components"]["c0"]["source_fact_ids"] = facts
                 provider = AsyncMock(return_value=(json.dumps(wire), AiUsage()))
-                with patch("app.main.generate_content", provider), self.assertLogs("app.main", "INFO") as logs:
+                with patch("app.services.provider.generate_content", provider), self.assertLogs("app.main", "INFO") as logs:
                     with self.assertRaises(WorkflowFailure) as failure:
                         asyncio.run(checkpoint_result(request, manifest))
                 self.assertEqual(provider.await_count, 1)
@@ -113,7 +113,7 @@ class CoverageClaimRecoveryTests(unittest.TestCase):
                 elif mode == "ownership": change["source_fact_ids"] = unit["source_fact_ids"]
                 else: change["semantic_content"] = {"version": 2, "sections": []}
                 provider = AsyncMock(side_effect=[(json.dumps(wire), AiUsage()), (json.dumps(delta), AiUsage())])
-                with patch("app.main.generate_content", provider), patch("app.main.build_source_locked_html_unit") as fallback:
+                with patch("app.services.provider.generate_content", provider), patch("app.main.build_source_locked_html_unit") as fallback:
                     with self.assertRaises(WorkflowFailure) as failure:
                         asyncio.run(checkpoint_result(request, manifest))
                 self.assertEqual(provider.await_count, 2)

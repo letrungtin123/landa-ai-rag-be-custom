@@ -294,7 +294,7 @@ class SourceChapterPolicyIntegrationTests(unittest.IsolatedAsyncioTestCase):
         with patch("app.main.retrieve_chunks", new=AsyncMock(return_value=([], AiUsage(), context))), \
              patch("app.main.generate_validated_lesson_author_blueprint", new=AsyncMock(
                  side_effect=WorkflowFailure("PROVIDER_ERROR", "Mocked Architect boundary"))) as architect, \
-             patch("app.main.generate_content", new=AsyncMock()) as provider, \
+             patch("app.services.provider.generate_content", new=AsyncMock()) as provider, \
              patch("app.main.logger.info") as log:
             with self.assertRaises(HTTPException) as failure:
                 await lesson_author_blueprint(blueprint_request(), pool=None)
@@ -329,7 +329,7 @@ class SourceChapterPolicyIntegrationTests(unittest.IsolatedAsyncioTestCase):
         raw = valid_blueprint()
         raw["chapters"][0]["source_refs"] = ["src-001"]
         raw["chapters"][0]["title"] = "Provider display title"
-        with patch("app.main.generate_content", new=AsyncMock(return_value=(json.dumps(raw), AiUsage()))) as provider:
+        with patch("app.services.provider.generate_content", new=AsyncMock(return_value=(json.dumps(raw), AiUsage()))) as provider:
             result, _ = await generate_validated_lesson_author_blueprint(blueprint_request(), "synthetic prompt", source_chapter_policy=policy)
         self.assertEqual(provider.await_count, 1)
         self.assertEqual(result["chapters"][0]["title"], "Foundation")
@@ -340,7 +340,7 @@ class SourceChapterPolicyIntegrationTests(unittest.IsolatedAsyncioTestCase):
         del doc["structure"]["chapter_authority"]
         context = build_source_structure_context([doc], locale="en")
         with patch("app.main.retrieve_chunks", new=AsyncMock(return_value=([], AiUsage(), context))), \
-             patch("app.main.generate_content", new=AsyncMock()) as provider, \
+             patch("app.services.provider.generate_content", new=AsyncMock()) as provider, \
              patch("app.main.logger.info") as log:
             with self.assertRaises(HTTPException) as failure:
                 await lesson_author_blueprint(blueprint_request(), pool=None)

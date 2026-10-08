@@ -21,8 +21,11 @@ from app import main
 from app.__main__ import uvicorn_options
 from app.core.config import Settings, missing_required_setting_names
 from app.infra import db as db_infra
+from app.infra import gemini as gemini_infra
 from app.infra import schema_check
 from app.infra.schema_check import SchemaCheckResult, SchemaGuard
+from app.api.routes import health as health_routes
+from app.services import runtime as runtime_service
 
 TOKEN = "sep1-test-token-0123456789"
 
@@ -350,15 +353,15 @@ class EndpointTests(unittest.TestCase):
                         patch.object(main.settings, "service_token", TOKEN)]
         for item in self.patches:
             item.start()
-        main.runtime_state.reset()
-        main.schema_guard.reset()
+        runtime_service.runtime_state.reset()
+        runtime_service.schema_guard.reset()
 
     def tearDown(self) -> None:
         for item in reversed(self.patches):
             item.stop()
-        main.runtime_state.reset()
-        main.schema_guard.reset()
-        main.db_pool = None
+        runtime_service.runtime_state.reset()
+        runtime_service.schema_guard.reset()
+        runtime_service.db_pool = None
 
     def request(self, method: str, path: str, **kwargs: Any) -> httpx.Response:
         async def scenario() -> httpx.Response:
@@ -368,19 +371,19 @@ class EndpointTests(unittest.TestCase):
         return asyncio.run(scenario())
 
     def test_readyz_reports_schema_failures_with_a_safe_code(self) -> None:
-        main.runtime_state.started = True
-        main.db_pool = ReadyPool()  # type: ignore[assignment]
-        main.schema_guard.record(SchemaCheckResult(status="failed", missing=("table:rag_chunks",)))
+        runtime_service.runtime_state.started = True
+        runtime_service.db_pool = ReadyPool()  # type: ignore[assignment]
+        runtime_service.schema_guard.record(SchemaCheckResult(status="failed", missing=("table:rag_chunks",)))
         response = self.request("GET", "/readyz")
         self.assertEqual((response.status_code, response.json()["detail"]["code"]), (503, "SCHEMA_CHECK_FAILED"))
         self.assertNotIn("rag_chunks", response.text)
-        main.schema_guard.record(SchemaCheckResult(status="ok"))
+        runtime_service.schema_guard.record(SchemaCheckResult(status="ok"))
         self.assertEqual(self.request("GET", "/readyz").status_code, 200)
 
     def test_readyz_runs_a_pending_schema_check(self) -> None:
-        main.runtime_state.started = True
-        main.db_pool = ReadyPool()  # type: ignore[assignment]
-        with patch.object(main.schema_infra, "run_schema_check",
+        runtime_service.runtime_state.started = True
+        runtime_service.db_pool = ReadyPool()  # type: ignore[assignment]
+        with patch.object(schema_check, "run_schema_check",
                           AsyncMock(return_value=SchemaCheckResult(status="error"))) as check:
             response = self.request("GET", "/readyz")
         check.assert_awaited_once()
@@ -413,35 +416,35 @@ class EndpointTests(unittest.TestCase):
 
 class StartupTests(unittest.TestCase):
     def tearDown(self) -> None:
-        main.db_pool = None
-        main.database = None
-        main.schema_guard.reset()
-        main.runtime_state.reset()
+        runtime_service.db_pool = None
+        runtime_service.database = None
+        runtime_service.schema_guard.reset()
+        runtime_service.runtime_state.reset()
 
     def test_startup_survives_an_unreachable_database_and_connects_later(self) -> None:
         pool = MagicMock(close=AsyncMock(), fetchval=AsyncMock(return_value=1))
         create_pool = AsyncMock(side_effect=[OSError("refused"), pool])
-        refresh = AsyncMock(side_effect=lambda *args, **kwargs: main.schema_guard.record(SchemaCheckResult("ok")))
+        refresh = AsyncMock(side_effect=lambda *args, **kwargs: runtime_service.schema_guard.record(SchemaCheckResult("ok")))
 
         async def scenario() -> None:
             async with main.app.router.lifespan_context(main.app):
-                self.assertTrue(main.runtime_state.started)
-                self.assertIsNone(main.db_pool)
-                self.assertEqual((await main.readyz()).status_code, 503)
-                assert main.database is not None
-                await main.database.wait_retry()
-                self.assertIs(main.db_pool, pool)
-                self.assertEqual((await main.readyz()).status_code, 200)
-            self.assertIsNone(main.db_pool)
+                self.assertTrue(runtime_service.runtime_state.started)
+                self.assertIsNone(runtime_service.db_pool)
+                self.assertEqual((await health_routes.readyz()).status_code, 503)
+                assert runtime_service.database is not None
+                await runtime_service.database.wait_retry()
+                self.assertIs(runtime_service.db_pool, pool)
+                self.assertEqual((await health_routes.readyz()).status_code, 200)
+            self.assertIsNone(runtime_service.db_pool)
 
         with (
             patch.object(main.asyncpg, "create_pool", create_pool),
-            patch.object(main, "require_settings", MagicMock()),
+            patch.object(runtime_service, "require_settings", MagicMock()),
             patch.object(main.settings, "supabase_service_key", ""),
-            patch.object(main.schema_guard, "refresh", refresh),
-            patch.object(main.db_infra, "retry_delay_seconds", lambda *args, **kwargs: 0.01),
-            patch.object(main.gemini_infra.client_pool, "clear"),
-            patch.object(main.concurrency, "shutdown"),
+            patch.object(runtime_service.schema_guard, "refresh", refresh),
+            patch.object(db_infra, "retry_delay_seconds", lambda *args, **kwargs: 0.01),
+            patch.object(gemini_infra.client_pool, "clear"),
+            patch.object(runtime_service.concurrency, "shutdown"),
         ):
             asyncio.run(scenario())
         self.assertEqual(create_pool.await_count, 2)
@@ -451,15 +454,15 @@ class StartupTests(unittest.TestCase):
                          (main.settings.db_pool_min, main.settings.db_pool_max))
         refresh.assert_awaited_once()
         pool.close.assert_awaited_once()
-        self.assertIsNone(main.supabase_client)  # no service key: signed URLs only
+        self.assertIsNone(runtime_service.supabase_client)  # no service key: signed URLs only
 
     def test_invalid_storage_allowlist_fails_fast(self) -> None:
         with (
-            patch.object(main, "require_settings", MagicMock()),
+            patch.object(runtime_service, "require_settings", MagicMock()),
             patch.object(main.settings, "storage_allowed_origins", "http://10.1.2.3:8000"),
             self.assertRaisesRegex(RuntimeError, "AI_RAG_STORAGE_ALLOWED_ORIGINS"),
         ):
-            asyncio.run(main.startup())
+            asyncio.run(runtime_service.startup())
 
 
 if __name__ == "__main__":

@@ -33,6 +33,7 @@ from app import main
 from app.core.errors import AppError, DocumentLimitError
 from app.schemas.common import AiUsage
 from app.schemas.kb import RagDeleteDocumentRequest, RagDeleteKbRequest, RagIndexRequest
+from app.services import provider as provider_service
 
 TENANT_ID = "11111111-1111-4111-8111-111111111111"
 KB_ID = "22222222-2222-4222-8222-222222222222"
@@ -461,7 +462,8 @@ class IndexDocumentCharacterizationTests(unittest.TestCase):
         embedder = embedder or FakeEmbedder()
         downloader = Mock(return_value=download, side_effect=None if download is not None
                           else AssertionError("download not expected"))
-        with patch("app.main.embed_texts", new=embedder), patch("app.main.download_storage_object", new=downloader), \
+        with patch("app.services.provider.embed_texts", new=embedder), \
+                patch("app.main.download_storage_object", new=downloader), \
                 self.assertLogs(main.logger, level="INFO") as logs:
             try:
                 outcome: Any = asyncio.run(main.index_document(request or index_request(), pool=db))
@@ -520,7 +522,7 @@ class IndexDocumentCharacterizationTests(unittest.TestCase):
                          ("Safety notes", len(THREE_PARAGRAPHS.encode())))
         self.assertEqual((diagnostics["chunk_count"], diagnostics["warnings"]), (3, []))
         [call] = embedder.calls
-        self.assertEqual(main.require_provider_api_key(call["api_key"]), API_KEY)
+        self.assertEqual(provider_service.require_provider_api_key(call["api_key"]), API_KEY)
         self.assertEqual((call["model"], call["task_type"], call["output_dimensionality"], call["contents"]),
                          ("gemini-embedding-001", "RETRIEVAL_DOCUMENT", 768, contents))
         self.assertEqual([getattr(r, "event", None) or r.getMessage() for r in records], [
