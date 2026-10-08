@@ -30,6 +30,7 @@ from app.idm.html_rules import (
     minimum_visible_chars,
     normalize_html_semantic,
 )
+from app.idm.mcq import normalize_single_choice
 from app.idm.node_acceptance import (
     AcceptanceContext,
     AcceptanceFinding,
@@ -393,9 +394,14 @@ class IdmUnitWriter:
 
     # -- acceptance --------------------------------------------------------------------------
     def normalize_component(self, index: int, component: Any) -> Any:
-        """Deterministic, meaning-preserving html fixes before validation (``app.idm.html_rules``)."""
+        """Deterministic, meaning-preserving fixes before validation: html (``app.idm.html_rules``) and the
+        seeded option order of a single-choice question (``app.idm.mcq``, QC course 364564 N2)."""
 
         plan_type = self.plans[index]["type"] if 0 <= index < len(self.plans) else None
+        if plan_type == "problem" and isinstance(component, dict):
+            normalized, codes = normalize_single_choice(component, str(self.plans[index]["component_plan_id"]))
+            self.runtime.adjustments.update(codes)
+            return normalized
         if plan_type != "html" or not isinstance(component, dict) or not isinstance(
                 component.get("semantic_content"), dict):
             return component

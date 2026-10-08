@@ -19,6 +19,7 @@ from fastapi import HTTPException
 from app import main
 from app.api import deps as api_deps
 from app.idm.contracts import IdmTreatmentRefV1, IdmUnitBriefV1, IdmUnitQualityV1, brief_hash_of
+from app.idm.mcq import normalize_single_choice
 from app.idm.runtime import IdmStageError
 from app.idm.storyboard import build_idm_expected, output_budget, parse_brief, run_idm_unit
 from app.lesson_author_orchestration_v2_provider import UnitGenerationContractV2
@@ -130,6 +131,13 @@ def worksheet_writer(body: dict[str, Any]) -> dict[str, Any]:
             "Cấp 3 khi liên quan an toàn, pháp lý hoặc truyền thông: escalate ngay cho quản lý."]}),
     ]}
     return writer
+
+
+def served(body: dict[str, Any], writer: dict[str, Any], index: int) -> dict[str, Any]:
+    """A writer problem slot as the server keeps it: options in the plan's seeded order (QC 364564, N2)."""
+
+    plan_id = body["unit_contract"]["component_plan"][index]["component_plan_id"]
+    return normalize_single_choice(writer["components"][f"c{index}"], plan_id)[0]
 
 
 def slot_repair(writer: dict[str, Any], index: int, **changes: Any) -> dict[str, Any]:
@@ -318,7 +326,7 @@ class UnitEndpointTests(StoryboardEndpointTestCase):
         self.assertIn('{"code":"IDM_W5_PRACTICE_INCOMPLETE","path":"components[1]"}', repair["prompt"])
         self.assertTrue(quality.repair_applied)
         self.assertEqual(quality.deterministic_codes, ["IDM_W5_PRACTICE_INCOMPLETE"])
-        self.assertEqual(data["unit"]["components"][1]["explanation"], good["components"]["c1"]["explanation"])
+        self.assertEqual(data["unit"]["components"][1]["explanation"], served(body, good, 1)["explanation"])
         self.assertEqual([e["phase"] for e in data["attempt_trace"]],
                          ["idm_w5_writer", "idm_w5_repair", "idm_w6_judge"])
 
@@ -519,7 +527,7 @@ class JudgeEndpointTests(StoryboardEndpointTestCase):
         quality = self.assert_envelope(data, "provider_validated", "review_required", "provider")
         self.assertEqual(provider.names, [WRITER, JUDGE, REPAIR, JUDGE])
         self.assertEqual((quality.judge_status, quality.repair_applied), ("review_required", False))
-        self.assertEqual(data["unit"]["components"][0]["explanation"], writer["components"]["c0"]["explanation"])
+        self.assertEqual(data["unit"]["components"][0]["explanation"], served(body, writer, 0)["explanation"])
 
     async def test_repair_mode_keeps_the_draft_when_the_repair_fails(self) -> None:
         body = escalate_body()
@@ -538,8 +546,7 @@ class JudgeEndpointTests(StoryboardEndpointTestCase):
                 quality = self.assert_envelope(data, envelope[0], "review_required", envelope[1])
                 self.assertEqual(provider.names, [WRITER, JUDGE, REPAIR])
                 self.assertEqual((quality.judge_status, quality.repair_applied), ("review_required", False))
-                self.assertEqual(data["unit"]["components"][0]["explanation"],
-                                 writer["components"]["c0"]["explanation"])
+                self.assertEqual(data["unit"]["components"][0]["explanation"], served(body, writer, 0)["explanation"])
 
     async def test_ai_drafted_scenario_needs_review_when_judge_does_not_pass_q5(self) -> None:
         body = escalate_body()

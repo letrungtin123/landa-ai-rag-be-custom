@@ -307,7 +307,7 @@
       "question": "Một khách hàng VIP gọi đến, cho biết sản phẩm vừa giao gây chập điện và có nguy cơ cháy. Khách yêu cầu được hoàn tiền ngay. Bạn nên làm gì trước tiên?",
       "choices": [
        {
-        "text": "Hứa hoàn tiền ngay để giữ chân khách VIP",
+        "text": "Chỉ thông báo trưởng nhóm vì đây là khách VIP",
         "correct": false
        },
        {
@@ -315,11 +315,11 @@
         "correct": true
        },
        {
-        "text": "Chỉ thông báo trưởng nhóm vì đây là khách VIP",
+        "text": "Hứa hoàn tiền ngay để giữ chân khách VIP",
         "correct": false
        }
       ],
-      "explanation": "Tiêu chí: khiếu nại liên quan an toàn bắt buộc phải escalate. A — sai vì không được hứa bồi thường trước khi phân loại mức độ; B — đúng vì yếu tố an toàn là tiêu chí bắt buộc; C — sai vì quy định VIP chỉ áp dụng khi không có yếu tố bắt buộc escalate.",
+      "explanation": "Tiêu chí: khiếu nại liên quan an toàn bắt buộc phải escalate. A — sai vì quy định VIP chỉ áp dụng khi không có yếu tố bắt buộc escalate; B — đúng vì yếu tố an toàn là tiêu chí bắt buộc; C — sai vì không được hứa bồi thường trước khi phân loại mức độ.",
       "type": "problem",
       "component_plan_id": "cp2_75c8e3413519ce7a35cb143f6e4092b7",
       "source_fact_ids": [
@@ -502,7 +502,7 @@
     "op": "generate",
     "model": "gemini-3.8-flash",
     "schema": "IdmJudgeResponseV1",
-    "prompt_sha256": "6caa803c78d8eedebe359ff7392657f1a512dec94509f93fae277681928ae0c3",
+    "prompt_sha256": "90e5e5e16ebe5b45216f3c53213d521216e0c52c07ac69f65e1bfaa751dd8abe",
     "prompt_chars": 6126,
     "config": {
      "max_output_tokens": 3000,

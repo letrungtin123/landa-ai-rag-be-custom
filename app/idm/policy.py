@@ -141,6 +141,12 @@ IDM_FAQ_MIN_ITEMS: Final = 2
 IDM_WORKSHEET_MIN_GROUNDED_SHARE: Final = 0.5
 IDM_WORKSHEET_MIN_LIST_ITEMS: Final = 2
 
+# --- Single-choice hygiene (QC course 364564, N2/N3) ------------------------------------------
+# The correct option was the longest in 8 of 9 questions. Longer than every other option by more
+# than this factor (characters), it is a length cue learners can guess from: a review note, never
+# a rejection (a precise correct answer is often a little longer).
+IDM_MCQ_LENGTH_CUE_RATIO: Final = 1.25
+
 # --- Methodology word lists (folded: lower case, no diacritics, d for đ) ----------------
 GENERIC_TITLES: Final = frozenset({
     "gioi thieu", "tong quan", "thong tin chung", "noi dung", "cac van de khac", "khac",
