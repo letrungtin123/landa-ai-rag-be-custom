@@ -14,6 +14,7 @@ from app.core import metrics
 from app.core.config import settings
 from app.core.errors import error_payload
 from app.core.logging import SERVICE_LOGGER_NAME
+from app.repositories import health as health_repository
 from app.services import runtime as service_runtime
 from app.services.meta import API_VERSION, BUILD_SHA_PATTERN, SERVICE_NAME, service_contract_versions
 from app.services.runtime import SCHEMA_CHECK_TIMEOUT_SECONDS
@@ -34,7 +35,7 @@ async def readyz() -> JSONResponse:
     if ready and pool is not None:
         try:
             async with asyncio.timeout(settings.readiness_db_timeout_ms / 1000):
-                await pool.fetchval("SELECT 1")
+                await health_repository.ping(pool)
         except Exception:
             logger.warning("readiness_database_unavailable", extra={"event": "readiness_database_unavailable"})
             ready = False

@@ -7,15 +7,16 @@ import logging
 from typing import Any
 
 import asyncpg
-from fastapi import HTTPException
 
 from app.core.logging import SERVICE_LOGGER_NAME
+from app.repositories.executor import SqlExecutor
 
 logger = logging.getLogger(SERVICE_LOGGER_NAME)
 
 
-async def load_document(pool: asyncpg.Pool, tenant_id: str, kb_id: str, document_id: str) -> asyncpg.Record:
-    row = await pool.fetchrow(
+async def load_document(pool: asyncpg.Pool, tenant_id: str, kb_id: str, document_id: str) -> asyncpg.Record | None:
+    """The tenant's knowledge-base document, or ``None`` (the caller answers 404)."""
+    return await pool.fetchrow(
         """
         SELECT id::text, tenant_id::text, kb_id::text, type, name, status,
                source_info, file_path, content
@@ -28,9 +29,6 @@ async def load_document(pool: asyncpg.Pool, tenant_id: str, kb_id: str, document
         tenant_id,
         kb_id,
     )
-    if row is None:
-        raise HTTPException(status_code=404, detail="Không tìm thấy tài liệu Knowledge Base.")
-    return row
 
 
 async def start_index_row(pool: asyncpg.Pool, row: asyncpg.Record, embedding_model: str) -> str:
@@ -190,3 +188,92 @@ async def delete_previous_structure_nodes_if_available(
         )
     except asyncpg.exceptions.UndefinedTableError:
         logger.info("rag_document_structure_nodes is not deployed; skipped old structure cleanup")
+
+
+async def lock_index_status(conn: SqlExecutor, index_id: Any, document_id: Any) -> Any:
+    """Row-lock the index row inside the indexing transaction and return its status."""
+    return await conn.fetchval(
+        """
+        SELECT status
+        FROM rag_document_indexes
+        WHERE id = $1::uuid
+          AND document_id = $2::uuid
+        FOR UPDATE
+        """,
+        index_id,
+        document_id,
+    )
+
+
+async def insert_chunks(conn: SqlExecutor, rows: Any) -> None:
+    """Insert every chunk row of one index in one pipelined executemany."""
+    await conn.executemany(
+        """
+        INSERT INTO rag_chunks (
+          tenant_id, kb_id, document_id, index_id, chunk_no,
+          content, content_hash, token_count, source_page,
+          source_section, metadata, embedding
+        )
+        VALUES ($1::uuid, $2::uuid, $3::uuid, $4::uuid, $5::int,
+                $6, $7, $8::int, $9::int, $10, $11::jsonb, $12::vector)
+        """,
+        rows,
+    )
+
+
+async def deactivate_other_indexes(conn: SqlExecutor, document_id: Any, index_id: Any) -> str:
+    """Deactivate the document's other self-built indexes."""
+    return await conn.execute(
+        """
+        UPDATE rag_document_indexes
+        SET is_active = false
+        WHERE document_id = $1::uuid
+          AND engine = 'self_built_rag'
+          AND id <> $2::uuid
+        """,
+        document_id,
+        index_id,
+    )
+
+
+async def mark_index_learned(
+    conn: SqlExecutor,
+    index_id: Any,
+    document_id: Any,
+    content_sha256: Any,
+    chunk_count: Any,
+) -> str:
+    """Mark the new index learned and active."""
+    return await conn.execute(
+        """
+        UPDATE rag_document_indexes
+        SET status = 'learned',
+            is_active = true,
+            content_sha256 = $3,
+            chunk_count = $4::int,
+            error_reason = NULL,
+            completed_at = now(),
+            updated_at = now()
+        WHERE id = $1::uuid
+          AND document_id = $2::uuid
+        """,
+        index_id,
+        document_id,
+        content_sha256,
+        chunk_count,
+    )
+
+
+async def delete_inactive_indexes(conn: SqlExecutor, document_id: Any, index_id: Any) -> str:
+    """Delete the document's inactive self-built indexes (chunks cascade)."""
+    return await conn.execute(
+        """
+        DELETE FROM rag_document_indexes
+        WHERE document_id = $1::uuid
+          AND engine = 'self_built_rag'
+          AND is_active = false
+          AND id <> $2::uuid
+        """,
+        document_id,
+        index_id,
+    )

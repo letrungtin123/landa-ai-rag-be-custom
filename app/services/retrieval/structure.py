@@ -7,6 +7,7 @@ from typing import Any, Literal
 
 import asyncpg
 
+from app.repositories import retrieval as retrieval_repository
 from app.schemas.chat import RagChatRequest
 from app.services.ingestion.extract import ExtractedSection
 from app.services.retrieval.query import decode_json_list, decode_json_object
@@ -122,25 +123,8 @@ async def rebuild_stale_source_structures_from_chunks(
     """Reparse bounded stored chunks for indexes created by an older parser."""
     if not document_ids:
         return {}
-    repair_rows = await pool.fetch(
-        """
-        SELECT c.document_id::text AS document_id,
-               d.name AS document_name,
-               c.content,
-               c.source_page,
-               c.chunk_no
-        FROM rag_chunks c
-        JOIN rag_document_indexes r ON r.id = c.index_id
-        JOIN kb_documents d ON d.id = c.document_id
-        WHERE c.tenant_id = $1::uuid
-          AND c.kb_id = $2::uuid
-          AND r.engine = 'self_built_rag'
-          AND r.status = 'learned'
-          AND r.is_active = true
-          AND c.document_id = ANY($3::uuid[])
-        ORDER BY c.document_id, c.chunk_no ASC
-        LIMIT 480
-        """,
+    repair_rows = await retrieval_repository.fetch_chunks_for_structure_rebuild(
+        pool,
         request.tenant_id,
         request.kb_id,
         document_ids,
@@ -183,39 +167,8 @@ async def load_source_structure_context(
     # Prefer the normalized table when the optional production migration is
     # present. The chunk metadata query below keeps rollout backward compatible.
     try:
-        normalized_rows = await pool.fetch(
-            """
-            SELECT n.document_id::text AS document_id,
-                   d.name AS document_name,
-                   MAX(n.confidence)::float AS confidence,
-                   jsonb_agg(
-                     jsonb_build_object(
-                       'source_ref', n.source_ref,
-                       'title', n.title,
-                       'level', n.level,
-                       'order', n.sort_order,
-                       'page', n.page_start,
-                       'logical_page', n.logical_page,
-                       'number_label', n.number_label,
-                       'parent_source_ref', n.parent_source_ref,
-                       'node_type', n.node_type,
-                       'confidence', n.confidence
-                     ) ORDER BY n.sort_order
-                   ) AS nodes,
-                   ((array_agg(n.metadata ORDER BY n.sort_order))[1])::text AS metadata
-            FROM rag_document_structure_nodes n
-            JOIN rag_document_indexes r ON r.id = n.index_id
-            JOIN kb_documents d ON d.id = n.document_id
-            WHERE n.tenant_id = $1::uuid
-              AND n.kb_id = $2::uuid
-              AND r.engine = 'self_built_rag'
-              AND r.status = 'learned'
-              AND r.is_active = true
-              AND ($3::uuid[] IS NULL OR n.document_id = ANY($3::uuid[]))
-            GROUP BY n.document_id, d.name
-            ORDER BY n.document_id
-            LIMIT 40
-            """,
+        normalized_rows = await retrieval_repository.fetch_structure_nodes(
+            pool,
             request.tenant_id,
             request.kb_id,
             doc_ids,
@@ -242,25 +195,8 @@ async def load_source_structure_context(
     except asyncpg.exceptions.UndefinedTableError:
         pass
 
-    fallback_rows = await pool.fetch(
-        """
-        SELECT DISTINCT ON (c.document_id)
-               c.document_id::text AS document_id,
-               d.name AS document_name,
-               c.metadata->'source_structure' AS source_structure
-        FROM rag_chunks c
-        JOIN rag_document_indexes r ON r.id = c.index_id
-        JOIN kb_documents d ON d.id = c.document_id
-        WHERE c.tenant_id = $1::uuid
-          AND c.kb_id = $2::uuid
-          AND r.engine = 'self_built_rag'
-          AND r.status = 'learned'
-          AND r.is_active = true
-          AND c.metadata ? 'source_structure'
-          AND ($3::uuid[] IS NULL OR c.document_id = ANY($3::uuid[]))
-        ORDER BY c.document_id, c.chunk_no ASC
-        LIMIT 40
-        """,
+    fallback_rows = await retrieval_repository.fetch_chunk_source_structures(
+        pool,
         request.tenant_id,
         request.kb_id,
         doc_ids,

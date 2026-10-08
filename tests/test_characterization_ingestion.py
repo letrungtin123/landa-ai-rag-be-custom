@@ -714,9 +714,12 @@ class IndexDocumentCharacterizationTests(unittest.TestCase):
 
 class PersistenceHelperTests(unittest.TestCase):
     def test_load_document_404_and_start_index_row(self) -> None:
+        # PRD-2: the repository returns None for a missing document and the index service answers
+        # the 404 (pinned end to end by test_pre_index_http_errors_touch_no_index_rows).
         db = FakeDb(document=None)
+        self.assertIsNone(asyncio.run(index_repository.load_document(db, TENANT_ID, KB_ID, DOC_ID)))
         with self.assertRaises(HTTPException) as caught:
-            asyncio.run(index_repository.load_document(db, TENANT_ID, KB_ID, DOC_ID))
+            asyncio.run(index_service.index_document(index_request(), pool=FakeDb(document=None)))
         self.assertEqual(caught.exception.status_code, 404)
         [(method, sql, args)] = db.calls
         self.assertEqual((method, args), ("fetchrow", (DOC_ID, TENANT_ID, KB_ID)))

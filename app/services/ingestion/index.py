@@ -76,6 +76,8 @@ async def _index_document(request: RagIndexRequest, pool: asyncpg.Pool) -> dict[
     if request.embedding_dimensions != 768:
         raise HTTPException(status_code=400, detail="RAG hiện chỉ hỗ trợ embedding 768 chiều.")
     row = await index_repository.load_document(pool, request.tenant_id, request.kb_id, request.document_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="Không tìm thấy tài liệu Knowledge Base.")
     # F4: whitespace-only content has nothing to learn; reject it before any index row exists.
     if row["file_path"] is None and not clean_text(str(row["content"] or "")):
         raise HTTPException(status_code=400, detail="Tài liệu không có file nguồn hoặc nội dung để học.")
@@ -149,31 +151,13 @@ async def _index_document(request: RagIndexRequest, pool: asyncpg.Pool) -> dict[
             content_sha = hashlib.sha256("\n\n".join(chunk["content"] for chunk in chunks).encode("utf-8")).hexdigest()
             async with pool.acquire() as conn:
                 async with conn.transaction():
-                    index_status = await conn.fetchval(
-                        """
-                        SELECT status
-                        FROM rag_document_indexes
-                        WHERE id = $1::uuid
-                          AND document_id = $2::uuid
-                        FOR UPDATE
-                        """,
-                        index_id,
-                        row["id"],
-                    )
+                    index_status = await index_repository.lock_index_status(conn, index_id, row["id"])
                     if index_status != "running":
                         raise ValueError("Phiên học tài liệu đã bị thay thế bởi phiên mới hơn.")
                     # One pipelined executemany inside the same transaction (SEP-1 #7): one round trip
                     # per batch instead of one per chunk when the database is on another server.
-                    await conn.executemany(
-                        """
-                        INSERT INTO rag_chunks (
-                          tenant_id, kb_id, document_id, index_id, chunk_no,
-                          content, content_hash, token_count, source_page,
-                          source_section, metadata, embedding
-                        )
-                        VALUES ($1::uuid, $2::uuid, $3::uuid, $4::uuid, $5::int,
-                                $6, $7, $8::int, $9::int, $10, $11::jsonb, $12::vector)
-                        """,
+                    await index_repository.insert_chunks(
+                        conn,
                         [
                             (
                                 row["tenant_id"],
@@ -201,46 +185,9 @@ async def _index_document(request: RagIndexRequest, pool: asyncpg.Pool) -> dict[
                     )
                     await persist_structure_nodes_if_available(conn, row, index_id, structure)
                     await delete_previous_structure_nodes_if_available(conn, row, index_id)
-                    await conn.execute(
-                        """
-                        UPDATE rag_document_indexes
-                        SET is_active = false
-                        WHERE document_id = $1::uuid
-                          AND engine = 'self_built_rag'
-                          AND id <> $2::uuid
-                        """,
-                        row["id"],
-                        index_id,
-                    )
-                    await conn.execute(
-                        """
-                        UPDATE rag_document_indexes
-                        SET status = 'learned',
-                            is_active = true,
-                            content_sha256 = $3,
-                            chunk_count = $4::int,
-                            error_reason = NULL,
-                            completed_at = now(),
-                            updated_at = now()
-                        WHERE id = $1::uuid
-                          AND document_id = $2::uuid
-                        """,
-                        index_id,
-                        row["id"],
-                        content_sha,
-                        len(chunks),
-                    )
-                    await conn.execute(
-                        """
-                        DELETE FROM rag_document_indexes
-                        WHERE document_id = $1::uuid
-                          AND engine = 'self_built_rag'
-                          AND is_active = false
-                          AND id <> $2::uuid
-                        """,
-                        row["id"],
-                        index_id,
-                    )
+                    await index_repository.deactivate_other_indexes(conn, row["id"], index_id)
+                    await index_repository.mark_index_learned(conn, index_id, row["id"], content_sha, len(chunks))
+                    await index_repository.delete_inactive_indexes(conn, row["id"], index_id)
 
             logger.info(
                 "rag_index_completed",

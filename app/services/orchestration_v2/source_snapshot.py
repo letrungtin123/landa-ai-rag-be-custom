@@ -22,6 +22,7 @@ from app.lesson_author_orchestration_v2_provider import (
     SourceOutlineChapterV2,
     SourceSnapshotFactV2,
 )
+from app.repositories import source_snapshot as snapshot_repository
 from app.schemas.common import AiUsage
 from app.schemas.orchestration_v2 import RagLessonAuthorSourceSnapshotV2Request
 from app.services.ingestion.chunking import SOURCE_EVIDENCE_LEGACY_REVIEW_REQUIRED, SOURCE_EVIDENCE_READY
@@ -47,44 +48,23 @@ async def lesson_author_orchestration_v2_source_snapshot(
         raise _orchestration_v2_http_error(
             "SOURCE_CURSOR_INVALID", "The source cursor is outside the selected source authority.",
         )
-    indexes = await pool.fetch(
-        """
-        SELECT r.id::text AS index_id,r.document_id::text AS document_id,r.content_sha256,
-               r.chunk_count,r.embedding_model,r.embedding_dimensions
-        FROM rag_document_indexes r
-        WHERE r.tenant_id=$1::uuid AND r.kb_id=$2::uuid AND r.document_id=ANY($3::uuid[])
-          AND r.engine='self_built_rag' AND r.status='learned' AND r.is_active=true
-          AND r.embedding_model=$4 AND r.embedding_dimensions=$5::int
-        ORDER BY r.document_id
-        """,
-        request.tenant_id, request.kb_id, document_ids,
-        normalize_embedding_model(request.embedding_model), request.embedding_dimensions,
+    indexes = await snapshot_repository.fetch_learned_indexes(
+        pool,
+        request.tenant_id,
+        request.kb_id,
+        document_ids,
+        normalize_embedding_model(request.embedding_model),
+        request.embedding_dimensions,
     )
     if len(indexes) != len(document_ids) or {str(row["document_id"]) for row in indexes} != set(document_ids):
         raise _orchestration_v2_http_error(
             "SOURCE_REVISION_UNAVAILABLE", "The selected learned source revision is unavailable.",
         )
-    structure_rows = await pool.fetch(
-        """
-        SELECT c.document_id::text AS document_id,
-               (jsonb_agg(c.metadata->'source_structure' ORDER BY c.chunk_no)
-                 FILTER (WHERE c.metadata ? 'source_structure'))->0 AS source_structure,
-               min(lower(c.metadata->>'source_evidence_revision')) FILTER (
-                 WHERE coalesce(c.metadata->>'source_evidence_revision','') ~ '^[0-9a-fA-F]{64}$'
-               ) AS source_evidence_revision,
-               count(*)::integer AS actual_chunk_count,
-               count(*) FILTER (
-                 WHERE coalesce(c.metadata->>'source_evidence_revision','') ~ '^[0-9a-fA-F]{64}$'
-               )::integer AS evidence_revision_chunk_count,
-               count(DISTINCT lower(c.metadata->>'source_evidence_revision')) FILTER (
-                 WHERE coalesce(c.metadata->>'source_evidence_revision','') ~ '^[0-9a-fA-F]{64}$'
-               )::integer AS evidence_revision_distinct_count
-        FROM rag_chunks c
-        WHERE c.tenant_id=$1::uuid AND c.kb_id=$2::uuid AND c.index_id=ANY($3::uuid[])
-        GROUP BY c.document_id
-        ORDER BY c.document_id
-        """,
-        request.tenant_id, request.kb_id, [str(row["index_id"]) for row in indexes],
+    structure_rows = await snapshot_repository.fetch_index_evidence_summary(
+        pool,
+        request.tenant_id,
+        request.kb_id,
+        [str(row["index_id"]) for row in indexes],
     )
     structures_by_document = {
         str(row["document_id"]): decode_json_object(row["source_structure"])
@@ -206,19 +186,14 @@ async def lesson_author_orchestration_v2_source_snapshot(
     after_document_id = str(cursor["document_id"]) if cursor else None
     after_chunk_no = int(cursor["chunk_no"]) if cursor else -1
     row_limit = 128
-    fetched = await pool.fetch(
-        """
-        SELECT c.content,c.source_page,c.source_section,c.metadata,c.chunk_no,c.index_id::text AS index_id,
-               c.document_id::text AS document_id,d.name AS document_name
-        FROM rag_chunks c
-        JOIN kb_documents d ON d.id=c.document_id AND d.tenant_id=c.tenant_id AND d.kb_id=c.kb_id
-        WHERE c.tenant_id=$1::uuid AND c.kb_id=$2::uuid AND c.index_id=ANY($3::uuid[])
-          AND ($4::uuid IS NULL OR c.document_id>$4::uuid
-               OR (c.document_id=$4::uuid AND c.chunk_no>$5::int))
-        ORDER BY c.document_id,c.chunk_no
-        LIMIT $6::int
-        """,
-        request.tenant_id, request.kb_id, index_ids, after_document_id, after_chunk_no, row_limit + 1,
+    fetched = await snapshot_repository.fetch_source_page(
+        pool,
+        request.tenant_id,
+        request.kb_id,
+        index_ids,
+        after_document_id,
+        after_chunk_no,
+        row_limit + 1,
     )
     document_order = {document_id: index + 1 for index, document_id in enumerate(document_ids)}
     facts: list[SourceSnapshotFactV2] = []
