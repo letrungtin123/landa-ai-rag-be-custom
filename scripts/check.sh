@@ -9,7 +9,7 @@ if [ ! -x "$python" ]; then
 fi
 
 # Code held to the full PRD standard (§19.3): ruff (all rules) + mypy strict.
-strict_paths="app/core app/infra app/idm app/prompt_safety.py app/__main__.py app/main.py app/api app/schemas app/repositories app/services/runtime.py app/services/meta.py app/services/deadlines.py app/services/text.py"
+strict_paths="app/core app/infra app/idm app/prompt_safety.py app/__main__.py app/main.py app/api app/schemas app/repositories app/services/runtime.py app/services/meta.py app/services/deadlines.py app/services/text.py app/hashing.py"
 # Service code moved verbatim out of app/main.py in PRD-2: mypy strict, pyflakes (F) lint rules.
 # The legacy lesson-author pipeline (app/services/lesson_author) keeps the mypy "no new errors"
 # baseline (pyproject overrides) until PRD-3 deletes it.

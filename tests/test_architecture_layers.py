@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import ast
+import hashlib
 import re
 import unittest
 from pathlib import Path
 
 from fastapi.routing import APIRoute
 
+from app import hashing, lesson_author_orchestration_v2, source_evidence_bundle
 from app.api.deps import require_internal_token
 from app.main import app
 
@@ -141,6 +143,22 @@ class ArchitectureLayerTests(unittest.TestCase):
                     if length > MAX_ROUTE_HANDLER_LINES:
                         offenders.append(f"{path.name}:{node.name}:{length}")
         self.assertEqual(offenders, [])
+
+    def test_canonical_hash_has_one_implementation(self) -> None:
+        # STD-7: contract and evidence hashes share app.hashing.canonical_hash (public names kept).
+        offenders = [
+            f"{path.relative_to(APP_ROOT).as_posix()}:{node.lineno}"
+            for path in sorted(APP_ROOT.rglob("*.py"))
+            if path != APP_ROOT / "hashing.py"
+            for node in ast.walk(ast.parse(path.read_text(encoding="utf-8")))
+            if isinstance(node, ast.FunctionDef) and node.name in {"canonical_hash", "_canonical_hash"}
+        ]
+        self.assertEqual(offenders, [])
+        self.assertIs(lesson_author_orchestration_v2.canonical_hash, hashing.canonical_hash)
+        self.assertIs(source_evidence_bundle.canonical_hash, hashing.canonical_hash)
+        # The encoding the Node mirror reproduces: sorted keys, compact separators, raw UTF-8.
+        self.assertEqual(hashing.canonical_hash({"b": [1, "đ"], "a": None}),
+                         hashlib.sha256('{"a":null,"b":[1,"đ"]}'.encode()).hexdigest())
 
     def test_document_queries_keep_tenant_filter_and_safe_error_code(self) -> None:
         repository = (APP_ROOT / "repositories" / "indexing.py").read_text(encoding="utf-8")

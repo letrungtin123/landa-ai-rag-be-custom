@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-import hashlib
-import json
 import re
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+
+from app.hashing import canonical_hash as canonical_hash
 
 ORCHESTRATION_CONTRACT_VERSION = 2
 SHA256_PATTERN = re.compile(r"^[0-9a-f]{64}$")
@@ -18,11 +18,6 @@ class OrchestrationContractError(ValueError):
     def __init__(self, code: str):
         super().__init__(code)
         self.code = code
-
-
-def canonical_hash(value: Any) -> str:
-    encoded = json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
-    return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
 
 
 class CourseSkeletonChapterV2(BaseModel):

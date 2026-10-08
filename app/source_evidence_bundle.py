@@ -1,12 +1,11 @@
 from __future__ import annotations
 
-import hashlib
-import json
 import re
 from typing import Any, Iterable, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from app.hashing import canonical_hash as canonical_hash
 from app.instructional_quality import ordered_source_steps
 
 SOURCE_EVIDENCE_BUNDLE_VERSION = "source-evidence-bundle-v1"
@@ -18,16 +17,6 @@ STEP_RE = re.compile(
     r"^(?:(?:step|bước|buoc)\s*)?(\d{1,3})\s*[:.)-]\s+(.+)$",
     re.IGNORECASE,
 )
-
-
-def canonical_hash(value: Any) -> str:
-    encoded = json.dumps(
-        value,
-        ensure_ascii=False,
-        sort_keys=True,
-        separators=(",", ":"),
-    ).encode("utf-8")
-    return hashlib.sha256(encoded).hexdigest()
 
 
 def _text(value: Any, *, maximum: int) -> str:

@@ -1,25 +1,15 @@
 from __future__ import annotations
 
 import hashlib
-import json
 import re
 from typing import Any, Iterable
 
+from app.hashing import canonical_hash as _canonical_hash
 from app.source_readiness import build_visual_observation_record
 
 SHADOW_VISUAL_PIPELINE_VERSION = "source-visual-shadow-v1"
 SHADOW_VISUAL_POLICY_VERSION = "human-review-shadow-v1"
 SHADOW_VISUAL_TASK_VERSION = "source-visual-task-v1"
-
-
-def _canonical_hash(payload: dict[str, Any]) -> str:
-    value = json.dumps(
-        payload,
-        ensure_ascii=False,
-        sort_keys=True,
-        separators=(",", ":"),
-    ).encode("utf-8")
-    return hashlib.sha256(value).hexdigest()
 
 
 def _digest(value: Any, *, field: str) -> str:
