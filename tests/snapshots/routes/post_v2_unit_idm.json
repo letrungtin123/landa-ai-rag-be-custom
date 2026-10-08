@@ -419,8 +419,10 @@
       "Q9_traceability": "pass"
      },
      "repair_applied": false,
-     "deterministic_codes": [],
-     "author_note": "QA tự động: không phát hiện vấn đề lớn. Tình huống minh hoạ do AI soạn, cần SME xác nhận tính thực tế."
+     "deterministic_codes": [
+      "IDM_W5_ANSWER_LENGTH_CUE"
+     ],
+     "author_note": "QA tự động: không phát hiện vấn đề lớn. Cần xem (IDM_W5_ANSWER_LENGTH_CUE, khối 1 (Quiz)): đáp án đúng dài hơn hẳn các phương án khác — người học có thể đoán theo độ dài. Tình huống minh hoạ do AI soạn, cần SME xác nhận tính thực tế."
     }
    },
    "usage": {

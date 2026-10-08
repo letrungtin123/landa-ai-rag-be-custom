@@ -146,6 +146,14 @@ IDM_WORKSHEET_MIN_LIST_ITEMS: Final = 2
 # than this factor (characters), it is a length cue learners can guess from: a review note, never
 # a rejection (a precise correct answer is often a little longer).
 IDM_MCQ_LENGTH_CUE_RATIO: Final = 1.25
+# Answer leak: an option whose word 4-grams (accent-folded) mostly appear in the html shown before
+# the question in the same unit copies it ("ví dụ đạt chuẩn" -> correct option, "ví dụ không đạt
+# chuẩn" -> distractor). 4-grams keep a shared term or rule fragment ("liên quan đến an toàn", 0.4
+# of a scenario option) below the share; a copied sentence is near 1.0. Options under the minimum
+# number of 4-grams (about 7 words) are too short to tell a copy from a term.
+IDM_ANSWER_LEAK_NGRAM: Final = 4
+IDM_ANSWER_LEAK_MIN_NGRAMS: Final = 4
+IDM_ANSWER_LEAK_MIN_SHARE: Final = 0.6
 
 # --- Methodology word lists (folded: lower case, no diacritics, d for đ) ----------------
 GENERIC_TITLES: Final = frozenset({

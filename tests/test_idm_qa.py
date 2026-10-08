@@ -15,15 +15,18 @@ from app.idm.qa import (
     CRITERIA,
     JudgeOutcome,
     SlotFinding,
+    advisory_slot_findings,
     blocking_count,
     build_unit_author_note,
     build_unit_quality,
+    copied_options,
     criteria_summary,
     deterministic_slot_findings,
     faq_item_verdicts,
     learner_view,
     repair_targets,
     run_judge,
+    settled_codes,
     ungrounded_faq_items,
     worksheet_complete,
     worst_counts,
@@ -132,12 +135,38 @@ class DeterministicSlotFindingTests(unittest.TestCase):
         self.assertEqual(self.findings(unit(problem("Đúng!"))),
                          [SlotFinding("IDM_W5_PRACTICE_INCOMPLETE", 0), SlotFinding("IDM_W5_FEEDBACK_NOT_TEACHING", 0)])
 
-    def test_answer_leak_needs_the_answer_framed_as_answer_in_preceding_html(self) -> None:
+    def test_answer_leak_framed_as_answer_or_copied_from_the_html_before(self) -> None:
         leak = html("Đáp án đúng: Cấp 2 vì khách hàng phàn nàn lần thứ hai.")
         self.assertEqual(self.findings(unit(leak, problem())), [SlotFinding("IDM_W5_ANSWER_LEAK", 1)])
-        no_frame = html("Ví dụ: Cấp 2 vì khách hàng phàn nàn lần thứ hai.")
-        self.assertEqual(self.findings(unit(no_frame, problem())), [])
         self.assertEqual(self.findings(unit(problem(), leak)), [])
+        # QC course 364564 (N3): the correct option copied the worked example shown just before it ...
+        example = html("Ví dụ đạt chuẩn: Cấp 2 vì khách hàng phàn nàn lần thứ hai.")
+        self.assertEqual(self.findings(unit(example, problem())), [SlotFinding("IDM_W5_ANSWER_LEAK", 1)])
+        # ... or a distractor copied the bad example.
+        bad_example = html("Ví dụ chưa đạt: Cấp 3 vì cần escalate ngay cho quản lý.")
+        self.assertEqual(self.findings(unit(bad_example, problem())), [SlotFinding("IDM_W5_ANSWER_LEAK", 1)])
+        # The rule taught in other words (4 of 7 four-grams) and a taught list every option comes from are not.
+        rule = html("Khiếu nại thuộc cấp 2 khi khách hàng phàn nàn lần thứ hai.")
+        self.assertEqual(self.findings(unit(rule, problem())), [])
+        every = html("Cấp 1 vì chưa có thiệt hại tài chính. Cấp 2 vì khách hàng phàn nàn lần thứ hai. "
+                     "Cấp 3 vì cần escalate ngay cho quản lý.")
+        self.assertEqual(self.findings(unit(every, problem())), [])
+
+    def test_copied_options_skip_short_options(self) -> None:
+        text = "Ví dụ đạt chuẩn: Cấp 2 vì khách hàng phàn nàn lần thứ hai."
+        self.assertEqual(copied_options(problem(), text), [1])
+        self.assertEqual(copied_options(problem(), ""), [])
+        short = {**problem(), "choices": [{"text": "Cấp 2", "correct": True}, {"text": "Cấp 3", "correct": False}]}
+        self.assertEqual(copied_options(short, "Cấp 2 và Cấp 3 là hai cấp độ."), [])
+
+    def test_length_cue_is_an_advisory_finding_only(self) -> None:
+        cue = problem(correct=(False, True, False))
+        cue["choices"][1]["text"] = "Cấp 2 vì khách hàng phàn nàn lần thứ hai về cùng một đơn hàng bị giao trễ"
+        value = unit(html("Ba cấp độ."), cue)
+        self.assertEqual(self.findings(value), [])
+        self.assertEqual(advisory_slot_findings(value), [SlotFinding("IDM_W5_ANSWER_LENGTH_CUE", 1)])
+        self.assertEqual(advisory_slot_findings(value, exempt={1}), [])
+        self.assertEqual(advisory_slot_findings(unit(html("Ba cấp độ."), problem())), [])
 
     def test_verbatim_copy_only_when_treatment_is_not_keep(self) -> None:
         owned = [LONG_SOURCE, ""]
@@ -388,6 +417,47 @@ class AuthorNoteAndQualityTests(unittest.TestCase):
         silent = build_unit_author_note(locale="en", judge=JudgeOutcome("not_run"), deterministic_codes=[],
                                         fallback_slots=[], ai_drafted=False, failure_codes=["IDM_W5_REPAIR_INVALID"])
         self.assertEqual(silent, "")
+
+    def test_author_note_separates_fixed_codes_from_what_the_final_unit_still_has(self) -> None:
+        # QC course 364564 (N8): codes seen before the repair were printed as "còn cảnh báo" on a unit that passed.
+        types = ["html", "problem", "la_faq"]
+        fixed = build_unit_author_note(
+            locale="vi", judge=JudgeOutcome("pass"),
+            deterministic_codes=["IDM_W5_PRACTICE_INCOMPLETE", "HTML_SOURCE_LOCATOR"],
+            fallback_slots=[], ai_drafted=False, slot_types=types, remaining=[],
+            fixed_codes=["IDM_W5_PRACTICE_INCOMPLETE", "HTML_SOURCE_LOCATOR"])
+        self.assertEqual(fixed, "QA tự động: không phát hiện vấn đề lớn. "
+                                "Đã tự sửa: HTML_SOURCE_LOCATOR, IDM_W5_PRACTICE_INCOMPLETE.")
+        remaining = [SlotFinding("IDM_W5_ANSWER_LENGTH_CUE", 1), SlotFinding("IDM_W5_ANSWER_LEAK", 1),
+                     SlotFinding("IDM_W5_FAQ_UNGROUNDED", 2)]
+        vi = build_unit_author_note(locale="vi", judge=JudgeOutcome("not_run"), deterministic_codes=[],
+                                    fallback_slots=[], ai_drafted=False, slot_types=types, remaining=remaining,
+                                    fixed_codes=["HTML_SOURCE_LOCATOR"])
+        self.assertEqual(vi, "Đã tự sửa: HTML_SOURCE_LOCATOR. "
+                             "Cần xem (IDM_W5_ANSWER_LEAK, khối 2 (Quiz)): một phương án gần như chép lại ví dụ hoặc "
+                             "nội dung ngay trước câu hỏi — người học có thể chọn theo trí nhớ thay vì áp dụng tiêu "
+                             "chí. Cần xem (IDM_W5_ANSWER_LENGTH_CUE, khối 2 (Quiz)): đáp án đúng dài hơn hẳn các "
+                             "phương án khác — người học có thể đoán theo độ dài. "
+                             "Kiểm tra tự động còn cảnh báo: IDM_W5_FAQ_UNGROUNDED.")
+        en = build_unit_author_note(locale="en", judge=JudgeOutcome("not_run"), deterministic_codes=[],
+                                    fallback_slots=[], ai_drafted=False, slot_types=types, remaining=remaining,
+                                    fixed_codes=["HTML_SOURCE_LOCATOR"])
+        self.assertEqual(en, "Automatically fixed: HTML_SOURCE_LOCATOR. "
+                             "Review (IDM_W5_ANSWER_LEAK, block 2 (Quiz)): an option nearly copies the example or "
+                             "text shown right before the question — learners can match it instead of applying the "
+                             "criterion. Review (IDM_W5_ANSWER_LENGTH_CUE, block 2 (Quiz)): the correct option is "
+                             "much longer than the others — learners can guess it by length. "
+                             "Automatic checks still warn: IDM_W5_FAQ_UNGROUNDED.")
+        whole = build_unit_author_note(locale="en", judge=JudgeOutcome("not_run"), deterministic_codes=["X_CODE"],
+                                       fallback_slots=[0], ai_drafted=False, whole_fallback=True, remaining=[],
+                                       fixed_codes=["X_CODE"])
+        self.assertEqual(whole, "The whole lesson uses the source-based fallback — edit it. Reason: X_CODE.")
+
+    def test_settled_codes_leave_out_open_and_otherwise_explained_codes(self) -> None:
+        seen = ["IDM_W5_PRACTICE_INCOMPLETE", "HTML_SOURCE_LOCATOR", "IDM_W5_FAQ_ITEMS_DROPPED",
+                "IDM_W5_FAQ_UNGROUNDED", "HTML_SEMANTIC_INVALID", "IDM_W5_PRACTICE_INCOMPLETE"]
+        self.assertEqual(settled_codes(seen, [SlotFinding("IDM_W5_FAQ_UNGROUNDED", 2)], {"HTML_SEMANTIC_INVALID"}),
+                         ["IDM_W5_PRACTICE_INCOMPLETE", "HTML_SOURCE_LOCATOR"])
 
     def test_author_note_is_bounded_and_has_no_angle_brackets(self) -> None:
         many = JudgeOutcome("reject", [finding(criterion, "critical", 0, "<script>") for criterion in CRITERIA])

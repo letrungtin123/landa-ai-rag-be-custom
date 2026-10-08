@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import re
 from collections import Counter
-from collections.abc import Mapping, Sequence
+from collections.abc import Collection, Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any, Final, Literal
 
@@ -17,7 +17,11 @@ from app.idm.contracts import (
     JudgeCriterion,
     JudgeSeverity,
 )
+from app.idm.mcq import ANSWER_LENGTH_CUE_CODE, answer_length_cue
 from app.idm.policy import (
+    IDM_ANSWER_LEAK_MIN_NGRAMS,
+    IDM_ANSWER_LEAK_MIN_SHARE,
+    IDM_ANSWER_LEAK_NGRAM,
     IDM_JUDGE_MAX_OUTPUT_TOKENS,
     IDM_JUDGE_MIN_REMAINING_SECONDS,
     IDM_UNIT_AUTHOR_NOTE_MAX_CHARS,
@@ -34,6 +38,7 @@ from app.idm.text import (
     idm_fold,
     ngram_overlap,
     sanitize_author_text,
+    word_ngrams,
 )
 from app.learner_content_purity import component_learner_text
 
@@ -75,6 +80,7 @@ _SEVERITY_RANK: Final = {"pass": 0, "minor": 1, "major": 2, "critical": 3}
 FAQ_UNGROUNDED_CODE: Final = "IDM_W5_FAQ_UNGROUNDED"
 FAQ_ITEMS_DROPPED_CODE: Final = "IDM_W5_FAQ_ITEMS_DROPPED"
 WORKSHEET_INCOMPLETE_CODE: Final = "IDM_W5_WORKSHEET_INCOMPLETE"
+ANSWER_LEAK_CODE: Final = "IDM_W5_ANSWER_LEAK"
 _OPTION_LABEL_RE: Final = re.compile(r"(?:^|[\s(;,.])([A-F])\s*(?:[—\-:.)]|là\b|is\b)")
 
 
@@ -192,10 +198,48 @@ def deterministic_slot_findings(
             if correct:
                 answer = idm_fold(str(correct[0].get("text") or ""))
                 html = idm_fold(preceding_html)
-                if (len(answer) >= ANSWER_LEAK_MIN_CHARS and answer in html
-                        and ("dap an" in html or "answer" in html)):
-                    findings.append(SlotFinding("IDM_W5_ANSWER_LEAK", index))
+                if ((len(answer) >= ANSWER_LEAK_MIN_CHARS and answer in html and ("dap an" in html or "answer" in html))
+                        or copied_options(component, preceding_html)):
+                    findings.append(SlotFinding(ANSWER_LEAK_CODE, index))
     return findings
+
+
+def copied_options(component: dict[str, Any], preceding_text: str) -> list[int]:
+    """Options that copy the html shown before the question, when that tells the answer (QC 364564, N3).
+
+    An option copies the text when most of its word 4-grams (accent-folded) appear in it
+    (``IDM_ANSWER_LEAK_*``): the correct option copying the worked example ("ví dụ đạt chuẩn"), a
+    distractor copying the bad example. When every option copies the text (a recognition question
+    over a list that was taught), matching tells nothing and nothing is returned.
+    """
+
+    choices = [choice for choice in component.get("choices") or [] if isinstance(choice, dict)]
+    if not preceding_text.strip() or not choices:
+        return []
+    copied = [index for index, choice in enumerate(choices)
+              if len(word_ngrams(str(choice.get("text") or ""), IDM_ANSWER_LEAK_NGRAM)) >= IDM_ANSWER_LEAK_MIN_NGRAMS
+              and ngram_overlap(str(choice.get("text") or ""), preceding_text,
+                                IDM_ANSWER_LEAK_NGRAM) >= IDM_ANSWER_LEAK_MIN_SHARE]
+    return copied if len(copied) < len(choices) else []
+
+
+def advisory_slot_findings(unit: dict[str, Any], exempt: Collection[int] = ()) -> list[SlotFinding]:
+    """Review notes that never trigger a repair or a fallback: the length cue of a question (N2)."""
+
+    return [SlotFinding(ANSWER_LENGTH_CUE_CODE, index)
+            for index, component in enumerate(item for item in unit.get("components", []) if isinstance(item, dict))
+            if index not in exempt and component.get("type") == "problem" and answer_length_cue(component)]
+
+
+def final_unit_findings(unit: dict[str, Any], brief: IdmUnitBriefV1, owned_text_by_slot: Sequence[str],
+                        evidence: EvidenceIndex | None, fallback_slots: Collection[int]) -> list[SlotFinding]:
+    """What the returned unit still has (QC course 364564, N8): the IDM checks of its provider slots plus the
+    review-only notes. A code seen before a repair is not in it unless the final unit still fails it."""
+
+    exempt = set(fallback_slots)
+    found = [item for item in deterministic_slot_findings(unit, brief, owned_text_by_slot, evidence)
+             if item.component_index not in exempt]
+    return [*found, *advisory_slot_findings(unit, exempt)]
 
 
 def learner_view(unit: dict[str, Any]) -> list[dict[str, Any]]:
@@ -310,11 +354,17 @@ def build_unit_author_note(
     whole_fallback: bool = False,
     faq_items_dropped: int = 0,
     faq_items_invalid: int = 0,
+    remaining: Sequence[SlotFinding] | None = None,
+    fixed_codes: Sequence[str] = (),
 ) -> str:
     """Template note for the unit ``implementation_notes``; no IDs, no ``<``/``>``.
 
     Every fallback says why (QC course 234653, D16): the codes behind each replaced or kept slot, the
     provider/time/budget code behind a whole-unit fallback and a failed automatic repair.
+
+    ``remaining`` are the findings of the unit as returned and ``fixed_codes`` the codes found and
+    settled during generation (QC course 364564, N8: codes seen before a repair were printed as
+    still open). Without ``remaining`` every deterministic code counts as still open.
     """
 
     vi = locale == "vi"
@@ -361,13 +411,63 @@ def build_unit_author_note(
         parts.append(f"Đã bỏ {faq_items_invalid} câu hỏi đáp hệ thống không lưu được (ký tự góc nhọn, câu hỏi trùng)."
                      if vi else f"{faq_items_invalid} FAQ item(s) the course editor cannot store (angle brackets, "
                                 "repeated question) were removed.")
-    if deterministic_codes and not whole_fallback:
-        parts.append("Kiểm tra tự động còn cảnh báo: " + ", ".join(sorted(set(deterministic_codes))[:6]) + "."
-                     if vi else "Automatic checks still warn: " + ", ".join(sorted(set(deterministic_codes))[:6]) + ".")
+    if not whole_fallback:
+        parts.extend(_check_lines(vi, deterministic_codes, remaining, fixed_codes, slot_types))
     if ai_drafted and not whole_fallback:  # a source-locked unit carries no drafted scenario
         parts.append("Tình huống minh hoạ do AI soạn, cần SME xác nhận tính thực tế." if vi
                      else "The illustrative scenario was drafted by AI; the SME should confirm it is realistic.")
     return sanitize_author_text(" ".join(parts), IDM_UNIT_AUTHOR_NOTE_MAX_CHARS)
+
+
+_REVIEW_HINT_VI: Final = {
+    ANSWER_LEAK_CODE: "một phương án gần như chép lại ví dụ hoặc nội dung ngay trước câu hỏi — người học có thể "
+                      "chọn theo trí nhớ thay vì áp dụng tiêu chí",
+    ANSWER_LENGTH_CUE_CODE: "đáp án đúng dài hơn hẳn các phương án khác — người học có thể đoán theo độ dài",
+}
+_REVIEW_HINT_EN: Final = {
+    ANSWER_LEAK_CODE: "an option nearly copies the example or text shown right before the question — learners can "
+                      "match it instead of applying the criterion",
+    ANSWER_LENGTH_CUE_CODE: "the correct option is much longer than the others — learners can guess it by length",
+}
+
+
+def _check_lines(vi: bool, deterministic_codes: Sequence[str], remaining: Sequence[SlotFinding] | None,
+                 fixed_codes: Sequence[str], slot_types: Sequence[str]) -> list[str]:
+    """"Đã tự sửa" (settled during generation), one review line per hinted finding, then what still warns."""
+
+    lines: list[str] = []
+    fixed = _codes(sorted(set(fixed_codes)))
+    if fixed:
+        lines.append(f"Đã tự sửa: {fixed}." if vi else f"Automatically fixed: {fixed}.")
+    still = list(deterministic_codes) if remaining is None else [item.code for item in remaining]
+    hints = _REVIEW_HINT_VI if vi else _REVIEW_HINT_EN
+    labels = _SLOT_LABEL_VI if vi else _SLOT_LABEL_EN
+    for code, hint in hints.items():
+        slots = sorted({item.component_index for item in remaining or () if item.code == code})
+        if not slots:
+            continue
+        where = ", ".join(f"{'khối' if vi else 'block'} {index + 1}"
+                          + (f" ({labels[slot_types[index]]})" if index < len(slot_types)
+                             and slot_types[index] in labels else "") for index in slots)
+        lines.append(f"Cần xem ({code}, {where}): {hint}." if vi else f"Review ({code}, {where}): {hint}.")
+    warn = sorted({code for code in still if remaining is None or code not in hints})[:_MAX_NOTE_CODES]
+    if warn:
+        lines.append("Kiểm tra tự động còn cảnh báo: " + ", ".join(warn) + "." if vi
+                     else "Automatic checks still warn: " + ", ".join(warn) + ".")
+    return lines
+
+
+def settled_codes(seen: Sequence[str], remaining: Sequence[SlotFinding],
+                  settled_elsewhere: Collection[str] = ()) -> list[str]:
+    """Codes found during generation that the returned unit no longer has (N8 "đã tự sửa").
+
+    ``settled_elsewhere`` are codes another note line already explains (a slot fallback's reason,
+    the FAQ items dropped), so they are not listed twice.
+    """
+
+    open_codes = {item.code for item in remaining}
+    return [code for code in dict.fromkeys(seen)
+            if code not in open_codes and code not in settled_elsewhere and code != FAQ_ITEMS_DROPPED_CODE]
 
 
 def build_unit_quality(
@@ -395,7 +495,8 @@ def blocking_count(findings: Sequence[IdmJudgeFindingV1]) -> int:
 
 
 __all__ = [
-    "CRITERIA", "FAQ_ITEMS_DROPPED_CODE", "FAQ_UNGROUNDED_CODE", "WORKSHEET_INCOMPLETE_CODE", "JudgeOutcome",
-    "SlotFinding", "blocking_count", "build_unit_author_note", "build_unit_quality", "deterministic_slot_findings",
-    "faq_item_verdicts", "learner_view", "repair_targets", "run_judge", "ungrounded_faq_items", "worksheet_complete",
+    "ANSWER_LEAK_CODE", "CRITERIA", "FAQ_ITEMS_DROPPED_CODE", "FAQ_UNGROUNDED_CODE", "WORKSHEET_INCOMPLETE_CODE",
+    "JudgeOutcome", "SlotFinding", "advisory_slot_findings", "blocking_count", "build_unit_author_note",
+    "build_unit_quality", "copied_options", "deterministic_slot_findings", "faq_item_verdicts", "final_unit_findings",
+    "learner_view", "repair_targets", "run_judge", "settled_codes", "ungrounded_faq_items", "worksheet_complete",
 ]

@@ -59,6 +59,7 @@ from app.idm.prompts import (
     unit_writer_prompt,
 )
 from app.idm.qa import (
+    ANSWER_LEAK_CODE,
     FAQ_ITEMS_DROPPED_CODE,
     FAQ_UNGROUNDED_CODE,
     WORKSHEET_INCOMPLETE_CODE,
@@ -68,8 +69,10 @@ from app.idm.qa import (
     build_unit_author_note,
     build_unit_quality,
     deterministic_slot_findings,
+    final_unit_findings,
     repair_targets,
     run_judge,
+    settled_codes,
     ungrounded_faq_items,
 )
 from app.idm.runtime import (
@@ -101,7 +104,9 @@ _MAX_LOGGED_DETAILS: Final = 16
 _FIELD_OF_PATH_RE: Final = re.compile(r"^components\[\d+\]\.?")
 # A worksheet that misses part of its structure keeps the provider slot for author review: the
 # source-locked html fallback would replace the practice with plain explanation.
-_REVIEW_FIRST_CODES: Final = frozenset({WORKSHEET_INCOMPLETE_CODE})
+# An option copying the html before the question (QC course 364564, N3) is a review note once the repair
+# could not fix it: the source-locked question would drop the provider's scenario practice.
+_REVIEW_FIRST_CODES: Final = frozenset({WORKSHEET_INCOMPLETE_CODE, ANSWER_LEAK_CODE})
 _MAX_HINT_FACT_KEYS: Final = 24
 _FALLBACK_INVALID: Final = "ORCHESTRATION_V2_UNIT_FALLBACK_INVALID"
 
@@ -766,14 +771,20 @@ async def run_idm_unit(
                   or deps.evidence_review_required
                   or blocking_count(judge.findings) > 0
                   or (ai_drafted and _q5(judge) != "pass"))
+    # N8: "still warns" is recomputed on the returned unit; codes settled on the way are listed apart.
+    remaining = [] if whole_fallback else final_unit_findings(draft.unit, brief, writer.owned_text, writer.evidence,
+                                                              draft.fallback_slots)
+    fixed = [] if whole_fallback else settled_codes(
+        writer.codes, remaining, {code for index in draft.fallback_slots for code in draft.reasons.get(index, ())})
     note = build_unit_author_note(
         locale=runtime.locale, judge=judge, deterministic_codes=writer.codes, fallback_slots=draft.fallback_slots,
         ai_drafted=ai_drafted, slot_reasons=draft.reasons, review_slots=draft.review_slots,
         slot_types=[plan["type"] for plan in writer.plans], failure_codes=writer.failure_codes,
         whole_fallback=whole_fallback, faq_items_dropped=writer.faq_items_dropped,
-        faq_items_invalid=writer.faq_items_invalid)
+        faq_items_invalid=writer.faq_items_invalid, remaining=remaining, fixed_codes=fixed)
     quality = build_unit_quality(mode=deps.judge_mode, judge=judge, repair_applied=draft.repair_applied,
-                                 deterministic_codes=writer.codes, author_note=note)
+                                 deterministic_codes=[*writer.codes, *(item.code for item in remaining)],
+                                 author_note=note)
     unit = {**draft.unit, "idm_quality": quality.model_dump(mode="json")}
     log_stage("idm_unit_quality", {
         "correlation_id": runtime.correlation_id, "unit_path": contract.unit_path,
@@ -781,6 +792,7 @@ async def run_idm_unit(
         "repair_applied": draft.repair_applied, "fallback_slots": draft.fallback_slots,
         "review_slots": draft.review_slots, "html_fixes": dict(sorted(writer.html_fixes.items())),
         "whole_fallback": whole_fallback, "codes": sorted(set(writer.codes)),
+        "remaining_codes": sorted({item.code for item in remaining}), "fixed_codes": sorted(set(fixed)),
         "failure_codes": sorted(set(writer.failure_codes)), "faq_items_dropped": writer.faq_items_dropped,
         "faq_items_invalid": writer.faq_items_invalid,
         "slot_reasons": {str(index): codes for index, codes in sorted(draft.reasons.items())},

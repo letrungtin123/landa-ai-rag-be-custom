@@ -121,10 +121,11 @@ def writer_response_escalate_practice(plans: list[dict[str, Any]]) -> dict[str, 
             "problem_type": "multiple_choice",
             "question": "Một khách hàng VIP gọi đến, cho biết sản phẩm vừa giao gây chập điện và có nguy cơ cháy. "
                         "Khách yêu cầu được hoàn tiền ngay. Bạn nên làm gì trước tiên?",
+            # Distractors as long as the answer: a far longer correct option is a length cue (QC 364564, N2).
             "choices": [
-                {"text": "Hứa hoàn tiền ngay để giữ chân khách VIP", "correct": False},
+                {"text": "Hứa hoàn tiền ngay để giữ chân vị khách VIP đang bức xúc", "correct": False},
                 {"text": "Escalate ngay cho quản lý vì khiếu nại liên quan đến an toàn", "correct": True},
-                {"text": "Chỉ thông báo trưởng nhóm vì đây là khách VIP", "correct": False},
+                {"text": "Chỉ thông báo trưởng nhóm vì đây là khách VIP của công ty", "correct": False},
             ],
             "explanation": "Tiêu chí: khiếu nại liên quan an toàn bắt buộc phải escalate. A — sai vì không được hứa "
                            "bồi thường trước khi phân loại mức độ; B — đúng vì yếu tố an toàn là tiêu chí bắt buộc; "
