@@ -20,6 +20,8 @@ from app.idm.contracts import IdmTreatmentRefV1, IdmUnitBriefV1, IdmUnitQualityV
 from app.idm.runtime import IdmStageError
 from app.idm.storyboard import build_idm_expected, output_budget, parse_brief, run_idm_unit
 from app.lesson_author_orchestration_v2_provider import UnitGenerationContractV2
+from app.schemas.common import AiUsage
+from app.schemas.orchestration_v2 import RagLessonAuthorUnitV2Request
 from tests import idm_golden as g
 from tests import idm_golden_unit as gu
 from tests.idm_test_support import assert_node_trace, golden_design, golden_shard, make_runtime, rehash_contract
@@ -164,7 +166,7 @@ class FakeGenerate:
         if isinstance(answer, Exception):
             raise answer
         text = answer if isinstance(answer, str) else json.dumps(answer, ensure_ascii=False)
-        return text, main.AiUsage(inputTokens=100, outputTokens=50, totalTokens=150)
+        return text, AiUsage(inputTokens=100, outputTokens=50, totalTokens=150)
 
 
 class StoryboardEndpointTestCase(unittest.IsolatedAsyncioTestCase):
@@ -245,7 +247,7 @@ class OutputBudgetTests(unittest.TestCase):
 
     def test_expected_uses_the_idm_budget(self) -> None:
         body = severity_body()
-        request = main.RagLessonAuthorUnitV2Request.model_validate(body)
+        request = RagLessonAuthorUnitV2Request.model_validate(body)
         brief = parse_brief(request.unit_contract)
         expected = build_idm_expected(request.unit_contract, brief, main._idm_unit_deps(request), "vi")
         self.assertEqual(expected["instructional_output_budget"]["max_words"], 450)
@@ -585,7 +587,7 @@ class InjectedDepsTests(unittest.IsolatedAsyncioTestCase):
     async def run_unit(self, validate: Any, *, review: bool = False,
                        unbuildable_slots: tuple[int, ...] = ()) -> dict[str, Any]:
         body = severity_body()
-        request = main.RagLessonAuthorUnitV2Request.model_validate(body)
+        request = RagLessonAuthorUnitV2Request.model_validate(body)
         deps = dataclasses.replace(main._idm_unit_deps(request), validate_unit=validate, judge_mode="off",
                                    evidence_review_required=review)
         if unbuildable_slots:
@@ -593,7 +595,7 @@ class InjectedDepsTests(unittest.IsolatedAsyncioTestCase):
                      for index, component in enumerate(deps.source_locked_components or [])]
             deps = dataclasses.replace(deps, source_locked_components=slots, source_locked_unit=None)
         generate = AsyncMock(side_effect=[(json.dumps(severity_writer(body), ensure_ascii=False),
-                                           main.AiUsage(inputTokens=1, outputTokens=1, totalTokens=2))] * 2)
+                                           AiUsage(inputTokens=1, outputTokens=1, totalTokens=2))] * 2)
         return await run_idm_unit(contract=request.unit_contract, runtime=make_runtime(generate, allowance=None),
                                   deps=deps, fallback_only=False)
 

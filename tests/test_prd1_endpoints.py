@@ -17,6 +17,8 @@ from app import main
 from app.core import metrics
 from app.core.errors import AppError
 from app.infra.schema_check import SchemaCheckResult
+from app.schemas.chat import RagChatRequest
+from app.schemas.kb import RagIndexRequest
 
 APP_ROOT = Path(__file__).resolve().parents[1] / "app"
 TOKEN = "prd1-test-token-0123456789"
@@ -172,7 +174,7 @@ class DeadlineTests(unittest.TestCase):
         async def slow_retrieve(*args: Any, **kwargs: Any) -> Any:
             await asyncio.sleep(1)
 
-        request = main.RagChatRequest(
+        request = RagChatRequest(
             tenant_id=TENANT, kb_id=KB, conversation_id="44444444-4444-4444-8444-444444444444",
             target="admin", model="gemini-3.8-flash", embedding_model="gemini-embedding-001",
             system_prompt="persona", user_message="hello", api_key="k",
@@ -188,7 +190,7 @@ class DeadlineTests(unittest.TestCase):
 
 class IndexRuntimeTests(unittest.TestCase):
     def index_request(self) -> Any:
-        return main.RagIndexRequest(
+        return RagIndexRequest(
             tenant_id=TENANT, kb_id=KB, document_id=DOC, embedding_model="gemini-embedding-001", api_key="k",
         )
 

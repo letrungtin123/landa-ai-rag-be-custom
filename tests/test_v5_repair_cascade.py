@@ -20,7 +20,6 @@ from app.lesson_author_blueprint import (
     validate_lesson_author_blueprint,
 )
 from app.main import (
-    AiUsage,
     LessonAuthorBlueprintGenerationError,
     _repair_patch_domain_diagnostics,
     _workflow_issue_from_blueprint_validation_error,
@@ -44,6 +43,7 @@ from app.main import (
     validate_v5_instructional_coherence,
     validate_v5_post_allocation_instructional_depth,
 )
+from app.schemas.common import AiUsage
 from app.source_map import build_source_map
 from app.workflows.contracts import (
     WorkflowFailure,

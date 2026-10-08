@@ -4,7 +4,6 @@ import unittest
 
 from app.main import (
     ExtractedSection,
-    RagLessonAuthorRequest,
     build_retrieval_diagnostics,
     build_index_diagnostics,
     build_source_coverage_manifest,
@@ -20,6 +19,7 @@ from app.main import (
     target_source_scope_is_incomplete,
     validate_lesson_author_source_coverage,
 )
+from app.schemas.lesson_author import RagLessonAuthorRequest
 from app.source_structure import analyze_source_structure, chunk_structure_metadata, structure_outline
 
 

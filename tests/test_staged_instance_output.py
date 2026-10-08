@@ -14,6 +14,8 @@ from app.workflows.contracts import WorkflowFailure
 from tests.test_staged_recovery_identity import fixture
 from tests.test_checkpoint_component_quality_repair import instance_wire
 from tests.test_chapter_checkpoint import fixture as checkpoint_fixture, checkpoint_result
+from app.schemas.common import AiUsage
+from app.schemas.lesson_author import RagLessonAuthorCheckpointRequest
 
 
 def checkpoint_instance_fixture():
@@ -27,7 +29,7 @@ def checkpoint_instance_fixture():
     data = {**base.model_dump(), "operation": "create", "target_type": "chapter", "generation_mode": "staged",
             "source_documents": checkpoint.model_dump()["source_documents"], "correlation_id": checkpoint.correlation_id,
             "checkpoint_action": "generate_unit", "checkpoint_unit_index": 0, "remaining_workflow_budget_ms": 400_000}
-    return main.RagLessonAuthorCheckpointRequest.model_validate(data), unit, scope, manifest
+    return RagLessonAuthorCheckpointRequest.model_validate(data), unit, scope, manifest
 
 
 class StagedInstanceOutputTests(unittest.TestCase):
@@ -120,7 +122,7 @@ class StagedInstanceOutputTests(unittest.TestCase):
         broken = instance_wire(valid)
         del broken["components"]["c2"]["edges"]
         delta = {"components": [{"component_index": 2, "edges": valid["components"][2]["edges"]}]}
-        provider = AsyncMock(side_effect=[(json.dumps(broken), main.AiUsage()), (json.dumps(delta), main.AiUsage())])
+        provider = AsyncMock(side_effect=[(json.dumps(broken), AiUsage()), (json.dumps(delta), AiUsage())])
         with patch("app.main.generate_content", provider), self.assertLogs("app.main", "INFO") as logs:
             result = asyncio.run(checkpoint_result(request, manifest))
             final_request = request.model_copy(update={"checkpoint_action": "validate_chapter", "checkpoint_unit_index": None,
@@ -142,7 +144,7 @@ class StagedInstanceOutputTests(unittest.TestCase):
         wire = instance_wire(valid)
         wire["components"]["c2"].pop("edges")
         wire["components"]["c2"]["covered_source_fact_ids"] = ["fact-0"]
-        provider = AsyncMock(return_value=(json.dumps(wire), main.AiUsage()))
+        provider = AsyncMock(return_value=(json.dumps(wire), AiUsage()))
         with patch("app.main.generate_content", provider), self.assertLogs("app.main", "INFO") as logs:
             with self.assertRaises(WorkflowFailure) as failure:
                 asyncio.run(checkpoint_result(request, manifest))
@@ -152,7 +154,7 @@ class StagedInstanceOutputTests(unittest.TestCase):
 
     def test_http_endpoint_returns_typed_safe_binding_failure(self):
         request, _, _, manifest = checkpoint_instance_fixture()
-        provider = AsyncMock(return_value=(json.dumps({"components": {"PRIVATE_SLOT": {"PRIVATE_DATA": "PRIVATE_TEXT"}}}), main.AiUsage()))
+        provider = AsyncMock(return_value=(json.dumps({"components": {"PRIVATE_SLOT": {"PRIVATE_DATA": "PRIVATE_TEXT"}}}), AiUsage()))
         async def generation(req, _pool):
             return await checkpoint_result(req, manifest)
         async def send():

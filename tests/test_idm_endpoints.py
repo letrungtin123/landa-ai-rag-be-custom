@@ -19,6 +19,8 @@ from app.core.errors import AppError
 from app.idm.contracts import IdmCourseDesignV1, IdmShardDesignV1
 from app.idm.runtime import IdmBudgetError, IdmProviderError, IdmStageError
 from app.lesson_author_orchestration_v2 import ChapterBlueprintShardV2, CourseSkeletonV2
+from app.schemas.common import AiUsage
+from app.schemas.orchestration_v2 import RagLessonAuthorChapterShardV2Request, RagLessonAuthorCourseSkeletonV2Request
 from tests import idm_golden as g
 from tests import idm_golden_module as gm
 from tests.idm_test_support import golden_design, module_inputs, module_response
@@ -188,20 +190,20 @@ class LegacyDispatchTests(unittest.IsolatedAsyncioTestCase):
         return dispatched
 
     async def test_course_skeleton_without_idm(self) -> None:
-        request = main.RagLessonAuthorCourseSkeletonV2Request.model_validate(legacy_skeleton_body())
+        request = RagLessonAuthorCourseSkeletonV2Request.model_validate(legacy_skeleton_body())
         self.assertIsNone(request.idm)
         draft = {k: v for k, v in skeleton_wire().items()
                  if k not in {"contract_version", "source_snapshot_hash", "locale"}}
-        usage = main.AiUsage(outputTokens=20)
+        usage = AiUsage(outputTokens=20)
         for answers in ([(json.dumps(draft), usage)], [("{}", usage), ("{}", usage)]):
             result = await self.compare(main.lesson_author_orchestration_v2_course_skeleton,
                                         main._lesson_author_orchestration_v2_course_skeleton, request, answers)
             self.assertNotIn("idm", result)
 
     async def test_chapter_shard_without_idm_context(self) -> None:
-        request = main.RagLessonAuthorChapterShardV2Request.model_validate(legacy_shard_body())
+        request = RagLessonAuthorChapterShardV2Request.model_validate(legacy_shard_body())
         self.assertIsNone(request.idm_module_context)
-        usage = main.AiUsage(outputTokens=20)
+        usage = AiUsage(outputTokens=20)
         for answers in ([(json.dumps({"lessons": [lesson_wire(["scope-1"])]}), usage)],
                         [("{}", usage), ("{}", usage)]):
             result = await self.compare(main.lesson_author_orchestration_v2_chapter_shard,
@@ -217,7 +219,7 @@ class TransportMappingTests(unittest.IsolatedAsyncioTestCase):
         return caught.exception
 
     async def test_success_passes_options_through(self) -> None:
-        generate = AsyncMock(return_value=("{}", main.AiUsage(outputTokens=1)))
+        generate = AsyncMock(return_value=("{}", AiUsage(outputTokens=1)))
         with patch("app.main.generate_content", generate):
             self.assertEqual((await main._idm_generate("key", "model", "prompt", thinking_level="low"))[0], "{}")
         generate.assert_awaited_once_with("key", "model", "prompt", thinking_level="low")
@@ -256,7 +258,7 @@ class TransportMappingTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual((provider.status_code, provider.detail["code"]), (504, "AI_PROVIDER_TIMEOUT"))
         self.assertEqual((stage.status_code, stage.detail["code"]), (422, "IDM_W5_BRIEF_CONTRACT_MISMATCH"))
         self.assertEqual((budget.status_code, budget.detail["code"]), (422, "IDM_DEADLINE_EXCEEDED"))
-        request = main.RagLessonAuthorChapterShardV2Request.model_validate(idm_shard_body())
+        request = RagLessonAuthorChapterShardV2Request.model_validate(idm_shard_body())
         context = request.idm_module_context
         assert context is not None
         runtime = main._idm_runtime(request, budget_ms=60_000, allowance=context.token_allowance)

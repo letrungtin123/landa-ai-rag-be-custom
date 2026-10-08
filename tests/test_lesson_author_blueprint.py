@@ -18,12 +18,9 @@ from app.lesson_author_blueprint import (
     parse_and_validate_lesson_author_blueprint,
 )
 from app.main import (
-    AiUsage,
     CourseArchitectSemanticScopeError,
     LessonAuthorBlueprintGenerationError,
     LessonAuthorProposalValidationError,
-    RagLessonAuthorBlueprintRequest,
-    RagLessonAuthorRequest,
     build_lesson_author_blueprint_prompt,
     allocate_blueprint_source_fact_ids,
     apply_phase_one_blueprint_component_contract,
@@ -51,6 +48,8 @@ from app.main import (
     validate_staged_skeleton_source_facts,
     validate_lesson_author_proposal_shape,
 )
+from app.schemas.common import AiUsage
+from app.schemas.lesson_author import RagLessonAuthorBlueprintRequest, RagLessonAuthorRequest
 from app.workflows.contracts import WorkflowValidationResult
 
 
@@ -1364,7 +1363,7 @@ class LessonAuthorBlueprintContractTests(unittest.TestCase):
         )
         client = MagicMock()
         client.models.generate_content.return_value = response
-        with patch("app.main.genai.Client", return_value=client):
+        with patch("google.genai.Client", return_value=client):
             text, _usage = asyncio.run(
                 generate_content(
                     "test-key",
@@ -1393,7 +1392,7 @@ class LessonAuthorBlueprintContractTests(unittest.TestCase):
         )
         client = MagicMock()
         client.models.generate_content.return_value = response
-        with patch("app.main.genai.Client", return_value=client):
+        with patch("google.genai.Client", return_value=client):
             asyncio.run(
                 generate_content(
                     "test-key",
@@ -1422,7 +1421,7 @@ class LessonAuthorBlueprintContractTests(unittest.TestCase):
         )
         client = MagicMock()
         client.models.generate_content.return_value = response
-        with patch("app.main.genai.Client", return_value=client):
+        with patch("google.genai.Client", return_value=client):
             asyncio.run(
                 generate_content(
                     "test-key",

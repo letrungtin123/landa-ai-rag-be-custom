@@ -26,13 +26,13 @@ from app.lesson_author_blueprint import (
     INSTRUCTIONAL_SUPPORT_TEXT_MAX_CHARS,
 )
 from app.main import (
-    AiUsage,
     apply_course_architecture_repair_patches,
     build_course_architecture_repair_prompt,
     lesson_author_blueprint,
     match_staged_unit_by_title,
     validate_v5_post_allocation_instructional_depth,
 )
+from app.schemas.common import AiUsage
 from app.workflows.contracts import WorkflowFailure
 from app.workflows.course_architecture import classify_course_repair_targets
 from tests.test_evidence_scope_allocation_v5 import _manifest, _nodes, _v5_blueprint

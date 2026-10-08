@@ -11,7 +11,7 @@ from pydantic import ValidationError
 from app.idm.contracts import brief_hash_of
 from app.lesson_author_orchestration_v2 import canonical_hash
 from app.lesson_author_orchestration_v2_provider import UnitGenerationContractV2
-from app.main import RagLessonAuthorUnitV2Request
+from app.schemas.orchestration_v2 import RagLessonAuthorUnitV2Request
 from tests import idm_golden as g
 from tests import idm_golden_unit as gu
 from tests.idm_test_support import golden_design, golden_shard

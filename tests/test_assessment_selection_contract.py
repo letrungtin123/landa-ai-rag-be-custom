@@ -8,9 +8,14 @@ from fastapi import HTTPException
 
 from app.assessment_selection_contract import build_assessment_selection_contract, VERSION
 from app.assessment_planner import compile_v5_assessment_plan
-from app.main import (AiUsage, apply_course_architecture_repair_patches,
-                      allocate_source_map_architecture_facts, lesson_author_blueprint,
-                      validate_course_architecture_evidence_scope, validate_v5_instructional_coherence)
+from app.main import (
+    apply_course_architecture_repair_patches,
+    allocate_source_map_architecture_facts,
+    lesson_author_blueprint,
+    validate_course_architecture_evidence_scope,
+    validate_v5_instructional_coherence,
+)
+from app.schemas.common import AiUsage
 from app.workflows.contracts import WorkflowFailure
 from tests.test_assessment_intent_repair import missing_check_fixture, targets_for, unit_of, missing_check_payload
 from tests.test_evidence_scope_allocation_v5 import _nodes, _manifest, _v5_blueprint

@@ -18,6 +18,7 @@ from tests.test_staged_instance_output import checkpoint_instance_fixture
 from tests.test_checkpoint_component_quality_repair import instance_wire
 from tests.test_chapter_checkpoint import checkpoint_result
 from tests.test_lesson_prompt_policy import content_payload
+from app.schemas.common import AiUsage
 
 
 def coverage_fixture():
@@ -65,7 +66,7 @@ class CheckpointCoverageRepairTests(unittest.TestCase):
     def test_scoped_content_repair_revalidates_full_chapter_without_auto_filling(self):
         request, valid, broken, scope, manifest, delta = coverage_fixture()
         before = deepcopy(broken)
-        provider = AsyncMock(side_effect=[(json.dumps(instance_wire(broken)), main.AiUsage()), (json.dumps(delta), main.AiUsage())])
+        provider = AsyncMock(side_effect=[(json.dumps(instance_wire(broken)), AiUsage()), (json.dumps(delta), AiUsage())])
         with patch("app.main.generate_content", provider), self.assertLogs("app.main", "INFO") as logs:
             result = asyncio.run(checkpoint_result(request, manifest))
             final_request = request.model_copy(update={"checkpoint_action": "validate_chapter", "checkpoint_unit_index": None,
@@ -116,7 +117,7 @@ class CheckpointCoverageRepairTests(unittest.TestCase):
                 elif mutation == "invalid_payload": change["words"] = change["words"][:2]
                 elif mutation == "ownership": change["source_fact_ids"] = ["PRIVATE_UNKNOWN_FACT"]
                 elif mutation == "other_component": change["component_index"] = 0
-                provider = AsyncMock(side_effect=[(json.dumps(instance_wire(broken)), main.AiUsage()), (json.dumps(delta), main.AiUsage())])
+                provider = AsyncMock(side_effect=[(json.dumps(instance_wire(broken)), AiUsage()), (json.dumps(delta), AiUsage())])
                 with patch("app.main.generate_content", provider), patch("app.main.build_source_locked_html_unit") as fallback:
                     with self.assertRaises(WorkflowFailure) as failure:
                         asyncio.run(checkpoint_result(request, manifest))
@@ -138,7 +139,7 @@ class CheckpointCoverageRepairTests(unittest.TestCase):
             # Wire binding rejects ownership injection before the repair guard.
             wire = instance_wire(broken)
             if mutation in ("ownership", "duplicate"): wire["components"]["c2"]["source_fact_ids"] = broken["components"][2]["source_fact_ids"]
-            provider = AsyncMock(return_value=(json.dumps(wire), main.AiUsage()))
+            provider = AsyncMock(return_value=(json.dumps(wire), AiUsage()))
             with patch("app.main.generate_content", provider):
                 with self.assertRaises(WorkflowFailure):
                     asyncio.run(checkpoint_result(request, manifest))
@@ -156,7 +157,7 @@ class CheckpointCoverageRepairTests(unittest.TestCase):
 
     def test_valid_output_does_not_repair(self):
         request, valid, _, _, manifest, _ = coverage_fixture()
-        provider = AsyncMock(return_value=(json.dumps(instance_wire(valid)), main.AiUsage()))
+        provider = AsyncMock(return_value=(json.dumps(instance_wire(valid)), AiUsage()))
         with patch("app.main.generate_content", provider):
             result = asyncio.run(checkpoint_result(request, manifest))
         self.assertEqual(result["status"], "unit_ready")

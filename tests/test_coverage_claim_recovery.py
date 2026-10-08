@@ -13,6 +13,7 @@ from tests.test_checkpoint_component_quality_repair import instance_wire
 from tests.test_chapter_checkpoint import checkpoint_result
 from tests import test_checkpoint_provider_sdk as sdk_fixture
 from tests.staged_schema_probe import capture_sdk_body, visit_schema
+from app.schemas.common import AiUsage
 
 
 def repaired_payload(unit):
@@ -52,7 +53,7 @@ class CoverageClaimRecoveryTests(unittest.TestCase):
                     broken["components"]["c0"]["covered_source_fact_ids"] = claims[mode]
                 before = deepcopy(broken)
                 delta = repaired_payload(unit)
-                provider = AsyncMock(side_effect=[(json.dumps(broken), main.AiUsage()), (json.dumps(delta), main.AiUsage())])
+                provider = AsyncMock(side_effect=[(json.dumps(broken), AiUsage()), (json.dumps(delta), AiUsage())])
                 with patch("app.main.generate_content", provider), self.assertLogs("app.main", "INFO") as logs:
                     result = asyncio.run(checkpoint_result(request, manifest))
                     final_request = request.model_copy(update={"checkpoint_action": "validate_chapter", "checkpoint_unit_index": None,
@@ -86,7 +87,7 @@ class CoverageClaimRecoveryTests(unittest.TestCase):
                 elif mode == "supporting": wire["components"]["c1"]["covered_source_fact_ids"] = facts[:1]
                 elif mode == "other_component": wire["components"]["c2"]["component_plan_id"] = "PRIVATE_TARGET"
                 else: wire["components"]["c0"]["source_fact_ids"] = facts
-                provider = AsyncMock(return_value=(json.dumps(wire), main.AiUsage()))
+                provider = AsyncMock(return_value=(json.dumps(wire), AiUsage()))
                 with patch("app.main.generate_content", provider), self.assertLogs("app.main", "INFO") as logs:
                     with self.assertRaises(WorkflowFailure) as failure:
                         asyncio.run(checkpoint_result(request, manifest))
@@ -111,7 +112,7 @@ class CoverageClaimRecoveryTests(unittest.TestCase):
                 elif mode == "wrong_target": change["component_index"] = 1
                 elif mode == "ownership": change["source_fact_ids"] = unit["source_fact_ids"]
                 else: change["semantic_content"] = {"version": 2, "sections": []}
-                provider = AsyncMock(side_effect=[(json.dumps(wire), main.AiUsage()), (json.dumps(delta), main.AiUsage())])
+                provider = AsyncMock(side_effect=[(json.dumps(wire), AiUsage()), (json.dumps(delta), AiUsage())])
                 with patch("app.main.generate_content", provider), patch("app.main.build_source_locked_html_unit") as fallback:
                     with self.assertRaises(WorkflowFailure) as failure:
                         asyncio.run(checkpoint_result(request, manifest))

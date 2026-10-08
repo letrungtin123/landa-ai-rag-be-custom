@@ -67,7 +67,7 @@ class CheckpointProviderSDKTests(unittest.TestCase):
             def __init__(self, **_kwargs):
                 self.models = Models()
 
-        with patch("app.main.genai.Client", Client), patch.object(main.settings, "gemini_38_thinking_level", "medium"):
+        with patch("google.genai.Client", Client), patch.object(main.settings, "gemini_38_thinking_level", "medium"):
             asyncio.run(main.generate_content("offline-key", "gemini-3.8-flash", "prompt", max_output_tokens=1024,
                                               thinking_config={"include_thoughts": False}))
             asyncio.run(main.generate_content("offline-key", "gemini-3.8-flash", "prompt", max_output_tokens=1024,

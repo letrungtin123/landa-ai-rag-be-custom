@@ -51,6 +51,8 @@ from app.idm.runtime import (
     repair_thinking,
 )
 from app.infra.provider_limits import classify_provider_limit
+from app.schemas.common import AiUsage
+from app.schemas.orchestration_v2 import RagLessonAuthorChapterShardV2Request
 from tests import idm_golden as g
 from tests.idm_test_support import ALLOWANCE, assert_node_trace, make_runtime
 from tests.test_idm_endpoints import (
@@ -284,7 +286,7 @@ class ProviderStopTests(unittest.IsolatedAsyncioTestCase):
         self.assertIsNone(item.provider_failure_code)
 
     def test_runtime_takes_the_rate_limit_wait_from_settings(self) -> None:
-        request = main.RagLessonAuthorChapterShardV2Request.model_validate(idm_shard_body())
+        request = RagLessonAuthorChapterShardV2Request.model_validate(idm_shard_body())
         with patch.object(main.settings, "provider_rate_limit_max_wait_ms", 45_000):
             item = main._idm_runtime(request, budget_ms=60_000, allowance=None)
         self.assertEqual(item.rate_limit_max_wait_ms, 45_000)
@@ -337,9 +339,9 @@ class UnitProviderStopTests(StoryboardEndpointTestCase):
         async def generate(_key: str, _model: str, prompt: str, **options: Any) -> tuple[str, Any]:
             name = options["response_schema"].__name__
             if not name.startswith(WRITER):
-                return json.dumps({"verdict": "pass", "findings": []}), main.AiUsage(totalTokens=2)
+                return json.dumps({"verdict": "pass", "findings": []}), AiUsage(totalTokens=2)
             calls.append({"prompt": prompt, **options})
-            return answers.pop(0)(options), main.AiUsage(inputTokens=100, outputTokens=50, totalTokens=150)
+            return answers.pop(0)(options), AiUsage(inputTokens=100, outputTokens=50, totalTokens=150)
 
         with patch("app.main.generate_content", generate), patch.object(main.settings, "idm_judge_mode", "off"):
             async with httpx.AsyncClient(transport=httpx.ASGITransport(app=main.app), base_url="http://t") as client:

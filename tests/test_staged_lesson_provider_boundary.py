@@ -12,8 +12,6 @@ from google.genai import models, types
 from pydantic import create_model, ValidationError
 
 from app.main import (
-    AiUsage,
-    RagLessonAuthorRequest,
     build_staged_lesson_content_response_model,
     generate_staged_lesson_author_proposal,
     semantic_learning_visible_text,
@@ -29,6 +27,8 @@ from app.main import (
     ARCHITECT_COMPONENT_OPPORTUNITY_POLICY,
     LessonAuthorProposalValidationError,
 )
+from app.schemas.common import AiUsage
+from app.schemas.lesson_author import RagLessonAuthorRequest
 from app.workflows.contracts import WorkflowFailure
 
 

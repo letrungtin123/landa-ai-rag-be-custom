@@ -31,6 +31,8 @@ from pydantic import ValidationError
 
 from app import main
 from app.core.errors import AppError, DocumentLimitError
+from app.schemas.common import AiUsage
+from app.schemas.kb import RagDeleteDocumentRequest, RagDeleteKbRequest, RagIndexRequest
 
 TENANT_ID = "11111111-1111-4111-8111-111111111111"
 KB_ID = "22222222-2222-4222-8222-222222222222"
@@ -138,7 +140,7 @@ class FakeEmbedder:
         if self.error is not None:
             raise self.error
         vectors = [[0.5, -0.25] + [0.0] * 766 for _ in contents[: max(0, len(contents) - self.drop)]]
-        return vectors, main.AiUsage(embeddingTokens=7 * len(contents), totalTokens=7 * len(contents))
+        return vectors, AiUsage(embeddingTokens=7 * len(contents), totalTokens=7 * len(contents))
 
 
 def document_row(**overrides: Any) -> dict[str, Any]:
@@ -147,10 +149,10 @@ def document_row(**overrides: Any) -> dict[str, Any]:
     return {**row, **overrides}
 
 
-def index_request(**overrides: Any) -> main.RagIndexRequest:
+def index_request(**overrides: Any) -> RagIndexRequest:
     payload = {"tenant_id": TENANT_ID, "kb_id": KB_ID, "document_id": DOC_ID,
                "embedding_model": "gemini-embedding-001", "api_key": API_KEY}
-    return main.RagIndexRequest(**{**payload, **overrides})
+    return RagIndexRequest(**{**payload, **overrides})
 
 
 THREE_PARAGRAPHS = "\n\n".join(f"Paragraph {n}: " + "safety control evidence " * 6 for n in (1, 2, 3))
@@ -452,7 +454,7 @@ class ExtractSectionsRoutingTests(TempDirTestCase):
 # ---- 2. index_document ---------------------------------------------------------
 
 class IndexDocumentCharacterizationTests(unittest.TestCase):
-    def run_index(self, db: FakeDb, *, request: main.RagIndexRequest | None = None,
+    def run_index(self, db: FakeDb, *, request: RagIndexRequest | None = None,
                   embedder: FakeEmbedder | None = None,
                   download: bytes | None = None) -> tuple[Any, FakeEmbedder, Mock, list[Any]]:
         """Run the endpoint coroutine; a raised exception is returned instead of propagating."""
@@ -468,7 +470,7 @@ class IndexDocumentCharacterizationTests(unittest.TestCase):
         return outcome, embedder, downloader, logs.records
 
     def assert_failed(self, db: FakeDb, result: Any, reason: str) -> None:
-        self.assertEqual(result, {"status": "error", "chunk_count": 0, "usage": main.AiUsage().model_dump(),
+        self.assertEqual(result, {"status": "error", "chunk_count": 0, "usage": AiUsage().model_dump(),
                                   "error_reason": reason})
         self.assertEqual(db.args_for("mark_index_error"), [(INDEX_ID, reason)])
         self.assertEqual(db.args_for("insert_chunk"), [])
@@ -779,10 +781,10 @@ class PersistenceHelperTests(unittest.TestCase):
 
 class DeleteEndpointTests(unittest.TestCase):
     def test_delete_document_and_kb_scope_by_tenant(self) -> None:
-        document_request = main.RagDeleteDocumentRequest(tenant_id=TENANT_ID, kb_id=KB_ID, document_id=DOC_ID)
-        kb_request = main.RagDeleteKbRequest(tenant_id=TENANT_ID, kb_id=KB_ID)
+        document_request = RagDeleteDocumentRequest(tenant_id=TENANT_ID, kb_id=KB_ID, document_id=DOC_ID)
+        kb_request = RagDeleteKbRequest(tenant_id=TENANT_ID, kb_id=KB_ID)
         with self.assertRaises(ValidationError):  # ids are validated as UUIDs before any SQL runs
-            main.RagDeleteKbRequest(tenant_id="tenant-a", kb_id=KB_ID)
+            RagDeleteKbRequest(tenant_id="tenant-a", kb_id=KB_ID)
         cases = (
             ("document", lambda db: main.delete_document(document_request, pool=db), (TENANT_ID, KB_ID, DOC_ID)),
             ("kb", lambda db: main.delete_kb(kb_request, pool=db), (TENANT_ID, KB_ID)),

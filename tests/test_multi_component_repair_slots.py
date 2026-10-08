@@ -13,6 +13,7 @@ from tests.test_checkpoint_component_quality_repair import instance_wire
 from tests.test_chapter_checkpoint import checkpoint_result
 from tests.staged_schema_probe import capture_sdk_body
 from tests import test_checkpoint_provider_sdk as sdk_fixture
+from app.schemas.common import AiUsage
 
 
 def fixture():
@@ -57,7 +58,7 @@ async def endpoint_fixture(delta_mutator=None):
     request, valid, broken, scope, manifest, delta = fixture()
     if delta_mutator:
         delta_mutator(delta)
-    provider = AsyncMock(side_effect=[(json.dumps(instance_wire(broken)), main.AiUsage()), (json.dumps(delta), main.AiUsage())])
+    provider = AsyncMock(side_effect=[(json.dumps(instance_wire(broken)), AiUsage()), (json.dumps(delta), AiUsage())])
     with patch('app.main.generate_content', provider):
         result = await checkpoint_result(request, manifest)
         final = await checkpoint_result(request.model_copy(update={
@@ -166,7 +167,7 @@ class MultiComponentRepairSlotTests(unittest.TestCase):
             elif mode == 'claim_only': delta['components']['c3'] = {'covered_source_fact_ids': broken['components'][3]['source_fact_ids']}
             elif mode == 'foreign_claim': delta['components']['c3']['covered_source_fact_ids'].append('PRIVATE')
             else: delta['components']['c0']['semantic_content'] = broken['components'][0]['semantic_content']
-            provider = AsyncMock(side_effect=[(json.dumps(instance_wire(broken)), main.AiUsage()), (json.dumps(delta), main.AiUsage())])
+            provider = AsyncMock(side_effect=[(json.dumps(instance_wire(broken)), AiUsage()), (json.dumps(delta), AiUsage())])
             before = deepcopy(broken)
             with patch('app.main.generate_content', provider), patch('app.main.build_source_locked_html_unit') as fallback:
                 with self.assertRaises(WorkflowFailure) as caught:

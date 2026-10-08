@@ -14,7 +14,7 @@ class ProviderRequestObservabilityTests(unittest.TestCase):
         response = SimpleNamespace(text='{}', parsed=None, candidates=[], usage_metadata=None, prompt_feedback=None)
         client = MagicMock()
         client.models.generate_content.return_value = response
-        with patch('app.main.genai.Client', return_value=client):
+        with patch('google.genai.Client', return_value=client):
             asyncio.run(generate_content('secret-key', 'test-model', 'PRIVATE_SOURCE_SENTINEL',
                 max_output_tokens=65536, json_mode=True, response_schema=LESSON_AUTHOR_BLUEPRINT_RESPONSE_SCHEMA,
                 request_timeout_ms=300000, on_provider_telemetry=events.append))
@@ -50,7 +50,7 @@ class ProviderRequestObservabilityTests(unittest.TestCase):
         response = SimpleNamespace(text='{}', parsed=None, candidates=[], usage_metadata=usage, prompt_feedback=None)
         client = MagicMock()
         client.models.generate_content.return_value = response
-        with patch('app.main.genai.Client', return_value=client):
+        with patch('google.genai.Client', return_value=client):
             asyncio.run(generate_content('secret-key', 'test-model', 'PRIVATE_SOURCE_SENTINEL',
                 max_output_tokens=100, request_timeout_ms=300000, on_provider_telemetry=events.append))
         received = next(event for event in events if event.get('event') == 'provider_response_received')
@@ -62,7 +62,7 @@ class ProviderRequestObservabilityTests(unittest.TestCase):
     def test_telemetry_sink_failure_does_not_change_generation(self):
         client = MagicMock()
         client.models.generate_content.return_value = SimpleNamespace(text='{}', parsed=None, candidates=[], usage_metadata=None, prompt_feedback=None)
-        with patch('app.main.genai.Client', return_value=client):
+        with patch('google.genai.Client', return_value=client):
             text, _ = asyncio.run(generate_content('test', 'test', 'private', max_output_tokens=100,
                 on_provider_telemetry=MagicMock(side_effect=RuntimeError('sink unavailable'))))
         self.assertEqual(text, '{}')

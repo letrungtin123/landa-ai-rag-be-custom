@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock, patch
 
 from app.lesson_content_observation import observe_lesson_content, MAX_CANDIDATES, MAX_FACTS, MAX_FINDINGS
 from app.lesson_prompt_policy import component_instructional_brief, lesson_instructional_quality_policy
+from app.schemas.common import AiUsage
 
 
 def fixture(fact="Do not operate equipment before controls are verified.", teaching=None):
@@ -250,7 +251,7 @@ class ContentObservationTests(unittest.TestCase):
         from app import main
         from tests.test_lesson_prompt_policy import request_and_unit
         request, generated = request_and_unit("html", "vi")
-        provider = AsyncMock(return_value=(json.dumps(generated), main.AiUsage()))
+        provider = AsyncMock(return_value=(json.dumps(generated), AiUsage()))
         with patch("app.main.generate_content", provider), patch("app.main.logger.info") as log:
             proposal, _ = asyncio.run(main.generate_staged_lesson_author_proposal(
                 request, "Private evidence", "", source_rows=[],
@@ -268,7 +269,7 @@ class ContentObservationTests(unittest.TestCase):
         from app import main
         from tests.test_lesson_prompt_policy import request_and_unit
         request, generated = request_and_unit("html", "en")
-        provider = AsyncMock(return_value=(json.dumps(generated), main.AiUsage()))
+        provider = AsyncMock(return_value=(json.dumps(generated), AiUsage()))
         with patch("app.main.generate_content", provider), patch("app.main.logger.info") as log, \
                 patch("app.main.observe_lesson_content", side_effect=ValueError("PRIVATE_EXCEPTION")):
             asyncio.run(main.generate_staged_lesson_author_proposal(request, "Evidence", "", source_rows=[],
@@ -284,8 +285,8 @@ class ContentObservationTests(unittest.TestCase):
         from tests.test_checkpoint_component_quality_repair import instance_wire
         from tests.test_chapter_checkpoint import checkpoint_result
         request, valid, broken, scope, manifest, delta = coverage_fixture()
-        provider = AsyncMock(side_effect=[(json.dumps(instance_wire(broken)), main.AiUsage()),
-                                          (json.dumps(delta), main.AiUsage())])
+        provider = AsyncMock(side_effect=[(json.dumps(instance_wire(broken)), AiUsage()),
+                                          (json.dumps(delta), AiUsage())])
         with patch("app.main.generate_content", provider), patch("app.main.logger.info") as log:
             result = asyncio.run(checkpoint_result(request, manifest))
         self.assertEqual(result["status"], "unit_ready")

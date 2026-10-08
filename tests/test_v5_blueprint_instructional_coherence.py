@@ -3,13 +3,13 @@ from __future__ import annotations
 import unittest
 
 from app.main import (
-    RagLessonAuthorDraftArchitecture,
     allocate_blueprint_source_fact_ids,
     allocate_source_map_architecture_facts,
     format_approved_lesson_quality_contract,
     validate_v5_instructional_coherence,
     validate_course_architecture_workflow,
 )
+from app.schemas.lesson_author import RagLessonAuthorDraftArchitecture
 from app.source_map import build_source_map
 from tests.test_evidence_scope_allocation_v5 import _manifest, _nodes, _v5_blueprint
 

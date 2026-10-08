@@ -19,6 +19,7 @@ from app.idm.contracts import brief_hash_of
 from app.idm.diagram import idm_diagram_relationships, idm_source_step_diagram
 from app.idm.storyboard import build_idm_expected, parse_brief, run_idm_unit
 from app.instructional_quality import clean_source_facts, source_relationship_pairs
+from app.schemas.orchestration_v2 import RagLessonAuthorUnitV2Request
 from tests.idm_test_support import make_runtime, rehash_contract
 from tests.test_idm_storyboard import REPAIR, WRITER, FakeGenerate, severity_body, severity_writer
 
@@ -128,7 +129,7 @@ class StepDiagramBuilderTests(unittest.TestCase):
         self.assertTrue(all(edge["source"] < 10 and edge["target"] < 10 for edge in capped["edges"]))
 
     def test_idm_units_inject_the_step_builder_and_legacy_defaults_are_unchanged(self) -> None:
-        request = main.RagLessonAuthorUnitV2Request.model_validate(diagram_body(STEP_FACTS))
+        request = RagLessonAuthorUnitV2Request.model_validate(diagram_body(STEP_FACTS))
         legacy = main.build_orchestration_v2_source_locked_components(request.unit_contract, "vi")[1]
         idm = main._idm_unit_deps(request).source_locked_components
         assert legacy is not None and idm is not None and idm[1] is not None
@@ -140,7 +141,7 @@ class StepDiagramBuilderTests(unittest.TestCase):
         self.assertEqual(labels(idm[1]), CHAIN)
         self.assertEqual({key: value for key, value in idm[1].items() if key not in {"name", "nodes", "edges"}},
                          {key: value for key, value in legacy.items() if key not in {"name", "nodes", "edges"}})
-        none_request = main.RagLessonAuthorUnitV2Request.model_validate(diagram_body(NO_STEP_FACTS))
+        none_request = RagLessonAuthorUnitV2Request.model_validate(diagram_body(NO_STEP_FACTS))
         slots = main._idm_unit_deps(none_request).source_locked_components
         assert slots is not None
         self.assertIsNone(slots[1])
@@ -149,7 +150,7 @@ class StepDiagramBuilderTests(unittest.TestCase):
 
 class DiagramSlotFlowTests(unittest.IsolatedAsyncioTestCase):
     async def run_unit(self, facts: list[str], *answers: tuple[str, Any]) -> tuple[dict[str, Any], FakeGenerate]:
-        request = main.RagLessonAuthorUnitV2Request.model_validate(diagram_body(facts))
+        request = RagLessonAuthorUnitV2Request.model_validate(diagram_body(facts))
         deps = dataclasses.replace(main._idm_unit_deps(request), judge_mode="off")
         queues: dict[str, list[Any]] = {}
         for family, answer in answers:
@@ -160,7 +161,7 @@ class DiagramSlotFlowTests(unittest.IsolatedAsyncioTestCase):
         return result, provider
 
     def test_required_relationships_are_the_step_chain_only(self) -> None:
-        request = main.RagLessonAuthorUnitV2Request.model_validate(diagram_body(STEP_FACTS))
+        request = RagLessonAuthorUnitV2Request.model_validate(diagram_body(STEP_FACTS))
         contract = request.unit_contract
         expected = build_idm_expected(contract, parse_brief(contract), main._idm_unit_deps(request), "vi")
         plan_id = contract.component_plan[1].component_plan_id

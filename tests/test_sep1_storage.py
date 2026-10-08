@@ -34,6 +34,7 @@ from tests.test_characterization_ingestion import (
     document_row,
     index_request,
 )
+from app.schemas.kb import RagIndexRequest
 
 ORIGIN = "https://storage.internal:8443"
 BUCKET = "landa-storage"
@@ -220,7 +221,7 @@ class DownloadTests(unittest.TestCase):
 class IndexRouteSignedUrlTests(unittest.TestCase):
     """The index route downloads through the signed URL before it creates the index row."""
 
-    def run_index(self, db: FakeDb, request: main.RagIndexRequest,
+    def run_index(self, db: FakeDb, request: RagIndexRequest,
                   handler: Callable[[httpx.Request], httpx.Response] | None = None) -> tuple[Any, Mock, list[str]]:
         legacy = Mock(side_effect=AssertionError("legacy download not expected"))
         original = storage.download_to_file

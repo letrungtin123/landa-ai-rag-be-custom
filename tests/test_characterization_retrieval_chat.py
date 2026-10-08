@@ -19,6 +19,9 @@ import asyncpg
 from pydantic import SecretStr
 
 from app import main
+from app.schemas.chat import RagChatMessage, RagChatRequest, RagSourceDocument
+from app.schemas.common import AiUsage
+from app.schemas.lesson_author import RagLessonAuthorBlueprintRequest, RagLessonAuthorRequest
 from app.source_structure import PARSER_VERSION
 
 TENANT_ID = "11111111-1111-4111-8111-111111111111"
@@ -28,8 +31,8 @@ DOC_A = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
 DOC_B = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
 EMBEDDING = [0.5, 0.25, 0.125]
 EMBEDDING_LITERAL = "[0.50000000,0.25000000,0.12500000]"
-EMBED_USAGE = main.AiUsage(embeddingTokens=5, totalTokens=5)
-GEN_USAGE = main.AiUsage(inputTokens=100, outputTokens=20, totalTokens=120)
+EMBED_USAGE = AiUsage(embeddingTokens=5, totalTokens=5)
+GEN_USAGE = AiUsage(inputTokens=100, outputTokens=20, totalTokens=120)
 TENANT_FILTER_RE = re.compile(r"\b[cn]\.tenant_id = \$1::uuid")
 KB_FILTER_RE = re.compile(r"\b[cn]\.kb_id = \$2::uuid")
 
@@ -145,7 +148,7 @@ class EmbedRecorder:
         *,
         task_type: str | None = None,
         output_dimensionality: int = 768,
-    ) -> tuple[list[list[float]], main.AiUsage]:
+    ) -> tuple[list[list[float]], AiUsage]:
         self.calls.append(
             {
                 "api_key": api_key,
@@ -164,12 +167,12 @@ class GenerateRecorder:
     def __init__(self) -> None:
         self.calls: list[dict[str, Any]] = []
 
-    async def __call__(self, api_key: Any, model: str, prompt: str, **kwargs: Any) -> tuple[str, main.AiUsage]:
+    async def __call__(self, api_key: Any, model: str, prompt: str, **kwargs: Any) -> tuple[str, AiUsage]:
         self.calls.append({"api_key": api_key, "model": model, "prompt": prompt, **kwargs})
         return "Generated answer", GEN_USAGE
 
 
-def make_request(cls: type = main.RagChatRequest, **overrides: Any) -> Any:
+def make_request(cls: type = RagChatRequest, **overrides: Any) -> Any:
     values: dict[str, Any] = {
         "tenant_id": TENANT_ID,
         "kb_id": KB_ID,
@@ -187,8 +190,8 @@ def make_request(cls: type = main.RagChatRequest, **overrides: Any) -> Any:
     return cls(**values)
 
 
-def source_doc(document_id: str, name: str = "Doc") -> main.RagSourceDocument:
-    return main.RagSourceDocument(document_id=document_id, kb_id=KB_ID, name=name, type="pdf", status="learned")
+def source_doc(document_id: str, name: str = "Doc") -> RagSourceDocument:
+    return RagSourceDocument(document_id=document_id, kb_id=KB_ID, name=name, type="pdf", status="learned")
 
 
 def chunk(
@@ -315,7 +318,7 @@ class KeywordAndLimitHelperTests(PinnedTestCase):
             main.build_retrieval_query_texts(make_request(user_message="  Hello world  ")), ["Hello world"]
         )
         author = make_request(
-            main.RagLessonAuthorRequest,
+            RagLessonAuthorRequest,
             target="lesson_author",
             output_schema_hint="{}",
             user_message="Draft lessons",
@@ -326,7 +329,7 @@ class KeywordAndLimitHelperTests(PinnedTestCase):
         # Second value dedupes against the first by case/whitespace-insensitive signature; long text cut at 6000.
         self.assertEqual(queries, ["Draft lessons", "x" * 6000])
         # Extra fields are ignored for non-authoring targets.
-        admin = make_request(main.RagLessonAuthorRequest, output_schema_hint="{}", outline_context="ignored")
+        admin = make_request(RagLessonAuthorRequest, output_schema_hint="{}", outline_context="ignored")
         self.assertEqual(main.build_retrieval_query_texts(admin), ["Lockout tagout procedure"])
 
 
@@ -421,8 +424,8 @@ class MergeFormatDiagnosticsTests(PinnedTestCase):
 
     def test_format_history_keeps_last_twelve_truncates_and_labels(self) -> None:
         roles = ["user", "assistant", "model"]
-        history = [main.RagChatMessage(role=roles[i % 3], content=f"m{i}") for i in range(13)]
-        history.append(main.RagChatMessage(role="user", content="x" * 2000))
+        history = [RagChatMessage(role=roles[i % 3], content=f"m{i}") for i in range(13)]
+        history.append(RagChatMessage(role="user", content="x" * 2000))
         lines = main.format_history(history).split("\n")
         self.assertEqual(len(lines), 12)
         self.assertEqual(lines[0], "Trợ lý: m2")  # "model" is labelled as the assistant
@@ -448,7 +451,7 @@ class EmbedTextsTests(unittest.TestCase):
             *,
             task_type: str | None = None,
             output_dimensionality: int = 768,
-        ) -> tuple[list[list[float]], main.AiUsage]:
+        ) -> tuple[list[list[float]], AiUsage]:
             self.batches.append(
                 {
                     "model": model,
@@ -459,12 +462,12 @@ class EmbedTextsTests(unittest.TestCase):
                 }
             )
             n = len(contents)
-            return [[float(len(text))] for text in contents], main.AiUsage(embeddingTokens=2 * n, totalTokens=2 * n)
+            return [[float(len(text))] for text in contents], AiUsage(embeddingTokens=2 * n, totalTokens=2 * n)
 
         self.enterContext(patch("app.main.embed_text_batch", fake_batch))
 
     def test_empty_input_returns_empty_and_zero_usage_without_provider_call(self) -> None:
-        self.assertEqual(run(main.embed_texts("key", "gemini-embedding-001", [])), ([], main.AiUsage()))
+        self.assertEqual(run(main.embed_texts("key", "gemini-embedding-001", [])), ([], AiUsage()))
         self.assertEqual(self.batches, [])
 
     def test_batches_by_embedding_batch_size_and_combines_usage(self) -> None:
@@ -485,7 +488,7 @@ class EmbedTextsTests(unittest.TestCase):
             {(batch["task_type"], batch["dims"]) for batch in self.batches}, {("RETRIEVAL_DOCUMENT", 1536)}
         )
         self.assertEqual(vectors, [[1.0], [2.0], [3.0], [4.0], [5.0]])
-        self.assertEqual(usage, main.AiUsage(embeddingTokens=10, totalTokens=10))
+        self.assertEqual(usage, AiUsage(embeddingTokens=10, totalTokens=10))
 
     def test_batch_size_rules(self) -> None:
         with patch.object(main.settings, "embedding_batch_size", 32):
@@ -507,7 +510,7 @@ class RetrieveChunksTests(PinnedTestCase):
             with self.subTest(target=target):
                 pool = FakePool()
                 rows, usage, context = run(main.retrieve_chunks(pool, make_request(kb_id=None, target=target)))
-                self.assertEqual((rows, usage, pool.calls), ([], main.AiUsage(), []))
+                self.assertEqual((rows, usage, pool.calls), ([], AiUsage(), []))
                 self.assertEqual(
                     (context["outline"], context["structure_source"], context["structure_node_count"]), ("", None, 0)
                 )
@@ -624,7 +627,7 @@ class RetrieveChunksTests(PinnedTestCase):
 
     def test_lesson_author_request_runs_one_vector_query_per_distinct_query_text(self) -> None:
         request = make_request(
-            main.RagLessonAuthorRequest,
+            RagLessonAuthorRequest,
             target="lesson_author",
             output_schema_hint="{}",
             user_message="ab",
@@ -639,7 +642,7 @@ class RetrieveChunksTests(PinnedTestCase):
 
 
 class StructureContextTests(PinnedTestCase):
-    def author_request(self, **overrides: Any) -> main.RagChatRequest:
+    def author_request(self, **overrides: Any) -> RagChatRequest:
         return make_request(target="lesson_author", user_message="ab", **overrides)
 
     def test_normalized_structure_table_is_preferred_over_chunk_metadata(self) -> None:
@@ -737,7 +740,7 @@ class StructureContextTests(PinnedTestCase):
             ],
         )
         request = make_request(
-            main.RagLessonAuthorRequest,
+            RagLessonAuthorRequest,
             target="lesson_author",
             output_schema_hint="{}",
             user_message="ab",
@@ -787,7 +790,7 @@ class StructureContextTests(PinnedTestCase):
             ]
         )
         request = make_request(
-            main.RagLessonAuthorBlueprintRequest,
+            RagLessonAuthorBlueprintRequest,
             target="lesson_author",
             blueprint_schema_hint="{}",
             user_message="ab",
@@ -835,7 +838,7 @@ class ChatEndpointTests(PinnedTestCase):
         pool = FakePool()
         result = run(main.chat(make_request(kb_id=None, locale="en"), pool=pool))
         self.assertEqual(result["text"], main.build_no_context_answer("en"))
-        self.assertEqual(result["usage"], main.AiUsage().model_dump())
+        self.assertEqual(result["usage"], AiUsage().model_dump())
         self.assertEqual((result["retrieval"]["reason"], result["retrieval"]["kb_id"]), ("missing_kb_id", None))
         self.assertEqual((pool.calls, self.embed.calls, self.generate.calls), ([], [], []))
 
@@ -896,8 +899,8 @@ class ChatEndpointTests(PinnedTestCase):
 
     def test_prompt_sections_are_ordered(self) -> None:
         history = [
-            main.RagChatMessage(role="user", content="Earlier question"),
-            main.RagChatMessage(role="model", content="Earlier answer"),
+            RagChatMessage(role="user", content="Earlier question"),
+            RagChatMessage(role="model", content="Earlier answer"),
         ]
         request = make_request(
             target="lesson_author", user_message="ab", history=history, course_context="Course: Industrial Safety 101"

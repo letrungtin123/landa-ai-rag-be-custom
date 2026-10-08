@@ -9,6 +9,8 @@ from app import main
 from tests.test_chapter_checkpoint import fixture, checkpoint_result, provider_result
 from tests.test_staged_instance_output import checkpoint_instance_fixture
 from tests.test_checkpoint_component_quality_repair import instance_wire
+from app.schemas.common import AiUsage
+from app.schemas.lesson_author import RagLessonAuthorCheckpointRequest
 
 
 def run(payload):
@@ -16,13 +18,13 @@ def run(payload):
         request, unit, _, manifest = checkpoint_instance_fixture()
         broken = instance_wire(unit)
         broken["components"]["c2"].pop("edges")
-        provider = AsyncMock(side_effect=[(json.dumps(broken), main.AiUsage()),
-            (json.dumps({"components": [{"component_index": 2, "edges": unit["components"][2]["edges"]}]}), main.AiUsage())])
+        provider = AsyncMock(side_effect=[(json.dumps(broken), AiUsage()),
+            (json.dumps({"components": [{"component_index": 2, "edges": unit["components"][2]["edges"]}]}), AiUsage())])
         if payload["action"] == "coverage_repair":
             from tests.test_checkpoint_coverage_repair import coverage_fixture
             request, unit, broken_unit, _, manifest, delta = coverage_fixture()
-            provider = AsyncMock(side_effect=[(json.dumps(instance_wire(broken_unit)), main.AiUsage()),
-                                              (json.dumps(delta), main.AiUsage())])
+            provider = AsyncMock(side_effect=[(json.dumps(instance_wire(broken_unit)), AiUsage()),
+                                              (json.dumps(delta), AiUsage())])
         if payload["action"] in ("duplicate_claim_repair", "null_claim_repair"):
             from tests.test_staged_ordered_writer import uat_fixture
             from tests.test_coverage_claim_recovery import repaired_payload
@@ -38,8 +40,8 @@ def run(payload):
             broken = instance_wire(unit)
             broken["components"]["c0"]["covered_source_fact_ids"] = (
                 unit["source_fact_ids"] * 2 if payload["action"] == "duplicate_claim_repair" else None)
-            provider = AsyncMock(side_effect=[(json.dumps(broken), main.AiUsage()),
-                                              (json.dumps(repaired_payload(unit)), main.AiUsage())])
+            provider = AsyncMock(side_effect=[(json.dumps(broken), AiUsage()),
+                                              (json.dumps(repaired_payload(unit)), AiUsage())])
         def forbidden(*_args, **_kwargs):
             raise AssertionError("REAL_PROVIDER_OR_DATABASE_ACCESS_FORBIDDEN")
         events = []
@@ -57,7 +59,7 @@ def run(payload):
     data["checkpoint_units"] = data.get("checkpoint_units", [])
     if data["checkpoint_action"] == "validate_chapter":
         data["checkpoint_unit_index"] = None
-    request = main.RagLessonAuthorCheckpointRequest.model_validate(data)
+    request = RagLessonAuthorCheckpointRequest.model_validate(data)
     index = request.checkpoint_unit_index
     provider = provider_result(units[index]) if index is not None else None
     def forbidden(*_args, **_kwargs):

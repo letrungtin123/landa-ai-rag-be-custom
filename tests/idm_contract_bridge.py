@@ -39,6 +39,7 @@ from app import main
 from app.idm.node_acceptance import node_acceptance_findings
 from app.idm.storyboard import acceptance_context, parse_brief
 from app.lesson_author_orchestration_v2_provider import UnitGenerationContractV2
+from app.schemas.common import AiUsage
 from tests import idm_golden as g
 from tests import idm_golden_module as gm
 
@@ -55,7 +56,7 @@ _FILLER = ("Nắm chắc điểm này giúp nhân viên xử lý khiếu nại n
 
 
 def _usage(prompt: str, text: str) -> Any:
-    return main.AiUsage(inputTokens=len(prompt) // 4, outputTokens=len(text) // 4,
+    return AiUsage(inputTokens=len(prompt) // 4, outputTokens=len(text) // 4,
                         totalTokens=len(prompt) // 4 + len(text) // 4)
 
 

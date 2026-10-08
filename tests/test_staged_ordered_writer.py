@@ -14,6 +14,7 @@ from tests.staged_schema_probe import capture_sdk_body, visit_schema
 from tests.test_staged_instance_output import checkpoint_instance_fixture
 from tests.test_checkpoint_component_quality_repair import instance_wire
 from tests.test_chapter_checkpoint import checkpoint_result
+from app.schemas.common import AiUsage
 
 
 def uat_fixture():
@@ -94,7 +95,7 @@ class StagedOrderedWriterTests(unittest.TestCase):
         delta = {"components": [{"component_index": 0, "semantic_content": replacement,
                                   "covered_source_fact_ids": valid["source_fact_ids"][:]}]}
         before = deepcopy(broken)
-        provider = AsyncMock(side_effect=[(json.dumps(broken), main.AiUsage()), (json.dumps(delta), main.AiUsage())])
+        provider = AsyncMock(side_effect=[(json.dumps(broken), AiUsage()), (json.dumps(delta), AiUsage())])
         with patch("app.main.generate_content", provider), self.assertLogs("app.main", "INFO") as logs:
             result = asyncio.run(checkpoint_result(request, manifest))
             final_request = request.model_copy(update={
@@ -125,7 +126,7 @@ class StagedOrderedWriterTests(unittest.TestCase):
         wire = instance_wire(unit)
         wire["components"]["c0"]["semantic_content"]["heading"] = "PRIVATE_CONFLICT"
         delta = {"components": [{"component_index": 0, "semantic_content": wire["components"]["c0"]["semantic_content"]}]}
-        provider = AsyncMock(side_effect=[(json.dumps(wire), main.AiUsage()), (json.dumps(delta), main.AiUsage())])
+        provider = AsyncMock(side_effect=[(json.dumps(wire), AiUsage()), (json.dumps(delta), AiUsage())])
         with patch("app.main.generate_content", provider), self.assertRaises(WorkflowFailure) as failure:
             asyncio.run(checkpoint_result(request, manifest))
         self.assertEqual(provider.await_count, 2)

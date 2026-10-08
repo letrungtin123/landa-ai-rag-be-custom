@@ -15,6 +15,8 @@ from app import main
 from app.lesson_author_checkpoint import ChapterCheckpointUnit, assemble_checkpoint_chapter, select_checkpoint_unit
 from app.workflows.contracts import WorkflowFailure, WorkflowValidationResult
 from tests.test_lesson_prompt_policy import request_and_unit
+from app.schemas.common import AiUsage
+from app.schemas.lesson_author import RagLessonAuthorCheckpointRequest, RagLessonAuthorRequest
 
 
 def fixture(count=5, *, action="generate_unit", index=0):
@@ -50,7 +52,7 @@ def fixture(count=5, *, action="generate_unit", index=0):
             "checkpoint_action": action, "remaining_workflow_budget_ms": 400_000,
             "checkpoint_unit_index": index if action == "generate_unit" else None,
             "checkpoint_units": [] if action == "generate_unit" else [{"unit_index": i, "unit": unit} for i, unit in enumerate(units)]}
-    return main.RagLessonAuthorCheckpointRequest.model_validate(data), units, {"facts": facts}
+    return RagLessonAuthorCheckpointRequest.model_validate(data), units, {"facts": facts}
 
 
 def provider_result(unit, *, known=True, retry=False):
@@ -63,14 +65,14 @@ def provider_result(unit, *, known=True, retry=False):
                       "usage_source": "provider" if known else "local_estimate",
                       "provider_input_tokens": 10 if known else None, "provider_output_tokens": 20 if known else None,
                       "provider_total_tokens": 30 if known else None})
-        return json.dumps(unit), main.AiUsage(inputTokens=10, outputTokens=20, totalTokens=30)
+        return json.dumps(unit), AiUsage(inputTokens=10, outputTokens=20, totalTokens=30)
     return AsyncMock(side_effect=generate)
 
 
 async def checkpoint_result(request, manifest, events=None, retrieval_usage=None):
     return await main.build_lesson_author_checkpoint_result(
         request, context="Synthetic context", source_outline="", source_coverage="", rows=[], manifest=manifest,
-        known_source_refs=set(), retrieval={}, retrieval_usage=retrieval_usage or main.AiUsage(), elapsed_ms=0,
+        known_source_refs=set(), retrieval={}, retrieval_usage=retrieval_usage or AiUsage(), elapsed_ms=0,
         emit=(events if events is not None else []).append,
     )
 
@@ -88,7 +90,7 @@ class ChapterCheckpointTests(unittest.TestCase):
             {"id": "block_b", "intent": "relationship_visualization", "learning_objective_refs": ["lo_2"], "source_fact_ids": ["fixture-fact-0"]},
         ]
         unit["component_plan"][0]["learning_block_ids"] = ["block_a"]
-        request = main.RagLessonAuthorCheckpointRequest.model_validate({**request.model_dump(), "blueprint_architecture": architecture})
+        request = RagLessonAuthorCheckpointRequest.model_validate({**request.model_dump(), "blueprint_architecture": architecture})
         before = request.model_dump()
         events = []
         with patch("app.main.generate_content", AsyncMock()) as provider, self.assertRaises(WorkflowFailure) as raised:
@@ -112,7 +114,7 @@ class ChapterCheckpointTests(unittest.TestCase):
                        {"remaining_workflow_budget_ms": 600_000}, {"remaining_workflow_budget_ms": 0},
                        {"blueprint_architecture": {**request.blueprint_architecture.model_dump(), "architecture_contract_version": 4}}):
             with self.subTest(update=list(update)), self.assertRaises(ValidationError):
-                main.RagLessonAuthorCheckpointRequest.model_validate({**request.model_dump(), **update})
+                RagLessonAuthorCheckpointRequest.model_validate({**request.model_dump(), **update})
 
     def test_completion_inventory_rejects_duplicate_missing_and_out_of_scope_indices(self):
         request, _, _ = fixture(action="validate_chapter")
@@ -120,7 +122,7 @@ class ChapterCheckpointTests(unittest.TestCase):
         for units in (original["checkpoint_units"][:-1], original["checkpoint_units"][:-1] + [original["checkpoint_units"][0]],
                       [{**item, "unit_index": item["unit_index"] + 1} for item in original["checkpoint_units"]]):
             with self.assertRaises(ValidationError):
-                main.RagLessonAuthorCheckpointRequest.model_validate({**original, "checkpoint_units": units})
+                RagLessonAuthorCheckpointRequest.model_validate({**original, "checkpoint_units": units})
 
     def test_unit_response_is_exact_selected_position_not_duplicate_title(self):
         request, units, manifest = fixture(index=3)
@@ -154,7 +156,7 @@ class ChapterCheckpointTests(unittest.TestCase):
         architecture["lessons"][0]["units"][4]["source_fact_ids"] += dense
         architecture["lessons"][0]["units"][4]["component_plan"][0]["source_fact_ids"] += dense
         manifest["facts"] += [{"fact_id": f, "text": "Other unit evidence.", "source_page": 5} for f in dense]
-        request = main.RagLessonAuthorCheckpointRequest.model_validate({**request.model_dump(), "blueprint_architecture": architecture})
+        request = RagLessonAuthorCheckpointRequest.model_validate({**request.model_dump(), "blueprint_architecture": architecture})
         provider = provider_result(units[0])
         with patch("app.main.generate_content", provider):
             asyncio.run(checkpoint_result(request, manifest))
@@ -195,7 +197,7 @@ class ChapterCheckpointTests(unittest.TestCase):
 
     def test_endpoint_preserves_evidence_gate_before_checkpoint_generation(self):
         request, _, _ = fixture()
-        with patch("app.main.retrieve_chunks", AsyncMock(return_value=([], main.AiUsage(), {}))), \
+        with patch("app.main.retrieve_chunks", AsyncMock(return_value=([], AiUsage(), {}))), \
              patch("app.main.target_source_scope_is_incomplete", return_value=False), \
              patch("app.main.build_lesson_author_checkpoint_result", AsyncMock()) as generation:
             with self.assertRaises(HTTPException) as raised:
@@ -212,7 +214,7 @@ class ChapterCheckpointTests(unittest.TestCase):
             self.assertFalse(result["usage_complete"])
             self.assertNotEqual(result["usage_source"], "provider")
         with patch("app.main.generate_content", provider_result(units[0])):
-            result = asyncio.run(checkpoint_result(request, manifest, retrieval_usage=main.AiUsage(embeddingTokens=4, totalTokens=4)))
+            result = asyncio.run(checkpoint_result(request, manifest, retrieval_usage=AiUsage(embeddingTokens=4, totalTokens=4)))
         self.assertFalse(result["usage_complete"])
 
     def test_full_completion_uses_all_existing_quality_gates_and_no_generation(self):
@@ -232,7 +234,7 @@ class ChapterCheckpointTests(unittest.TestCase):
             changed = request.model_dump()
             changed["checkpoint_units"][0]["unit"][field] = value
             with self.assertRaises(WorkflowFailure) as raised:
-                asyncio.run(checkpoint_result(main.RagLessonAuthorCheckpointRequest.model_validate(changed), manifest))
+                asyncio.run(checkpoint_result(RagLessonAuthorCheckpointRequest.model_validate(changed), manifest))
             self.assertEqual(raised.exception.internal_code, "CHAPTER_CHECKPOINT_UNIT_INVALID")
 
     def test_full_quality_failure_cannot_finalize_or_repair_immutable_units(self):
@@ -321,7 +323,7 @@ class ChapterCheckpointTests(unittest.TestCase):
         }])
         manifest["facts"] = manifest["facts"][:1]
         manifest["supporting_evidence_facts"] = deepcopy(manifest["facts"])
-        request = main.RagLessonAuthorCheckpointRequest.model_validate({**request.model_dump(), "blueprint_architecture": architecture})
+        request = RagLessonAuthorCheckpointRequest.model_validate({**request.model_dump(), "blueprint_architecture": architecture})
         with patch("app.main.generate_content", provider_result(units[1])):
             result = asyncio.run(checkpoint_result(request, manifest))
         self.assertEqual(result["unit"]["source_fact_ids"], [])
@@ -329,8 +331,8 @@ class ChapterCheckpointTests(unittest.TestCase):
 
     def test_regular_proposal_model_does_not_activate_checkpoint_from_extra_fields(self):
         request, _, _ = fixture()
-        regular = main.RagLessonAuthorRequest.model_validate(request.model_dump())
-        self.assertNotIsInstance(regular, main.RagLessonAuthorCheckpointRequest)
+        regular = RagLessonAuthorRequest.model_validate(request.model_dump())
+        self.assertNotIsInstance(regular, RagLessonAuthorCheckpointRequest)
         self.assertNotIn("checkpoint_action", regular.model_dump())
 
 

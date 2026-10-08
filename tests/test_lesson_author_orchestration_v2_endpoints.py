@@ -7,18 +7,20 @@ from unittest.mock import AsyncMock, patch
 from fastapi import HTTPException
 
 from app.main import (
-    AiUsage,
     ORCHESTRATION_V2_UNIT_FALLBACK_RESPONSE_HEADROOM_MS,
     STAGED_COMPONENT_PAYLOAD_FIELDS,
-    RagLessonAuthorChapterShardV2Request,
-    RagLessonAuthorCourseSkeletonV2Request,
-    RagLessonAuthorSourceSnapshotV2Request,
-    RagLessonAuthorUnitV2Request,
     validate_staged_unit_content,
     lesson_author_orchestration_v2_chapter_shard,
     lesson_author_orchestration_v2_course_skeleton,
     lesson_author_orchestration_v2_source_snapshot,
     lesson_author_orchestration_v2_unit,
+)
+from app.schemas.common import AiUsage
+from app.schemas.orchestration_v2 import (
+    RagLessonAuthorChapterShardV2Request,
+    RagLessonAuthorCourseSkeletonV2Request,
+    RagLessonAuthorSourceSnapshotV2Request,
+    RagLessonAuthorUnitV2Request,
 )
 from app.lesson_author_orchestration_v2 import canonical_hash
 from app.lesson_author_orchestration_v2_provider import (

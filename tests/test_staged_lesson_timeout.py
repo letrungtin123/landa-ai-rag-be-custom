@@ -11,15 +11,15 @@ from fastapi import HTTPException
 
 from app.core.config import settings
 from app.main import (
-    AiUsage,
     STAGED_LESSON_WORKFLOW_TIMEOUT_MAX_MS,
     StagedLessonWorkflowDeadline,
-    RagLessonAuthorRequest,
     call_provider_with_timeout,
     generate_staged_lesson_author_proposal,
     is_non_retryable_provider_error,
     staged_lesson_content_output_tokens,
 )
+from app.schemas.common import AiUsage
+from app.schemas.lesson_author import RagLessonAuthorRequest
 
 
 def staged_request(*, max_output_tokens: int = 30_000) -> RagLessonAuthorRequest:

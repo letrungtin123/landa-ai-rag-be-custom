@@ -36,7 +36,8 @@ from fastapi import FastAPI
 from app.core.config import settings
 from app.infra import gemini as gemini_infra
 from app.infra.schema_check import SchemaCheckResult
-from app.main import AiUsage, app
+from app.main import app
+from app.schemas.common import AiUsage
 
 SNAPSHOT_DIR = Path(__file__).resolve().parent / "snapshots" / "routes"
 UPDATE_ENV = "LANDA_UPDATE_ROUTE_SNAPSHOTS"

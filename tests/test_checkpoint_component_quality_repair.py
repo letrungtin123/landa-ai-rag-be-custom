@@ -11,6 +11,7 @@ from app import main
 from app.workflows.contracts import WorkflowFailure
 from tests.test_staged_recovery_identity import fixture as original_fixture
 from tests.test_chapter_checkpoint import fixture as endpoint_fixture
+from app.schemas.common import AiUsage
 
 
 def fixture():
@@ -57,7 +58,7 @@ class CheckpointComponentQualityRepairTests(unittest.TestCase):
     def test_valid_dense_unit_bypasses_repair(self):
         request, unit, scope, manifest = fixture()
         self.assertIsNone(main.validate_staged_unit_content(unit, scope, strict_payload=True))
-        provider = AsyncMock(return_value=(json.dumps(instance_wire(unit)), main.AiUsage()))
+        provider = AsyncMock(return_value=(json.dumps(instance_wire(unit)), AiUsage()))
         with patch("app.main.generate_content", provider):
             result, _ = run(request, manifest)
         self.assertEqual(provider.await_count, 1)
@@ -70,7 +71,7 @@ class CheckpointComponentQualityRepairTests(unittest.TestCase):
         baseline = deepcopy(broken)
         self.assertEqual(main.staged_component_repair_targets(broken, scope), [2])
         delta = {"components": [{"component_index": 2, "items": valid["components"][2]["items"]}]}
-        provider = AsyncMock(side_effect=[(json.dumps(instance_wire(broken)), main.AiUsage()), (json.dumps(delta), main.AiUsage())])
+        provider = AsyncMock(side_effect=[(json.dumps(instance_wire(broken)), AiUsage()), (json.dumps(delta), AiUsage())])
         with patch("app.main.generate_content", provider), self.assertLogs("app.main", "INFO") as logs:
             result, _ = run(request, manifest)
         self.assertEqual(result["unit"]["components"], valid["components"])
@@ -103,7 +104,7 @@ class CheckpointComponentQualityRepairTests(unittest.TestCase):
                 self.assertEqual(finding.code, code)
                 self.assertEqual(main.staged_component_repair_targets(broken, scope), [target])
                 delta = {"components": [{"component_index": target, **fields}]}
-                provider = AsyncMock(side_effect=[(json.dumps(instance_wire(broken)), main.AiUsage()), (json.dumps(delta), main.AiUsage())])
+                provider = AsyncMock(side_effect=[(json.dumps(instance_wire(broken)), AiUsage()), (json.dumps(delta), AiUsage())])
                 with patch("app.main.generate_content", provider), self.assertLogs("app.main", "INFO") as logs:
                     result, _ = run(request, manifest)
                 self.assertEqual(result["unit"]["components"], valid["components"])
@@ -122,8 +123,8 @@ class CheckpointComponentQualityRepairTests(unittest.TestCase):
         self.assertEqual(main.staged_component_repair_targets(broken, scope), [0])
         delta = {"components": [{"component_index": 0,
                                   "semantic_content": valid["components"][0]["semantic_content"]}]}
-        provider = AsyncMock(side_effect=[(json.dumps(instance_wire(broken)), main.AiUsage()),
-                                         (json.dumps(delta), main.AiUsage())])
+        provider = AsyncMock(side_effect=[(json.dumps(instance_wire(broken)), AiUsage()),
+                                         (json.dumps(delta), AiUsage())])
         with patch("app.main.generate_content", provider):
             result, _ = run(request, manifest)
         self.assertEqual(result["unit"]["components"], valid["components"])
@@ -204,7 +205,7 @@ class CheckpointComponentQualityRepairTests(unittest.TestCase):
             elif mutation == "instance": broken["components"]["c0"]["component_plan_id"] = "PRIVATE_ID"
             elif mutation == "null_components": broken["components"] = None
             else: broken["components"] = []
-            provider = AsyncMock(return_value=(json.dumps(broken), main.AiUsage()))
+            provider = AsyncMock(return_value=(json.dumps(broken), AiUsage()))
             with patch("app.main.generate_content", provider), self.assertLogs("app.main", "INFO") as logs:
                 with self.assertRaises(WorkflowFailure) as failure:
                     run(request, manifest)
@@ -220,8 +221,8 @@ class CheckpointComponentQualityRepairTests(unittest.TestCase):
             broken = deepcopy(valid)
             broken["components"][2]["items"] = []
             baseline = deepcopy(broken)
-            provider = AsyncMock(side_effect=[(json.dumps(instance_wire(broken)), main.AiUsage()),
-                                             (json.dumps({"components": [change]}), main.AiUsage())])
+            provider = AsyncMock(side_effect=[(json.dumps(instance_wire(broken)), AiUsage()),
+                                             (json.dumps({"components": [change]}), AiUsage())])
             with patch("app.main.generate_content", provider), patch("app.main.build_source_locked_html_unit") as fallback:
                 with self.assertRaises(WorkflowFailure) as failure:
                     run(request, manifest)

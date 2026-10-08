@@ -8,10 +8,13 @@ from app.assessment_planner import compile_v5_assessment_plan, materialize_asses
 from app.assessment_selection_contract import build_assessment_selection_contract
 from app.component_capabilities import ComponentCapabilities
 from app.main import (
-    AiUsage, lesson_author_blueprint, apply_course_architecture_repair_patches,
-    allocate_source_map_architecture_facts, validate_course_architecture_evidence_scope,
+    lesson_author_blueprint,
+    apply_course_architecture_repair_patches,
+    allocate_source_map_architecture_facts,
+    validate_course_architecture_evidence_scope,
     validate_v5_instructional_coherence,
 )
+from app.schemas.common import AiUsage
 from app.source_map import build_source_map
 from app.workflows.contracts import WorkflowFailure
 from tests.test_assessment_intent_repair import targets_for

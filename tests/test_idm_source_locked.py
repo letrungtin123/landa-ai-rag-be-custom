@@ -17,6 +17,7 @@ from unittest.mock import patch
 from app import main
 from app.idm.source_locked import idm_source_grounded_single_choice, render_idm_source_locked_html
 from app.instructional_quality import render_source_locked_html
+from app.schemas.orchestration_v2 import RagLessonAuthorUnitV2Request
 from tests.test_idm_storyboard import severity_body
 
 
@@ -152,7 +153,7 @@ class IdmSingleChoiceTests(unittest.TestCase):
 
 class IdmWiringTests(unittest.TestCase):
     def test_idm_units_use_the_idm_builders_and_legacy_defaults_are_unchanged(self) -> None:
-        request = main.RagLessonAuthorUnitV2Request.model_validate(severity_body())
+        request = RagLessonAuthorUnitV2Request.model_validate(severity_body())
         with patch("app.main.render_idm_source_locked_html", wraps=render_idm_source_locked_html) as renderer, \
                 patch("app.main.idm_source_grounded_single_choice",
                       wraps=idm_source_grounded_single_choice) as question:

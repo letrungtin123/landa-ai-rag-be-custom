@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-from copy import deepcopy
 import hashlib
 import html
 import io
@@ -11,12 +10,13 @@ import random
 import re
 import shutil
 import tempfile
+from collections.abc import Awaitable
+from copy import deepcopy
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
 from pathlib import Path
 from time import monotonic, perf_counter
-from collections.abc import Awaitable
 from typing import Annotated, Any, Callable, ClassVar, Literal, TypeVar
 from uuid import UUID
 
@@ -24,13 +24,23 @@ import asyncpg
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse, Response
-# Kept as the patch seam existing tests use (app.main.genai.Client); clients are
-# created through app.infra.gemini. PRD-2 moves test patches there.
-from google import genai  # noqa: F401
-from google.genai import errors as genai_errors, types
-from pydantic import BaseModel, Field, SecretStr, ValidationError, create_model, field_validator, model_validator
+from google.genai import errors as genai_errors
+from google.genai import types
+from pydantic import BaseModel, Field, SecretStr, ValidationError, create_model, model_validator
 from supabase import create_client
 
+from app.assessment_planner import (
+    assessment_intent_repair_options,
+    assessment_plan_fingerprint,
+    assessment_teaching_semantic_descriptor,
+    compile_v5_assessment_plan,
+    evaluate_assessment_teaching_anchor,
+    materialize_assessment_source_refs,
+    preserve_assessment_visual_support,
+)
+from app.assessment_selection_contract import VERSION as ASSESSMENT_SELECTION_CONTRACT_VERSION
+from app.assessment_selection_contract import build_assessment_selection_contract
+from app.component_capabilities import validate_instance_plan
 from app.core import metrics
 from app.core.concurrency import ConcurrencyRuntime, deadline_seconds
 from app.core.config import settings, validate_startup_settings
@@ -55,70 +65,36 @@ from app.core.lifespan import RuntimeState, build_lifespan
 from app.core.logging import configure_application_logging, redact_secret_like_values
 from app.core.middleware import RequestBodyLimitMiddleware
 from app.core.request_context import DisconnectCancellationMiddleware, RequestContextMiddleware
-from app.core.security import (
-    require_configured_service_auth,
-    require_internal_auth as verify_internal_auth,
+from app.core.security import require_configured_service_auth
+from app.core.security import require_internal_auth as verify_internal_auth
+from app.idm.course_design import run_idm_course_design
+from app.idm.diagram import idm_source_step_diagram
+from app.idm.module_design import run_idm_module_design
+from app.idm.policy import IDM_CONTRACT_VERSION, IDM_PIPELINE_VERSION, IDM_PROMPT_POLICY_VERSION
+from app.idm.runtime import (
+    RUN_STOPPING_PROVIDER_CODES,
+    TRANSIENT_PROVIDER_CODES,
+    IdmError,
+    IdmProviderError,
+    IdmRuntime,
+    IdmStageError,
+    IdmTokenAllowance,
 )
+from app.idm.source_locked import idm_source_faq, idm_source_grounded_single_choice, render_idm_source_locked_html
+from app.idm.storyboard import IdmUnitDeps, run_idm_unit
 from app.infra import db as db_infra
 from app.infra import gemini as gemini_infra
 from app.infra import schema_check as schema_infra
 from app.infra import storage as storage_infra
 from app.infra.pdf_layout import column_reading_order
 from app.infra.provider_limits import RATE_LIMITED_CODE, classify_provider_limit
-from app.lesson_author_blueprint import (
-    ACTION_OBJECTIVE_REPAIR_INTENTS,
-    INSTRUCTIONAL_SUPPORT_REPAIR_INTENTS,
-    INSTRUCTIONAL_SUPPORT_TEXT_MAX_CHARS,
-    SEMANTIC_REPAIR_CONTRACT_VERSION,
-    V5_SEMANTIC_DELTA_REPAIR_OPERATIONS,
-    semantic_delta_required_fields,
-    LESSON_AUTHOR_BLUEPRINT_RESPONSE_SCHEMA,
-    MAX_SERVER_OWNED_SOURCE_FACT_IDS_PER_SCOPE,
-    SEMANTIC_LEARNING_BLOCK_INTENTS,
-    build_course_architecture_repair_response_schema,
-    build_v5_semantic_delta_repair_response_schema,
-    LessonAuthorBlueprintValidationError,
-    describe_lesson_author_blueprint_response,
-    ensure_lesson_author_blueprint_faqs,
-    parse_lesson_author_blueprint_candidate,
-    parse_and_validate_lesson_author_blueprint,
-    validate_lesson_author_blueprint,
-)
-from app.source_structure import (
-    PARSER_VERSION,
-    chunk_structure_metadata,
-    analyze_source_structure,
-    strip_source_range_suffix,
-    structure_outline,
-)
-from app.source_map import build_course_architect_context, build_source_map
-from app.lesson_prompt_policy import (
-    bounded_architect_policy, lesson_output_language_policy, lesson_instructional_quality_policy,
-    component_instructional_brief, instructional_contract_review_signals,
-)
-from app.lesson_content_observation import observe_lesson_content
-from app.prompt_safety import untrusted_block, untrusted_content_rule
-from app.semantic_review import (
-    SemanticReviewResponse,
-    SemanticReviewRunOutcome,
-    build_semantic_repair_prompt,
-    build_semantic_review_prompt,
-    run_bounded_semantic_review,
-    safe_semantic_review_summary,
-    semantic_review_config_hash,
-    validate_semantic_review_response,
-)
-from app.ordered_learning_content import flatten_ordered_content, bind_provider_semantic_versions, semantic_shape_diagnostics, ProviderSemanticVersionError
-from app.media_brief import build_media_brief
-from app.source_chapter_policy import resolve_source_chapter_policy, bind_source_chapters
-from app.component_capabilities import ComponentCapabilities, validate_instance_plan
-from app.instructional_opportunities import compile_evidence_treatments, VERSION as EVIDENCE_TREATMENT_VERSION
-from app.source_readiness import collect_pdf_visual_regions
 from app.instructional_density import (
     INSTRUCTIONAL_DENSITY_POLICY_VERSION,
     SOURCE_SCOPE_CHUNKS_PER_GROUP,
     partition_chunk_facts_for_density,
 )
+from app.instructional_opportunities import VERSION as EVIDENCE_TREATMENT_VERSION
+from app.instructional_opportunities import compile_evidence_treatments
 from app.instructional_quality import (
     MIN_FAQ_ANSWER_CHARS,
     MIN_FAQ_QUESTION_CHARS,
@@ -140,42 +116,42 @@ from app.learner_content_purity import (
     learner_content_purity_finding,
     sanitize_source_fact_for_learner,
 )
-from app.assessment_planner import (
-    assessment_intent_repair_options,
-    assessment_teaching_semantic_descriptor,
-    assessment_plan_fingerprint,
-    compile_v5_assessment_plan,
-    evaluate_assessment_teaching_anchor,
-    materialize_assessment_source_refs,
-    preserve_assessment_visual_support,
-)
-from app.assessment_selection_contract import build_assessment_selection_contract, VERSION as ASSESSMENT_SELECTION_CONTRACT_VERSION
-from app.lesson_quality import (
-    duplicate_validation_result,
-    instructional_plan_validation_result,
-    pedagogical_validation_result,
+from app.lesson_author_blueprint import (
+    ACTION_OBJECTIVE_REPAIR_INTENTS,
+    INSTRUCTIONAL_SUPPORT_REPAIR_INTENTS,
+    INSTRUCTIONAL_SUPPORT_TEXT_MAX_CHARS,
+    LESSON_AUTHOR_BLUEPRINT_RESPONSE_SCHEMA,
+    MAX_SERVER_OWNED_SOURCE_FACT_IDS_PER_SCOPE,
+    SEMANTIC_LEARNING_BLOCK_INTENTS,
+    SEMANTIC_REPAIR_CONTRACT_VERSION,
+    V5_SEMANTIC_DELTA_REPAIR_OPERATIONS,
+    LessonAuthorBlueprintValidationError,
+    build_course_architecture_repair_response_schema,
+    build_v5_semantic_delta_repair_response_schema,
+    describe_lesson_author_blueprint_response,
+    ensure_lesson_author_blueprint_faqs,
+    parse_and_validate_lesson_author_blueprint,
+    parse_lesson_author_blueprint_candidate,
+    semantic_delta_required_fields,
+    validate_lesson_author_blueprint,
 )
 from app.lesson_author_checkpoint import (
-    ChapterCheckpointUnit, assemble_checkpoint_chapter,
-    checkpoint_expected_units, select_checkpoint_unit,
+    ChapterCheckpointUnit,
+    assemble_checkpoint_chapter,
+    checkpoint_expected_units,
+    select_checkpoint_unit,
 )
-from app.lesson_author_orchestration_v2 import (
-    ORCHESTRATION_CONTRACT_VERSION,
-    CourseSkeletonV2,
-    OrchestrationContractError,
-    canonical_hash as orchestration_v2_canonical_hash,
-)
+from app.lesson_author_orchestration_v2 import ORCHESTRATION_CONTRACT_VERSION, OrchestrationContractError
+from app.lesson_author_orchestration_v2 import canonical_hash as orchestration_v2_canonical_hash
 from app.lesson_author_orchestration_v2_provider import (
-    ORCHESTRATION_V2_PROVIDER_SCHEMA_PROJECTION_VERSION,
     CHAPTER_SHARD_PROVIDER_SCHEMA_METADATA,
     COURSE_SKELETON_PROVIDER_SCHEMA_METADATA,
+    ORCHESTRATION_V2_PROVIDER_SCHEMA_PROJECTION_VERSION,
     ChapterShardProviderWireV2,
-    ChapterShardPlanV2,
     CourseSkeletonDraftV2,
     CourseSkeletonProviderWireV2,
     SourceOutlineAuthorityV2,
     SourceOutlineChapterV2,
-    SourceScopeCatalogEntryV2,
     SourceSnapshotFactV2,
     UnitComponentPlanV2,
     UnitGenerationContractV2,
@@ -190,44 +166,83 @@ from app.lesson_author_orchestration_v2_provider import (
     unit_contract_manifest_v2,
     unit_contract_v5_architecture_v2,
 )
-from app.idm.contracts import IdmCourseSkeletonRequestV1, IdmModuleContextV1
-from app.idm.policy import IDM_CONTRACT_VERSION, IDM_PIPELINE_VERSION, IDM_PROMPT_POLICY_VERSION
-from app.idm.course_design import run_idm_course_design
-from app.idm.module_design import run_idm_module_design
-from app.idm.diagram import idm_source_step_diagram
-from app.idm.source_locked import idm_source_faq, idm_source_grounded_single_choice, render_idm_source_locked_html
-from app.idm.storyboard import IdmUnitDeps, run_idm_unit
-from app.idm.runtime import (
-    RUN_STOPPING_PROVIDER_CODES,
-    TRANSIENT_PROVIDER_CODES,
-    IdmError,
-    IdmProviderError,
-    IdmRuntime,
-    IdmStageError,
-    IdmTokenAllowance,
-)
 from app.lesson_author_provider_schema import staged_provider_response_model
+from app.lesson_content_observation import observe_lesson_content
+from app.lesson_prompt_policy import (
+    bounded_architect_policy,
+    component_instructional_brief,
+    instructional_contract_review_signals,
+    lesson_instructional_quality_policy,
+    lesson_output_language_policy,
+)
+from app.lesson_quality import (
+    duplicate_validation_result,
+    instructional_plan_validation_result,
+    pedagogical_validation_result,
+)
+from app.media_brief import build_media_brief
+from app.ordered_learning_content import (
+    ProviderSemanticVersionError,
+    bind_provider_semantic_versions,
+    flatten_ordered_content,
+    semantic_shape_diagnostics,
+)
+from app.prompt_safety import untrusted_block, untrusted_content_rule
+from app.schemas.chat import RagChatMessage, RagChatRequest
+from app.schemas.common import AiUsage
+from app.schemas.kb import RagDeleteDocumentRequest, RagDeleteKbRequest, RagIndexRequest
+from app.schemas.lesson_author import (
+    RagLessonAuthorBlueprintRequest,
+    RagLessonAuthorCheckpointRequest,
+    RagLessonAuthorDraftArchitecture,
+    RagLessonAuthorRequest,
+)
+from app.schemas.orchestration_v2 import (
+    RagLessonAuthorChapterShardV2Request,
+    RagLessonAuthorCourseSkeletonV2Request,
+    RagLessonAuthorSourceSnapshotV2Request,
+    RagLessonAuthorUnitV2Request,
+)
+from app.semantic_review import (
+    SemanticReviewResponse,
+    SemanticReviewRunOutcome,
+    build_semantic_repair_prompt,
+    build_semantic_review_prompt,
+    run_bounded_semantic_review,
+    safe_semantic_review_summary,
+    semantic_review_config_hash,
+    validate_semantic_review_response,
+)
+from app.source_chapter_policy import bind_source_chapters, resolve_source_chapter_policy
+from app.source_map import build_course_architect_context, build_source_map
+from app.source_readiness import collect_pdf_visual_regions
+from app.source_structure import (
+    PARSER_VERSION,
+    analyze_source_structure,
+    chunk_structure_metadata,
+    strip_source_range_suffix,
+    structure_outline,
+)
 from app.workflows.contracts import (
     RepairTarget,
     WorkflowFailure,
     WorkflowGenerationResult,
     WorkflowIssue,
     WorkflowValidationResult,
-    safe_workflow_path,
     safe_workflow_issue_summary,
+    safe_workflow_path,
 )
 from app.workflows.course_architecture import (
-    CourseArchitectureWorkflowCallbacks,
     V5_MAX_PROVIDER_REPAIR_CALLS,
     V5_MAX_REPAIR_ATTEMPTS_PER_LAYER,
+    CourseArchitectureWorkflowCallbacks,
     run_course_architecture_workflow,
 )
-from app.workflows.lesson_generation import (
-    LessonGenerationWorkflowCallbacks,
-    run_lesson_generation_workflow,
-)
+from app.workflows.lesson_generation import LessonGenerationWorkflowCallbacks, run_lesson_generation_workflow
 
 runtime_state = RuntimeState()
+
+
 concurrency = ConcurrencyRuntime(
     provider_limit=settings.max_concurrent_provider_calls,
     index_limit=settings.max_concurrent_index_jobs,
@@ -235,6 +250,8 @@ concurrency = ConcurrencyRuntime(
     acquire_timeout_seconds=settings.limiter_acquire_timeout_ms / 1000,
     extraction_executor=settings.extraction_executor,
 )
+
+
 app = FastAPI(
     title="Internal AI RAG Service",
     version="0.1.0",
@@ -249,23 +266,37 @@ app = FastAPI(
         grace_seconds=settings.shutdown_grace_seconds,
     ),
 )
+
+
 # add_middleware wraps outward: request context (outermost) -> body limit ->
 # disconnect cancellation (buffers the already size-checked body) -> routes.
 app.add_middleware(DisconnectCancellationMiddleware)
+
+
 app.add_middleware(
     RequestBodyLimitMiddleware,
     max_request_bytes=settings.max_request_bytes,
     idm_max_request_bytes=settings.idm_max_request_bytes,
 )
+
+
 app.add_middleware(RequestContextMiddleware, state=runtime_state)
+
+
 app.add_exception_handler(AppError, app_error_handler)
+
+
 app.add_exception_handler(Exception, unhandled_error_handler)
+
+
 app.add_exception_handler(RequestValidationError, request_validation_error_handler)
 
 
 # Configure the package logger so every app.* module (app.idm, app.core.request_context, ...)
 # emits through the JSON handler, not only this module.
 configure_application_logging("app")
+
+
 logger = logging.getLogger(__name__)
 T = TypeVar("T")
 db_pool: asyncpg.Pool | None = None
@@ -279,11 +310,15 @@ MAX_SOURCE_STRUCTURE_DOCUMENTS = 40
 MAX_SOURCE_OUTLINE_CHARS = 16000
 MAX_WORKFLOW_REPAIR_TARGET_CHARS = 24000
 MAX_V5_SCOPED_REPAIR_TARGETS = 8
+
+
 SOURCE_RANGE_RE = re.compile(
     r"\b(?:từ|tu|from)\s+(?:slide|slides|trang|page|pages)\s+(\d+)\s+"
     r"(?:đến|den|to)\s+(?:(?:slide|slides|trang|page|pages)\s+)?(\d+)\b",
     flags=re.IGNORECASE,
 )
+
+
 LEGACY_EMBEDDING_MODEL_ALIASES = {
     "text-embedding-004": DEFAULT_EMBEDDING_MODEL,
 }
@@ -481,6 +516,8 @@ def assert_v5_scoped_repair_target_bound(
                 "evidence_scope_count": context.evidence_scope_count,
             },
         )
+
+
 KEYWORD_STOPWORDS = {
     "anh",
     "ban",
@@ -549,357 +586,11 @@ KEYWORD_STOPWORDS = {
 }
 
 
-def validate_uuid_string(value: str | None, field_name: str) -> str | None:
-    if value is None:
-        return None
-    text = str(value).strip()
-    if not text:
-        raise ValueError(f"{field_name} không được để trống.")
-    try:
-        UUID(text)
-    except ValueError as exc:
-        raise ValueError(f"{field_name} không hợp lệ.") from exc
-    return text
-
-
 def require_provider_api_key(api_key: str | SecretStr) -> str:
     value = api_key.get_secret_value().strip() if isinstance(api_key, SecretStr) else api_key.strip()
     if not value:
         raise ValueError("Google AI Studio API key chưa được cấu hình.")
     return value
-
-
-class AiUsage(BaseModel):
-    inputTokens: int = 0
-    outputTokens: int = 0
-    embeddingTokens: int = 0
-    totalTokens: int = 0
-
-
-class RagChatMessage(BaseModel):
-    role: Literal["user", "assistant", "model"]
-    content: str
-
-
-class RagSourceDocument(BaseModel):
-    document_id: str
-    kb_id: str
-    name: str
-    type: str
-    status: str
-
-    @field_validator("document_id", "kb_id")
-    @classmethod
-    def validate_document_uuid(cls, value: str, info: Any) -> str:
-        return validate_uuid_string(value, info.field_name) or ""
-
-
-class RagChatRequest(BaseModel):
-    tenant_id: str
-    kb_id: str | None = None
-    conversation_id: str
-    target: Literal["admin", "learner", "lesson_author"]
-    model: str
-    # The backend's tenant reservation controls capacity. Lesson-author
-    # proposals need the same provider window as Blueprints to avoid cutting
-    # off source-complete staged unit content.
-    max_output_tokens: int = Field(default=2048, ge=1, le=65_536)
-    embedding_model: str
-    embedding_dimensions: int = 768
-    system_prompt: str
-    user_message: str
-    history: list[RagChatMessage] = Field(default_factory=list)
-    source_documents: list[RagSourceDocument] = Field(default_factory=list)
-    course_context: str | None = None
-    locale: Literal["vi", "en"] = "vi"
-    # Correlation is generated by Node once per Course Blueprint execution.
-    # It is operational metadata only; it never influences generation.
-    correlation_id: str | None = None
-    api_key: SecretStr = Field(repr=False)
-
-    @field_validator("tenant_id", "conversation_id")
-    @classmethod
-    def validate_required_uuid(cls, value: str, info: Any) -> str:
-        return validate_uuid_string(value, info.field_name) or ""
-
-    @field_validator("kb_id")
-    @classmethod
-    def validate_optional_kb_uuid(cls, value: str | None) -> str | None:
-        return validate_uuid_string(value, "kb_id")
-
-    @field_validator("correlation_id")
-    @classmethod
-    def validate_optional_correlation_uuid(cls, value: str | None) -> str | None:
-        return validate_uuid_string(value, "correlation_id")
-
-    @field_validator("user_message")
-    @classmethod
-    def validate_user_message(cls, value: str) -> str:
-        text = value.strip()
-        if not text:
-            raise ValueError("Tin nhắn không được để trống.")
-        if len(text) > settings.max_user_message_chars:
-            raise ValueError(f"Tin nhắn vượt quá {settings.max_user_message_chars} ký tự.")
-        return text
-
-    @field_validator("source_documents")
-    @classmethod
-    def validate_source_document_count(cls, value: list[RagSourceDocument]) -> list[RagSourceDocument]:
-        if len(value) > 20:
-            raise ValueError("Tối đa 20 tài liệu nguồn cho mỗi request RAG.")
-        return value
-
-
-class RagLessonAuthorBlueprintComponentPlan(BaseModel):
-    component_plan_id: str | None = None
-    learning_objective_refs: list[str] = Field(default_factory=list)
-    type: str
-    title: str
-    rationale: str
-    purpose: str | None = None
-    source_fact_ids: list[str] = Field(default_factory=list)
-    # Resolved V5 reinforcement evidence is read-only grounding, not
-    # canonical ownership and must never be copied into source_fact_ids.
-    supporting_evidence_fact_ids: list[str] = Field(default_factory=list)
-    content_requirements: list[str] = Field(default_factory=list)
-    reason_code: str | None = None
-    learning_block_ids: list[str] = Field(default_factory=list)
-    required_artifacts: list[dict[str, Any]] = Field(default_factory=list)
-
-
-class RagLessonAuthorBlueprintUnit(BaseModel):
-    title: str
-    purpose: str = ""
-    concept_ids: list[str] = Field(default_factory=list)
-    primary_concept_ids: list[str] = Field(default_factory=list)
-    # V5 evidence-scope semantics are part of the approved Blueprint draft
-    # contract. They are provenance context only: canonical source_fact_ids
-    # remain the downstream source-coverage authority.
-    primary_evidence_scope_ids: list[str] = Field(default_factory=list)
-    supporting_evidence_scope_ids: list[str] = Field(default_factory=list)
-    learning_objective_refs: list[str] = Field(default_factory=list)
-    source_refs: list[str] = Field(default_factory=list)
-    source_fact_ids: list[str] = Field(default_factory=list)
-    supporting_evidence_fact_ids: list[str] = Field(default_factory=list)
-    learning_blocks: list[dict[str, Any]] = Field(default_factory=list)
-    component_plan: list[RagLessonAuthorBlueprintComponentPlan] = Field(default_factory=list)
-    instructional_density_policy_version: str | None = None
-    source_content_chars: int | None = Field(default=None, ge=0)
-    source_estimated_words: int | None = Field(default=None, ge=0)
-    max_generated_visible_chars: int | None = Field(default=None, ge=1, le=18_000)
-    max_generated_words: int | None = Field(default=None, ge=1, le=2_400)
-
-
-class RagLessonAuthorBlueprintLesson(BaseModel):
-    title: str
-    learning_objectives: list[str] = Field(default_factory=list)
-    primary_concept_ids: list[str] = Field(default_factory=list)
-    supporting_concept_ids: list[str] = Field(default_factory=list)
-    assessment_required: bool = False
-    assessment_objective_refs: list[str] = Field(default_factory=list)
-    source_refs: list[str] = Field(default_factory=list)
-    units: list[RagLessonAuthorBlueprintUnit] = Field(default_factory=list)
-
-
-class RagLessonAuthorDraftArchitecture(BaseModel):
-    component_capabilities: ComponentCapabilities | None = None
-    architecture_contract_version: int | None = None
-    chapter_title: str
-    source_refs: list[str] = Field(default_factory=list)
-    lessons: list[RagLessonAuthorBlueprintLesson] = Field(default_factory=list)
-
-
-class RagLessonAuthorRequest(RagChatRequest):
-    outline_context: str = ""
-    target_scope_instruction: str = ""
-    output_schema_hint: str
-    operation: Literal[
-        "answer",
-        "course_blueprint",
-        "create",
-        "rename",
-        "update_content",
-        "delete",
-        "move",
-        "clarify",
-    ] = "answer"
-    target_type: Literal["course", "chapter", "lesson", "unit", "component"] | None = None
-    generation_mode: Literal["auto", "staged", "single"] = "auto"
-    max_attempts: int = Field(default=2, ge=1, le=2)
-    blueprint_architecture: RagLessonAuthorDraftArchitecture | None = None
-
-
-class RagLessonAuthorCheckpointRequest(RagLessonAuthorRequest):
-    """Internal-token-only path. Regular chat cannot opt into it via extra fields."""
-    model_config = {"extra": "forbid"}
-    checkpoint_version: Literal[1] = 1
-    checkpoint_action: Literal["generate_unit", "validate_chapter"]
-    checkpoint_unit_index: int | None = Field(default=None, ge=0, lt=512, strict=True)
-    checkpoint_units: list[ChapterCheckpointUnit] = Field(default_factory=list, max_length=512)
-    remaining_workflow_budget_ms: int = Field(ge=1, le=480_000, strict=True)
-
-    @model_validator(mode="after")
-    def validate_checkpoint_contract(self) -> "RagLessonAuthorCheckpointRequest":
-        if (self.target != "lesson_author" or self.operation != "create" or self.target_type != "chapter"
-                or self.generation_mode != "staged" or not self.correlation_id or not self.source_documents
-                or self.blueprint_architecture is None
-                or self.blueprint_architecture.architecture_contract_version != 5):
-            raise ValueError("CHAPTER_CHECKPOINT_CONTRACT_INVALID")
-        total = sum(len(lesson.units) for lesson in self.blueprint_architecture.lessons)
-        if not 1 <= total <= 512:
-            raise ValueError("CHAPTER_CHECKPOINT_INVENTORY_INVALID")
-        if self.checkpoint_action == "generate_unit":
-            if self.checkpoint_unit_index is None or self.checkpoint_unit_index >= total or self.checkpoint_units:
-                raise ValueError("CHAPTER_CHECKPOINT_UNIT_OUT_OF_SCOPE")
-        elif self.checkpoint_unit_index is not None or sorted(unit.unit_index for unit in self.checkpoint_units) != list(range(total)):
-            raise ValueError("CHAPTER_CHECKPOINT_INCOMPLETE")
-        return self
-
-
-class RagLessonAuthorBlueprintRequest(RagChatRequest):
-    component_capabilities: ComponentCapabilities | None = None
-    # Gemini 3.5 Flash supports up to 65,536 generated tokens. Keep the wider
-    # contract scoped to Blueprints; regular RAG chat remains bounded by its
-    # parent request model.
-    max_output_tokens: int = Field(default=65_536, ge=1, le=65_536)
-    outline_context: str = ""
-    blueprint_schema_hint: str
-    max_attempts: int = Field(default=2, ge=1, le=2)
-    # Node-resolved CMS ID, retained only for cross-service observability.
-    # It is not used for authorisation or any database mutation in Python.
-    course_id: str | None = Field(default=None, max_length=255)
-
-
-class RagLessonAuthorSourceSnapshotV2Request(RagChatRequest):
-    model_config = {"extra": "forbid"}
-    # Source paging is deterministic database work. It deliberately carries no
-    # tenant provider secret because this endpoint cannot call Gemini.
-    api_key: SecretStr = Field(default="source-snapshot-no-provider", repr=False)
-    contract_version: Literal[2] = 2
-    source_snapshot_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    cursor: dict[str, Any] | None = None
-    expected_source_revision: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
-    page_max_facts: int = Field(default=500, ge=1, le=500, strict=True)
-    page_max_bytes: int = Field(default=4_194_304, ge=1, le=4_194_304, strict=True)
-
-    @model_validator(mode="after")
-    def validate_source_snapshot_request(self) -> "RagLessonAuthorSourceSnapshotV2Request":
-        if self.target != "lesson_author" or not self.kb_id or not self.correlation_id or not self.source_documents:
-            raise ValueError("ORCHESTRATION_V2_SOURCE_REQUEST_INVALID")
-        if self.cursor is not None:
-            if set(self.cursor) != {"document_id", "chunk_no"}:
-                raise ValueError("ORCHESTRATION_V2_SOURCE_CURSOR_INVALID")
-            try:
-                UUID(str(self.cursor["document_id"]))
-            except (TypeError, ValueError, AttributeError) as error:
-                raise ValueError("ORCHESTRATION_V2_SOURCE_CURSOR_INVALID") from error
-            chunk_no = self.cursor["chunk_no"]
-            if isinstance(chunk_no, bool) or not isinstance(chunk_no, int) or chunk_no < 0:
-                raise ValueError("ORCHESTRATION_V2_SOURCE_CURSOR_INVALID")
-        return self
-
-
-class RagLessonAuthorCourseSkeletonV2Request(RagChatRequest):
-    model_config = {"extra": "forbid"}
-    contract_version: Literal[2] = 2
-    source_snapshot_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    scope_catalog: list[SourceScopeCatalogEntryV2] = Field(min_length=1, max_length=4096)
-    source_authority: SourceOutlineAuthorityV2
-    max_attempts: int = Field(default=2, ge=1, le=2)
-    # Present only for runs admitted to the IDM pipeline (spec §11.2).
-    idm: IdmCourseSkeletonRequestV1 | None = None
-
-    @model_validator(mode="after")
-    def validate_course_skeleton_request(self) -> "RagLessonAuthorCourseSkeletonV2Request":
-        if self.target != "lesson_author" or not self.correlation_id:
-            raise ValueError("ORCHESTRATION_V2_SKELETON_REQUEST_INVALID")
-        if self.idm is not None and self.idm.project_context.locale != self.locale:
-            raise ValueError("ORCHESTRATION_V2_SKELETON_REQUEST_INVALID")
-        scope_ids = [scope.scope_key for scope in self.scope_catalog]
-        if len(scope_ids) != len(set(scope_ids)):
-            raise ValueError("ORCHESTRATION_V2_SCOPE_CATALOG_INVALID")
-        return self
-
-
-class RagLessonAuthorChapterShardV2Request(RagChatRequest):
-    model_config = {"extra": "forbid"}
-    contract_version: Literal[2] = 2
-    skeleton: CourseSkeletonV2
-    shard_plan: ChapterShardPlanV2
-    source_facts: list[SourceSnapshotFactV2] = Field(min_length=1, max_length=100_000)
-    max_attempts: int = Field(default=2, ge=1, le=2)
-    # Present only for IDM runs; ``source_facts`` then carry block-scope keys (spec §11.2).
-    idm_module_context: IdmModuleContextV1 | None = None
-
-    @model_validator(mode="after")
-    def validate_chapter_shard_request(self) -> "RagLessonAuthorChapterShardV2Request":
-        if self.target != "lesson_author" or not self.correlation_id or self.locale != self.skeleton.locale:
-            raise ValueError("ORCHESTRATION_V2_CHAPTER_REQUEST_INVALID")
-        if self.idm_module_context is not None and (
-                self.idm_module_context.project_context.locale != self.locale
-                or {fact.scope_key for fact in self.source_facts}
-                - {scope.scope_key for scope in self.idm_module_context.block_scopes}):
-            raise ValueError("ORCHESTRATION_V2_CHAPTER_REQUEST_INVALID")
-        if self.shard_plan.chapter_key not in {chapter.chapter_key for chapter in self.skeleton.chapters}:
-            raise ValueError("ORCHESTRATION_V2_CHAPTER_REQUEST_INVALID")
-        return self
-
-
-class RagLessonAuthorUnitV2Request(RagChatRequest):
-    model_config = {"extra": "forbid"}
-    contract_version: Literal[2] = 2
-    unit_contract: UnitGenerationContractV2
-    max_attempts: int = Field(default=2, ge=1, le=2)
-    remaining_workflow_budget_ms: int = Field(ge=1, le=480_000, strict=True)
-    fallback_only: bool = Field(default=False, strict=True)
-
-    @model_validator(mode="after")
-    def validate_unit_request(self) -> "RagLessonAuthorUnitV2Request":
-        document_ids = {document.document_id for document in self.source_documents}
-        if (self.target != "lesson_author" or not self.correlation_id or not self.source_documents
-                or self.locale not in {"vi", "en"}
-                or self.contract_version != self.unit_contract.contract_version
-                or any(fact.document_id not in document_ids for fact in self.unit_contract.source_facts)):
-            raise ValueError("ORCHESTRATION_V2_UNIT_REQUEST_INVALID")
-        return self
-
-
-class RagIndexRequest(BaseModel):
-    tenant_id: str
-    kb_id: str
-    document_id: str
-    embedding_model: str
-    embedding_dimensions: int = 768
-    api_key: SecretStr = Field(repr=False)
-    # SEP-1: short-lived URL the backend signed for kb_documents.file_path. It embeds a bearer
-    # token, so it is a secret (never logged, never echoed). Absent: legacy service-key download.
-    source_download_url: SecretStr | None = Field(default=None, repr=False, max_length=8_192)
-
-    @field_validator("tenant_id", "kb_id", "document_id")
-    @classmethod
-    def validate_required_uuid(cls, value: str, info: Any) -> str:
-        return validate_uuid_string(value, info.field_name) or ""
-
-
-class RagDeleteDocumentRequest(BaseModel):
-    tenant_id: str
-    kb_id: str
-    document_id: str
-
-    @field_validator("tenant_id", "kb_id", "document_id")
-    @classmethod
-    def validate_required_uuid(cls, value: str, info: Any) -> str:
-        return validate_uuid_string(value, info.field_name) or ""
-
-
-class RagDeleteKbRequest(BaseModel):
-    tenant_id: str
-    kb_id: str
-
-    @field_validator("tenant_id", "kb_id")
-    @classmethod
-    def validate_required_uuid(cls, value: str, info: Any) -> str:
-        return validate_uuid_string(value, info.field_name) or ""
 
 
 @dataclass
@@ -1045,9 +736,15 @@ async def get_db() -> asyncpg.Pool:
 
 # --- database, storage and schema runtime (SEP-1) -------------------------------------------
 SERVICE_NAME = "landa-ai-rag"
+
+
 SCHEMA_CHECK_TIMEOUT_SECONDS = 10.0
+
+
 # 2: /v1/kb/documents/index accepts source_download_url (backend-signed storage URL).
 RAG_INDEX_REQUEST_VERSION = 2
+
+
 BUILD_SHA_PATTERN = re.compile(r"^[0-9A-Za-z._-]{1,64}$")
 database: db_infra.DatabaseRuntime | None = None
 schema_guard = schema_infra.SchemaGuard()
@@ -1479,10 +1176,10 @@ def extract_pdf(path: Path) -> list[ExtractedSection]:
 
 def extract_docx(path: Path) -> list[ExtractedSection]:
     from docx import Document
-    from docx.table import Table
-    from docx.text.paragraph import Paragraph
     from docx.oxml.table import CT_Tbl
     from docx.oxml.text.paragraph import CT_P
+    from docx.table import Table
+    from docx.text.paragraph import Paragraph
 
     document = Document(str(path))
     parts: list[str] = []
@@ -2514,6 +2211,8 @@ async def fetch_index_source(request: RagIndexRequest, storage_path: str, destin
 
 
 SAFE_ERROR_CODE_PATTERN = re.compile(r"^[A-Z][A-Z0-9_]{2,95}$")
+
+
 # Provider answers after which the same index request may succeed later (F5).
 RETRYABLE_PROVIDER_HTTP_STATUSES = frozenset({429, 502, 503, 504})
 
@@ -3959,17 +3658,25 @@ def format_sources(
 
 
 MAX_SOURCE_COVERAGE_FACT_CHARS = 420
+
+
 # This applies only to the legacy/local prompt formatter below. It is never a
 # definition of canonical source completeness.
 MAX_SOURCE_COVERAGE_MANIFEST_CHARS = 24000
+
+
 SOURCE_COVERAGE_MARKER_RE = re.compile(
     r"^\s*(?:[•●▪◦*-]\s+|(?:\d+(?:\.\d+)*|[IVXLCDM]+)[.)]\s+)(?P<text>.+?)\s*$",
     re.UNICODE | re.IGNORECASE | re.MULTILINE,
 )
+
+
 SOURCE_COVERAGE_MARKER_ONLY_RE = re.compile(
     r"^\s*(?:[•●▪◦*-]|(?:\d+(?:\.\d+)*|[IVXLCDM]+)[.)])\s*$",
     re.UNICODE | re.IGNORECASE | re.MULTILINE,
 )
+
+
 SOURCE_REF_RE = re.compile(r"\bsrc-\d+\b", re.IGNORECASE)
 
 
@@ -4048,17 +3755,27 @@ def _merge_wrapped_source_lines(lines: list[str]) -> list[str]:
 # Phrases that mark a chunk as carrying a table of contents (unchanged trigger), and the extra
 # title phrase recognised inside such a chunk.
 SOURCE_TOC_TRIGGER_PHRASES = ("nội dung chương trình", "table of contents", "table of content")
+
+
 SOURCE_TOC_TITLE_PHRASES = (*SOURCE_TOC_TRIGGER_PHRASES, "mục lục")
+
+
 # A table-of-contents title is a short line; a sentence that merely mentions the phrase is content.
 SOURCE_TOC_TITLE_MAX_WORDS = 8
+
+
 SOURCE_TOC_ENTRY_MAX_CHARS = 120
 SOURCE_TOC_LEADER_RE = re.compile(r"(?:\.{3,}|…{2,}|·{3,}|_{3,})\s*\d{1,4}\s*$")
 SOURCE_TOC_PAGE_SUFFIX_RE = re.compile(r"\S\s+\d{1,4}$")
+
+
 SOURCE_TOC_NUMBERED_ENTRY_RE = re.compile(
     r"^(?:(?:chương|chuong|chapter|phần|phan|part|module|modun|bài|bai|lesson)\s*(?:\d{1,3}|[ivxlc]{1,6})\b"
     r"|\d{1,3}(?:\.\d{1,3})*[.)]?\s)",
     re.IGNORECASE,
 )
+
+
 SOURCE_TOC_CHAPTER_LABEL_RE = re.compile(
     r"(?:chương|chuong|chapter|phần|phan|part|module|modun)\s*(?:\d{1,3}|[ivxlc]{1,6})[.:]?",
     re.IGNORECASE,
@@ -6374,6 +6091,8 @@ MEDIA_DECISION_NOT_NEEDED = "NOT_NEEDED"
 MEDIA_DECISION_SOURCE_GAP = "SOURCE_GAP"
 MEDIA_DECISION_FAILED = "FAILED"
 MEDIA_DECISION_NOT_EVALUATED = "NOT_EVALUATED"
+
+
 MEDIA_DECISION_STATUSES = {
     MEDIA_DECISION_PROPOSED,
     MEDIA_DECISION_NOT_NEEDED,
@@ -6381,6 +6100,8 @@ MEDIA_DECISION_STATUSES = {
     MEDIA_DECISION_FAILED,
     MEDIA_DECISION_NOT_EVALUATED,
 }
+
+
 MEDIA_VIDEO_INTENTS = {"procedure", "worked_example", "scenario"}
 MEDIA_INFOGRAPHIC_INTENTS = {"comparison", "relationship_visualization", "warning"}
 
@@ -7280,6 +7001,8 @@ def is_non_retryable_provider_error(error: HTTPException) -> bool:
 
 MIN_LESSON_AUTHOR_HTML_TEXT_CHARS = 180
 MIN_STAGED_LESSON_AUTHOR_HTML_TEXT_CHARS = 320
+
+
 SEMANTIC_LEARNING_HTML_LIMITS = {
     "heading": 240,
     "paragraphs": (12, 2_000),
@@ -7581,23 +7304,37 @@ def validate_lesson_author_proposal_shape(proposal: dict[str, Any]) -> None:
 # text is compact. Keep the threshold below the observed 6.5K-character
 # chapter scope so multi-lesson chapters use bounded generation batches.
 STAGED_LESSON_AUTHOR_CONTEXT_THRESHOLD = 6000
+
+
 STAGED_LESSON_AUTHOR_MIN_OUTPUT_TOKENS = 4096
+
+
 # A source-locked fallback must meet the same learner-facing depth floor as
 # model output. A short raw fact is evidence, not a complete lesson unit.
 MIN_SOURCE_LOCKED_HTML_TEXT_CHARS = MIN_LESSON_AUTHOR_HTML_TEXT_CHARS
+
+
 # The skeleton must have enough room for every lesson/unit title and its
 # source-fact coverage map before content generation is split into batches.
 STAGED_LESSON_AUTHOR_SKELETON_TOKENS = 4096
+
+
 # A recovery skeleton intentionally stays small. It only partitions source
 # facts; component selection is recalculated deterministically afterwards.
 STAGED_LESSON_AUTHOR_RECOVERY_UNITS = 4
+
+
 # Generate one unit per provider call.  A multi-unit JSON array is fragile in
 # structured generation: one truncated or renamed item invalidates the whole
 # chapter and forces an oversized fallback response.
 STAGED_LESSON_AUTHOR_UNITS_PER_BATCH = 1
+
+
 STAGED_LESSON_AUTHOR_UNIT_CONTEXT_CHARS = 8000
 STAGED_LESSON_CONTENT_PROVIDER_TIMEOUT_MAX_MS = 300_000
 STAGED_LESSON_WORKFLOW_TIMEOUT_MAX_MS = 480_000
+
+
 # Keep the outer Node -> Python request alive long enough to serialize and
 # return a deterministic source-locked fallback after an inner provider
 # deadline. Without this gap, a provider timeout and the HTTP client timeout
@@ -7648,6 +7385,7 @@ def staged_lesson_content_output_tokens(*, request_max_output_tokens: int, max_f
     """Retain the existing Stage-2 output-token calculation as a testable contract."""
     required_content_tokens = max(8_192, min(65_536, max(1, max_facts_per_unit) * 1_200))
     return min(request_max_output_tokens, required_content_tokens)
+
 
 STAGED_COMPONENT_TYPE_ALIASES = {
     "html": "html",
@@ -8372,6 +8110,8 @@ STAGED_COMPONENT_REPAIR_CONTRACT_VERSION = "component-payload-delta-1"
 STAGED_COMPONENT_COVERAGE_REPAIR_CONTRACT_VERSION = "component-content-coverage-delta-2"
 STAGED_MULTI_REPAIR_CONTRACT_VERSION = "component-repair-slots-1"
 STAGED_INSTANCE_OUTPUT_CONTRACT_VERSION = "component-instance-payload-1"
+
+
 STAGED_COMPONENT_PAYLOAD_FIELDS = {
     "html": {"semantic_content", "html"},
     "problem": {"problem_type", "question", "choices", "options", "answer", "tolerance", "explanation"},
@@ -13462,7 +13202,11 @@ _V5_TEACHING_INTENTS = {
     "concept_explanation", "definition", "example", "worked_example",
     "procedure", "comparison", "warning", "tip",
 }
+
+
 _V5_GENERIC_EXPLANATION_INTENTS = {"concept_explanation", "definition", "introduction"}
+
+
 _V5_ACTION_OR_PROCEDURE_OBJECTIVE = re.compile(
     r"\b(?:apply|perform|demonstrate|execute|practice|procedure|process|"
     r"áp\s+dụng|thực\s+hiện|thực\s+hành|quy\s+trình|vận\s+hành)\b",

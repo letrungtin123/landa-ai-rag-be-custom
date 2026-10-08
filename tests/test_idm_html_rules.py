@@ -35,6 +35,7 @@ from app.idm.html_rules import (
 from app.idm.prompts import unit_writer_prompt
 from app.idm.storyboard import IdmUnitWriter, parse_brief, run_idm_unit, safe_error_details
 from app.instructional_density import INSTRUCTIONAL_DENSITY_POLICY_VERSION
+from app.schemas.orchestration_v2 import RagLessonAuthorUnitV2Request
 from app.workflows.contracts import WorkflowFailure
 from tests.idm_test_support import make_runtime
 from tests.test_idm_storyboard import (
@@ -356,7 +357,7 @@ class WriterRepairLoopTests(unittest.IsolatedAsyncioTestCase):
 
     async def run_unit(self, *answers: tuple[str, Any]) -> tuple[dict[str, Any], FakeGenerate, list[str]]:
         body = severity_body()
-        request = main.RagLessonAuthorUnitV2Request.model_validate(body)
+        request = RagLessonAuthorUnitV2Request.model_validate(body)
         deps = dataclasses.replace(main._idm_unit_deps(request), judge_mode="off")
         queues: dict[str, list[Any]] = {}
         for family, answer in answers:
@@ -392,7 +393,7 @@ class WriterRepairLoopTests(unittest.IsolatedAsyncioTestCase):
     def test_the_shared_merge_rejects_an_unstamped_html_repair(self) -> None:
         # Root cause evidence: the repair wire schema hides ``version`` and the shared reader needs it.
         body = severity_body()
-        request = main.RagLessonAuthorUnitV2Request.model_validate(body)
+        request = RagLessonAuthorUnitV2Request.model_validate(body)
         deps = main._idm_unit_deps(request)
         writer = IdmUnitWriter(request.unit_contract, parse_brief(request.unit_contract), deps, make_runtime(None))
         unit = writer.bind(json.dumps(severity_writer(body), ensure_ascii=False))
@@ -485,7 +486,7 @@ class WriterRepairLoopTests(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn("Zebra", "".join(logs))
 
     def test_writer_prompt_states_the_html_rules_up_front_only_for_html_units(self) -> None:
-        request = main.RagLessonAuthorUnitV2Request.model_validate(severity_body())
+        request = RagLessonAuthorUnitV2Request.model_validate(severity_body())
         writer = IdmUnitWriter(request.unit_contract, parse_brief(request.unit_contract),
                                main._idm_unit_deps(request), make_runtime(None))
         prompt = writer.writer_prompt()
@@ -494,7 +495,7 @@ class WriterRepairLoopTests(unittest.IsolatedAsyncioTestCase):
                          "at most 12 paragraph+task blocks", "at most 20 bullet items", "30 table rows",
                          "at most 450 words and at most 3150 visible characters"):
             self.assertIn(expected, prompt)
-        request = main.RagLessonAuthorUnitV2Request.model_validate(escalate_body())
+        request = RagLessonAuthorUnitV2Request.model_validate(escalate_body())
         writer = IdmUnitWriter(request.unit_contract, parse_brief(request.unit_contract),
                                main._idm_unit_deps(request), make_runtime(None))
         self.assertNotIn("HTML SLOT FORMAT", writer.writer_prompt())
