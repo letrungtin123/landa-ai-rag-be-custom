@@ -13,7 +13,7 @@ import json
 import re
 import time
 from collections.abc import Callable, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Final, Protocol
 
 from pydantic import BaseModel, ValidationError
@@ -81,6 +81,10 @@ class IdmUnitDeps:
     evidence_review_required: bool
     judge_mode: JudgeMode
     recoverable_errors: tuple[type[Exception], ...]
+    # Per-slot source-locked rebuilds in plan order; ``None`` marks a slot whose evidence cannot
+    # rebuild that type (prose-only ``problem``, ``la_faq`` without explicit conditions, ...).
+    # Optional for injected deps: derived from ``source_locked_unit`` when absent.
+    source_locked_components: Sequence[dict[str, Any] | None] | None = None
 
 
 def parse_brief(contract: UnitGenerationContractV2) -> IdmUnitBriefV1:
@@ -167,6 +171,9 @@ class _Draft:
     unit: dict[str, Any]
     fallback_slots: list[int]
     repair_applied: bool = False
+    # Provider slots kept for author review: the shared payload validator accepts them, only IDM
+    # pedagogy checks (spec §7.7.2(b)) still fail, and no source-locked rebuild exists for the slot.
+    review_slots: list[int] = field(default_factory=list)
 
 
 class IdmUnitWriter:
@@ -224,9 +231,10 @@ class IdmUnitWriter:
 
         expected = self.expected_fallback if draft.fallback_slots else self.expected
         finding = self.deps.validate_unit(draft.unit, expected)
+        exempt = {*draft.fallback_slots, *draft.review_slots}
         idm = [(item.code, item.component_index)
                for item in deterministic_slot_findings(draft.unit, self.brief, self.owned_text)
-               if item.component_index not in draft.fallback_slots]
+               if item.component_index not in exempt]
         return finding, idm
 
     # -- provider steps -----------------------------------------------------------------------
@@ -257,20 +265,33 @@ class IdmUnitWriter:
             max_output_tokens=IDM_UNIT_WRITER_MAX_OUTPUT_TOKENS, thinking_level=THINKING_W5,
             invocation_kind="repair",
         )
-        return _Draft({**unit, "component_plan": list(self.plans)}, list(draft.fallback_slots), True)
+        return _Draft({**unit, "component_plan": list(self.plans)}, list(draft.fallback_slots), True,
+                      list(draft.review_slots))
+
+    def fallback_component(self, index: int) -> dict[str, Any] | None:
+        slots = self.deps.source_locked_components
+        if slots is None:
+            source = self.deps.source_locked_unit
+            slots = source.get("components", []) if source is not None else []
+        component = slots[index] if 0 <= index < len(slots) else None
+        return dict(component) if component is not None else None
 
     def fallback_slot(self, draft: _Draft, index: int) -> _Draft | None:
-        source = self.deps.source_locked_unit
-        if source is None or index >= len(source.get("components", [])):
+        component = self.fallback_component(index)
+        if component is None:
             return None
         components = list(draft.unit["components"])
-        components[index] = dict(source["components"][index])
+        components[index] = component
         record_deterministic_fallback(self.runtime, stage="idm_w5_slot", code="IDM_W5_SLOT_FALLBACK")
         return _Draft({**draft.unit, "components": components}, sorted({*draft.fallback_slots, index}),
-                      draft.repair_applied)
+                      draft.repair_applied, [slot for slot in draft.review_slots if slot != index])
 
     async def settle(self, draft: _Draft) -> _Draft | None:
-        """Repair once, then replace failing slots with the source-locked fallback."""
+        """Repair once, then replace failing slots with the source-locked fallback.
+
+        A slot without a source-locked rebuild that only fails IDM pedagogy checks is kept for
+        author review (``review_slots``); a shared-validator failure there still discards the draft.
+        """
 
         finding, idm = self.problems(draft)
         if finding is None and not idm:
@@ -291,7 +312,8 @@ class IdmUnitWriter:
         except IdmProviderError as error:
             if error.terminal:
                 raise
-        for _ in range(len(self.plans) + 1):
+        # Each pass settles one slot (fallback or review), so the bound is never the limiting factor.
+        for _ in range(2 * len(self.plans) + 1):
             finding, idm = self.problems(draft)
             if finding is None and not idm:
                 return draft
@@ -300,7 +322,15 @@ class IdmUnitWriter:
                 return None
             replaced = self.fallback_slot(draft, bad)
             if replaced is None:
-                return None
+                if finding is not None:
+                    return None
+                # No source-locked rebuild exists for this slot (spec §7.7.4 "returns None") and the
+                # shared validator accepts its payload: keep the provider slot as a reviewable draft
+                # instead of discarding the whole unit (which would end in FALLBACK_INVALID).
+                self.codes.extend(code for code, index in idm if index == bad)
+                draft = _Draft(draft.unit, list(draft.fallback_slots), draft.repair_applied,
+                               sorted({*draft.review_slots, bad}))
+                continue
             draft = replaced
         return None
 
@@ -350,7 +380,8 @@ async def run_idm_unit(
     whole_fallback = draft is None
     if draft is None:
         draft = _Draft(_whole_fallback(writer), list(range(len(writer.plans))))
-    reviewable = (whole_fallback or bool(draft.fallback_slots) or deps.evidence_review_required
+    reviewable = (whole_fallback or bool(draft.fallback_slots) or bool(draft.review_slots)
+                  or deps.evidence_review_required
                   or blocking_count(judge.findings) > 0
                   or (ai_drafted and _q5(judge) != "pass"))
     note = build_unit_author_note(locale=runtime.locale, judge=judge, deterministic_codes=writer.codes,
@@ -370,6 +401,7 @@ async def run_idm_unit(
         "correlation_id": runtime.correlation_id, "unit_path": contract.unit_path,
         "judge_status": judge.status, "finding_counts": quality.finding_counts.model_dump(),
         "repair_applied": draft.repair_applied, "fallback_slots": draft.fallback_slots,
+        "review_slots": draft.review_slots,
         "whole_fallback": whole_fallback, "codes": sorted(set(writer.codes)),
         "call_count": runtime.usage.calls, "duration_ms": int((time.perf_counter() - started) * _MS),
     })

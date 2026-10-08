@@ -6,6 +6,7 @@ from app.lesson_author_orchestration_v2_provider import (
     unit_contract_v5_architecture_v2,
 )
 from app.main import (
+    build_orchestration_v2_source_locked_components,
     build_orchestration_v2_source_locked_unit,
     merge_checkpoint_component_fallback,
     validate_staged_unit_content,
@@ -268,6 +269,47 @@ class OrchestrationV2SourceLockedFallbackTests(unittest.TestCase):
         self.assertTrue(mixed["components"][1]["source_locked_fallback"])
         self.assertEqual(mixed["components"][1]["covered_source_fact_ids"], [])
         self.assertIsNone(validate_staged_unit_content(mixed, expected, strict_payload=True))
+
+    def test_per_slot_components_isolate_an_unbuildable_slot(self) -> None:
+        """Regression (run 2a5e9ff2): a prose-only problem has no deterministic rebuild; the html slot keeps one."""
+        fact_ids = ["fact-1", "fact-2"]
+        source_facts = [{
+            "document_id": "document-1", "fact_key": fact_id, "scope_key": "scope-1", "fact_text": text,
+            "source_ref": None, "source_page": None, "source_chunk": None, "locator": {},
+        } for fact_id, text in zip(fact_ids, [
+            "Nhân viên lắng nghe khách hàng và ghi nhận đầy đủ nội dung phản ánh trong ca làm việc.",
+            "Quản lý cửa hàng xem xét phản ánh và phản hồi cho khách hàng trong thời gian sớm nhất.",
+        ], strict=True)]
+        base = {"rationale": "r", "learning_objective_refs": ["lo_1"], "source_scope_ids": ["scope-1"],
+                "content_requirements": [], "learning_block_ids": [], "required_artifacts": []}
+        plans = [
+            {**base, "component_plan_id": "cp2_" + "a" * 32, "type": "html", "title": "Tiếp nhận phản ánh",
+             "purpose": "explain", "source_fact_ids": fact_ids, "supporting_evidence_fact_ids": []},
+            {**base, "component_plan_id": "cp2_" + "b" * 32, "type": "problem", "title": "Kiểm tra nhanh",
+             "purpose": "assess", "source_fact_ids": [], "supporting_evidence_fact_ids": fact_ids},
+        ]
+        payload = {
+            "contract_version": 2, "unit_content_policy_version": "unit-content-v4-alignment-1",
+            "source_snapshot_hash": "a" * 64, "assembly_hash": "b" * 64,
+            "chapter_key": "chapter-1", "unit_path": "chapter_1.lesson_1.unit_2", "chapter_title": "Chương 1",
+            "lesson_title": "Bài 1", "lesson_learning_objectives": ["Tiếp nhận phản ánh"],
+            "unit_title": "Tiếp nhận phản ánh", "unit_purpose": "Giải thích cách tiếp nhận phản ánh",
+            "unit_learning_objective_refs": ["lo_1"], "unit_source_scope_ids": ["scope-1"],
+            "unit_source_fact_ids": fact_ids, "component_plan": plans, "source_facts": source_facts,
+        }
+        contract = UnitGenerationContractV2.model_validate({**payload, "contract_hash": canonical_hash(payload)})
+
+        components = build_orchestration_v2_source_locked_components(contract, "vi")
+
+        self.assertEqual([component is None for component in components], [False, True])
+        assert components[0] is not None
+        self.assertEqual((components[0]["type"], components[0]["source_locked_fallback"]), ("html", True))
+        # The whole-unit fallback stays all-or-nothing (legacy behaviour unchanged).
+        self.assertIsNone(build_orchestration_v2_source_locked_unit(contract, "vi"))
+        html_only = contract.model_copy(update={"component_plan": contract.component_plan[:1]})
+        self.assertEqual(build_orchestration_v2_source_locked_unit(html_only, "vi"),
+                         build_orchestration_v2_source_locked_unit(
+                             html_only, "vi", components=build_orchestration_v2_source_locked_components(html_only, "vi")))
 
 
 if __name__ == "__main__":

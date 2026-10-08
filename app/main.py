@@ -166,6 +166,7 @@ from app.lesson_author_orchestration_v2_provider import (
     SourceOutlineChapterV2,
     SourceScopeCatalogEntryV2,
     SourceSnapshotFactV2,
+    UnitComponentPlanV2,
     UnitGenerationContractV2,
     bind_chapter_shard_v2,
     bind_course_skeleton_v2,
@@ -10204,6 +10205,8 @@ def _orchestration_v2_source_relationship_diagram(
 def build_orchestration_v2_source_locked_unit(
     contract: UnitGenerationContractV2,
     locale: str,
+    *,
+    components: list[dict[str, Any] | None] | None = None,
 ) -> dict[str, Any] | None:
     """Build an exact V2 component inventory from its immutable source ledger.
 
@@ -10213,81 +10216,10 @@ def build_orchestration_v2_source_locked_unit(
     validators remain authoritative before anything can be committed.
     """
 
-    fact_by_id = {fact.fact_key: fact.fact_text for fact in contract.source_facts}
-    components: list[dict[str, Any]] = []
-    for index, plan in enumerate(contract.component_plan):
-        evidence_fact_ids = list(dict.fromkeys([
-            *plan.source_fact_ids,
-            *plan.supporting_evidence_fact_ids,
-        ]))
-        fact_texts = clean_source_facts(
-            [fact_by_id[fact_id] for fact_id in evidence_fact_ids if fact_id in fact_by_id],
-            preserve_table_numeric=True,
-        )
-        if not fact_texts or any(not value for value in fact_texts):
-            return None
-        title = (
-            sanitize_source_fact_for_learner(plan.title)
-            or sanitize_source_fact_for_learner(contract.unit_title)
-            or ("Learning content" if locale == "en" else "Nội dung học tập")
-        )
-        rationale = ("Provider output was unavailable; this reviewable draft is reconstructed from the locked source facts."
-                     if locale == "en" else
-                     "Kết quả từ mô hình chưa khả dụng; bản nháp để rà soát này được dựng từ các dữ kiện nguồn đã khóa.")
-        component: dict[str, Any] = {
-            "type": plan.type,
-            "title": title,
-            "component_plan_id": plan.component_plan_id,
-            "source_fact_ids": list(plan.source_fact_ids),
-            "covered_source_fact_ids": list(plan.source_fact_ids),
-            "supporting_evidence_fact_ids": list(plan.supporting_evidence_fact_ids),
-            "learning_objective_refs": list(plan.learning_objective_refs),
-            "source_locked_fallback": True,
-            "selection_rationale": rationale,
-        }
-        if plan.type == "html":
-            component["html"] = _orchestration_v2_source_locked_html(
-                title,
-                fact_texts,
-                locale,
-                plan.required_artifacts,
-            )
-        elif plan.type == "problem":
-            problem = build_source_grounded_single_choice(title, fact_texts, locale=locale)
-            if problem is None:
-                return None
-            component.update(problem)
-        elif plan.type == "la_faq":
-            answers = _source_locked_faq_answers(fact_texts)
-            if len(answers) < 2:
-                return None
-            component["items"] = [{
-                "question": _source_locked_faq_question(answer, title, item_index, locale),
-                "answer": answer,
-            } for item_index, answer in enumerate(answers)]
-        elif plan.type == "la_sortable":
-            source_steps = _orchestration_v2_sortable_steps(fact_texts, locale)
-            if len(source_steps) < 3:
-                return None
-            component.update({
-                "question_text": ("Arrange the procedure steps in the correct order."
-                                  if locale == "en" else "Sắp xếp các bước thực hiện theo đúng trình tự."),
-                "items": [{"text": item} for item in source_steps[:10]],
-            })
-        elif plan.type == "la_crossword":
-            words = _orchestration_v2_crossword_words(title, fact_texts, locale)
-            if len(words) < 3:
-                return None
-            component["words"] = words
-        elif plan.type == "la_diagram":
-            component.update(_orchestration_v2_source_relationship_diagram(
-                title,
-                fact_texts,
-                locale,
-            ))
-        else:
-            return None
-        components.append(component)
+    slots = (build_orchestration_v2_source_locked_components(contract, locale)
+             if components is None else components)
+    if len(slots) != len(contract.component_plan) or any(component is None for component in slots):
+        return None
     return {
         "title": (
             sanitize_source_fact_for_learner(contract.unit_title)
@@ -10300,9 +10232,105 @@ def build_orchestration_v2_source_locked_unit(
             for fact_id in plan.supporting_evidence_fact_ids
         )),
         "component_plan": [plan.model_dump(mode="json") for plan in contract.component_plan],
-        "components": components,
+        "components": [component for component in slots if component is not None],
         "source_locked_fallback": True,
     }
+
+
+def build_orchestration_v2_source_locked_components(
+    contract: UnitGenerationContractV2,
+    locale: str,
+) -> list[dict[str, Any] | None]:
+    """One source-locked component per server-owned plan slot, in plan order.
+
+    A slot is ``None`` when its locked evidence cannot rebuild that component
+    type deterministically (for example a prose-only ``problem`` or a ``la_faq``
+    without explicit source conditions). Other slots stay usable on their own.
+    """
+
+    fact_by_id = {fact.fact_key: fact.fact_text for fact in contract.source_facts}
+    return [_orchestration_v2_source_locked_component(contract, plan, fact_by_id, locale)
+            for plan in contract.component_plan]
+
+
+def _orchestration_v2_source_locked_component(
+    contract: UnitGenerationContractV2,
+    plan: UnitComponentPlanV2,
+    fact_by_id: dict[str, str],
+    locale: str,
+) -> dict[str, Any] | None:
+    evidence_fact_ids = list(dict.fromkeys([
+        *plan.source_fact_ids,
+        *plan.supporting_evidence_fact_ids,
+    ]))
+    fact_texts = clean_source_facts(
+        [fact_by_id[fact_id] for fact_id in evidence_fact_ids if fact_id in fact_by_id],
+        preserve_table_numeric=True,
+    )
+    if not fact_texts or any(not value for value in fact_texts):
+        return None
+    title = (
+        sanitize_source_fact_for_learner(plan.title)
+        or sanitize_source_fact_for_learner(contract.unit_title)
+        or ("Learning content" if locale == "en" else "Nội dung học tập")
+    )
+    rationale = ("Provider output was unavailable; this reviewable draft is reconstructed from the locked source facts."
+                 if locale == "en" else
+                 "Kết quả từ mô hình chưa khả dụng; bản nháp để rà soát này được dựng từ các dữ kiện nguồn đã khóa.")
+    component: dict[str, Any] = {
+        "type": plan.type,
+        "title": title,
+        "component_plan_id": plan.component_plan_id,
+        "source_fact_ids": list(plan.source_fact_ids),
+        "covered_source_fact_ids": list(plan.source_fact_ids),
+        "supporting_evidence_fact_ids": list(plan.supporting_evidence_fact_ids),
+        "learning_objective_refs": list(plan.learning_objective_refs),
+        "source_locked_fallback": True,
+        "selection_rationale": rationale,
+    }
+    if plan.type == "html":
+        component["html"] = _orchestration_v2_source_locked_html(
+            title,
+            fact_texts,
+            locale,
+            plan.required_artifacts,
+        )
+    elif plan.type == "problem":
+        problem = build_source_grounded_single_choice(title, fact_texts, locale=locale)
+        if problem is None:
+            return None
+        component.update(problem)
+    elif plan.type == "la_faq":
+        answers = _source_locked_faq_answers(fact_texts)
+        if len(answers) < 2:
+            return None
+        component["items"] = [{
+            "question": _source_locked_faq_question(answer, title, item_index, locale),
+            "answer": answer,
+        } for item_index, answer in enumerate(answers)]
+    elif plan.type == "la_sortable":
+        source_steps = _orchestration_v2_sortable_steps(fact_texts, locale)
+        if len(source_steps) < 3:
+            return None
+        component.update({
+            "question_text": ("Arrange the procedure steps in the correct order."
+                              if locale == "en" else "Sắp xếp các bước thực hiện theo đúng trình tự."),
+            "items": [{"text": item} for item in source_steps[:10]],
+        })
+    elif plan.type == "la_crossword":
+        words = _orchestration_v2_crossword_words(title, fact_texts, locale)
+        if len(words) < 3:
+            return None
+        component["words"] = words
+    elif plan.type == "la_diagram":
+        component.update(_orchestration_v2_source_relationship_diagram(
+            title,
+            fact_texts,
+            locale,
+        ))
+    else:
+        return None
+    return component
 
 
 class StagedUnitFinding(str):
@@ -18578,6 +18606,7 @@ def _idm_unit_deps(request: RagLessonAuthorUnitV2Request) -> IdmUnitDeps:
     bundle = manifest.get("source_evidence_bundle")
     supporting = list(dict.fromkeys(item for plan in contract.component_plan
                                     for item in plan.supporting_evidence_fact_ids))
+    source_locked_components = build_orchestration_v2_source_locked_components(contract, request.locale)
     return IdmUnitDeps(
         build_instance_model=build_staged_instance_response_model,
         bind_instance_payload=bind_staged_instance_payload,
@@ -18586,7 +18615,9 @@ def _idm_unit_deps(request: RagLessonAuthorUnitV2Request) -> IdmUnitDeps:
         decode_repair=decode_staged_multi_repair,
         merge_repair=lambda unit, delta, targets, coverage: merge_staged_component_payload_delta(
             unit, delta, targets, coverage_targets=coverage),
-        source_locked_unit=build_orchestration_v2_source_locked_unit(contract, request.locale),
+        source_locked_unit=build_orchestration_v2_source_locked_unit(
+            contract, request.locale, components=source_locked_components),
+        source_locked_components=source_locked_components,
         purity_context=build_learner_content_purity_context(
             {"source_fact_ids": list(contract.unit_source_fact_ids), "supporting_evidence_fact_ids": supporting},
             manifest, _orchestration_v2_unit_source_rows(request)),

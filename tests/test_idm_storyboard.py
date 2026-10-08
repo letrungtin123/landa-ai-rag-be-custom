@@ -292,13 +292,22 @@ class UnitEndpointTests(StoryboardEndpointTestCase):
                 self.assertEqual(provider.names, expected)
                 self.assertEqual(quality.judge_status, "failed" if name == "provider" else "pass")
 
-    async def test_failed_slot_repair_without_slot_fallback_is_422(self) -> None:
+    async def test_failed_slot_repair_without_slot_fallback_keeps_the_provider_slot_for_review(self) -> None:
+        # Regression (run 2a5e9ff2): a prose-only practice slot has no source-locked rebuild. A slot that
+        # only fails IDM pedagogy checks is kept as a reviewable draft instead of ending the unit in 422.
         body = escalate_body()
         writer = escalate_writer(body)
         writer["components"]["c0"]["explanation"] = ONE_OPTION
-        status, data, provider = await self.post(body, FakeGenerate(**{WRITER: [writer], REPAIR: ["{}"]}))
-        self.assertEqual((status, data["detail"]["code"]), (422, "ORCHESTRATION_V2_UNIT_FALLBACK_INVALID"))
-        self.assertEqual(provider.names, [WRITER, REPAIR])
+        provider = FakeGenerate(**{WRITER: [writer], REPAIR: ["{}"], JUDGE: [judge()]})
+        status, data, _ = await self.post(body, provider)
+        self.assertEqual(status, 200)
+        quality = self.assert_envelope(data, "provider_validated", "review_required", "provider")
+        self.assertEqual(provider.names, [WRITER, REPAIR, JUDGE])
+        self.assertEqual(data["unit"]["components"][0]["explanation"], ONE_OPTION)
+        self.assertFalse(any(c.get("source_locked_fallback") for c in data["unit"]["components"]))
+        self.assertEqual(quality.deterministic_codes, ["IDM_W5_PRACTICE_INCOMPLETE"])
+        self.assertIn("Kiểm tra tự động còn cảnh báo: IDM_W5_PRACTICE_INCOMPLETE.", quality.author_note)
+        self.assertNotIn("fallback", [e["outcome"] for e in data["attempt_trace"]])
 
     async def test_fallback_only_makes_no_provider_call(self) -> None:
         body = {**severity_body(), "fallback_only": True}
@@ -427,11 +436,16 @@ class InjectedDepsTests(unittest.IsolatedAsyncioTestCase):
         code: str
         path: str
 
-    async def run_unit(self, validate: Any, *, review: bool = False) -> dict[str, Any]:
+    async def run_unit(self, validate: Any, *, review: bool = False,
+                       unbuildable_slots: tuple[int, ...] = ()) -> dict[str, Any]:
         body = severity_body()
         request = main.RagLessonAuthorUnitV2Request.model_validate(body)
         deps = dataclasses.replace(main._idm_unit_deps(request), validate_unit=validate, judge_mode="off",
                                    evidence_review_required=review)
+        if unbuildable_slots:
+            slots = [None if index in unbuildable_slots else component
+                     for index, component in enumerate(deps.source_locked_components or [])]
+            deps = dataclasses.replace(deps, source_locked_components=slots, source_locked_unit=None)
         generate = AsyncMock(side_effect=[(json.dumps(severity_writer(body), ensure_ascii=False),
                                            main.AiUsage(inputTokens=1, outputTokens=1, totalTokens=2))] * 2)
         return await run_idm_unit(contract=request.unit_contract, runtime=make_runtime(generate, allowance=None),
@@ -458,6 +472,31 @@ class InjectedDepsTests(unittest.IsolatedAsyncioTestCase):
     async def test_evidence_review_marks_a_clean_unit_reviewable(self) -> None:
         result = await self.run_unit(lambda _unit, _expected: None, review=True)
         self.assertEqual((result["content_origin"], result["quality_state"]), ("provider_validated", "review_required"))
+
+    async def test_slot_fallback_survives_an_unbuildable_sibling_slot(self) -> None:
+        # Regression (run 2a5e9ff2): one unbuildable slot (e.g. la_faq without explicit conditions) used to
+        # disable the source-locked fallback of every other slot of the unit.
+        def validate(unit: dict[str, Any], _expected: dict[str, Any]) -> Any:
+            first = unit["components"][0]
+            return None if first.get("source_locked_fallback") else self.Finding("HTML_X", "components[0].html")
+
+        result = await self.run_unit(validate, unbuildable_slots=(1,))
+        self.assertEqual((result["content_origin"], result["quality_state"]),
+                         ("structured_fallback", "review_required"))
+        components = result["unit"]["components"]
+        self.assertTrue(components[0]["source_locked_fallback"])
+        self.assertNotIn("source_locked_fallback", components[1])
+        self.assertNotIn("source_locked_fallback", result["unit"])
+        self.assertEqual([e["failure_code"] for e in result["attempt_trace"] if e["outcome"] == "fallback"],
+                         ["IDM_W5_SLOT_FALLBACK"])
+
+    async def test_shared_validator_finding_on_an_unbuildable_slot_keeps_the_legacy_code(self) -> None:
+        def validate(unit: dict[str, Any], _expected: dict[str, Any]) -> Any:
+            return self.Finding("X_INVALID", "components[1].question")
+
+        with self.assertRaises(IdmStageError) as caught:
+            await self.run_unit(validate, unbuildable_slots=(1,))
+        self.assertEqual(caught.exception.code, "ORCHESTRATION_V2_UNIT_FALLBACK_INVALID")
 
     async def test_invalid_fallback_raises_the_legacy_code(self) -> None:
         with self.assertRaises(IdmStageError) as caught:
