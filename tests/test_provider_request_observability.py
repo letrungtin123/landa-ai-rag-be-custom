@@ -5,8 +5,9 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 from fastapi import HTTPException
-from app.main import LESSON_AUTHOR_BLUEPRINT_RESPONSE_SCHEMA
-from app.services.provider import generate_content, call_provider_with_timeout
+
+from app.lesson_author_blueprint import LESSON_AUTHOR_BLUEPRINT_RESPONSE_SCHEMA
+from app.services.provider import call_provider_with_timeout, generate_content
 
 
 class ProviderRequestObservabilityTests(unittest.TestCase):

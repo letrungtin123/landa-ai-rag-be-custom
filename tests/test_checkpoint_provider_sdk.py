@@ -1,21 +1,22 @@
 """Exercise the installed Google SDK, mocking only HTTP; no Gemini or database."""
 import asyncio
 import json
-from types import SimpleNamespace
 import unittest
+from types import SimpleNamespace
 from unittest.mock import patch
 
 import httpx
+from fastapi import HTTPException
 from google.genai import errors
 
 from app import main
-from tests.test_staged_instance_output import checkpoint_instance_fixture
-from tests.test_checkpoint_component_quality_repair import instance_wire
-from tests.test_chapter_checkpoint import checkpoint_result
-from fastapi import HTTPException
 from app.api import deps as api_deps
+from app.lesson_author_checkpoint import ChapterCheckpointUnit
 from app.services import provider as provider_service
 from app.services.lesson_author.staged import provider_schemas as staged_schemas
+from tests.test_chapter_checkpoint import checkpoint_result
+from tests.test_checkpoint_component_quality_repair import instance_wire
+from tests.test_staged_instance_output import checkpoint_instance_fixture
 
 
 def response(status, body):
@@ -161,7 +162,7 @@ class CheckpointProviderSDKTests(unittest.TestCase):
             self.assertEqual(result.json()["status"], "unit_ready")
             self.assertEqual(result.json()["unit"]["components"][0]["semantic_content"]["version"], 2)
             final_request = request.model_copy(update={"checkpoint_action": "validate_chapter", "checkpoint_unit_index": None,
-                "checkpoint_units": [main.ChapterCheckpointUnit(unit_index=0, unit=result.json()["unit"])]})
+                "checkpoint_units": [ChapterCheckpointUnit(unit_index=0, unit=result.json()["unit"])]})
             final = self.send(final_request, manifest)
         self.assertEqual(final.status_code, 200)
         self.assertEqual(final.json()["status"], "ready")

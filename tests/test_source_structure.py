@@ -2,6 +2,10 @@ from __future__ import annotations
 
 import unittest
 
+from app.schemas.lesson_author import RagLessonAuthorRequest
+from app.services.ingestion.chunking import build_index_diagnostics
+from app.services.ingestion.extract import ExtractedSection
+from app.services.lesson_author.errors import LessonAuthorProposalValidationError
 from app.services.lesson_author.staged.skeleton import (
     extract_lesson_author_unit_batches,
     should_stage_lesson_author_proposal,
@@ -15,10 +19,6 @@ from app.services.retrieval.source_coverage import (
     source_coverage_metrics,
     validate_lesson_author_source_coverage,
 )
-from app.services.lesson_author.errors import LessonAuthorProposalValidationError
-from app.services.ingestion.chunking import build_index_diagnostics
-from app.services.ingestion.extract import ExtractedSection
-from app.schemas.lesson_author import RagLessonAuthorRequest
 from app.source_structure import analyze_source_structure, chunk_structure_metadata, structure_outline
 
 

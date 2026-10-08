@@ -19,12 +19,12 @@ from pydantic import ValidationError
 
 from app import main
 from app.__main__ import uvicorn_options
+from app.api.routes import health as health_routes
 from app.core.config import Settings, missing_required_setting_names
 from app.infra import db as db_infra
 from app.infra import gemini as gemini_infra
 from app.infra import schema_check
 from app.infra.schema_check import SchemaCheckResult, SchemaGuard
-from app.api.routes import health as health_routes
 from app.services import runtime as runtime_service
 
 TOKEN = "sep1-test-token-0123456789"

@@ -12,7 +12,8 @@ from google import genai
 from google.genai import models, types
 
 from app.assessment_planner import (
-    assessment_intent_repair_options, compile_v5_assessment_plan,
+    assessment_intent_repair_options,
+    compile_v5_assessment_plan,
     evaluate_assessment_teaching_anchor,
 )
 from app.lesson_author_blueprint import build_v5_semantic_delta_repair_response_schema
@@ -21,8 +22,8 @@ from app.main import (
     _v5_deterministic_assessment_alignment_payload,
     _v5_prepare_semantic_repair_targets,
     apply_course_architecture_repair_patches,
-    validate_v5_instructional_coherence,
 )
+from app.services.lesson_author.architecture_validation import validate_v5_instructional_coherence
 from app.services.lesson_author.evidence_scope import (
     allocate_source_map_architecture_facts,
     validate_course_architecture_evidence_scope,
@@ -30,8 +31,10 @@ from app.services.lesson_author.evidence_scope import (
 from app.source_map import build_source_map
 from app.workflows.contracts import WorkflowFailure, WorkflowGenerationResult, WorkflowValidationResult
 from app.workflows.course_architecture import (
-    CourseArchitectureWorkflowCallbacks, V5_MAX_PROVIDER_REPAIR_CALLS,
-    classify_course_repair_targets, run_course_architecture_workflow,
+    V5_MAX_PROVIDER_REPAIR_CALLS,
+    CourseArchitectureWorkflowCallbacks,
+    classify_course_repair_targets,
+    run_course_architecture_workflow,
 )
 from tests.test_evidence_scope_allocation_v5 import _manifest, _nodes, _v5_blueprint
 

@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from pathlib import Path
 import tempfile
 import unittest
+from pathlib import Path
 
 from app.source_readiness import (
     MANUAL_REGION_REQUEST_VERSION,

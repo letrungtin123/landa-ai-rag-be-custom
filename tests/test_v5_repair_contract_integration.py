@@ -16,29 +16,29 @@ from fastapi import HTTPException
 from google import genai
 from google.genai import models, types
 
+from app.component_capabilities import ComponentCapabilities
 from app.lesson_author_blueprint import (
     ACTION_OBJECTIVE_REPAIR_INTENTS,
     INSTRUCTIONAL_SUPPORT_REPAIR_INTENTS,
+    INSTRUCTIONAL_SUPPORT_TEXT_MAX_CHARS,
     SEMANTIC_LEARNING_BLOCK_INTENTS,
     V5_SEMANTIC_DELTA_REPAIR_OPERATIONS,
     build_v5_semantic_delta_repair_response_schema,
     semantic_delta_required_fields,
-    INSTRUCTIONAL_SUPPORT_TEXT_MAX_CHARS,
 )
 from app.main import (
     apply_course_architecture_repair_patches,
     build_course_architecture_repair_prompt,
     lesson_author_blueprint,
-    validate_v5_post_allocation_instructional_depth,
 )
-from app.services.lesson_author.staged.skeleton import match_staged_unit_by_title
 from app.schemas.common import AiUsage
+from app.services.lesson_author.architecture_validation import validate_v5_post_allocation_instructional_depth
+from app.services.lesson_author.staged.skeleton import match_staged_unit_by_title
+from app.source_map import build_source_map
 from app.workflows.contracts import WorkflowFailure
 from app.workflows.course_architecture import classify_course_repair_targets
 from tests.test_evidence_scope_allocation_v5 import _manifest, _nodes, _v5_blueprint
 from tests.test_lesson_author_blueprint import blueprint_request
-from app.source_map import build_source_map
-from app.component_capabilities import ComponentCapabilities
 
 
 async def endpoint_fixture(count=371, *, intent="worked_example", thin=True, locale="en"):

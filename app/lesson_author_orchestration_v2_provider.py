@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-from collections import Counter
-from copy import deepcopy
 import json
 import re
+from collections import Counter
+from copy import deepcopy
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
@@ -23,12 +23,6 @@ from app.instructional_quality import (
     source_relationship_pairs,
     source_term_definitions,
 )
-from app.source_evidence_bundle import (
-    build_degraded_source_evidence_bundle,
-    build_source_evidence_bundle,
-)
-
-from app.prompt_safety import UNTRUSTED_JSON_CONTEXT_RULE
 from app.lesson_author_orchestration_v2 import (
     ArchitectureComponentAuthorReviewV2,
     ArchitectureComponentPlanV2,
@@ -40,7 +34,11 @@ from app.lesson_author_orchestration_v2 import (
     UnitArchitectureV2,
     canonical_hash,
 )
-
+from app.prompt_safety import UNTRUSTED_JSON_CONTEXT_RULE
+from app.source_evidence_bundle import (
+    build_degraded_source_evidence_bundle,
+    build_source_evidence_bundle,
+)
 
 MAX_SOURCE_PAGE_FACTS = 500
 MAX_SOURCE_SCOPES = 4096

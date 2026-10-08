@@ -1,9 +1,8 @@
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, fields
 from math import ceil
-import re
-
 
 INSTRUCTIONAL_DENSITY_POLICY_VERSION = "unit-content-v3-density-1"
 SOURCE_SCOPE_CHUNKS_PER_GROUP = 4

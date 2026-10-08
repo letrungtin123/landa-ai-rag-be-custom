@@ -2,15 +2,16 @@
 from __future__ import annotations
 
 import asyncio
-from copy import deepcopy
 import json
 import unittest
+from copy import deepcopy
 from unittest.mock import AsyncMock, patch
 
 from google import genai
 from google.genai import models, types
 
-from app.main import generate_staged_lesson_author_proposal
+from app.schemas.common import AiUsage
+from app.services.lesson_author.errors import LessonAuthorProposalValidationError
 from app.services.lesson_author.staged.provider_schemas import build_staged_lesson_content_response_model
 from app.services.lesson_author.staged.skeleton import (
     match_staged_unit_by_title,
@@ -23,8 +24,7 @@ from app.services.lesson_author.staged.validation import (
     staged_payload_diagnostics,
     validate_staged_unit_content,
 )
-from app.services.lesson_author.errors import LessonAuthorProposalValidationError
-from app.schemas.common import AiUsage
+from app.services.lesson_author.staged.writer import generate_staged_lesson_author_proposal
 from tests.test_component_instance_contract import PROFILE
 from tests.test_lesson_prompt_policy import content_payload, request_and_unit
 

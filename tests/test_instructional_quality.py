@@ -10,8 +10,8 @@ from app.instructional_quality import (
     normalize_visible_text,
     ordered_source_steps,
     render_source_locked_html,
-    source_relationship_pairs,
     source_clarification_signals,
+    source_relationship_pairs,
     source_term_definitions,
 )
 

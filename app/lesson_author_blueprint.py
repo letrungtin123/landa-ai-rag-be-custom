@@ -9,7 +9,6 @@ from pydantic import BaseModel, Field
 
 from app.source_structure import strip_source_range_suffix
 
-
 # Keep the generation contract aligned with the backend. A source without a
 # trustworthy table of contents can contain many independent procedures in one
 # inferred topic; rejecting the fifth procedure loses a valid Blueprint rather

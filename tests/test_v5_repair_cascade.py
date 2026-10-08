@@ -20,20 +20,26 @@ from app.lesson_author_blueprint import (
     validate_lesson_author_blueprint,
 )
 from app.main import (
-    LessonAuthorBlueprintGenerationError,
     _repair_patch_domain_diagnostics,
-    _v5_deterministic_evidence_alignment_candidate,
     _v5_deterministic_assessment_alignment_payload,
-    _v5_prepare_evidence_alignment_targets,
+    _v5_deterministic_evidence_alignment_candidate,
     _v5_prepare_assessment_alignment_targets,
+    _v5_prepare_evidence_alignment_targets,
     _v5_prepare_semantic_repair_targets,
     apply_course_architecture_repair_patches,
     build_course_architecture_repair_prompt,
     build_v5_scoped_repair_source_context,
-    generate_validated_lesson_author_blueprint,
+)
+from app.schemas.common import AiUsage
+from app.services.lesson_author.architecture_shape import _workflow_issue_from_blueprint_validation_error
+from app.services.lesson_author.architecture_validation import (
     validate_course_architecture_workflow,
     validate_v5_instructional_coherence,
     validate_v5_post_allocation_instructional_depth,
+)
+from app.services.lesson_author.blueprint import (
+    LessonAuthorBlueprintGenerationError,
+    generate_validated_lesson_author_blueprint,
 )
 from app.services.lesson_author.evidence_scope import (
     allocate_source_map_architecture_facts,
@@ -41,13 +47,11 @@ from app.services.lesson_author.evidence_scope import (
 )
 from app.services.lesson_author.granularity import allocate_blueprint_source_fact_ids
 from app.services.lesson_author.prompts import build_course_architect_prompt
-from app.services.lesson_author.architecture_shape import _workflow_issue_from_blueprint_validation_error
 from app.services.lesson_author.source_context import (
     assert_v5_immutable_source_context,
     assert_v5_scoped_repair_target_bound,
     create_v5_immutable_source_context,
 )
-from app.schemas.common import AiUsage
 from app.source_map import build_source_map
 from app.workflows.contracts import (
     WorkflowFailure,

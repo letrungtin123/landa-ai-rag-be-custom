@@ -7,7 +7,6 @@ from typing import Any, Iterable
 
 from app.source_readiness import build_visual_observation_record
 
-
 SHADOW_VISUAL_PIPELINE_VERSION = "source-visual-shadow-v1"
 SHADOW_VISUAL_POLICY_VERSION = "human-review-shadow-v1"
 SHADOW_VISUAL_TASK_VERSION = "source-visual-task-v1"

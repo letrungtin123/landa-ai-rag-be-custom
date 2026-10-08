@@ -1,6 +1,6 @@
 """Node-owned, opt-in component instance contract. Never provider authority."""
-from typing import Any, Literal
 import re
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, StrictBool
 

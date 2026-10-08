@@ -6,9 +6,9 @@ import unittest
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
+from fastapi import HTTPException
 from google import genai
 from google.genai import models, types
-from fastapi import HTTPException
 
 from app.core.config import settings
 from app.lesson_author_blueprint import (
@@ -17,20 +17,26 @@ from app.lesson_author_blueprint import (
     LessonAuthorBlueprintValidationError,
     parse_and_validate_lesson_author_blueprint,
 )
-from app.main import (
+from app.schemas.common import AiUsage
+from app.schemas.lesson_author import RagLessonAuthorBlueprintRequest, RagLessonAuthorRequest
+from app.services.lesson_author.blueprint import (
     CourseArchitectSemanticScopeError,
     LessonAuthorBlueprintGenerationError,
     drop_invalid_lesson_author_source_refs,
     enforce_lesson_author_source_structure,
-    generate_staged_lesson_author_proposal,
     generate_validated_lesson_author_blueprint,
 )
+from app.services.lesson_author.errors import LessonAuthorProposalValidationError
 from app.services.lesson_author.granularity import (
     allocate_blueprint_source_fact_ids,
     apply_phase_one_blueprint_component_contract,
     ensure_blueprint_source_granularity,
 )
 from app.services.lesson_author.prompts import build_lesson_author_blueprint_prompt
+from app.services.lesson_author.proposal_validation import (
+    normalize_lesson_author_proposal_tree,
+    validate_lesson_author_proposal_shape,
+)
 from app.services.lesson_author.staged.plan import build_staged_component_plan, consolidate_staged_thin_units
 from app.services.lesson_author.staged.provider_schemas import (
     build_lesson_author_proposal_response_schema,
@@ -43,21 +49,15 @@ from app.services.lesson_author.staged.skeleton import (
     validate_staged_skeleton_source_facts,
 )
 from app.services.lesson_author.staged.source_locked import (
-    build_source_locked_staged_skeleton,
     build_source_locked_html_unit,
+    build_source_locked_staged_skeleton,
     prepare_source_locked_expected,
     staged_unit_source_material,
 )
 from app.services.lesson_author.staged.validation import validate_staged_unit_content
-from app.services.retrieval.source_coverage import restrict_blueprint_draft_source_manifest
-from app.services.lesson_author.errors import LessonAuthorProposalValidationError
-from app.services.lesson_author.proposal_validation import (
-    normalize_lesson_author_proposal_tree,
-    validate_lesson_author_proposal_shape,
-)
+from app.services.lesson_author.staged.writer import generate_staged_lesson_author_proposal
 from app.services.provider import embed_text_batch, generate_content
-from app.schemas.common import AiUsage
-from app.schemas.lesson_author import RagLessonAuthorBlueprintRequest, RagLessonAuthorRequest
+from app.services.retrieval.source_coverage import restrict_blueprint_draft_source_manifest
 from app.workflows.contracts import WorkflowValidationResult
 
 

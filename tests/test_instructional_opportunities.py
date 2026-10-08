@@ -1,20 +1,20 @@
-from copy import deepcopy
 import json
-from pathlib import Path
 import shutil
 import subprocess
 import unittest
+from copy import deepcopy
+from pathlib import Path
 
 from app.instructional_opportunities import compile_evidence_treatments
-from app.main import validate_v5_instructional_coherence
+from app.services.lesson_author.architecture_validation import validate_v5_instructional_coherence
 from app.services.lesson_author.evidence_scope import (
     allocate_source_map_architecture_facts,
     validate_course_architecture_evidence_scope,
 )
 from app.services.lesson_author.granularity import allocate_blueprint_source_fact_ids
 from app.source_map import build_source_map
-from tests.test_evidence_scope_allocation_v5 import _manifest, _nodes, _v5_blueprint
 from tests.test_component_instance_contract import PROFILE
+from tests.test_evidence_scope_allocation_v5 import _manifest, _nodes, _v5_blueprint
 
 
 def fixture(texts):

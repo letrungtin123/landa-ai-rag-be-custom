@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import unittest
+
 from app.lesson_author_blueprint import (
     LessonAuthorBlueprintValidationError,
     parse_and_validate_lesson_author_blueprint,

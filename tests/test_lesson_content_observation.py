@@ -1,13 +1,14 @@
 """Synthetic EN/VI quality-risk regressions; no customer data or paid calls."""
 import asyncio
-from copy import deepcopy
 import json
 import unittest
+from copy import deepcopy
 from unittest.mock import AsyncMock, patch
 
-from app.lesson_content_observation import observe_lesson_content, MAX_CANDIDATES, MAX_FACTS, MAX_FINDINGS
+from app.lesson_content_observation import MAX_CANDIDATES, MAX_FACTS, MAX_FINDINGS, observe_lesson_content
 from app.lesson_prompt_policy import component_instructional_brief, lesson_instructional_quality_policy
 from app.schemas.common import AiUsage
+from app.services.lesson_author.staged import writer as staged_writer
 
 
 def fixture(fact="Do not operate equipment before controls are verified.", teaching=None):
@@ -253,7 +254,7 @@ class ContentObservationTests(unittest.TestCase):
         request, generated = request_and_unit("html", "vi")
         provider = AsyncMock(return_value=(json.dumps(generated), AiUsage()))
         with patch("app.services.provider.generate_content", provider), patch("app.main.logger.info") as log:
-            proposal, _ = asyncio.run(main.generate_staged_lesson_author_proposal(
+            proposal, _ = asyncio.run(staged_writer.generate_staged_lesson_author_proposal(
                 request, "Private evidence", "", source_rows=[],
                 source_coverage_manifest={"facts": [{"fact_id": "fact-1", "text": "Private evidence is not taught in this fixture."}]}))
         reports = [json.loads(c.args[1]) for c in log.call_args_list if c.args[0] == "lesson_author_content_observation %s"]
@@ -271,8 +272,8 @@ class ContentObservationTests(unittest.TestCase):
         request, generated = request_and_unit("html", "en")
         provider = AsyncMock(return_value=(json.dumps(generated), AiUsage()))
         with patch("app.services.provider.generate_content", provider), patch("app.main.logger.info") as log, \
-                patch("app.main.observe_lesson_content", side_effect=ValueError("PRIVATE_EXCEPTION")):
-            asyncio.run(main.generate_staged_lesson_author_proposal(request, "Evidence", "", source_rows=[],
+                patch("app.services.lesson_author.staged.writer.observe_lesson_content", side_effect=ValueError("PRIVATE_EXCEPTION")):
+            asyncio.run(staged_writer.generate_staged_lesson_author_proposal(request, "Evidence", "", source_rows=[],
                 source_coverage_manifest={"facts": [{"fact_id": "fact-1", "text": "Evidence"}]}))
         reports = [c.args[1] for c in log.call_args_list if c.args[0] == "lesson_author_content_observation %s"]
         self.assertIn("CONTENT_OBSERVATION_UNAVAILABLE", reports[0])
@@ -281,9 +282,9 @@ class ContentObservationTests(unittest.TestCase):
 
     def test_existing_scoped_repair_keeps_two_calls_and_observes_final_checkpoint_once(self):
         from app import main
-        from tests.test_checkpoint_coverage_repair import coverage_fixture
-        from tests.test_checkpoint_component_quality_repair import instance_wire
         from tests.test_chapter_checkpoint import checkpoint_result
+        from tests.test_checkpoint_component_quality_repair import instance_wire
+        from tests.test_checkpoint_coverage_repair import coverage_fixture
         request, valid, broken, scope, manifest, delta = coverage_fixture()
         provider = AsyncMock(side_effect=[(json.dumps(instance_wire(broken)), AiUsage()),
                                           (json.dumps(delta), AiUsage())])

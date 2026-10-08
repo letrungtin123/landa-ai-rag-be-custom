@@ -7,15 +7,14 @@ workflow. They never authorize a component, tenant, asset, or database write;
 Node remains the authoritative proposal/Apply security boundary.
 """
 
-from dataclasses import dataclass
-from html import unescape
 import re
 import unicodedata
+from dataclasses import dataclass
+from html import unescape
 from typing import Any
 
-from app.workflows.contracts import WorkflowIssue, WorkflowValidationResult
 from app.ordered_learning_content import flatten_ordered_content
-
+from app.workflows.contracts import WorkflowIssue, WorkflowValidationResult
 
 EXPLANATORY_TYPES = {"html", "la_faq"}
 PRACTICE_OR_CHECK_TYPES = {"problem", "la_sortable", "la_crossword"}

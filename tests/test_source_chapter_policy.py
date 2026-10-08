@@ -5,14 +5,15 @@ import json
 import unittest
 from unittest.mock import AsyncMock, patch
 
-from app.main import generate_validated_lesson_author_blueprint, lesson_author_blueprint
-from app.services.retrieval.structure import build_source_structure_context
-from app.services.ingestion.extract import ExtractedSection
+from app.lesson_author_blueprint import LessonAuthorBlueprintValidationError
+from app.main import lesson_author_blueprint
 from app.schemas.common import AiUsage
-from app.source_structure import analyze_source_structure, compact_structure
+from app.services.ingestion.extract import ExtractedSection
+from app.services.lesson_author.blueprint import generate_validated_lesson_author_blueprint
+from app.services.retrieval.structure import build_source_structure_context
 from app.source_chapter_policy import bind_source_chapters, resolve_source_chapter_policy
 from app.source_map import build_course_architect_context, build_source_map
-from app.lesson_author_blueprint import LessonAuthorBlueprintValidationError
+from app.source_structure import analyze_source_structure, compact_structure
 from tests.test_lesson_author_blueprint import blueprint_request, valid_blueprint
 
 
@@ -276,6 +277,7 @@ class SourceChapterPolicyTests(unittest.TestCase):
 class SourceChapterPolicyIntegrationTests(unittest.IsolatedAsyncioTestCase):
     async def test_display_truncated_hints_reach_architect_with_full_inventory(self):
         from fastapi import HTTPException
+
         from app.workflows.contracts import WorkflowFailure
 
         context = build_source_structure_context([flat_heading_document()], locale="en")
@@ -289,7 +291,7 @@ class SourceChapterPolicyIntegrationTests(unittest.IsolatedAsyncioTestCase):
         # Stop at the Architect boundary with a mocked error: no paid call,
         # and no claim that a generated Blueprint passed downstream validators.
         with patch("app.services.retrieval.search.retrieve_chunks", new=AsyncMock(return_value=([], AiUsage(), context))), \
-             patch("app.main.generate_validated_lesson_author_blueprint", new=AsyncMock(
+             patch("app.services.lesson_author.blueprint.generate_validated_lesson_author_blueprint", new=AsyncMock(
                  side_effect=WorkflowFailure("PROVIDER_ERROR", "Mocked Architect boundary"))) as architect, \
              patch("app.services.provider.generate_content", new=AsyncMock()) as provider, \
              patch("app.main.logger.info") as log:
@@ -314,7 +316,7 @@ class SourceChapterPolicyIntegrationTests(unittest.IsolatedAsyncioTestCase):
         context = build_source_structure_context([flat_heading_document()], locale="en")
         context["course_blueprint_source_scope_truncated"] = True
         with patch("app.services.retrieval.search.retrieve_chunks", new=AsyncMock(return_value=([], AiUsage(), context))), \
-             patch("app.main.generate_validated_lesson_author_blueprint", new=AsyncMock()) as architect:
+             patch("app.services.lesson_author.blueprint.generate_validated_lesson_author_blueprint", new=AsyncMock()) as architect:
             with self.assertRaises(HTTPException) as failure:
                 await lesson_author_blueprint(blueprint_request(), pool=None)
         self.assertEqual(failure.exception.detail["code"], "SOURCE_SCOPE_INCOMPLETE")

@@ -1,38 +1,37 @@
 from __future__ import annotations
 
 import asyncio
-from copy import deepcopy
 import json
-from pathlib import Path
 import unittest
+from copy import deepcopy
+from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
 from google import genai
 from google.genai import models, types
-from pydantic import create_model, ValidationError
+from pydantic import ValidationError, create_model
 
-from app.main import generate_staged_lesson_author_proposal
-from app.services.lesson_author.prompts import ARCHITECT_COMPONENT_OPPORTUNITY_POLICY
-from app.services.lesson_author.staged.provider_schemas import (
-    build_staged_lesson_content_response_model,
-    staged_response_schema_diagnostics,
-    staged_component_payload_code,
-    staged_component_contract_prompt,
-)
-from app.services.lesson_author.staged.validation import (
-    validate_staged_unit_content,
-    staged_component_repair_targets,
-    merge_staged_component_repair,
-    merge_staged_component_payload_delta,
-    staged_evidence_scope_diagnostics,
-    staged_payload_diagnostics,
-)
-from app.services.lesson_author.errors import LessonAuthorProposalValidationError
-from app.services.lesson_author.proposal_validation import semantic_learning_visible_text
 from app.schemas.common import AiUsage
 from app.schemas.lesson_author import RagLessonAuthorRequest
+from app.services.lesson_author.errors import LessonAuthorProposalValidationError
+from app.services.lesson_author.prompts import ARCHITECT_COMPONENT_OPPORTUNITY_POLICY
+from app.services.lesson_author.proposal_validation import semantic_learning_visible_text
+from app.services.lesson_author.staged.provider_schemas import (
+    build_staged_lesson_content_response_model,
+    staged_component_contract_prompt,
+    staged_component_payload_code,
+    staged_response_schema_diagnostics,
+)
+from app.services.lesson_author.staged.validation import (
+    merge_staged_component_payload_delta,
+    merge_staged_component_repair,
+    staged_component_repair_targets,
+    staged_evidence_scope_diagnostics,
+    staged_payload_diagnostics,
+    validate_staged_unit_content,
+)
+from app.services.lesson_author.staged.writer import generate_staged_lesson_author_proposal
 from app.workflows.contracts import WorkflowFailure
-
 
 FIXTURE_PATH = Path(__file__).parent / "fixtures" / "v5_chapter_content_quality_fixture.json"
 

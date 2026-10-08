@@ -1,23 +1,23 @@
 """Offline regression: HTML teaching-group gap + Diagram 26/32 coverage."""
 import asyncio
-from copy import deepcopy
 import json
 import unittest
+from copy import deepcopy
 from unittest.mock import AsyncMock, patch
 
-from app import main
+from app.lesson_author_checkpoint import ChapterCheckpointUnit
 from app.lesson_author_provider_schema import staged_provider_response_model
-from app.workflows.contracts import WorkflowFailure
-from tests.test_staged_ordered_writer import uat_fixture
-from tests.test_checkpoint_component_quality_repair import instance_wire
-from tests.test_chapter_checkpoint import checkpoint_result
-from tests.staged_schema_probe import capture_sdk_body
-from tests import test_checkpoint_provider_sdk as sdk_fixture
 from app.schemas.common import AiUsage
 from app.services.lesson_author.errors import LessonAuthorProposalValidationError
-from app.services.lesson_author.staged.provider_schemas import STAGED_COMPONENT_PAYLOAD_FIELDS
 from app.services.lesson_author.staged import provider_schemas as staged_schemas
 from app.services.lesson_author.staged import validation as staged_validation
+from app.services.lesson_author.staged.provider_schemas import STAGED_COMPONENT_PAYLOAD_FIELDS
+from app.workflows.contracts import WorkflowFailure
+from tests import test_checkpoint_provider_sdk as sdk_fixture
+from tests.staged_schema_probe import capture_sdk_body
+from tests.test_chapter_checkpoint import checkpoint_result
+from tests.test_checkpoint_component_quality_repair import instance_wire
+from tests.test_staged_ordered_writer import uat_fixture
 
 
 def fixture():
@@ -67,7 +67,7 @@ async def endpoint_fixture(delta_mutator=None):
         result = await checkpoint_result(request, manifest)
         final = await checkpoint_result(request.model_copy(update={
             'checkpoint_action': 'validate_chapter', 'checkpoint_unit_index': None,
-            'checkpoint_units': [main.ChapterCheckpointUnit(unit_index=0, unit=result['unit'])]}), manifest)
+            'checkpoint_units': [ChapterCheckpointUnit(unit_index=0, unit=result['unit'])]}), manifest)
     return result, final, provider, request, valid, broken, scope
 
 

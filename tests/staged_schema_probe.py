@@ -3,18 +3,18 @@
 The captured HTTP body is deliberately kept in memory. The printable report is
 metadata only and does not equate SDK serialization with provider acceptance.
 """
-from collections import Counter
-from copy import deepcopy
 import hashlib
 import json
+from collections import Counter
+from copy import deepcopy
+
+import httpx
 from google import genai
 from google.genai import errors, types
-import httpx
 from pydantic import create_model
 
 from app import main
 from app.services.lesson_author.staged import provider_schemas as staged_schemas
-
 
 KINDS = ("html", "problem", "la_faq", "la_crossword", "la_diagram", "la_sortable")
 BOUNDS = {"min_items", "max_items", "min_length", "max_length", "minimum", "maximum"}

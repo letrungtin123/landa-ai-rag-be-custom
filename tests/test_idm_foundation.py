@@ -9,8 +9,8 @@ import httpx
 
 from app import main
 from app.api import deps as api_deps
-from app.services.ingestion.extract import ExtractedSection
 from app.services.ingestion import extract as extraction
+from app.services.ingestion.extract import ExtractedSection
 
 
 class IdmFoundationTests(unittest.IsolatedAsyncioTestCase):

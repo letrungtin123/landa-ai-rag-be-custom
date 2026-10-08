@@ -2,14 +2,13 @@ from __future__ import annotations
 
 import hashlib
 import json
-from pathlib import Path
 import re
 import unittest
+from pathlib import Path
 
+from app.instructional_quality import source_relationship_pairs
 from app.services.ingestion.chunking import build_chunks
 from app.services.ingestion.extract import extract_pdf
-from app.instructional_quality import source_relationship_pairs
-
 
 FIXTURE = Path(__file__).parent / "fixtures" / "ai_id_cp7_bic_quality_oracle.json"
 DEFAULT_SOURCE = Path(

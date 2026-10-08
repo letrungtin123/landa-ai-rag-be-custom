@@ -8,10 +8,10 @@ contract metadata, and accepted synthetic payloads needed by the Node replay.
 
 from __future__ import annotations
 
-from copy import deepcopy
 import json
-from pathlib import Path
 import sys
+from copy import deepcopy
+from pathlib import Path
 from typing import Any
 
 from pydantic import ValidationError
@@ -29,7 +29,6 @@ from app.services.lesson_author.staged.provider_schemas import (
     staged_response_schema_diagnostics,
 )
 from app.services.lesson_author.staged.validation import validate_staged_unit_content
-
 
 FIXTURE_PATH = Path(__file__).parent / "fixtures" / "ai_id_cp2a_boundary_replay_fixture.json"
 DENSITY_VERSION = "unit-content-v3-density-1"

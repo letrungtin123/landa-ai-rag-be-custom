@@ -1,14 +1,13 @@
 """Server-addressed assessment choices; never model-authored mutation metadata."""
-from copy import deepcopy
-from dataclasses import dataclass, field
 import hashlib
 import json
 import re
+from copy import deepcopy
+from dataclasses import dataclass, field
 
 from google.genai import types
 
 from app.workflows.contracts import WorkflowFailure
-
 
 VERSION = "assessment-selection-slots-2"
 OPERATION = "select_assessment_teaching_alignment"

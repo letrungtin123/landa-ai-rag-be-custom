@@ -1,10 +1,10 @@
 """Provider-free CP4 contract, repair and evaluation regressions."""
 
 import asyncio
-from copy import deepcopy
 import json
-from pathlib import Path
 import unittest
+from copy import deepcopy
+from pathlib import Path
 
 from app.semantic_review import (
     SemanticReviewResponse,
@@ -15,7 +15,6 @@ from app.semantic_review import (
     semantic_review_config_hash,
     validate_semantic_review_response,
 )
-
 
 FIXTURE = Path(__file__).parent / "fixtures" / "ai_id_cp4_semantic_review_benchmark.json"
 

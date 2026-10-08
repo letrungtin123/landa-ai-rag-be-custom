@@ -1,10 +1,9 @@
 from __future__ import annotations
 
-from copy import deepcopy
 import unittest
+from copy import deepcopy
 
 from app.source_evidence_bundle import build_source_evidence_bundle
-
 
 SNAPSHOT = "b" * 64
 SOURCE_REVISION = "a" * 64

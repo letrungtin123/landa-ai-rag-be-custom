@@ -1,25 +1,30 @@
 """New writer vs legacy reader, UAT mixed HTML + 47/54 claim; offline only."""
 import asyncio
-from copy import deepcopy
 import json
 import unittest
+from copy import deepcopy
 from unittest.mock import AsyncMock, patch
 
 from pydantic import ValidationError
-from app import main
+
+from app.lesson_author_checkpoint import ChapterCheckpointUnit
 from app.lesson_author_provider_schema import staged_provider_response_model
-from app.ordered_learning_content import bind_provider_semantic_versions, semantic_shape_diagnostics, ProviderSemanticVersionError
-from app.workflows.contracts import WorkflowFailure
-from tests.staged_schema_probe import capture_sdk_body, visit_schema
-from tests.test_staged_instance_output import checkpoint_instance_fixture
-from tests.test_checkpoint_component_quality_repair import instance_wire
-from tests.test_chapter_checkpoint import checkpoint_result
+from app.ordered_learning_content import (
+    ProviderSemanticVersionError,
+    bind_provider_semantic_versions,
+    semantic_shape_diagnostics,
+)
 from app.schemas.common import AiUsage
-from app.services.lesson_author.errors import LessonAuthorProposalValidationError
 from app.services.lesson_author import proposal_validation
-from app.services.lesson_author.staged.provider_schemas import StagedOrderedSemanticOutput, StagedSemanticContent
+from app.services.lesson_author.errors import LessonAuthorProposalValidationError
 from app.services.lesson_author.staged import provider_schemas as staged_schemas
 from app.services.lesson_author.staged import validation as staged_validation
+from app.services.lesson_author.staged.provider_schemas import StagedOrderedSemanticOutput, StagedSemanticContent
+from app.workflows.contracts import WorkflowFailure
+from tests.staged_schema_probe import capture_sdk_body, visit_schema
+from tests.test_chapter_checkpoint import checkpoint_result
+from tests.test_checkpoint_component_quality_repair import instance_wire
+from tests.test_staged_instance_output import checkpoint_instance_fixture
 
 
 def uat_fixture():
@@ -105,7 +110,7 @@ class StagedOrderedWriterTests(unittest.TestCase):
             result = asyncio.run(checkpoint_result(request, manifest))
             final_request = request.model_copy(update={
                 "checkpoint_action": "validate_chapter", "checkpoint_unit_index": None,
-                "checkpoint_units": [main.ChapterCheckpointUnit(unit_index=0, unit=result["unit"])],
+                "checkpoint_units": [ChapterCheckpointUnit(unit_index=0, unit=result["unit"])],
             })
             final = asyncio.run(checkpoint_result(final_request, manifest))
         self.assertEqual(final["status"], "ready")

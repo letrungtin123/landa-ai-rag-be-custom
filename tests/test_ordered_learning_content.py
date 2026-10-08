@@ -1,12 +1,12 @@
 """Ordered payload acceptance, ownership and observations; offline only."""
-from copy import deepcopy
 import unittest
+from copy import deepcopy
 
-from app.services.lesson_author.staged.validation import staged_instructional_finding, staged_component_repair_targets
-from app.services.lesson_author.proposal_validation import semantic_learning_visible_text
-from app.ordered_learning_content import ordered_content_fields
 from app.lesson_content_observation import observe_lesson_content
 from app.media_brief import build_media_brief
+from app.ordered_learning_content import ordered_content_fields
+from app.services.lesson_author.proposal_validation import semantic_learning_visible_text
+from app.services.lesson_author.staged.validation import staged_component_repair_targets, staged_instructional_finding
 
 
 def payload():

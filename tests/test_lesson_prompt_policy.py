@@ -7,17 +7,18 @@ from copy import deepcopy
 from unittest.mock import AsyncMock, patch
 
 from app.lesson_prompt_policy import (
-    bounded_architect_policy, lesson_output_language_policy, lesson_instructional_quality_policy,
-    component_instructional_brief, instructional_contract_review_signals,
+    bounded_architect_policy,
+    component_instructional_brief,
+    instructional_contract_review_signals,
+    lesson_instructional_quality_policy,
+    lesson_output_language_policy,
 )
-from app.main import (
-    build_lesson_generation_repair_prompt,
-    generate_staged_lesson_author_proposal,
-    generate_validated_lesson_author_blueprint,
-)
+from app.main import build_lesson_generation_repair_prompt
+from app.schemas.common import AiUsage
+from app.services.lesson_author.blueprint import generate_validated_lesson_author_blueprint
 from app.services.lesson_author.media_review import enrich_lesson_author_blueprint_media_review
 from app.services.lesson_author.prompts import build_course_architect_prompt
-from app.schemas.common import AiUsage
+from app.services.lesson_author.staged.writer import generate_staged_lesson_author_proposal
 from app.workflows.contracts import WorkflowFailure
 from tests.test_lesson_author_blueprint import blueprint_request, proposal_request, valid_blueprint
 
@@ -243,7 +244,7 @@ class LessonPromptPolicyTests(unittest.TestCase):
         self.assertEqual(proposal["chapters"][0]["title"], "Locked source chapter")
 
     def test_legacy_skeleton_and_skeleton_recovery_also_receive_controlled_locale(self):
-        from tests.test_staged_lesson_timeout import staged_request, staged_content
+        from tests.test_staged_lesson_timeout import staged_content, staged_request
         request = staged_request().model_copy(update={"locale": "en"})
         provider = AsyncMock(side_effect=[("{", AiUsage()), ("{", AiUsage()), (staged_content(), AiUsage())])
         with patch("app.services.provider.generate_content", provider):

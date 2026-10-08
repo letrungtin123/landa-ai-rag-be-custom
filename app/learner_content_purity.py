@@ -5,7 +5,6 @@ import re
 import unicodedata
 from typing import Any, Iterable
 
-
 LEARNER_CONTENT_PURITY_POLICY_VERSION = "learner-content-purity-2"
 
 _FILE_NAME_RE = re.compile(

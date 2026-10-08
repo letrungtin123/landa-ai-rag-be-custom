@@ -1,13 +1,13 @@
 from __future__ import annotations
 
 import argparse
-from collections import Counter, defaultdict
 import json
-from pathlib import Path
 import re
 import subprocess
 import sys
 import time
+from collections import Counter, defaultdict
+from pathlib import Path
 from typing import Any
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
@@ -20,7 +20,6 @@ from app.source_visual_observation import (
     build_shadow_visual_observation_plan,
     record_human_visual_observation,
 )
-
 
 VISUAL_ELEMENT_KINDS = {
     "content_image_asset",

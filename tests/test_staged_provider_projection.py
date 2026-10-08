@@ -1,15 +1,15 @@
 """Wire projection regression; mock HTTP only and preserve local acceptance."""
-from copy import deepcopy
 import json
 import unittest
+from copy import deepcopy
 
 from pydantic import BaseModel, Field, ValidationError
 
 from app.lesson_author_provider_schema import staged_provider_response_model
+from app.services.lesson_author.staged import provider_schemas as staged_schemas
 from tests.staged_schema_probe import BOUNDS, capture_sdk_body, isolated_bound_variant, schema_cases, schema_metadata
 from tests.test_checkpoint_component_quality_repair import instance_wire
 from tests.test_staged_instance_output import checkpoint_instance_fixture
-from app.services.lesson_author.staged import provider_schemas as staged_schemas
 
 
 class StagedProviderProjectionTests(unittest.TestCase):

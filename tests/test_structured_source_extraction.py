@@ -1,14 +1,14 @@
 from __future__ import annotations
 
-from pathlib import Path
 import tempfile
 import unittest
+from pathlib import Path
 from unittest.mock import patch
 
 from app.services.ingestion.chunking import build_chunks, split_text
 from app.services.ingestion.extract import (
-    ExtractedSection,
     STRUCTURED_EXTRACTION_VERSION,
+    ExtractedSection,
     _render_structured_table,
     extract_docx,
     extract_pdf,

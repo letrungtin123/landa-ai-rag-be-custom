@@ -3,7 +3,13 @@ from __future__ import annotations
 import copy
 import unittest
 
-from app.workflows.contracts import WorkflowGenerationResult, WorkflowValidationResult
+from app.main import (
+    apply_course_architecture_repair_patches,
+    apply_lesson_generation_repair_patches,
+    build_course_architecture_repair_prompt,
+)
+from app.services.lesson_author.proposal_validation import parse_course_architecture_repair_payload
+from app.workflows.contracts import WorkflowFailure, WorkflowGenerationResult, WorkflowValidationResult
 from app.workflows.course_architecture import (
     CourseArchitectureWorkflowCallbacks,
     classify_course_repair_targets,
@@ -14,13 +20,6 @@ from app.workflows.lesson_generation import (
     classify_lesson_repair_targets,
     run_lesson_generation_workflow,
 )
-from app.workflows.contracts import WorkflowFailure
-from app.main import (
-    apply_course_architecture_repair_patches,
-    apply_lesson_generation_repair_patches,
-    build_course_architecture_repair_prompt,
-)
-from app.services.lesson_author.proposal_validation import parse_course_architecture_repair_payload
 
 
 def issue(code: str, *, path: str = "chapter_1.lesson_1", severity: str = "error", related_paths: list[str] | None = None) -> dict[str, object]:

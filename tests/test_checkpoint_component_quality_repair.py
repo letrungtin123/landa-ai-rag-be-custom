@@ -2,20 +2,22 @@
 from __future__ import annotations
 
 import asyncio
-from copy import deepcopy
 import json
 import unittest
+from copy import deepcopy
 from unittest.mock import AsyncMock, patch
 
-from app import main
-from app.workflows.contracts import WorkflowFailure
-from tests.test_staged_recovery_identity import fixture as original_fixture
-from tests.test_chapter_checkpoint import fixture as endpoint_fixture
-from app.schemas.common import AiUsage
 from fastapi import HTTPException
-from app.services.lesson_author.staged.provider_schemas import STAGED_COMPONENT_PAYLOAD_FIELDS
+
+from app import main
+from app.schemas.common import AiUsage
 from app.services.lesson_author.staged import provider_schemas as staged_schemas
 from app.services.lesson_author.staged import validation as staged_validation
+from app.services.lesson_author.staged import writer as staged_writer
+from app.services.lesson_author.staged.provider_schemas import STAGED_COMPONENT_PAYLOAD_FIELDS
+from app.workflows.contracts import WorkflowFailure
+from tests.test_chapter_checkpoint import fixture as endpoint_fixture
+from tests.test_staged_recovery_identity import fixture as original_fixture
 
 
 def fixture():
@@ -47,7 +49,7 @@ def fixture():
 
 
 def run(request, manifest):
-    return asyncio.run(main.generate_staged_lesson_author_proposal(request, "Synthetic", "", "", source_rows=[],
+    return asyncio.run(staged_writer.generate_staged_lesson_author_proposal(request, "Synthetic", "", "", source_rows=[],
                      source_coverage_manifest=manifest, checkpoint_unit_index=0))
 
 

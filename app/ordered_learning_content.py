@@ -1,6 +1,6 @@
 """Versioned display order; no fact allocation or semantic-entailment claims."""
-from typing import Any
 from copy import deepcopy
+from typing import Any
 
 FIELDS = {"paragraph": "paragraphs", "bullets": "bullet_points", "steps": "ordered_steps", "warning": "warnings", "table": "comparison_rows", "task": "paragraphs"}
 LEGACY_FIELDS = ("heading", "paragraphs", "bullet_points", "ordered_steps", "warnings", "comparison_rows", "bullets", "steps", "warning", "table_rows")

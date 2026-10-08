@@ -1,7 +1,7 @@
 """Small prompt contracts; no provider, retrieval or acceptance policy here."""
-from typing import Any, Literal
 import re
 import unicodedata
+from typing import Any, Literal
 
 from app.workflows.contracts import WorkflowFailure
 

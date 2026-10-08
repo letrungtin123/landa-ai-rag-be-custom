@@ -2,15 +2,15 @@
 import asyncio
 import json
 import sys
-from unittest.mock import AsyncMock, patch
 from copy import deepcopy
+from unittest.mock import AsyncMock, patch
 
-from app import main
-from tests.test_chapter_checkpoint import fixture, checkpoint_result, provider_result
-from tests.test_staged_instance_output import checkpoint_instance_fixture
-from tests.test_checkpoint_component_quality_repair import instance_wire
+from app.lesson_author_checkpoint import ChapterCheckpointUnit
 from app.schemas.common import AiUsage
 from app.schemas.lesson_author import RagLessonAuthorCheckpointRequest
+from tests.test_chapter_checkpoint import checkpoint_result, fixture, provider_result
+from tests.test_checkpoint_component_quality_repair import instance_wire
+from tests.test_staged_instance_output import checkpoint_instance_fixture
 
 
 def run(payload):
@@ -26,8 +26,8 @@ def run(payload):
             provider = AsyncMock(side_effect=[(json.dumps(instance_wire(broken_unit)), AiUsage()),
                                               (json.dumps(delta), AiUsage())])
         if payload["action"] in ("duplicate_claim_repair", "null_claim_repair"):
-            from tests.test_staged_ordered_writer import uat_fixture
             from tests.test_coverage_claim_recovery import repaired_payload
+            from tests.test_staged_ordered_writer import uat_fixture
             request, unit, _, manifest = uat_fixture()
             # The dense Python-only fixture replaces the unit scope; restore
             # the same approved treatment reasons as checkpoint_instance_fixture
@@ -48,7 +48,7 @@ def run(payload):
         with patch("asyncpg.create_pool", forbidden), patch("app.services.provider.generate_content", provider):
             generated = asyncio.run(checkpoint_result(request, manifest, events))
             completed = request.model_copy(update={"checkpoint_action": "validate_chapter", "checkpoint_unit_index": None,
-                "checkpoint_units": [main.ChapterCheckpointUnit(unit_index=0, unit=deepcopy(generated["unit"]))]})
+                "checkpoint_units": [ChapterCheckpointUnit(unit_index=0, unit=deepcopy(generated["unit"]))]})
             ready = asyncio.run(checkpoint_result(completed, manifest, events))
         return {"request": request.model_dump(), "result": ready, "unit_result": generated,
                 "provider_calls": provider.await_count, "events": events}

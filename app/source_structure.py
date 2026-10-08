@@ -4,7 +4,6 @@ import re
 from dataclasses import dataclass
 from typing import Any, Iterable
 
-
 PARSER_VERSION = "source-structure-v3"
 MAX_NODE_TITLE_CHARS = 220
 MAX_NODES = 400

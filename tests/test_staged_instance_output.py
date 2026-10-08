@@ -1,8 +1,8 @@
 """Offline UAT58f4904a regression: typed slots, strict ownership and local repair."""
 import asyncio
-from copy import deepcopy
 import json
 import unittest
+from copy import deepcopy
 from unittest.mock import AsyncMock, patch
 
 import httpx
@@ -10,16 +10,18 @@ from google import genai
 from google.genai import models, types
 
 from app import main
-from app.workflows.contracts import WorkflowFailure
-from tests.test_staged_recovery_identity import fixture
-from tests.test_checkpoint_component_quality_repair import instance_wire
-from tests.test_chapter_checkpoint import fixture as checkpoint_fixture, checkpoint_result
+from app.api import deps as api_deps
+from app.lesson_author_checkpoint import ChapterCheckpointUnit
 from app.schemas.common import AiUsage
 from app.schemas.lesson_author import RagLessonAuthorCheckpointRequest
-from app.api import deps as api_deps
-from app.services.lesson_author.staged.provider_schemas import STAGED_COMPONENT_PAYLOAD_FIELDS
 from app.services.lesson_author.staged import provider_schemas as staged_schemas
 from app.services.lesson_author.staged import validation as staged_validation
+from app.services.lesson_author.staged.provider_schemas import STAGED_COMPONENT_PAYLOAD_FIELDS
+from app.workflows.contracts import WorkflowFailure
+from tests.test_chapter_checkpoint import checkpoint_result
+from tests.test_chapter_checkpoint import fixture as checkpoint_fixture
+from tests.test_checkpoint_component_quality_repair import instance_wire
+from tests.test_staged_recovery_identity import fixture
 
 
 def checkpoint_instance_fixture():
@@ -130,7 +132,7 @@ class StagedInstanceOutputTests(unittest.TestCase):
         with patch("app.services.provider.generate_content", provider), self.assertLogs("app.main", "INFO") as logs:
             result = asyncio.run(checkpoint_result(request, manifest))
             final_request = request.model_copy(update={"checkpoint_action": "validate_chapter", "checkpoint_unit_index": None,
-                "checkpoint_units": [main.ChapterCheckpointUnit(unit_index=0, unit=result["unit"])]})
+                "checkpoint_units": [ChapterCheckpointUnit(unit_index=0, unit=result["unit"])]})
             final = asyncio.run(checkpoint_result(final_request, manifest))
         self.assertEqual(provider.await_count, 2)
         self.assertEqual(result["status"], "unit_ready")

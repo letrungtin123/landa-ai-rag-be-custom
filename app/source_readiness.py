@@ -1,13 +1,12 @@
 from __future__ import annotations
 
-from collections import Counter
 import hashlib
 import json
 import math
-from pathlib import Path
 import re
+from collections import Counter
+from pathlib import Path
 from typing import Any, Iterable
-
 
 SOURCE_READINESS_VERSION = "source-readiness-prototype-v3"
 MANUAL_REGION_REQUEST_VERSION = "source-region-request-v1"

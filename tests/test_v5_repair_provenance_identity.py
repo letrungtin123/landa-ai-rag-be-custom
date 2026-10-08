@@ -9,8 +9,8 @@ from app.main import (
     _assert_v5_primary_provenance_preserved,
     _v5_prepare_semantic_repair_targets,
     apply_course_architecture_repair_patches,
-    validate_v5_instructional_coherence,
 )
+from app.services.lesson_author.architecture_validation import validate_v5_instructional_coherence
 from app.services.lesson_author.evidence_scope import (
     allocate_source_map_architecture_facts,
     validate_course_architecture_evidence_scope,

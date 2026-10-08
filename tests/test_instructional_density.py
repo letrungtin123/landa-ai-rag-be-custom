@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path
 import unittest
+from pathlib import Path
 
 from app.instructional_density import (
     DEFAULT_INSTRUCTIONAL_DENSITY_BUDGET,
@@ -15,7 +15,6 @@ from app.instructional_density import (
     profile_instructional_texts,
 )
 from app.lesson_author_orchestration_v2_provider import MAX_UNIT_SOURCE_FACTS
-
 
 FIXTURE_PATH = Path(__file__).parent / "fixtures" / "hse_instructional_density_fixture.json"
 

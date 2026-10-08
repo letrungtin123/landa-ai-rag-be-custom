@@ -663,7 +663,7 @@ class LegacyUnitPathTests(StoryboardEndpointTestCase):
         body["unit_contract"] = rehash_contract(contract)
         legacy_writer = AsyncMock(side_effect=ValueError("legacy writer reached"))
         idm_unit = AsyncMock()
-        with patch("app.main.generate_staged_lesson_author_proposal", legacy_writer), \
+        with patch("app.services.lesson_author.staged.writer.generate_staged_lesson_author_proposal", legacy_writer), \
                 patch("app.main.run_idm_unit", idm_unit):
             status, data, provider = await self.post(body)
         self.assertEqual(status, 200)

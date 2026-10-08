@@ -16,8 +16,8 @@ import pymupdf
 
 from app import main
 from app.infra.pdf_layout import Box, baseline_order, column_reading_order
-from app.services.ingestion.extract import ExtractedSection
 from app.services.ingestion import extract as extraction
+from app.services.ingestion.extract import ExtractedSection
 
 
 def lines(*rows: tuple[float, float, float, float]) -> list[Box]:

@@ -13,7 +13,6 @@ import json
 from collections import deque
 from typing import Any, Iterable
 
-
 SOURCE_MAP_VERSION = "source-map-v2"
 MAX_SOURCE_MAP_ARCHITECT_CONTEXT_CHARS = 48_000
 # These are provenance-partition bounds, not instructional-design targets.

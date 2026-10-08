@@ -8,16 +8,15 @@ orchestration boundary so offline tests can prove routing and repair invariants
 without network access.
 """
 
+import json
+import re
 from collections import Counter
 from copy import deepcopy
 from dataclasses import dataclass
 from hashlib import sha256
-import json
-import re
 from typing import Any, Awaitable, Callable, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
-
 
 SEMANTIC_REVIEW_CONTRACT_VERSION = "semantic-review-v1"
 SEMANTIC_REVIEW_PROMPT_VERSION = "semantic-review-prompt-v1"

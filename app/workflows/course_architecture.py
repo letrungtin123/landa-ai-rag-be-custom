@@ -2,10 +2,10 @@ from __future__ import annotations
 
 """Bounded Course Architect orchestration over the global Phase-3 Source Map."""
 
-from dataclasses import dataclass
-from hashlib import sha256
 import json
 import re
+from dataclasses import dataclass
+from hashlib import sha256
 from time import perf_counter
 from typing import Any, Awaitable, Callable, Literal, TypedDict
 
@@ -24,7 +24,6 @@ from .contracts import (
     safe_workflow_path,
     sanitized_workflow_diagnostics,
 )
-
 
 RepairLayer = Literal[
     "SCHEMA",

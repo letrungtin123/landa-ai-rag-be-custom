@@ -7,7 +7,6 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-
 ORCHESTRATION_CONTRACT_VERSION = 2
 SHA256_PATTERN = re.compile(r"^[0-9a-f]{64}$")
 KEY_PATTERN = re.compile(r"^[a-z0-9][a-z0-9_.:-]{0,159}$")

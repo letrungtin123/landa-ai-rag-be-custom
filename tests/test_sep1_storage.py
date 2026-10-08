@@ -25,6 +25,10 @@ from pydantic import ValidationError
 from app import main
 from app.core.errors import AppError, DocumentLimitError
 from app.infra import storage
+from app.schemas.kb import RagIndexRequest
+from app.services import runtime as runtime_service
+from app.services.ingestion import index as index_service
+from app.services.ingestion import storage as storage_service
 from tests.test_characterization_ingestion import (
     DOC_ID,
     KB_ID,
@@ -34,10 +38,6 @@ from tests.test_characterization_ingestion import (
     document_row,
     index_request,
 )
-from app.schemas.kb import RagIndexRequest
-from app.services import runtime as runtime_service
-from app.services.ingestion import index as index_service
-from app.services.ingestion import storage as storage_service
 
 ORIGIN = "https://storage.internal:8443"
 BUCKET = "landa-storage"

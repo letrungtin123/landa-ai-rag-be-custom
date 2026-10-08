@@ -12,14 +12,14 @@ persist a compiled candidate only after the existing evidence, coherence and
 canonical-fact validators pass.
 """
 
-from copy import deepcopy
-from dataclasses import dataclass, field
 import hashlib
 import json
+from copy import deepcopy
+from dataclasses import dataclass, field
 from typing import Any, Literal
+
 from app.component_capabilities import component_capabilities
 from app.lesson_author_blueprint import ASSESSMENT_TEACHING_REPAIR_INTENTS, SEMANTIC_LEARNING_BLOCK_INTENTS
-
 
 AssessmentPlanStatus = Literal["READY", "NEEDS_SEMANTIC_RESOLUTION", "TERMINAL_GAP"]
 

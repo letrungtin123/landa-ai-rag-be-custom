@@ -11,7 +11,6 @@ from app.learner_content_purity import (
     sanitize_source_fact_for_learner,
 )
 
-
 TABLE_MARKER_RE = re.compile(r"^\[TABLE\]$", re.IGNORECASE)
 TABLE_ROW_RE = re.compile(r"^Row\s+(\d+)\s*:\s*(.+)$", re.IGNORECASE)
 ORDERED_STEP_RE = re.compile(

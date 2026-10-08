@@ -10,7 +10,6 @@ from typing import Any
 
 from pydantic import BaseModel
 
-
 STAGED_SCHEMA_PROJECTION_VERSION = "staged-wire-shape-1"
 VALUE_BOUNDS = frozenset({"minItems", "maxItems", "minLength", "maxLength", "minimum", "maximum"})
 

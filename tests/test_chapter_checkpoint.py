@@ -2,9 +2,9 @@
 from __future__ import annotations
 
 import asyncio
-from copy import deepcopy
 import json
 import unittest
+from copy import deepcopy
 from unittest.mock import AsyncMock, patch
 
 import httpx
@@ -12,14 +12,14 @@ from fastapi import HTTPException
 from pydantic import ValidationError
 
 from app import main
+from app.api import deps as api_deps
 from app.lesson_author_checkpoint import ChapterCheckpointUnit, assemble_checkpoint_chapter, select_checkpoint_unit
-from app.workflows.contracts import WorkflowFailure, WorkflowValidationResult
-from tests.test_lesson_prompt_policy import request_and_unit
 from app.schemas.common import AiUsage
 from app.schemas.lesson_author import RagLessonAuthorCheckpointRequest, RagLessonAuthorRequest
-from app.api import deps as api_deps
 from app.services.lesson_author.staged import skeleton as staged_skeleton
 from app.services.lesson_author.staged import source_locked as staged_source_locked
+from app.workflows.contracts import WorkflowFailure, WorkflowValidationResult
+from tests.test_lesson_prompt_policy import request_and_unit
 
 
 def fixture(count=5, *, action="generate_unit", index=0):

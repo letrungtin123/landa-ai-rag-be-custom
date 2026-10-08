@@ -9,7 +9,6 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 
 from app.instructional_quality import ordered_source_steps
 
-
 SOURCE_EVIDENCE_BUNDLE_VERSION = "source-evidence-bundle-v1"
 SOURCE_EVIDENCE_ASSEMBLER_VERSION = "source-evidence-assembler-v1"
 LEGACY_SOURCE_EVIDENCE_REVIEW_CODE = "STRUCTURED_EVIDENCE_REVISION_MISSING"

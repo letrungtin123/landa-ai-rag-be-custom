@@ -3,8 +3,8 @@
 import json
 import sys
 
-from app.services.orchestration_v2.source_locked import build_orchestration_v2_source_locked_unit
 from app.lesson_author_orchestration_v2_provider import UnitGenerationContractV2
+from app.services.orchestration_v2.source_locked import build_orchestration_v2_source_locked_unit
 
 
 def main() -> None:

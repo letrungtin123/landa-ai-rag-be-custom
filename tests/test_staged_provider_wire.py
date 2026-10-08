@@ -1,7 +1,7 @@
 """Actual SDK HTTP serialization, not a live Gemini compatibility claim."""
-from copy import deepcopy
 import json
 import unittest
+from copy import deepcopy
 from unittest.mock import patch
 
 from google import genai
@@ -9,7 +9,12 @@ from google.genai import models, types
 from pydantic import ValidationError
 
 from tests.staged_schema_probe import (
-    BOUNDS, capture_sdk_body, isolated_bound_variant, schema_cases, schema_metadata, visit_schema,
+    BOUNDS,
+    capture_sdk_body,
+    isolated_bound_variant,
+    schema_cases,
+    schema_metadata,
+    visit_schema,
 )
 
 

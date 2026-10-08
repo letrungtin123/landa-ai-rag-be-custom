@@ -1,11 +1,16 @@
 import asyncio
-from copy import deepcopy
 import json
 import unittest
+from copy import deepcopy
 from unittest.mock import AsyncMock, patch
 
 from fastapi import HTTPException
 
+from app.lesson_author_orchestration_v2 import canonical_hash
+from app.lesson_author_orchestration_v2_provider import (
+    ChapterShardProviderWireV2,
+    CourseSkeletonProviderWireV2,
+)
 from app.main import (
     ORCHESTRATION_V2_UNIT_FALLBACK_RESPONSE_HEADROOM_MS,
     lesson_author_orchestration_v2_chapter_shard,
@@ -13,8 +18,6 @@ from app.main import (
     lesson_author_orchestration_v2_source_snapshot,
     lesson_author_orchestration_v2_unit,
 )
-from app.services.lesson_author.staged.provider_schemas import STAGED_COMPONENT_PAYLOAD_FIELDS
-from app.services.lesson_author.staged.validation import validate_staged_unit_content
 from app.schemas.common import AiUsage
 from app.schemas.orchestration_v2 import (
     RagLessonAuthorChapterShardV2Request,
@@ -22,12 +25,8 @@ from app.schemas.orchestration_v2 import (
     RagLessonAuthorSourceSnapshotV2Request,
     RagLessonAuthorUnitV2Request,
 )
-from app.lesson_author_orchestration_v2 import canonical_hash
-from app.lesson_author_orchestration_v2_provider import (
-    ChapterShardProviderWireV2,
-    CourseSkeletonProviderWireV2,
-)
-
+from app.services.lesson_author.staged.provider_schemas import STAGED_COMPONENT_PAYLOAD_FIELDS
+from app.services.lesson_author.staged.validation import validate_staged_unit_content
 
 SOURCE_HASH = "a" * 64
 TENANT_ID = "00000000-0000-4000-8000-000000000001"
@@ -363,7 +362,7 @@ class LessonAuthorOrchestrationV2EndpointTests(unittest.IsolatedAsyncioTestCase)
                     "unit_contract": contract, "max_attempts": 1,
                     "remaining_workflow_budget_ms": 60_000, "fallback_only": True,
                 })
-                with patch("app.main.generate_staged_lesson_author_proposal", AsyncMock()) as provider:
+                with patch("app.services.lesson_author.staged.writer.generate_staged_lesson_author_proposal", AsyncMock()) as provider:
                     response = await lesson_author_orchestration_v2_unit(request)
                 provider.assert_not_called()
                 self.assertEqual(response["usage_source"], "deterministic_fallback")
@@ -421,7 +420,7 @@ class LessonAuthorOrchestrationV2EndpointTests(unittest.IsolatedAsyncioTestCase)
             **request_data, "unit_contract": unit_contract_wire(), "max_attempts": 1,
             "remaining_workflow_budget_ms": 60_000,
         })
-        with patch("app.main.generate_staged_lesson_author_proposal",
+        with patch("app.services.lesson_author.staged.writer.generate_staged_lesson_author_proposal",
                    AsyncMock(side_effect=ValueError("private provider payload"))) as provider:
             response = await lesson_author_orchestration_v2_unit(request)
         provider.assert_awaited_once()
@@ -451,7 +450,7 @@ class LessonAuthorOrchestrationV2EndpointTests(unittest.IsolatedAsyncioTestCase)
             kwargs["on_provider_dispatch"]()
             raise ValueError("private provider payload")
 
-        with patch("app.main.generate_staged_lesson_author_proposal", staged):
+        with patch("app.services.lesson_author.staged.writer.generate_staged_lesson_author_proposal", staged):
             response = await lesson_author_orchestration_v2_unit(request)
         self.assertEqual(response["usage_source"], "reserved_upper_bound")
         self.assertFalse(response["usage_complete"])
@@ -472,7 +471,7 @@ class LessonAuthorOrchestrationV2EndpointTests(unittest.IsolatedAsyncioTestCase)
             await asyncio.sleep(0.05)
             raise AssertionError("the inner generation deadline must cancel this call")
 
-        with patch("app.main.generate_staged_lesson_author_proposal", stalled):
+        with patch("app.services.lesson_author.staged.writer.generate_staged_lesson_author_proposal", stalled):
             response = await lesson_author_orchestration_v2_unit(request)
 
         self.assertEqual(response["usage_source"], "reserved_upper_bound")
@@ -497,7 +496,7 @@ class LessonAuthorOrchestrationV2EndpointTests(unittest.IsolatedAsyncioTestCase)
         staged = AsyncMock(return_value=({"unit": {"title": "Nội dung",
             "source_fact_ids": ["fact-1"], "components": [component]},
             "provider_usage_complete": False}, AiUsage(inputTokens=10, outputTokens=5)))
-        with patch("app.main.generate_staged_lesson_author_proposal", staged):
+        with patch("app.services.lesson_author.staged.writer.generate_staged_lesson_author_proposal", staged):
             response = await lesson_author_orchestration_v2_unit(request)
         self.assertEqual(response["usage_source"], "reserved_upper_bound")
         self.assertFalse(response["usage_complete"])
@@ -516,7 +515,7 @@ class LessonAuthorOrchestrationV2EndpointTests(unittest.IsolatedAsyncioTestCase)
         staged = AsyncMock(return_value=({"unit": {"title": "Nội dung",
             "source_fact_ids": ["fact-1"], "components": [component]},
             "provider_usage_complete": True}, AiUsage(inputTokens=10, outputTokens=5)))
-        with patch("app.main.generate_staged_lesson_author_proposal", staged):
+        with patch("app.services.lesson_author.staged.writer.generate_staged_lesson_author_proposal", staged):
             response = await lesson_author_orchestration_v2_unit(request)
         staged.assert_awaited_once()
         args, kwargs = staged.await_args
@@ -563,7 +562,7 @@ class LessonAuthorOrchestrationV2EndpointTests(unittest.IsolatedAsyncioTestCase)
             }), AiUsage(inputTokens=2, outputTokens=1, totalTokens=3))
 
         with patch("app.main.settings.semantic_review_mode", "repair"), \
-                patch("app.main.generate_staged_lesson_author_proposal", staged), \
+                patch("app.services.lesson_author.staged.writer.generate_staged_lesson_author_proposal", staged), \
                 patch("app.services.provider.generate_content", semantic_provider):
             response = await lesson_author_orchestration_v2_unit(request)
 
@@ -602,7 +601,7 @@ class LessonAuthorOrchestrationV2EndpointTests(unittest.IsolatedAsyncioTestCase)
             raise RuntimeError("private provider payload")
 
         with patch("app.main.settings.semantic_review_mode", "repair"), \
-                patch("app.main.generate_staged_lesson_author_proposal", staged), \
+                patch("app.services.lesson_author.staged.writer.generate_staged_lesson_author_proposal", staged), \
                 patch("app.services.provider.generate_content", failed_semantic_provider):
             response = await lesson_author_orchestration_v2_unit(request)
 
@@ -628,7 +627,7 @@ class LessonAuthorOrchestrationV2EndpointTests(unittest.IsolatedAsyncioTestCase)
             "source_fact_ids": ["fact-1"], "components": [component]},
             "provider_usage_complete": True, "fallback_component_indices": [0]},
             AiUsage(inputTokens=10, outputTokens=5)))
-        with patch("app.main.generate_staged_lesson_author_proposal", staged):
+        with patch("app.services.lesson_author.staged.writer.generate_staged_lesson_author_proposal", staged):
             response = await lesson_author_orchestration_v2_unit(request)
         self.assertEqual(response["usage_source"], "provider")
         self.assertEqual(response["content_origin"], "structured_fallback")
@@ -1041,7 +1040,7 @@ class LessonAuthorOrchestrationV2EndpointTests(unittest.IsolatedAsyncioTestCase)
             "unit_contract": unit_contract,
         })
         generated = {"unit": {"title": "Nội dung", "components": []}, "provider_usage_complete": True}
-        with patch("app.main.generate_staged_lesson_author_proposal",
+        with patch("app.services.lesson_author.staged.writer.generate_staged_lesson_author_proposal",
                    AsyncMock(return_value=(generated, AiUsage(outputTokens=20)))) as provider:
             await lesson_author_orchestration_v2_unit(request)
         rows = provider.await_args.kwargs["source_rows"]

@@ -6,13 +6,13 @@ retrieval, DB write, ownership mutation or repair dispatch occurs here.
 """
 from __future__ import annotations
 
+import re
+import unicodedata
 from collections import Counter, defaultdict
 from dataclasses import dataclass
 from decimal import Decimal
 from hashlib import sha256
 from html import unescape
-import re
-import unicodedata
 from typing import Any
 
 from app.lesson_prompt_policy import component_instructional_brief, instructional_action_intents

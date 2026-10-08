@@ -36,7 +36,6 @@ from app.lesson_author_orchestration_v2_provider import (
 )
 from tests.staged_schema_probe import capture_sdk_body
 
-
 SOURCE_HASH = "a" * 64
 
 

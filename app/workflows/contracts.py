@@ -2,11 +2,10 @@ from __future__ import annotations
 
 """Typed, safe contracts shared by request-scoped authoring workflows."""
 
+import re
 from dataclasses import dataclass, field
 from time import perf_counter
-import re
 from typing import Any, Literal, TypedDict
-
 
 WorkflowSeverity = Literal["error", "warning", "info"]
 RepairScope = Literal["course", "chapter", "lesson", "unit", "component"]

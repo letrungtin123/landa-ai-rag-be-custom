@@ -8,7 +8,6 @@ from app.lesson_quality import (
     validate_lesson_pedagogical_quality,
 )
 
-
 LONG_EXPLANATION = (
     "Người học cần xác định đúng thiết bị bảo hộ trước khi bắt đầu công việc. "
     "Thiết bị phù hợp làm giảm tiếp xúc với rủi ro được tài liệu mô tả. "

@@ -6,25 +6,22 @@ from unittest.mock import AsyncMock, patch
 
 from fastapi import HTTPException
 
-from app.assessment_selection_contract import build_assessment_selection_contract, VERSION
 from app.assessment_planner import compile_v5_assessment_plan
-from app.main import (
-    apply_course_architecture_repair_patches,
-    lesson_author_blueprint,
-    validate_v5_instructional_coherence,
-)
+from app.assessment_selection_contract import VERSION, build_assessment_selection_contract
+from app.component_capabilities import ComponentCapabilities
+from app.main import apply_course_architecture_repair_patches, lesson_author_blueprint
+from app.schemas.common import AiUsage
+from app.services.lesson_author.architecture_validation import validate_v5_instructional_coherence
 from app.services.lesson_author.evidence_scope import (
     allocate_source_map_architecture_facts,
     validate_course_architecture_evidence_scope,
 )
-from app.schemas.common import AiUsage
-from app.workflows.contracts import WorkflowFailure
-from tests.test_assessment_intent_repair import missing_check_fixture, targets_for, unit_of, missing_check_payload
-from tests.test_evidence_scope_allocation_v5 import _nodes, _manifest, _v5_blueprint
-from tests.test_lesson_author_blueprint import blueprint_request
-from tests.staged_schema_probe import capture_sdk_body
 from app.source_map import build_source_map
-from app.component_capabilities import ComponentCapabilities
+from app.workflows.contracts import WorkflowFailure
+from tests.staged_schema_probe import capture_sdk_body
+from tests.test_assessment_intent_repair import missing_check_fixture, missing_check_payload, targets_for, unit_of
+from tests.test_evidence_scope_allocation_v5 import _manifest, _nodes, _v5_blueprint
+from tests.test_lesson_author_blueprint import blueprint_request
 
 
 def selected_choices(contract):

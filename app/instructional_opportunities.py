@@ -3,10 +3,10 @@
 No CMS selection, model call, fact allocation or new source claim lives here.
 Node's registry/tenant policy remains the component acceptance authority.
 """
-from copy import deepcopy
 import hashlib
 import re
 import unicodedata
+from copy import deepcopy
 from typing import Any
 
 VERSION = "evidence-treatment-2"

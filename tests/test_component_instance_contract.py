@@ -7,12 +7,14 @@ import sys
 import unittest
 from unittest.mock import AsyncMock, patch
 
-from app.component_capabilities import ComponentCapabilities, validate_instance_plan
 from app.assessment_planner import compile_v5_assessment_plan
-from app.main import (
-    generate_staged_lesson_author_proposal,
-    validate_v5_instructional_coherence,
+from app.component_capabilities import ComponentCapabilities, validate_instance_plan
+from app.lesson_quality import validate_lesson_pedagogical_quality
+from app.schemas.common import AiUsage
+from app.schemas.lesson_author import RagLessonAuthorRequest
+from app.services.lesson_author.architecture_validation import (
     validate_course_architecture_workflow,
+    validate_v5_instructional_coherence,
 )
 from app.services.lesson_author.evidence_scope import (
     allocate_source_map_architecture_facts,
@@ -21,12 +23,9 @@ from app.services.lesson_author.evidence_scope import (
 from app.services.lesson_author.staged.skeleton import _locked_component_plan
 from app.services.lesson_author.staged.source_locked import build_source_locked_unit
 from app.services.lesson_author.staged.validation import validate_staged_unit_content
-from app.schemas.common import AiUsage
-from app.schemas.lesson_author import RagLessonAuthorRequest
-from app.lesson_quality import validate_lesson_pedagogical_quality
+from app.services.lesson_author.staged.writer import generate_staged_lesson_author_proposal
 from app.source_map import build_source_map
 from tests.test_evidence_scope_allocation_v5 import _manifest, _nodes, _v5_blueprint
-
 
 PROFILE = {"version": 2, "max_components_per_unit": 4, "max_assessments_per_unit": 3, "assessment_enabled": True}
 

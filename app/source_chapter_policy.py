@@ -4,8 +4,8 @@ from __future__ import annotations
 from copy import deepcopy
 from typing import Any
 
+from app.lesson_author_blueprint import MAX_BLUEPRINT_CHAPTERS, LessonAuthorBlueprintValidationError
 from app.source_structure import MAX_NODES, PARSER_VERSION, strip_source_range_suffix
-from app.lesson_author_blueprint import LessonAuthorBlueprintValidationError, MAX_BLUEPRINT_CHAPTERS
 
 
 def resolve_source_chapter_policy(documents: list[dict[str, Any]]) -> dict[str, Any]:
