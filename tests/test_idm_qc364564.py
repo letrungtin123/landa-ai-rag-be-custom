@@ -9,26 +9,46 @@ Package A (deterministic MCQ and note fixes):
 Package B (prompts, judge and grounding):
 
 * N7: the W6 judge rejected two teach-only units for practice criteria (it saw the lesson's practice).
+* N9: three blockquotes (warning blocks) looked like quotations but stated what the source never says.
+* N10: an explanation contradicted its option; explanations must name every option.
+* N11: FAQ items repeated the table just taught; two FAQ titles did not match their questions.
 
 The provider is the local ``FakeGenerate``; nothing reaches the network.
 """
 
 from __future__ import annotations
 
+import dataclasses
 import json
 import unittest
 from typing import Any
+from unittest.mock import AsyncMock
 
-from app.idm.contracts import IdmJudgeFindingV1
+from app.idm.contracts import IdmJudgeFindingV1, IdmUnitBriefV1
 from app.idm.mcq import labelled_letters, normalize_single_choice
 from app.idm.qa import (
     JudgeOutcome,
+    SlotFinding,
     build_unit_author_note,
+    callouts_as_paragraphs,
     criteria_summary,
+    deterministic_slot_findings,
+    faq_title_mismatch,
+    html_before,
+    restated_faq_items,
     settle_applicability,
     unexplained_options,
+    ungrounded_callouts,
 )
+from app.idm.storyboard import run_idm_unit
+from app.idm.text import evidence_index
+from app.schemas.common import AiUsage
+from app.schemas.orchestration_v2 import RagLessonAuthorUnitV2Request
+from app.services.orchestration_v2 import unit as unit_service
+from tests import idm_golden as g
+from tests import idm_golden_unit as gu
 from tests.idm_contract_bridge import writer_answer
+from tests.idm_test_support import golden_design, golden_shard, make_runtime
 from tests.test_idm_storyboard import (
     JUDGE,
     REPAIR,
@@ -280,3 +300,196 @@ class ExplanationCoverageTests(StoryboardEndpointTestCase):
         self.assertIn("c0 IDM_W5_PRACTICE_INCOMPLETE at c0: exactly one correct choice, and an explanation that names "
                       "EVERY option by its letter", provider.calls[1]["prompt"])
         self.assertIn("Đã tự sửa: IDM_W5_PRACTICE_INCOMPLETE.", quality.author_note)
+
+
+# --- N9: callouts must restate the facts -----------------------------------------------------------
+INVENTED_CALLOUT = "Doanh nghiệp không thay đổi tư duy sẽ có nguy cơ bị thị trường đào thải rất cao."
+SOURCE_CALLOUT = "Cấp 3 liên quan an toàn, pháp lý hoặc truyền thông: escalate ngay cho quản lý và bộ phận Pháp chế."
+
+
+def with_callout(writer: dict[str, Any], text: str) -> dict[str, Any]:
+    blocks = writer["components"]["c0"]["semantic_content"]["sections"][0]["blocks"]
+    blocks.append({"kind": "warning", "text": text, "items": [], "rows": []})
+    return writer
+
+
+class CalloutGroundingTests(StoryboardEndpointTestCase):
+    def test_only_callouts_the_facts_do_not_state_are_flagged(self) -> None:
+        body = severity_body()
+        evidence = evidence_index([fact["fact_text"] for fact in body["unit_contract"]["source_facts"]])
+        writer = with_callout(with_callout(severity_writer(body), SOURCE_CALLOUT), INVENTED_CALLOUT)
+        component = writer["components"]["c0"]
+        self.assertEqual(ungrounded_callouts(component, evidence), [(0, 3)])
+        prose = callouts_as_paragraphs(component, [(0, 3)])
+        kinds = [block["kind"] for block in prose["semantic_content"]["sections"][0]["blocks"]]
+        self.assertEqual(kinds, ["paragraph", "table", "warning", "paragraph"])
+        self.assertEqual(prose["semantic_content"]["sections"][0]["blocks"][3]["text"], INVENTED_CALLOUT)
+        brief = IdmUnitBriefV1.model_validate(body["unit_contract"]["idm_unit_brief"])
+        value = {"components": [{**component, "type": "html"}]}
+        self.assertEqual(deterministic_slot_findings(value, brief, [""], evidence),
+                         [SlotFinding("IDM_W5_CALLOUT_UNGROUNDED", 0)])
+        self.assertEqual(deterministic_slot_findings(value, brief, [""]), [])
+
+    async def test_invented_callout_is_repaired_from_the_facts(self) -> None:
+        body = severity_body()
+        writer = with_callout(severity_writer(body), INVENTED_CALLOUT)
+        fixed = slot_repair(with_callout(severity_writer(body), SOURCE_CALLOUT), 0)
+        provider = FakeGenerate(**{WRITER: [writer], REPAIR: [fixed], JUDGE: [judge()]})
+        status, data, _ = await self.post(body, provider)
+        self.assertEqual(status, 200)
+        quality = self.assert_envelope(data, "provider_validated", "validated", "provider")
+        self.assertIn("c0 IDM_W5_CALLOUT_UNGROUNDED at c0.semantic_content.sections[0].blocks[2]: a warning block is "
+                      "shown as a quotation/callout", provider.calls[1]["prompt"])
+        self.assertNotIn(INVENTED_CALLOUT, provider.calls[1]["prompt"].split("REPAIR_REQUIREMENTS")[1])
+        self.assertIn("Đã tự sửa: IDM_W5_CALLOUT_UNGROUNDED.", quality.author_note)
+        self.assertIn('A "warning" block is shown to the learner as a quotation/callout', provider.calls[0]["prompt"])
+
+    async def test_callout_still_invented_after_the_repair_becomes_a_paragraph_for_review(self) -> None:
+        body = severity_body()
+        writer = with_callout(severity_writer(body), INVENTED_CALLOUT)
+        provider = FakeGenerate(**{WRITER: [writer], REPAIR: [slot_repair(writer, 0)], JUDGE: [judge()]})
+        status, data, _ = await self.post(body, provider)
+        self.assertEqual(status, 200)
+        quality = self.assert_envelope(data, "provider_validated", "review_required", "provider")
+        blocks = data["unit"]["components"][0]["semantic_content"]["sections"][0]["blocks"]
+        self.assertEqual((blocks[2]["kind"], blocks[2]["text"]), ("paragraph", INVENTED_CALLOUT))
+        self.assertNotIn("source_locked_fallback", data["unit"]["components"][0])
+        self.assertIn("Đã chuyển 1 khung trích dẫn/lưu ý không có trong tài liệu thành đoạn văn thường — cần SME xác "
+                      "nhận nội dung.", quality.author_note)
+        self.assertNotIn("còn cảnh báo", quality.author_note)
+        self.assertEqual(quality.deterministic_codes, ["IDM_W5_CALLOUT_TO_PROSE", "IDM_W5_CALLOUT_UNGROUNDED"])
+
+    async def test_english_note_for_a_converted_callout(self) -> None:
+        body = {**severity_body(), "locale": "en"}
+        writer = with_callout(severity_writer(body), INVENTED_CALLOUT)
+        provider = FakeGenerate(**{WRITER: [writer], REPAIR: [slot_repair(writer, 0)], JUDGE: [judge()]})
+        _, data, _ = await self.post(body, provider)
+        quality = self.assert_envelope(data, "provider_validated", "review_required", "provider")
+        self.assertIn("1 callout(s) not found in the source were turned into plain paragraphs — the SME should "
+                      "confirm their content.", quality.author_note)
+
+
+# --- N11: FAQ items add value and the FAQ title matches them ----------------------------------------
+RESTATED = ("Cấp 2 là khi thiệt hại tài chính dưới 50 triệu đồng hoặc khách hàng phàn nàn lần thứ hai; khi đó "
+            "thông báo trưởng nhóm.")
+EDGE_CASE = ("Thiệt hại tài chính dưới 50 triệu đồng đã là dấu hiệu của cấp 2, nên vẫn thông báo trưởng nhóm dù khách "
+             "hàng chưa phàn nàn lần thứ hai.")
+MISCONCEPTION = ("Không. Khi khiếu nại liên quan an toàn, pháp lý hoặc truyền thông thì đó là cấp 3 và phải escalate "
+                 "ngay cho quản lý, dù chưa có thiệt hại tài chính.")
+FAQ_TITLE = "Những nhầm lẫn thường gặp về cấp độ"
+
+
+def faq_after_html_body() -> dict[str, Any]:
+    """lsn_002 unit 1 (html + problem) with an la_faq slot after the question, as Node would plan it."""
+
+    design, _ = golden_design()
+    shard = golden_shard(0)
+    lesson = shard.lessons[1]
+    unit = lesson.units[0]
+    faq = unit.components[0].model_copy(update={"component_index": 3, "type": "la_faq", "role": "clarify",
+                                                 "title": FAQ_TITLE})
+    unit = unit.model_copy(update={"components": [*unit.components, faq]})
+    shard = shard.model_copy(update={"lessons": [shard.lessons[0], lesson.model_copy(update={"units": [unit]}),
+                                                 *shard.lessons[2:]]})
+    return gu.build_unit_request(design, shard, chapter_index=0, lesson_position=1, unit_position=0,
+                                 facts=g.source_facts())
+
+
+def faq_writer(body: dict[str, Any], *answers: str, title: str = FAQ_TITLE) -> dict[str, Any]:
+    writer = severity_writer(body)
+    questions = ("Khiếu nại cấp 2 là khi nào?", "Có thiệt hại tài chính nhỏ nhưng khách mới phàn nàn lần đầu thì sao?",
+                 "Chưa có thiệt hại tài chính thì luôn là cấp 1 phải không?")
+    writer["components"]["c2"] = {
+        "title": title, "selection_rationale": "Làm rõ nhầm lẫn về cấp độ.", "covered_source_fact_ids": [],
+        "items": [{"question": question, "answer": answer}
+                  for question, answer in zip(questions, answers, strict=False)]}
+    return writer
+
+
+class FaqValueTests(StoryboardEndpointTestCase):
+    def test_restated_items_and_title_mismatch(self) -> None:
+        body = faq_after_html_body()
+        writer = faq_writer(body, RESTATED, EDGE_CASE, MISCONCEPTION)
+        html_text = html_before({"components": [{"type": "html", **writer["components"]["c0"]}]}, 1)
+        self.assertEqual(restated_faq_items(writer["components"]["c2"], html_text), [0])
+        self.assertEqual(restated_faq_items(writer["components"]["c2"], ""), [])
+        self.assertFalse(faq_title_mismatch(writer["components"]["c2"]))
+        self.assertFalse(faq_title_mismatch(escalate_writer(escalate_body())["components"]["c1"]))
+        meeting = faq_writer(body, EDGE_CASE, MISCONCEPTION, title="Câu hỏi thường gặp trong họp giao ban")
+        self.assertTrue(faq_title_mismatch(meeting["components"]["c2"]))
+        # Boilerplate only ("Câu hỏi thường gặp") says nothing to match.
+        self.assertFalse(faq_title_mismatch({**meeting["components"]["c2"], "title": "Câu hỏi thường gặp"}))
+
+    async def test_item_repeating_the_html_is_dropped_after_the_repair(self) -> None:
+        body = faq_after_html_body()
+        writer = faq_writer(body, RESTATED, EDGE_CASE, MISCONCEPTION)
+        provider = FakeGenerate(**{WRITER: [writer], REPAIR: [slot_repair(writer, 2)], JUDGE: [judge()]})
+        status, data, _ = await self.post(body, provider)
+        self.assertEqual(status, 200)
+        quality = self.assert_envelope(data, "provider_validated", "validated", "provider")
+        self.assertIn("c2 IDM_W5_FAQ_RESTATES_HTML at c2.items[0]: these items only repeat the html above",
+                      provider.calls[1]["prompt"])
+        self.assertEqual([item["answer"] for item in data["unit"]["components"][2]["items"]],
+                         [EDGE_CASE, MISCONCEPTION])
+        self.assertIn("Đã bỏ 1 câu hỏi đáp chỉ nhắc lại nội dung vừa học.", quality.author_note)
+        self.assertIn("Each la_faq item adds value: a common misconception, an edge case", provider.calls[0]["prompt"])
+
+    async def test_too_few_items_left_keeps_the_faq_for_review(self) -> None:
+        body = faq_after_html_body()
+        writer = faq_writer(body, RESTATED, EDGE_CASE)
+        provider = FakeGenerate(**{WRITER: [writer], REPAIR: [slot_repair(writer, 2)], JUDGE: [judge()]})
+        status, data, _ = await self.post(body, provider)
+        self.assertEqual(status, 200)
+        quality = self.assert_envelope(data, "provider_validated", "review_required", "provider")
+        self.assertEqual(len(data["unit"]["components"][2]["items"]), 2)
+        self.assertIn("Cần xem (IDM_W5_FAQ_RESTATES_HTML, khối 3 (Hỏi đáp)): câu hỏi đáp chỉ nhắc lại nội dung vừa "
+                      "học", quality.author_note)
+
+    async def test_mismatched_title_is_repaired(self) -> None:
+        body = faq_after_html_body()
+        writer = faq_writer(body, EDGE_CASE, MISCONCEPTION, title="Câu hỏi thường gặp trong họp giao ban")
+        fixed = slot_repair(faq_writer(body, EDGE_CASE, MISCONCEPTION), 2)
+        provider = FakeGenerate(**{WRITER: [writer], REPAIR: [fixed], JUDGE: [judge()]})
+        status, data, _ = await self.post(body, provider)
+        self.assertEqual(status, 200)
+        quality = self.assert_envelope(data, "provider_validated", "validated", "provider")
+        self.assertIn("c2 IDM_W5_FAQ_TITLE_MISMATCH at c2: the la_faq title names what its questions are about",
+                      provider.calls[1]["prompt"])
+        self.assertEqual(data["unit"]["components"][2]["title"], FAQ_TITLE)
+        self.assertIn("Đã tự sửa: IDM_W5_FAQ_TITLE_MISMATCH.", quality.author_note)
+
+
+class CalloutKeptForReviewTests(unittest.IsolatedAsyncioTestCase):
+    """N9: when the paragraph form is not acceptable (here the plan requires the warning), the slot stays."""
+
+    @dataclasses.dataclass(frozen=True)
+    class Finding:
+        code: str
+        path: str
+
+    async def test_callout_that_cannot_become_a_paragraph_is_kept_for_review(self) -> None:
+        body = severity_body()
+        request = RagLessonAuthorUnitV2Request.model_validate(body)
+        base = unit_service._idm_unit_deps(request)
+
+        def validate(unit: dict[str, Any], expected: dict[str, Any]) -> Any:
+            first = unit["components"][0]
+            kinds = [block["kind"] for section in first["semantic_content"]["sections"] for block in section["blocks"]]
+            if not first.get("source_locked_fallback") and "warning" not in kinds:
+                return self.Finding("REQUIRED_ARTIFACT_NOT_PRESERVED", "components[0].semantic_content")
+            return base.validate_unit(unit, expected)
+
+        deps = dataclasses.replace(base, validate_unit=validate, judge_mode="off")
+        writer = with_callout(severity_writer(body), INVENTED_CALLOUT)
+        usage = AiUsage(inputTokens=1, outputTokens=1, totalTokens=2)
+        generate = AsyncMock(side_effect=[(json.dumps(writer, ensure_ascii=False), usage),
+                                          (json.dumps(slot_repair(writer, 0), ensure_ascii=False), usage)])
+        result = await run_idm_unit(contract=request.unit_contract, runtime=make_runtime(generate, allowance=None),
+                                    deps=deps, fallback_only=False)
+        self.assertEqual((result["content_origin"], result["quality_state"]), ("provider_validated", "review_required"))
+        blocks = result["unit"]["components"][0]["semantic_content"]["sections"][0]["blocks"]
+        self.assertEqual((blocks[-1]["kind"], blocks[-1]["text"]), ("warning", INVENTED_CALLOUT))
+        note = result["unit"]["idm_quality"]["author_note"]
+        self.assertIn("Giữ bản AI để tác giả rà soát: khối 1 (Lý thuyết) — IDM_W5_CALLOUT_UNGROUNDED.", note)
+        self.assertIn("Cần xem (IDM_W5_CALLOUT_UNGROUNDED, khối 1 (Lý thuyết)): khung trích dẫn/lưu ý nêu điều không "
+                      "tìm thấy trong tài liệu", note)

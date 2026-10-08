@@ -431,6 +431,15 @@ Writing rules (learner-facing, {locale_name(locale)}):
   asks the learner to judge a sample entry against the same criteria (exactly one option meets them).
 - la_faq answers restate only what SOURCE_FACTS or LESSON_CONTEXT_FACTS say: no number, example, reason, advice
   or exception they do not state. When the facts cannot answer a question, ask a different question they answer.
+- Each la_faq item adds value: a common misconception, an edge case or a "what if" that the facts answer. Never
+  an item whose answer repeats a table row, list or paragraph of this unit's html. The la_faq title names what
+  its questions are about.
+- A "warning" block is shown to the learner as a quotation/callout: use it only for a rule, warning or
+  statement that SOURCE_FACTS state, quoted or closely restated. Never write your own maxim, slogan, consequence
+  or rule as a warning; such text is a plain paragraph, or is left out.
+- Never invent rules, thresholds, criteria, labels or consequences the facts do not state, not even as the
+  labels of a template or the edges of a diagram.
+- Every slot title and section heading names what that slot or section actually teaches.
 - Use drafted scenarios/examples only where the brief marks them ai_drafted; they must not add rules.
 - LESSON_CONTEXT_FACTS are read-only background from earlier units; use them for consistency and for the
   correctness criteria, do not re-teach them.
@@ -617,6 +626,13 @@ UNIT_RULE_TEXT: Final[dict[str, str]] = {
     "IDM_W5_FAQ_UNGROUNDED": "answer only from these facts: rewrite each listed answer so it restates what "
                              "SOURCE_FACTS or LESSON_CONTEXT_FACTS say, with no number, example, reason or advice "
                              "they do not state; replace a question the facts cannot answer with one they do",
+    "IDM_W5_FAQ_RESTATES_HTML": "these items only repeat the html above: replace each listed item with a common "
+                                "misconception, an edge case or a what-if question that SOURCE_FACTS or "
+                                "LESSON_CONTEXT_FACTS answer",
+    "IDM_W5_FAQ_TITLE_MISMATCH": "the la_faq title names what its questions are about: retitle it from its questions",
+    "IDM_W5_CALLOUT_UNGROUNDED": "a warning block is shown as a quotation/callout: quote or closely restate what "
+                                 "SOURCE_FACTS state, or make it a paragraph block; never a rule, threshold or "
+                                 "consequence the facts do not state",
     "IDM_W5_WORKSHEET_INCOMPLETE": "a worksheet slot needs a task block, the template to complete (table rows or "
                                    "steps) and a final self-check bullets block whose items are the practice "
                                    "criteria taken from the facts",

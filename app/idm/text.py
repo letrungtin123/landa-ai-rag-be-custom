@@ -299,6 +299,12 @@ def _content(word: str) -> bool:
     return len(word) >= _MIN_CONTENT_WORD_CHARS and word not in _FUNCTION_WORDS and not word.isdigit()
 
 
+def content_words(text: str) -> list[str]:
+    """Folded words of ``text`` that carry meaning (no function words, digits or one-letter words)."""
+
+    return [word for word in _WORD_RE.findall(idm_fold(text)) if _content(word)]
+
+
 @dataclass(frozen=True)
 class EvidenceIndex:
     """Folded words, adjacent word pairs and numbers of the facts a writer was given."""

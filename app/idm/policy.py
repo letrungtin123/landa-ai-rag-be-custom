@@ -158,6 +158,28 @@ IDM_ANSWER_LEAK_NGRAM: Final = 4
 IDM_ANSWER_LEAK_MIN_NGRAMS: Final = 4
 IDM_ANSWER_LEAK_MIN_SHARE: Final = 0.75
 
+# --- FAQ value and callout grounding (QC course 364564, N9/N11) --------------------------------
+# 3 of 5 FAQs only repeated the table taught just above them. An FAQ answer restates the html before
+# it in the unit when most of its word 4-grams (accent-folded, the answer-leak measure) appear in it:
+# a table row restated as a sentence keeps ~0.6-0.8 of its 4-grams, an answer that adds a condition,
+# an exception or a "what if" to a phrase of the row stays near 0.3. Answers under the minimum number
+# of 4-grams (about 7 words) are too short to tell.
+IDM_FAQ_RESTATE_NGRAM: Final = 4
+IDM_FAQ_RESTATE_MIN_NGRAMS: Final = 4
+IDM_FAQ_RESTATE_MIN_SHARE: Final = 0.6
+# 2 FAQ titles ("Rào cản …", "… trong họp giao ban") did not match their questions. A title with at least
+# this many key words (content words that are not FAQ boilerplate) must share at least half of them
+# with its questions and answers.
+IDM_FAQ_TITLE_MIN_KEY_WORDS: Final = 2
+IDM_FAQ_TITLE_MIN_SHARED_SHARE: Final = 0.5
+# Folded FAQ boilerplate a title may carry without the items repeating it.
+FAQ_TITLE_GENERIC_WORDS: Final = frozenset({
+    "cau", "hoi", "thuong", "gap", "dap", "giai", "faq", "luu", "nham", "lan", "thac", "mac", "hieu", "sai",
+    "lam", "tuong", "diem", "chu", "quan", "trong", "van", "de",
+    "frequently", "asked", "questions", "question", "common", "mistakes", "mistake", "misconceptions",
+    "misconception", "notes", "note", "clarifications", "answers", "doubts", "faqs",
+})
+
 # --- Methodology word lists (folded: lower case, no diacritics, d for đ) ----------------
 GENERIC_TITLES: Final = frozenset({
     "gioi thieu", "tong quan", "thong tin chung", "noi dung", "cac van de khac", "khac",

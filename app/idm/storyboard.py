@@ -60,7 +60,11 @@ from app.idm.prompts import (
 )
 from app.idm.qa import (
     ANSWER_LEAK_CODE,
+    CALLOUT_TO_PROSE_CODE,
+    CALLOUT_UNGROUNDED_CODE,
     FAQ_ITEMS_DROPPED_CODE,
+    FAQ_RESTATES_HTML_CODE,
+    FAQ_TITLE_MISMATCH_CODE,
     FAQ_UNGROUNDED_CODE,
     WORKSHEET_INCOMPLETE_CODE,
     JudgeMode,
@@ -68,12 +72,16 @@ from app.idm.qa import (
     blocking_count,
     build_unit_author_note,
     build_unit_quality,
+    callouts_as_paragraphs,
     deterministic_slot_findings,
     final_unit_findings,
     has_practice_slot,
+    html_before,
     repair_targets,
+    restated_faq_items,
     run_judge,
     settled_codes,
+    ungrounded_callouts,
     ungrounded_faq_items,
 )
 from app.idm.runtime import (
@@ -106,8 +114,14 @@ _FIELD_OF_PATH_RE: Final = re.compile(r"^components\[\d+\]\.?")
 # A worksheet that misses part of its structure keeps the provider slot for author review: the
 # source-locked html fallback would replace the practice with plain explanation.
 # An option copying the html before the question (QC course 364564, N3) is a review note once the repair
-# could not fix it: the source-locked question would drop the provider's scenario practice.
-_REVIEW_FIRST_CODES: Final = frozenset({WORKSHEET_INCOMPLETE_CODE, ANSWER_LEAK_CODE})
+# could not fix it: the source-locked question would drop the provider's scenario practice. So are an
+# ungrounded callout that cannot become a paragraph (N9), FAQ items that restate the html while too few
+# others remain, and an FAQ title that does not match its questions (N11): the source-locked rebuild
+# would replace the whole teaching slot for a problem the author fixes in a minute.
+_REVIEW_FIRST_CODES: Final = frozenset({WORKSHEET_INCOMPLETE_CODE, ANSWER_LEAK_CODE, CALLOUT_UNGROUNDED_CODE,
+                                        FAQ_RESTATES_HTML_CODE, FAQ_TITLE_MISMATCH_CODE})
+# FAQ findings settled by dropping the items concerned while the slot keeps two items.
+_FAQ_PRUNE_CODES: Final = frozenset({FAQ_UNGROUNDED_CODE, FAQ_RESTATES_HTML_CODE})
 _MAX_HINT_FACT_KEYS: Final = 24
 _FALLBACK_INVALID: Final = "ORCHESTRATION_V2_UNIT_FALLBACK_INVALID"
 
@@ -310,8 +324,12 @@ class IdmUnitWriter:
         # Provider, time-budget and repair failures behind a fallback (codes only, never provider text).
         self.failure_codes: list[str] = []
         self.faq_items_dropped = 0
+        # FAQ items dropped because their answer only repeated the html above them (N11).
+        self.faq_items_restated = 0
         # FAQ items dropped because Node's workspace schema rejects them (not a grounding problem).
         self.faq_items_invalid = 0
+        # Ungrounded callouts turned into plain paragraphs after the repair could not ground them (N9).
+        self.callouts_converted = 0
         self.budget: dict[str, Any] = self.expected["instructional_output_budget"]
         self.min_html_chars = minimum_visible_chars(self.budget.get("source_content_chars"))
         # Deterministic html fixes applied before validation (counted, never content).
@@ -379,24 +397,38 @@ class IdmUnitWriter:
                 explained.update(item.code for item in self.last_acceptance if item.component_index == index)
             for code, issue_index in issues:
                 if issue_index == index and code not in explained:
-                    if code == FAQ_UNGROUNDED_CODE and isinstance(component, dict):
-                        lines.append(self.faq_rule_line(slot, index, component))
+                    if code in _FAQ_PRUNE_CODES and isinstance(component, dict):
+                        lines.append(self.faq_rule_line(slot, index, component, code, unit))
+                    elif code == CALLOUT_UNGROUNDED_CODE and isinstance(component, dict):
+                        lines.append(self.callout_rule_line(slot, index, component))
                     else:
                         field = _FIELD_OF_PATH_RE.sub("", locations.get((code, index), ""))
                         lines.append(rule_line(slot, code, f"{slot}.{field}" if field else slot))
                     explained.add(code)
         return lines
 
-    def faq_rule_line(self, slot: str, index: int, component: dict[str, Any]) -> str:
-        """Targeted repair: which answers to rewrite and which facts they may use (keys, never text)."""
+    def faq_rule_line(self, slot: str, index: int, component: dict[str, Any], code: str = FAQ_UNGROUNDED_CODE,
+                      unit: dict[str, Any] | None = None) -> str:
+        """Targeted repair: which items to rewrite and which facts they may use (keys, never text)."""
 
-        items = ", ".join(f"{slot}.items[{item}]" for item in ungrounded_faq_items(component, self.evidence))
+        found = (restated_faq_items(component, html_before(unit or {}, index)) if code == FAQ_RESTATES_HTML_CODE
+                 else ungrounded_faq_items(component, self.evidence))
+        items = ", ".join(f"{slot}.items[{item}]" for item in found)
+        return rule_line(slot, code, items or slot) + self.fact_hint(index)
+
+    def callout_rule_line(self, slot: str, index: int, component: dict[str, Any]) -> str:
+        """Targeted repair of the callouts the facts do not support (QC course 364564, N9)."""
+
+        blocks = ", ".join(f"{slot}.semantic_content.sections[{section}].blocks[{block}]"
+                           for section, block in ungrounded_callouts(component, self.evidence))
+        return rule_line(slot, CALLOUT_UNGROUNDED_CODE, blocks or slot) + self.fact_hint(index)
+
+    def fact_hint(self, index: int) -> str:
         brief_slot = self.brief.components[index] if index < len(self.brief.components) else None
         keys = list(dict.fromkeys([*brief_slot.owned_fact_keys, *brief_slot.supporting_fact_keys]))[
             :_MAX_HINT_FACT_KEYS] if brief_slot else []
         listed = ", ".join(f"[{key}]" for key in keys)
-        hint = f" Start from this slot's facts: {listed}." if keys else ""
-        return rule_line(slot, FAQ_UNGROUNDED_CODE, items or slot) + hint
+        return f" Start from this slot's facts: {listed}." if keys else ""
 
     # -- acceptance --------------------------------------------------------------------------
     def normalize_component(self, index: int, component: Any) -> Any:
@@ -592,23 +624,54 @@ class IdmUnitWriter:
                       sorted({*draft.review_slots, index}), {**draft.reasons, index: list(dict.fromkeys(reasons))})
 
     def prune_faq(self, draft: _Draft, index: int) -> _Draft | None:
-        """Drop the FAQ items the facts do not support while the slot keeps its minimum item count."""
+        """Drop the FAQ items the facts do not support or that repeat the html above them (N11) while the
+        slot keeps its minimum item count."""
 
         components = list(draft.unit.get("components", []))
         component = components[index] if 0 <= index < len(components) else None
         items = component.get("items") if isinstance(component, dict) else None
         if not isinstance(component, dict) or component.get("type") != "la_faq" or not isinstance(items, list):
             return None
-        drop = set(ungrounded_faq_items(component, self.evidence))
+        ungrounded = set(ungrounded_faq_items(component, self.evidence))
+        restated = set(restated_faq_items(component, html_before(draft.unit, index))) - ungrounded
+        drop = ungrounded | restated
         keep = [item for position, item in enumerate(items) if position not in drop]
         if not drop or len(keep) < IDM_FAQ_MIN_ITEMS:
             return None
         components[index] = {**component, "items": keep}
-        self.faq_items_dropped += len(drop)
+        self.faq_items_dropped += len(ungrounded)
+        self.faq_items_restated += len(restated)
         self.codes.append(FAQ_ITEMS_DROPPED_CODE)
-        self.runtime.adjustments["w5_faq_items_dropped"] += len(drop)
+        for key, count in (("w5_faq_items_dropped", len(ungrounded)), ("w5_faq_items_restated_dropped", len(restated))):
+            if count:
+                self.runtime.adjustments[key] += count
         return _Draft({**draft.unit, "components": components}, list(draft.fallback_slots), draft.repair_applied,
                       list(draft.review_slots), dict(draft.reasons))
+
+    def callouts_to_prose(self, draft: _Draft, index: int) -> _Draft | None:
+        """Turn the callouts the facts do not support into plain paragraphs (QC course 364564, N9), when the
+        slot stays valid that way; the text no longer reads as a quotation and the note asks the SME."""
+
+        components = list(draft.unit.get("components", []))
+        component = components[index] if 0 <= index < len(components) else None
+        if not isinstance(component, dict):
+            return None
+        positions = ungrounded_callouts(component, self.evidence)
+        converted = callouts_as_paragraphs(component, positions)
+        if not positions or self.html_violations(converted):
+            return None
+        components[index] = converted
+        candidate = _Draft({**draft.unit, "components": components}, list(draft.fallback_slots),
+                           draft.repair_applied, list(draft.review_slots), dict(draft.reasons))
+        # Another IDM finding of the slot is settled by the next pass; a validator or Node finding means the
+        # paragraph form is not acceptable here.
+        finding, idm = self.problems(candidate)
+        if _slot_of(finding) == index or (CALLOUT_UNGROUNDED_CODE, index) in idm:
+            return None
+        self.callouts_converted += len(positions)
+        self.codes.append(CALLOUT_TO_PROSE_CODE)
+        self.runtime.adjustments["w5_callouts_to_prose"] += len(positions)
+        return candidate
 
     async def settle(self, draft: _Draft) -> _Draft | None:
         """Repair once, then replace failing slots with the source-locked fallback.
@@ -646,8 +709,9 @@ class IdmUnitWriter:
             if error.terminal:
                 raise
             self.failure_codes.append(error.code)
-        # Each pass settles one slot (FAQ pruning, then fallback or review), so the bound never limits.
-        for attempt in range(2 * len(self.plans) + 1):
+        # Each pass settles one step of one slot (Node item pruning, FAQ pruning or callouts to prose, then
+        # fallback or review), so the bound never limits.
+        for attempt in range(3 * len(self.plans) + 1):
             finding, idm = self.problems(draft)
             if finding is None and not idm:
                 return draft
@@ -666,10 +730,16 @@ class IdmUnitWriter:
                     draft = pruned
                     continue
             if finding is None:
-                # Still-ungrounded FAQ answers are dropped while the slot keeps two grounded items (R6).
-                pruned = self.prune_faq(draft, bad) if set(reasons) == {FAQ_UNGROUNDED_CODE} else None
+                # Still-ungrounded FAQ answers (R6) and answers that repeat the html above (N11) are dropped
+                # while the slot keeps two items.
+                pruned = self.prune_faq(draft, bad) if set(reasons) & _FAQ_PRUNE_CODES else None
                 if pruned is not None:
                     draft = pruned
+                    continue
+                # Still-ungrounded callouts become plain paragraphs (N9).
+                converted = self.callouts_to_prose(draft, bad) if CALLOUT_UNGROUNDED_CODE in reasons else None
+                if converted is not None:
+                    draft = converted
                     continue
                 if set(reasons) <= _REVIEW_FIRST_CODES:
                     draft = self.keep_for_review(draft, bad, reasons)
@@ -768,7 +838,8 @@ async def run_idm_unit(
     # Node admits the validated lane only for provider-accounted content: a draft kept after a failed
     # repair or judge call (reserved upper-bound accounting) is a reviewable structured draft.
     provider_lane = usage_source == "provider" and not whole_fallback and not draft.fallback_slots
-    reviewable = (not provider_lane or bool(draft.review_slots)
+    # A callout turned into a paragraph still states what the facts do not (N9): the SME confirms it.
+    reviewable = (not provider_lane or bool(draft.review_slots) or writer.callouts_converted > 0
                   or deps.evidence_review_required
                   or blocking_count(judge.findings) > 0
                   or (ai_drafted and _q5(judge) != "pass"))
@@ -782,7 +853,8 @@ async def run_idm_unit(
         ai_drafted=ai_drafted, slot_reasons=draft.reasons, review_slots=draft.review_slots,
         slot_types=[plan["type"] for plan in writer.plans], failure_codes=writer.failure_codes,
         whole_fallback=whole_fallback, faq_items_dropped=writer.faq_items_dropped,
-        faq_items_invalid=writer.faq_items_invalid, remaining=remaining, fixed_codes=fixed)
+        faq_items_invalid=writer.faq_items_invalid, remaining=remaining, fixed_codes=fixed,
+        faq_items_restated=writer.faq_items_restated, callouts_to_prose=writer.callouts_converted)
     quality = build_unit_quality(mode=deps.judge_mode, judge=judge, repair_applied=draft.repair_applied,
                                  deterministic_codes=[*writer.codes, *(item.code for item in remaining)],
                                  author_note=note)
@@ -795,7 +867,8 @@ async def run_idm_unit(
         "whole_fallback": whole_fallback, "codes": sorted(set(writer.codes)),
         "remaining_codes": sorted({item.code for item in remaining}), "fixed_codes": sorted(set(fixed)),
         "failure_codes": sorted(set(writer.failure_codes)), "faq_items_dropped": writer.faq_items_dropped,
-        "faq_items_invalid": writer.faq_items_invalid,
+        "faq_items_invalid": writer.faq_items_invalid, "faq_items_restated": writer.faq_items_restated,
+        "callouts_to_prose": writer.callouts_converted,
         "slot_reasons": {str(index): codes for index, codes in sorted(draft.reasons.items())},
         "node_acceptance": writer.acceptance_seen[:_MAX_LOGGED_DETAILS],
         "call_count": runtime.usage.calls, "duration_ms": int((time.perf_counter() - started) * _MS),

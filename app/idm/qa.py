@@ -20,10 +20,16 @@ from app.idm.contracts import (
 )
 from app.idm.mcq import ANSWER_LENGTH_CUE_CODE, OPTION_LETTERS, answer_length_cue, labelled_letters
 from app.idm.policy import (
+    FAQ_TITLE_GENERIC_WORDS,
     GRADED_PRACTICE_TYPES,
     IDM_ANSWER_LEAK_MIN_NGRAMS,
     IDM_ANSWER_LEAK_MIN_SHARE,
     IDM_ANSWER_LEAK_NGRAM,
+    IDM_FAQ_RESTATE_MIN_NGRAMS,
+    IDM_FAQ_RESTATE_MIN_SHARE,
+    IDM_FAQ_RESTATE_NGRAM,
+    IDM_FAQ_TITLE_MIN_KEY_WORDS,
+    IDM_FAQ_TITLE_MIN_SHARED_SHARE,
     IDM_JUDGE_MAX_OUTPUT_TOKENS,
     IDM_JUDGE_MIN_REMAINING_SECONDS,
     IDM_UNIT_AUTHOR_NOTE_MAX_CHARS,
@@ -36,6 +42,7 @@ from app.idm.prompts import judge_prompt
 from app.idm.runtime import IdmBudgetError, IdmProviderError, IdmResponseInvalidError, IdmRuntime, idm_call
 from app.idm.text import (
     EvidenceIndex,
+    content_words,
     grounding_verdict,
     idm_fold,
     ngram_overlap,
@@ -100,6 +107,14 @@ FAQ_UNGROUNDED_CODE: Final = "IDM_W5_FAQ_UNGROUNDED"
 FAQ_ITEMS_DROPPED_CODE: Final = "IDM_W5_FAQ_ITEMS_DROPPED"
 WORKSHEET_INCOMPLETE_CODE: Final = "IDM_W5_WORKSHEET_INCOMPLETE"
 ANSWER_LEAK_CODE: Final = "IDM_W5_ANSWER_LEAK"
+# QC course 364564: N9 (a callout that reads as a quotation states what the facts do not), N11 (FAQ items
+# that repeat the html above; an FAQ title that does not match its questions).
+CALLOUT_UNGROUNDED_CODE: Final = "IDM_W5_CALLOUT_UNGROUNDED"
+CALLOUT_TO_PROSE_CODE: Final = "IDM_W5_CALLOUT_TO_PROSE"
+FAQ_RESTATES_HTML_CODE: Final = "IDM_W5_FAQ_RESTATES_HTML"
+FAQ_TITLE_MISMATCH_CODE: Final = "IDM_W5_FAQ_TITLE_MISMATCH"
+# A warning block renders as <blockquote> (app.idm.node_acceptance); "callout"/"note" are its aliases.
+CALLOUT_KIND: Final = "warning"
 
 
 @dataclass(frozen=True)
@@ -154,11 +169,81 @@ def ungrounded_faq_items(component: dict[str, Any], evidence: EvidenceIndex) -> 
     return [index for index, verdict in enumerate(faq_item_verdicts(component, evidence)) if verdict != "grounded"]
 
 
-def _worksheet_blocks(component: dict[str, Any]) -> list[dict[str, Any]]:
+def html_before(unit: dict[str, Any], index: int) -> str:
+    """Visible text of the html slots before slot ``index``: what the learner has just read."""
+
+    components = [item for item in unit.get("components", []) if isinstance(item, dict)]
+    return " ".join(_visible(component) for component in components[:index] if component.get("type") == "html")
+
+
+def restated_faq_items(component: dict[str, Any], preceding_html: str) -> list[int]:
+    """FAQ items whose answer repeats the html shown before them in the unit (QC course 364564, N11).
+
+    Same measure as the answer leak (accent-folded word 4-grams), with its own calibration
+    (``IDM_FAQ_RESTATE_*``): an FAQ answers a misconception, an edge case or a "what if"; one that only
+    restates a row or paragraph the learner has just read adds nothing.
+    """
+
+    items = component.get("items")
+    if not isinstance(items, list) or not preceding_html.strip():
+        return []
+    answers = [str(item.get("answer") or "") if isinstance(item, dict) else "" for item in items]
+    return [index for index, answer in enumerate(answers)
+            if len(word_ngrams(answer, IDM_FAQ_RESTATE_NGRAM)) >= IDM_FAQ_RESTATE_MIN_NGRAMS
+            and ngram_overlap(answer, preceding_html, IDM_FAQ_RESTATE_NGRAM) >= IDM_FAQ_RESTATE_MIN_SHARE]
+
+
+def faq_title_mismatch(component: dict[str, Any]) -> bool:
+    """The FAQ title's key words (content words that are not FAQ boilerplate) are mostly absent from its
+    questions and answers ("… trong họp giao ban" over items about something else; QC 364564, N11)."""
+
+    items = component.get("items")
+    key = set(content_words(str(component.get("title") or ""))) - FAQ_TITLE_GENERIC_WORDS
+    if not isinstance(items, list) or len(key) < IDM_FAQ_TITLE_MIN_KEY_WORDS:
+        return False
+    said = {word for item in items if isinstance(item, dict)
+            for word in content_words(f"{item.get('question') or ''} {item.get('answer') or ''}")}
+    return len(key & said) < IDM_FAQ_TITLE_MIN_SHARED_SHARE * len(key)
+
+
+def _sections(component: dict[str, Any]) -> list[dict[str, Any]]:
     semantic = component.get("semantic_content")
     sections = semantic.get("sections") if isinstance(semantic, dict) else None
-    return [block for section in sections if isinstance(section, dict)
-            for block in section.get("blocks") or [] if isinstance(block, dict)] if isinstance(sections, list) else []
+    return [section for section in sections if isinstance(section, dict)] if isinstance(sections, list) else []
+
+
+def ungrounded_callouts(component: dict[str, Any], evidence: EvidenceIndex) -> list[tuple[int, int]]:
+    """(section, block) of every callout whose text does not restate the facts (QC course 364564, N9).
+
+    A warning block renders as a blockquote that learners read as a quotation or an official rule; 3 of
+    7 were sentences the writer made up. The test is the FAQ grounding verdict.
+    """
+
+    return [(section_index, block_index)
+            for section_index, section in enumerate(_sections(component))
+            for block_index, block in enumerate(section.get("blocks") or [])
+            if isinstance(block, dict) and block.get("kind") == CALLOUT_KIND
+            and grounding_verdict(str(block.get("text") or ""), evidence) != "grounded"]
+
+
+def callouts_as_paragraphs(component: dict[str, Any], positions: Collection[tuple[int, int]]) -> dict[str, Any]:
+    """``component`` with the callouts at ``positions`` turned into plain paragraphs (same text)."""
+
+    semantic = component.get("semantic_content")
+    if not isinstance(semantic, dict) or not positions:
+        return component
+    sections = []
+    for section_index, section in enumerate(_sections(component)):
+        blocks = [{**block, "kind": "paragraph"}
+                  if (section_index, block_index) in positions and isinstance(block, dict) else block
+                  for block_index, block in enumerate(section.get("blocks") or [])]
+        sections.append({**section, "blocks": blocks})
+    return {**component, "semantic_content": {**semantic, "sections": sections}}
+
+
+def _worksheet_blocks(component: dict[str, Any]) -> list[dict[str, Any]]:
+    return [block for section in _sections(component)
+            for block in section.get("blocks") or [] if isinstance(block, dict)]
 
 
 def worksheet_complete(component: dict[str, Any], evidence: EvidenceIndex | None) -> bool:
@@ -192,8 +277,8 @@ def deterministic_slot_findings(
 ) -> list[SlotFinding]:
     """IDM checks on top of the shared staged validator (spec §7.7.2(b)).
 
-    With ``evidence`` (the facts the writer was given), FAQ answers must restate them and a worksheet's
-    self-check list must come from them.
+    With ``evidence`` (the facts the writer was given), FAQ answers and callouts must restate them and a
+    worksheet's self-check list must come from them.
     """
 
     components = [item for item in unit.get("components", []) if isinstance(item, dict)]
@@ -213,8 +298,15 @@ def deterministic_slot_findings(
             if (slot is not None and slot.role == "practice" and slot.type == WORKSHEET_COMPONENT_TYPE
                     and not worksheet_complete(component, evidence)):
                 findings.append(SlotFinding(WORKSHEET_INCOMPLETE_CODE, index))
-        elif kind == "la_faq" and evidence is not None and ungrounded_faq_items(component, evidence):
-            findings.append(SlotFinding(FAQ_UNGROUNDED_CODE, index))
+            if evidence is not None and ungrounded_callouts(component, evidence):
+                findings.append(SlotFinding(CALLOUT_UNGROUNDED_CODE, index))
+        elif kind == "la_faq":
+            if evidence is not None and ungrounded_faq_items(component, evidence):
+                findings.append(SlotFinding(FAQ_UNGROUNDED_CODE, index))
+            if restated_faq_items(component, preceding_html):
+                findings.append(SlotFinding(FAQ_RESTATES_HTML_CODE, index))
+            if faq_title_mismatch(component):
+                findings.append(SlotFinding(FAQ_TITLE_MISMATCH_CODE, index))
         elif kind == "problem":
             explanation = " ".join(str(component.get("explanation") or "").split())
             correct = _correct_choices(component)
@@ -414,6 +506,8 @@ def build_unit_author_note(
     faq_items_invalid: int = 0,
     remaining: Sequence[SlotFinding] | None = None,
     fixed_codes: Sequence[str] = (),
+    faq_items_restated: int = 0,
+    callouts_to_prose: int = 0,
 ) -> str:
     """Template note for the unit ``implementation_notes``; no IDs, no ``<``/``>``.
 
@@ -465,10 +559,18 @@ def build_unit_author_note(
     if faq_items_dropped:
         parts.append(f"Đã bỏ {faq_items_dropped} câu hỏi đáp có nội dung ngoài tài liệu." if vi
                      else f"{faq_items_dropped} FAQ item(s) with claims outside the source were removed.")
+    if faq_items_restated:
+        parts.append(f"Đã bỏ {faq_items_restated} câu hỏi đáp chỉ nhắc lại nội dung vừa học." if vi
+                     else f"{faq_items_restated} FAQ item(s) that only repeated the content just taught were removed.")
     if faq_items_invalid:
         parts.append(f"Đã bỏ {faq_items_invalid} câu hỏi đáp hệ thống không lưu được (ký tự góc nhọn, câu hỏi trùng)."
                      if vi else f"{faq_items_invalid} FAQ item(s) the course editor cannot store (angle brackets, "
                                 "repeated question) were removed.")
+    if callouts_to_prose:
+        parts.append(f"Đã chuyển {callouts_to_prose} khung trích dẫn/lưu ý không có trong tài liệu thành đoạn văn "
+                     "thường — cần SME xác nhận nội dung." if vi
+                     else f"{callouts_to_prose} callout(s) not found in the source were turned into plain paragraphs "
+                          "— the SME should confirm their content.")
     if not whole_fallback:
         parts.extend(_check_lines(vi, deterministic_codes, remaining, fixed_codes, slot_types))
     if ai_drafted and not whole_fallback:  # a source-locked unit carries no drafted scenario
@@ -481,11 +583,21 @@ _REVIEW_HINT_VI: Final = {
     ANSWER_LEAK_CODE: "một phương án gần như chép lại ví dụ hoặc nội dung ngay trước câu hỏi — người học có thể "
                       "chọn theo trí nhớ thay vì áp dụng tiêu chí",
     ANSWER_LENGTH_CUE_CODE: "đáp án đúng dài hơn hẳn các phương án khác — người học có thể đoán theo độ dài",
+    CALLOUT_UNGROUNDED_CODE: "khung trích dẫn/lưu ý nêu điều không tìm thấy trong tài liệu — chỉ giữ khi SME xác "
+                             "nhận, hoặc đổi thành đoạn văn thường",
+    FAQ_RESTATES_HTML_CODE: "câu hỏi đáp chỉ nhắc lại nội dung vừa học — nên thay bằng ngộ nhận, trường hợp đặc biệt "
+                            "hoặc tình huống nếu… thì",
+    FAQ_TITLE_MISMATCH_CODE: "tiêu đề phần hỏi đáp không khớp các câu hỏi bên trong",
 }
 _REVIEW_HINT_EN: Final = {
     ANSWER_LEAK_CODE: "an option nearly copies the example or text shown right before the question — learners can "
                       "match it instead of applying the criterion",
     ANSWER_LENGTH_CUE_CODE: "the correct option is much longer than the others — learners can guess it by length",
+    CALLOUT_UNGROUNDED_CODE: "a quotation or callout states something not found in the source — keep it only if the "
+                             "SME confirms it, or turn it into a plain paragraph",
+    FAQ_RESTATES_HTML_CODE: "FAQ items only repeat what was just taught — replace them with a misconception, an edge "
+                            "case or a what-if",
+    FAQ_TITLE_MISMATCH_CODE: "the FAQ title does not match its questions",
 }
 
 
@@ -526,7 +638,11 @@ def settled_codes(seen: Sequence[str], remaining: Sequence[SlotFinding],
 
     open_codes = {item.code for item in remaining}
     return [code for code in dict.fromkeys(seen)
-            if code not in open_codes and code not in settled_elsewhere and code != FAQ_ITEMS_DROPPED_CODE]
+            if code not in open_codes and code not in settled_elsewhere and code not in _NOTE_LINE_CODES]
+
+
+# Codes of a deterministic fix that has its own note line ("Đã bỏ …", "Đã chuyển …").
+_NOTE_LINE_CODES: Final = frozenset({FAQ_ITEMS_DROPPED_CODE, CALLOUT_TO_PROSE_CODE})
 
 
 def build_unit_quality(
@@ -554,10 +670,13 @@ def blocking_count(findings: Sequence[IdmJudgeFindingV1]) -> int:
 
 
 __all__ = [
-    "ANSWER_LEAK_CODE", "CRITERIA", "FAQ_ITEMS_DROPPED_CODE", "FAQ_UNGROUNDED_CODE", "JUDGE_CRITERIA", "NOT_APPLICABLE",
-    "PRACTICE_CRITERIA", "TITLE_CRITERION", "WORKSHEET_INCOMPLETE_CODE",
+    "ANSWER_LEAK_CODE", "CALLOUT_KIND", "CALLOUT_TO_PROSE_CODE", "CALLOUT_UNGROUNDED_CODE", "CRITERIA",
+    "FAQ_ITEMS_DROPPED_CODE", "FAQ_RESTATES_HTML_CODE", "FAQ_TITLE_MISMATCH_CODE", "FAQ_UNGROUNDED_CODE",
+    "JUDGE_CRITERIA", "NOT_APPLICABLE", "PRACTICE_CRITERIA", "TITLE_CRITERION", "WORKSHEET_INCOMPLETE_CODE",
     "JudgeOutcome", "SlotFinding", "advisory_slot_findings", "blocking_count", "build_unit_author_note",
-    "build_unit_quality", "copied_options", "deterministic_slot_findings", "faq_item_verdicts", "final_unit_findings",
-    "has_practice_slot", "learner_view", "repair_targets", "run_judge", "settle_applicability", "settled_codes",
-    "unexplained_options", "ungrounded_faq_items", "worksheet_complete",
+    "build_unit_quality", "callouts_as_paragraphs", "copied_options", "deterministic_slot_findings",
+    "faq_item_verdicts", "faq_title_mismatch", "final_unit_findings", "has_practice_slot", "html_before",
+    "learner_view",
+    "repair_targets", "restated_faq_items", "run_judge", "settle_applicability", "settled_codes",
+    "unexplained_options", "ungrounded_callouts", "ungrounded_faq_items", "worksheet_complete",
 ]
