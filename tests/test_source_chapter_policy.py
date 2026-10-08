@@ -5,7 +5,8 @@ import json
 import unittest
 from unittest.mock import AsyncMock, patch
 
-from app.main import build_source_structure_context, generate_validated_lesson_author_blueprint, lesson_author_blueprint
+from app.main import generate_validated_lesson_author_blueprint, lesson_author_blueprint
+from app.services.retrieval.structure import build_source_structure_context
 from app.services.ingestion.extract import ExtractedSection
 from app.schemas.common import AiUsage
 from app.source_structure import analyze_source_structure, compact_structure
@@ -116,7 +117,7 @@ class SourceChapterPolicyTests(unittest.TestCase):
 
     def test_display_overflow_preserves_inventory_and_multi_document_guard(self):
         docs = [document("CONTENTS\n1. Foundation......3\n2. Practice......5", f"doc-{i}") for i in range(3)]
-        with patch("app.main.MAX_SOURCE_OUTLINE_CHARS", 1):
+        with patch("app.services.retrieval.structure.MAX_SOURCE_OUTLINE_CHARS", 1):
             context = build_source_structure_context(docs, locale="en")
         self.assertEqual(context["structure_node_count"], 6)
         self.assertEqual({n["document_id"] for n in context["source_structure_nodes"]}, {"doc-0", "doc-1", "doc-2"})
@@ -156,7 +157,7 @@ class SourceChapterPolicyTests(unittest.TestCase):
         doc = document("CONTENTS\n" + "\n".join(
             f"{i}. Topic {i}......{i * 3}\n{i}.1. Detail {i}......{i * 3 + 1}" for i in range(1, 7)))
         expected = resolve_source_chapter_policy([doc])
-        with patch("app.main.MAX_SOURCE_OUTLINE_CHARS", 1):
+        with patch("app.services.retrieval.structure.MAX_SOURCE_OUTLINE_CHARS", 1):
             context = build_source_structure_context([doc], locale="vi")
         self.assertTrue(context["source_outline_display_truncated"])
         self.assertEqual(context["source_chapter_policy"], expected)
@@ -231,7 +232,7 @@ class SourceChapterPolicyTests(unittest.TestCase):
     def test_display_truncation_keeps_global_evidence_and_context_budget_strict(self):
         # The complete server inventory, not the display outline, feeds Source Map.
         doc = document("1. Wash hands\n2. Dry hands")
-        with patch("app.main.MAX_SOURCE_OUTLINE_CHARS", 1):
+        with patch("app.services.retrieval.structure.MAX_SOURCE_OUTLINE_CHARS", 1):
             context = build_source_structure_context([doc], locale="en")
         manifest = {"truncated": False, "fact_scope_complete": True, "total_fact_count": 2,
                     "represented_fact_count": 2, "facts": [
@@ -287,7 +288,7 @@ class SourceChapterPolicyIntegrationTests(unittest.IsolatedAsyncioTestCase):
         }
         # Stop at the Architect boundary with a mocked error: no paid call,
         # and no claim that a generated Blueprint passed downstream validators.
-        with patch("app.main.retrieve_chunks", new=AsyncMock(return_value=([], AiUsage(), context))), \
+        with patch("app.services.retrieval.search.retrieve_chunks", new=AsyncMock(return_value=([], AiUsage(), context))), \
              patch("app.main.generate_validated_lesson_author_blueprint", new=AsyncMock(
                  side_effect=WorkflowFailure("PROVIDER_ERROR", "Mocked Architect boundary"))) as architect, \
              patch("app.services.provider.generate_content", new=AsyncMock()) as provider, \
@@ -312,7 +313,7 @@ class SourceChapterPolicyIntegrationTests(unittest.IsolatedAsyncioTestCase):
 
         context = build_source_structure_context([flat_heading_document()], locale="en")
         context["course_blueprint_source_scope_truncated"] = True
-        with patch("app.main.retrieve_chunks", new=AsyncMock(return_value=([], AiUsage(), context))), \
+        with patch("app.services.retrieval.search.retrieve_chunks", new=AsyncMock(return_value=([], AiUsage(), context))), \
              patch("app.main.generate_validated_lesson_author_blueprint", new=AsyncMock()) as architect:
             with self.assertRaises(HTTPException) as failure:
                 await lesson_author_blueprint(blueprint_request(), pool=None)
@@ -335,7 +336,7 @@ class SourceChapterPolicyIntegrationTests(unittest.IsolatedAsyncioTestCase):
         doc = document("1. Wash hands\n2. Dry hands")
         del doc["structure"]["chapter_authority"]
         context = build_source_structure_context([doc], locale="en")
-        with patch("app.main.retrieve_chunks", new=AsyncMock(return_value=([], AiUsage(), context))), \
+        with patch("app.services.retrieval.search.retrieve_chunks", new=AsyncMock(return_value=([], AiUsage(), context))), \
              patch("app.services.provider.generate_content", new=AsyncMock()) as provider, \
              patch("app.main.logger.info") as log:
             with self.assertRaises(HTTPException) as failure:

@@ -41,6 +41,8 @@ from app.services.ingestion import extract as extraction
 from app.services.ingestion import index as index_service
 from app.services.ingestion.chunking import SOURCE_EVIDENCE_PROPAGATION_VERSION
 from app.services.ingestion.extract import STRUCTURED_EXTRACTION_VERSION, ExtractedSection
+from app.services.retrieval import source_coverage
+from app.source_structure import PARSER_VERSION
 
 TENANT_ID = "11111111-1111-4111-8111-111111111111"
 KB_ID = "22222222-2222-4222-8222-222222222222"
@@ -564,7 +566,7 @@ class IndexDocumentCharacterizationTests(unittest.TestCase):
         self.assertEqual(node_rows[0][:9], (TENANT_ID, KB_ID, DOC_ID, INDEX_ID, "src-001", None, 1, "chapter",
                                             "Muc 1 Gioi thieu"))
         self.assertEqual(node_rows[1][4:7], ("src-002", "src-001", 2))
-        self.assertEqual(node_rows[0][14], main.PARSER_VERSION)
+        self.assertEqual(node_rows[0][14], PARSER_VERSION)
         self.assertEqual(json.loads(node_rows[0][15])["structure_source"], "heading_inferred")
         self.assertEqual(db.args_for("delete_structure_nodes"), [(TENANT_ID, KB_ID, DOC_ID, INDEX_ID)])
         self.assertEqual(db.events, [("begin", 1), ("commit", 1), ("begin", 1), ("begin", 2), ("commit", 2),
@@ -849,7 +851,7 @@ class SourceFactTableOfContentsTests(unittest.TestCase):
     )
 
     def test_toc_lines_are_dropped_and_the_rest_of_the_page_is_kept(self) -> None:
-        facts = main.extract_source_coverage_facts(self.PAGE)
+        facts = source_coverage.extract_source_coverage_facts(self.PAGE)
         self.assertIn("MODUN 1 là cánh cổng thay đổi hệ điều hành tư duy của người lãnh đạo.", facts)
         self.assertTrue(any(fact.startswith("Đối tượng học viên: CEO") for fact in facts))
         self.assertIn("Năng lực 1: Nhận diện bốn lực đẩy buộc doanh nghiệp phải thay đổi.", facts)
@@ -859,23 +861,24 @@ class SourceFactTableOfContentsTests(unittest.TestCase):
             self.assertNotIn(dropped, joined)
 
     def test_a_page_that_is_only_a_table_of_contents_still_yields_no_facts(self) -> None:
-        self.assertEqual(main.extract_source_coverage_facts(
+        self.assertEqual(source_coverage.extract_source_coverage_facts(
             "TABLE OF CONTENTS\n1. Introduction........ 3\n2. Safety rules........ 7\nChapter 3 Practice 12"), [])
-        self.assertEqual(main.extract_source_coverage_facts(
+        self.assertEqual(source_coverage.extract_source_coverage_facts(
             "Nội dung chương trình\nChương 1: Tổng quan\nChương 2: Thực hành\nPhần II"), [])
 
     def test_a_sentence_that_mentions_the_program_content_is_content(self) -> None:
         # Previously the whole chunk was dropped because it contained "nội dung chương trình".
         text = "Nội dung chương trình được thiết kế cho nhân viên mới.\n1. Rửa tay trước khi vào ca làm việc."
-        self.assertEqual(main.extract_source_coverage_facts(text),
+        self.assertEqual(source_coverage.extract_source_coverage_facts(text),
                          ["Nội dung chương trình được thiết kế cho nhân viên mới.",
                           "1. Rửa tay trước khi vào ca làm việc."])
-        self.assertEqual(main.extract_source_coverage_facts("1. Rửa tay.\n2. Đeo găng tay trước khi làm việc."),
+        self.assertEqual(source_coverage.extract_source_coverage_facts(
+                             "1. Rửa tay.\n2. Đeo găng tay trước khi làm việc."),
                          ["1. Rửa tay.", "2. Đeo găng tay trước khi làm việc."])
 
     def test_chunks_without_the_previous_trigger_phrases_are_unchanged(self) -> None:
         # "Mục lục" alone never dropped a chunk; it is only recognised as a TOC title inside a triggered chunk.
-        self.assertEqual(main.extract_source_coverage_facts("MỤC LỤC\nChương 1: Tổng quan an toàn lao động"),
+        self.assertEqual(source_coverage.extract_source_coverage_facts("MỤC LỤC\nChương 1: Tổng quan an toàn lao động"),
                          ["MỤC LỤC", "Chương 1: Tổng quan an toàn lao động"])
 
 

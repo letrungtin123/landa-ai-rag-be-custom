@@ -92,7 +92,7 @@ async def endpoint_fixture(count=371, *, intent="worked_example", thin=True, loc
 
     structure = {"source_structure_nodes": nodes, "source_coverage_manifest": manifest,
                  "known_source_refs": {n["source_ref"] for n in nodes}}
-    with patch("app.main.retrieve_chunks", new=AsyncMock(return_value=([], AiUsage(), structure))), \
+    with patch("app.services.retrieval.search.retrieve_chunks", new=AsyncMock(return_value=([], AiUsage(), structure))), \
          patch("app.services.provider.generate_content", new=AsyncMock(side_effect=provider)), \
          patch("app.main.logger.info", side_effect=capture):
         result = await lesson_author_blueprint(request, pool=object())

@@ -46,7 +46,7 @@ API_KEY = "route-snapshot-provider-key"
 
 # Current homes of the symbols this harness touches. Only this table may change during PRD-2.
 RUNTIME_STATE_MODULE = "app.services.runtime"  # runtime_state, db_pool, database, supabase_client, schema_guard
-RETRIEVE_CHUNKS_TARGET = "app.main.retrieve_chunks"
+RETRIEVE_CHUNKS_TARGET = "app.services.retrieval.search.retrieve_chunks"
 
 # Settings read by the routes under test, pinned so ambient AI_RAG_* variables cannot leak in.
 PINNED_SETTINGS: dict[str, Any] = {

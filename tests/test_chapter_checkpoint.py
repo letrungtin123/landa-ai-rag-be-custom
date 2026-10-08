@@ -198,8 +198,8 @@ class ChapterCheckpointTests(unittest.TestCase):
 
     def test_endpoint_preserves_evidence_gate_before_checkpoint_generation(self):
         request, _, _ = fixture()
-        with patch("app.main.retrieve_chunks", AsyncMock(return_value=([], AiUsage(), {}))), \
-             patch("app.main.target_source_scope_is_incomplete", return_value=False), \
+        with patch("app.services.retrieval.search.retrieve_chunks", AsyncMock(return_value=([], AiUsage(), {}))), \
+             patch("app.services.retrieval.search.target_source_scope_is_incomplete", return_value=False), \
              patch("app.main.build_lesson_author_checkpoint_result", AsyncMock()) as generation:
             with self.assertRaises(HTTPException) as raised:
                 asyncio.run(main.lesson_author_chapter_checkpoint(request, pool=None))

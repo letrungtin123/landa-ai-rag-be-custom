@@ -37,12 +37,12 @@ from app.main import (
     generate_staged_lesson_author_proposal,
     generate_validated_lesson_author_blueprint,
     prepare_source_locked_expected,
-    restrict_blueprint_draft_source_manifest,
     should_stage_lesson_author_proposal,
     staged_unit_source_material,
     validate_staged_unit_content,
     validate_staged_skeleton_source_facts,
 )
+from app.services.retrieval.source_coverage import restrict_blueprint_draft_source_manifest
 from app.services.lesson_author.errors import LessonAuthorProposalValidationError
 from app.services.lesson_author.proposal_validation import (
     normalize_lesson_author_proposal_tree,

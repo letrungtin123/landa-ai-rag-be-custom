@@ -2,18 +2,14 @@ from __future__ import annotations
 
 import unittest
 
-from app.main import (
-    build_retrieval_diagnostics,
+from app.main import extract_lesson_author_unit_batches, should_stage_lesson_author_proposal
+from app.services.retrieval.query import build_retrieval_query_texts, build_target_source_scopes, parse_source_range
+from app.services.retrieval.search import build_retrieval_diagnostics, target_source_scope_is_incomplete
+from app.services.retrieval.source_coverage import (
     build_source_coverage_manifest,
-    build_retrieval_query_texts,
-    build_target_source_scopes,
     extract_source_coverage_facts,
-    extract_lesson_author_unit_batches,
     format_source_coverage_manifest,
-    parse_source_range,
-    should_stage_lesson_author_proposal,
     source_coverage_metrics,
-    target_source_scope_is_incomplete,
     validate_lesson_author_source_coverage,
 )
 from app.services.lesson_author.errors import LessonAuthorProposalValidationError

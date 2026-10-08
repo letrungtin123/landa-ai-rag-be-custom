@@ -24,8 +24,10 @@ from app.schemas.kb import RagIndexRequest
 from app.services import deadlines as deadlines_service
 from app.services import provider as provider_service
 from app.services import runtime as runtime_service
+from app.services.chat import service as chat_service
 from app.services.ingestion import extract as extraction
 from app.services.ingestion import index as index_service
+from app.services.retrieval import search as retrieval_search
 
 APP_ROOT = Path(__file__).resolve().parents[1] / "app"
 TOKEN = "prd1-test-token-0123456789"
@@ -187,11 +189,11 @@ class DeadlineTests(unittest.TestCase):
             system_prompt="persona", user_message="hello", api_key="k",
         )
         with (
-            patch.object(main, "retrieve_chunks", slow_retrieve),
+            patch.object(retrieval_search, "retrieve_chunks", slow_retrieve),
             patch.object(main.settings, "chat_deadline_ms", 20),
             self.assertRaises(AppError) as raised,
         ):
-            asyncio.run(main.chat(request, pool=object()))  # type: ignore[arg-type]
+            asyncio.run(chat_service.chat(request, pool=object()))  # type: ignore[arg-type]
         self.assertEqual(raised.exception.code, "REQUEST_DEADLINE_EXCEEDED")
 
 
