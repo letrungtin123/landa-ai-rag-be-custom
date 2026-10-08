@@ -12,6 +12,8 @@ Package B (prompts, judge and grounding):
 * N9: three blockquotes (warning blocks) looked like quotations but stated what the source never says.
 * N10: an explanation contradicted its option; explanations must name every option.
 * N11: FAQ items repeated the table just taught; two FAQ titles did not match their questions.
+* N5: "5 chuyển dịch" was never presented as a whole; the unit titled "Tổng quan 5 chuyển dịch" taught
+  something else; the source's "HÀNH ĐỘNG CEO" items were not Must Do candidates.
 
 The provider is the local ``FakeGenerate``; nothing reaches the network.
 """
@@ -24,8 +26,11 @@ import unittest
 from typing import Any
 from unittest.mock import AsyncMock
 
-from app.idm.contracts import IdmJudgeFindingV1, IdmUnitBriefV1
+from app.idm.content_map import action_items, reduce_catalog, validate_w1_reduce
+from app.idm.contracts import IdmJudgeFindingV1, IdmLessonDesignV1, IdmUnitBriefV1
+from app.idm.framework import build_promise, framework_coverage, framework_listed, framework_promise
 from app.idm.mcq import labelled_letters, normalize_single_choice
+from app.idm.module_design import with_orientation_note
 from app.idm.qa import (
     JudgeOutcome,
     SlotFinding,
@@ -48,7 +53,11 @@ from app.services.orchestration_v2 import unit as unit_service
 from tests import idm_golden as g
 from tests import idm_golden_unit as gu
 from tests.idm_contract_bridge import writer_answer
-from tests.idm_test_support import golden_design, golden_shard, make_runtime
+from tests.idm_test_support import golden_design, golden_shard, make_runtime, module_response
+from tests.test_idm_content_map import CONTEXT as CONTENT_CONTEXT
+from tests.test_idm_content_map import golden_blocks as golden_content_blocks
+from tests.test_idm_content_map import reduce_response as golden_reduce_response
+from tests.test_idm_module_design import design_module
 from tests.test_idm_storyboard import (
     JUDGE,
     REPAIR,
@@ -493,3 +502,147 @@ class CalloutKeptForReviewTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("Giữ bản AI để tác giả rà soát: khối 1 (Lý thuyết) — IDM_W5_CALLOUT_UNGROUNDED.", note)
         self.assertIn("Cần xem (IDM_W5_CALLOUT_UNGROUNDED, khối 1 (Lý thuyết)): khung trích dẫn/lưu ý nêu điều không "
                       "tìm thấy trong tài liệu", note)
+
+
+# --- N5: an enumerated framework is presented as a whole; action items are Must Do candidates --------
+SHIFT_FACTS = ("SHIFT 1: TỪ TƯ DUY LÀM THUÊ SANG TƯ DUY LÀM CHỦ",
+               "Shift 2 – Think Customer: lấy khách hàng làm trung tâm",  # noqa: RUF001 - a PDF dash
+               "Shift 3: Think System", "Shift 4: Think Big", "Shift 5: Think Partner",
+               "Năm 2015, công ty mở rộng lên 40 nhân sự.")
+
+
+def html_component(*blocks: dict[str, Any]) -> dict[str, Any]:
+    return {"type": "html", "semantic_content": {"sections": [{"heading": "Bản đồ", "blocks": list(blocks)}]}}
+
+
+class FrameworkTests(unittest.TestCase):
+    def test_promise_needs_a_number_and_a_framework_noun(self) -> None:
+        self.assertEqual(framework_promise(["Tổng quan 5 chuyển dịch"]), (5, "chuyển dịch", "5 chuyển dịch"))
+        self.assertEqual(framework_promise(["Ba cấp độ nghiêm trọng"]), (3, "cấp độ", "Ba cấp độ"))
+        self.assertEqual(framework_promise(["6 trụ cột ERA", "x"]), (6, "trụ cột", "6 trụ cột"))
+        self.assertEqual(framework_promise(["8 Quick-Win đầu tiên"]), (8, "quick-win", "8 Quick-Win"))
+        # "sau" (after) is not "sáu" (six); a year is not a count; one item is not a framework.
+        for text in ("Việc cần làm sau bước kiểm tra", "Năm 2015 phòng mở rộng", "1 bước duy nhất", "Shift 1"):
+            self.assertIsNone(framework_promise([text]), text)
+
+    def test_numbered_items_and_listing(self) -> None:
+        promise = build_promise(["Tổng quan 5 chuyển dịch"], SHIFT_FACTS)
+        assert promise is not None
+        self.assertEqual([label for label, _name in promise.items], [f"shift {n}" for n in range(1, 6)])
+        listed = "Shift 1 làm chủ; Think Customer; Shift 3 hệ thống; Think Big; Think Partner."
+        self.assertTrue(framework_listed(promise, [], listed))
+        # The QC unit: five rows about the operating model's axes, not the five shifts.
+        axes = html_component({"kind": "table", "rows": [{"label": f"Trục {n}", "value": "v"} for n in range(5)]})
+        self.assertEqual(framework_coverage(promise, [axes], "Trục 0 Trục 1 Trục 2 Trục 3 Trục 4"), 0)
+        self.assertFalse(framework_listed(promise, [axes], "Trục 0 Trục 1 Trục 2 Trục 3 Trục 4"))
+        # Facts that number no items: one list or table with every item is enough.
+        bare = build_promise(["Tổng quan 5 chuyển dịch"], ["Doanh nghiệp cần chuyển dịch tư duy."])
+        assert bare is not None and bare.items == ()
+        self.assertTrue(framework_listed(bare, [axes], ""))
+        self.assertFalse(framework_listed(bare, [html_component({"kind": "bullets", "items": ["a", "b"]})], ""))
+
+    def test_only_teaching_html_is_checked(self) -> None:
+        body = severity_body()
+        brief = IdmUnitBriefV1.model_validate(body["unit_contract"]["idm_unit_brief"])
+        facts = [fact["fact_text"] for fact in body["unit_contract"]["source_facts"]]
+        promise = build_promise([body["unit_contract"]["unit_title"]], facts)
+        assert promise is not None
+        self.assertEqual(promise.count, 3)
+        prose = severity_writer(body)["components"]["c0"]
+        prose["semantic_content"]["sections"][0]["blocks"] = [
+            {"kind": "paragraph", "text": LEVELS_IN_WORDS, "items": [], "rows": []}]
+        value = {"components": [{**prose, "type": "html"}]}
+        self.assertEqual(deterministic_slot_findings(value, brief, [""], framework=promise),
+                         [SlotFinding("IDM_W5_FRAMEWORK_INCOMPLETE", 0)])
+        listed = {"components": [{**severity_writer(body)["components"]["c0"], "type": "html"}]}
+        self.assertEqual(deterministic_slot_findings(listed, brief, [""], framework=promise), [])
+        worksheet = IdmUnitBriefV1.model_validate(worksheet_body()["unit_contract"]["idm_unit_brief"])
+        # A worksheet html slot (role practice) neither promises nor lists the overview.
+        self.assertEqual(deterministic_slot_findings(value, worksheet, [""], framework=promise),
+                         [SlotFinding("IDM_W5_WORKSHEET_INCOMPLETE", 0)])
+
+
+LEVELS_IN_WORDS = ("Mỗi khiếu nại thuộc một trong ba cấp độ, và cấp độ quyết định ai xử lý: nhân viên, trưởng nhóm "
+                   "hoặc quản lý. Hãy đọc kỹ thiệt hại tài chính, số lần khách hàng phàn nàn và các yếu tố an toàn, "
+                   "pháp lý hay truyền thông trước khi chọn cấp độ cho khiếu nại.")
+
+
+def levels_in_words(body: dict[str, Any]) -> dict[str, Any]:
+    writer = severity_writer(body)
+    writer["components"]["c0"]["semantic_content"]["sections"][0]["blocks"] = [
+        {"kind": "paragraph", "text": LEVELS_IN_WORDS, "items": [], "rows": []}]
+    return writer
+
+
+class FrameworkUnitTests(StoryboardEndpointTestCase):
+    async def test_title_promising_three_levels_gets_the_overview(self) -> None:
+        body = severity_body()  # unit title "Ba cấp độ nghiêm trọng"
+        provider = FakeGenerate(**{WRITER: [levels_in_words(body)], REPAIR: [slot_repair(severity_writer(body), 0)],
+                                   JUDGE: [judge()]})
+        status, data, _ = await self.post(body, provider)
+        self.assertEqual(status, 200)
+        quality = self.assert_envelope(data, "provider_validated", "validated", "provider")
+        self.assertIn("c0 IDM_W5_FRAMEWORK_INCOMPLETE at c0: the unit or slot title names a framework of several "
+                      "items", provider.calls[1]["prompt"])
+        self.assertIn("(the title promises 3 items; the html shows 0)", provider.calls[1]["prompt"])
+        self.assertIn('"unit_title":"Ba cấp độ nghiêm trọng"', provider.calls[0]["prompt"])
+        self.assertIn("Đã tự sửa: IDM_W5_FRAMEWORK_INCOMPLETE.", quality.author_note)
+
+    async def test_overview_the_repair_cannot_add_is_kept_for_review(self) -> None:
+        body = severity_body()
+        writer = levels_in_words(body)
+        provider = FakeGenerate(**{WRITER: [writer], REPAIR: [slot_repair(writer, 0)], JUDGE: [judge()]})
+        status, data, _ = await self.post(body, provider)
+        self.assertEqual(status, 200)
+        quality = self.assert_envelope(data, "provider_validated", "review_required", "provider")
+        self.assertNotIn("source_locked_fallback", data["unit"]["components"][0])
+        self.assertIn("Cần xem (IDM_W5_FRAMEWORK_INCOMPLETE, khối 1 (Lý thuyết)): tiêu đề nêu một khung gồm nhiều "
+                      "thành phần", quality.author_note)
+
+
+class FrameworkOrientationDesignTests(unittest.IsolatedAsyncioTestCase):
+    """W4: the first lesson serving an objective that names a framework opens with an orientation unit."""
+
+    async def design(self, statement: str) -> dict[str, Any]:
+        def change(raw: dict[str, Any]) -> None:
+            raw["learning_objectives"][0]["statement"] = statement
+
+        result, _, _ = await design_module(0, [module_response("mod_01")], context_change=change)
+        return result
+
+    async def test_missing_orientation_unit_is_noted_on_the_first_lesson(self) -> None:
+        result = await self.design("Người học có thể áp dụng 5 chuyển dịch để phân loại khiếu nại theo nhóm")
+        dumped = json.dumps(result["shard"], ensure_ascii=False)
+        note = ('Lưu ý: mục tiêu nêu \\"5 chuyển dịch\\" nhưng chưa có unit định hướng liệt kê đủ các thành phần — '
+                "nên thêm một unit tổng quan ở đầu mục này.")
+        self.assertEqual(dumped.count(note), 1)
+        self.assertEqual(result["content_origin"], "provider_validated")
+
+    async def test_orientation_unit_titled_with_the_framework_needs_no_note(self) -> None:
+        # The golden lsn_002 unit "Ba cấp độ nghiêm trọng" is the overview of "3 cấp độ".
+        result = await self.design("Người học có thể phân loại khiếu nại theo nhóm và 3 cấp độ nghiêm trọng")
+        self.assertNotIn("unit định hướng", json.dumps(result["shard"], ensure_ascii=False))
+
+    def test_orientation_note_in_english(self) -> None:
+        lesson = IdmLessonDesignV1.model_validate(module_response("mod_01")["lessons"][0])
+        noted = with_orientation_note(lesson, ["5 shifts"], "en")
+        self.assertTrue(noted.notes.endswith('Note: the objective names "5 shifts" but no orientation unit lists all '
+                                             "of its items — add an overview unit at the start of this section."))
+
+
+class ActionItemTests(unittest.TestCase):
+    def test_action_items_reach_the_catalog_and_an_unlinked_one_warns(self) -> None:
+        blocks = golden_content_blocks()
+        mistakes = next(block for block in blocks if block.block_id == "cb_0011")
+        text = {mistakes.fact_keys[-1]: "HÀNH ĐỘNG CEO: Chọn 01 quy trình hay xảy ra sự cố nhất và áp dụng 5Why.",
+                blocks[0].fact_keys[0]: "Hành động của phòng năm 2009 là mở chi nhánh."}
+        self.assertEqual(action_items(mistakes, text), [text[mistakes.fact_keys[-1]]])
+        self.assertEqual(action_items(blocks[0], text), [])
+        catalog = {entry["block_id"]: entry for entry in reduce_catalog(blocks, text)}
+        self.assertEqual(catalog["cb_0011"]["action_items"], [text[mistakes.fact_keys[-1]]])
+        self.assertNotIn("action_items", catalog["cb_0009"])
+        self.assertNotIn("action_items", reduce_catalog(blocks)[10])
+        found = validate_w1_reduce(golden_reduce_response(), blocks, CONTENT_CONTEXT, {"cb_0011", "cb_0009"})
+        self.assertEqual([(issue.code, issue.severity) for issue in found],
+                         [("IDM_W1_ACTION_ITEM_UNLINKED", "warning")])
+        self.assertEqual(validate_w1_reduce(golden_reduce_response(), blocks, CONTENT_CONTEXT, {"cb_0009"}), [])

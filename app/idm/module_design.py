@@ -25,6 +25,7 @@ from app.idm.contracts import (
     StageOrigin,
     design_hash_of,
 )
+from app.idm.framework import framework_promise
 from app.idm.module_layout import (
     ModuleScope,
     build_module_scope,
@@ -329,6 +330,41 @@ def _warning_notes(warnings: Sequence[str], locale: str, *, worksheet: bool = Fa
     return "\n".join(lines)
 
 
+def framework_orientation_gaps(lessons: Sequence[IdmLessonDesignV1], scope: ModuleScope) -> dict[str, list[str]]:
+    """lesson_key -> frameworks ("5 chuyển dịch") the objective of the lesson's Must Do names while no unit title
+    of the module names them (QC course 364564, N5: the five shifts were never presented together).
+
+    Only the first lesson serving such an objective is listed: that lesson should open with the overview.
+    """
+
+    titled = set()
+    for lesson in lessons:
+        for unit in lesson.units:
+            promise = framework_promise([unit.title])
+            if promise is not None:
+                titled.add((promise[0], idm_fold(promise[1])))
+    gaps: dict[str, list[str]] = {}
+    seen: set[tuple[int, str]] = set()
+    for plan in scope.lesson_plans:
+        promise = framework_promise([scope.must_do_objective.get(plan.primary_must_do_id or "", "")])
+        if promise is None:
+            continue
+        key = (promise[0], idm_fold(promise[1]))
+        if key not in titled and key not in seen:
+            gaps.setdefault(plan.lesson_key, []).append(promise[2])
+        seen.add(key)
+    return gaps
+
+
+def with_orientation_note(lesson: IdmLessonDesignV1, phrases: Sequence[str], locale: str) -> IdmLessonDesignV1:
+    named = ", ".join(f'"{phrase}"' for phrase in phrases)
+    line = (f"Lưu ý: mục tiêu nêu {named} nhưng chưa có unit định hướng liệt kê đủ các thành phần — nên thêm một "
+            "unit tổng quan ở đầu mục này." if locale == "vi"
+            else f"Note: the objective names {named} but no orientation unit lists all of its items — add an "
+                 "overview unit at the start of this section.")
+    return lesson.model_copy(update={"notes": sanitize_author_text(lesson.notes + "\n" + line, 2000)})
+
+
 # --- orchestration -------------------------------------------------------------------------------
 def _course_blocks_payload(scope: ModuleScope) -> list[dict[str, Any]]:
     payload = []
@@ -475,6 +511,11 @@ async def run_idm_module_design(
             )
     if fallback_count:
         record_deterministic_fallback(runtime, stage="idm_module", code="IDM_MODULE_LESSON_FALLBACK")
+    gaps = framework_orientation_gaps(final, scope)
+    if gaps:
+        codes["IDM_W4_FRAMEWORK_ORIENTATION_MISSING"] += sum(len(phrases) for phrases in gaps.values())
+        final = [with_orientation_note(lesson, gaps[lesson.lesson_key], scope.locale)
+                 if lesson.lesson_key in gaps else lesson for lesson in final]
     stage_origin: StageOrigin = (
         "provider"
         if fallback_count == 0

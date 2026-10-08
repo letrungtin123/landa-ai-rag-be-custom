@@ -23,6 +23,7 @@ from pydantic import BaseModel, ValidationError
 
 from app.idm.contracts import IdmUnitBriefV1, brief_hash_of
 from app.idm.diagram import idm_diagram_relationships
+from app.idm.framework import build_promise, framework_coverage
 from app.idm.html_rules import (
     DENSITY_CODE,
     HtmlRuleViolation,
@@ -66,6 +67,7 @@ from app.idm.qa import (
     FAQ_RESTATES_HTML_CODE,
     FAQ_TITLE_MISMATCH_CODE,
     FAQ_UNGROUNDED_CODE,
+    FRAMEWORK_INCOMPLETE_CODE,
     WORKSHEET_INCOMPLETE_CODE,
     JudgeMode,
     JudgeOutcome,
@@ -116,10 +118,12 @@ _FIELD_OF_PATH_RE: Final = re.compile(r"^components\[\d+\]\.?")
 # An option copying the html before the question (QC course 364564, N3) is a review note once the repair
 # could not fix it: the source-locked question would drop the provider's scenario practice. So are an
 # ungrounded callout that cannot become a paragraph (N9), FAQ items that restate the html while too few
-# others remain, and an FAQ title that does not match its questions (N11): the source-locked rebuild
-# would replace the whole teaching slot for a problem the author fixes in a minute.
+# others remain, an FAQ title that does not match its questions (N11) and a title that promises a framework
+# the html does not list (N5): the source-locked rebuild would replace the whole teaching slot for a problem
+# the author fixes in a minute.
 _REVIEW_FIRST_CODES: Final = frozenset({WORKSHEET_INCOMPLETE_CODE, ANSWER_LEAK_CODE, CALLOUT_UNGROUNDED_CODE,
-                                        FAQ_RESTATES_HTML_CODE, FAQ_TITLE_MISMATCH_CODE})
+                                        FAQ_RESTATES_HTML_CODE, FAQ_TITLE_MISMATCH_CODE,
+                                        FRAMEWORK_INCOMPLETE_CODE})
 # FAQ findings settled by dropping the items concerned while the slot keeps two items.
 _FAQ_PRUNE_CODES: Final = frozenset({FAQ_UNGROUNDED_CODE, FAQ_RESTATES_HTML_CODE})
 _MAX_HINT_FACT_KEYS: Final = 24
@@ -320,6 +324,11 @@ class IdmUnitWriter:
             [*(fact.fact_text for fact in contract.source_facts),
              *(item.fact_text for item in brief.lesson_context_facts)],
             number_texts=[brief.lesson_objective, brief.unit_purpose, *brief.lesson_practice_sentences])
+        # A unit or html slot title that names "N <items>" promises an overview of all N items (QC 364564, N5).
+        self.framework = build_promise(
+            [contract.unit_title, *(slot.title for slot in brief.components
+                                    if slot.type == "html" and slot.role != "practice")],
+            [fact.fact_text for fact in contract.source_facts])
         self.codes: list[str] = []
         # Provider, time-budget and repair failures behind a fallback (codes only, never provider text).
         self.failure_codes: list[str] = []
@@ -358,7 +367,8 @@ class IdmUnitWriter:
             lesson_title=brief.lesson_title, lesson_objective=brief.lesson_objective,
             practice_sentences=brief.lesson_practice_sentences, previous_title=brief.previous_lesson_title,
             next_title=brief.next_lesson_title,
-            unit_brief={"segment": brief.unit_segment, "purpose": brief.unit_purpose, "slots": slots,
+            unit_brief={"unit_title": self.contract.unit_title, "segment": brief.unit_segment,
+                        "purpose": brief.unit_purpose, "slots": slots,
                         "job_aid_signpost": brief.job_aid_signpost},
             facts=[(fact.fact_key, fact.fact_text, None) for fact in self.contract.source_facts],
             context_facts=[(item.fact_key, item.fact_text, None) for item in brief.lesson_context_facts],
@@ -401,6 +411,8 @@ class IdmUnitWriter:
                         lines.append(self.faq_rule_line(slot, index, component, code, unit))
                     elif code == CALLOUT_UNGROUNDED_CODE and isinstance(component, dict):
                         lines.append(self.callout_rule_line(slot, index, component))
+                    elif code == FRAMEWORK_INCOMPLETE_CODE:
+                        lines.append(self.framework_rule_line(slot, unit))
                     else:
                         field = _FIELD_OF_PATH_RE.sub("", locations.get((code, index), ""))
                         lines.append(rule_line(slot, code, f"{slot}.{field}" if field else slot))
@@ -422,6 +434,18 @@ class IdmUnitWriter:
         blocks = ", ".join(f"{slot}.semantic_content.sections[{section}].blocks[{block}]"
                            for section, block in ungrounded_callouts(component, self.evidence))
         return rule_line(slot, CALLOUT_UNGROUNDED_CODE, blocks or slot) + self.fact_hint(index)
+
+    def framework_rule_line(self, slot: str, unit: dict[str, Any]) -> str:
+        """The promised and the listed item counts (server-measured numbers, never the item names)."""
+
+        line = rule_line(slot, FRAMEWORK_INCOMPLETE_CODE, slot)
+        if self.framework is None:
+            return line
+        components = [item for item in unit.get("components", []) if isinstance(item, dict)]
+        teaching = [component for index, component in enumerate(components) if component.get("type") == "html"
+                    and not (index < len(self.brief.components) and self.brief.components[index].role == "practice")]
+        shown = framework_coverage(self.framework, teaching, html_before(unit, len(components)))
+        return line + f" (the title promises {self.framework.count} items; the html shows {shown})"
 
     def fact_hint(self, index: int) -> str:
         brief_slot = self.brief.components[index] if index < len(self.brief.components) else None
@@ -521,7 +545,8 @@ class IdmUnitWriter:
             finding = NodeAcceptanceUnitFinding.of(self.last_acceptance[0]) if self.last_acceptance else None
         exempt = {*draft.fallback_slots, *draft.review_slots}
         idm = [(item.code, item.component_index)
-               for item in deterministic_slot_findings(draft.unit, self.brief, self.owned_text, self.evidence)
+               for item in deterministic_slot_findings(draft.unit, self.brief, self.owned_text, self.evidence,
+                                                       self.framework)
                if item.component_index not in exempt]
         return finding, idm
 
@@ -845,7 +870,7 @@ async def run_idm_unit(
                   or (ai_drafted and _q5(judge) != "pass"))
     # N8: "still warns" is recomputed on the returned unit; codes settled on the way are listed apart.
     remaining = [] if whole_fallback else final_unit_findings(draft.unit, brief, writer.owned_text, writer.evidence,
-                                                              draft.fallback_slots)
+                                                              draft.fallback_slots, framework=writer.framework)
     fixed = [] if whole_fallback else settled_codes(
         writer.codes, remaining, {code for index in draft.fallback_slots for code in draft.reasons.get(index, ())})
     note = build_unit_author_note(

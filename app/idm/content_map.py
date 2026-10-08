@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import asyncio
 import re
+import unicodedata
 from collections import Counter
-from collections.abc import Sequence
+from collections.abc import Collection, Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any, Final, Literal
 
@@ -370,19 +371,47 @@ def rekey_blocks(results: Sequence[SectionMapResult], index: FactIndex) -> tuple
 
 
 # --- W1-reduce + W0 --------------------------------------------------------------------------
-def reduce_catalog(blocks: Sequence[IdmContentBlockV1]) -> list[dict[str, Any]]:
-    return [{
-        "block_id": block.block_id, "section_id": block.section_id, "name": block.name, "intent": block.intent,
-        "support_role": block.support_role, "content_kind": block.content_kind, "fact_count": len(block.fact_keys),
-        "summary": block.summary,
-        "issues": [{"type": issue.type, "note": issue.note} for issue in block.issues],
-        "gaps": [{"type": gap.type, "note": gap.note} for gap in block.gaps],
-    } for block in blocks]
+# QC course 364564 (N5): the source closes each shift with "HÀNH ĐỘNG CEO: …", yet W1-reduce saw only block
+# names and summaries and wrote 3 Must Dos for 5 shifts. An explicit action item is a Must Do candidate.
+_ACTION_ITEM_RE: Final = re.compile(
+    r"^\W*(?:hành động(?: của)? ceo|hành động|việc cần làm|việc cần thực hiện|ceo actions?|action items?|actions?"
+    r"|next steps?|to-do)\s*[:\-–—]", re.IGNORECASE)  # noqa: RUF001 - dashes
+_ACTION_ITEM_CHARS: Final = 200
+_MAX_ACTION_ITEMS: Final = 3
+
+
+def action_items(block: IdmContentBlockV1, text: Mapping[str, str]) -> list[str]:
+    """The explicit action items of a block ("HÀNH ĐỘNG CEO: …", "Action: …"), one line each."""
+
+    return [single_line(text[key], _ACTION_ITEM_CHARS) for key in block.fact_keys
+            if key in text and _ACTION_ITEM_RE.match(unicodedata.normalize("NFC", text[key]))][:_MAX_ACTION_ITEMS]
+
+
+def reduce_catalog(blocks: Sequence[IdmContentBlockV1], text: Mapping[str, str] | None = None,
+                   ) -> list[dict[str, Any]]:
+    catalog = []
+    for block in blocks:
+        entry: dict[str, Any] = {
+            "block_id": block.block_id, "section_id": block.section_id, "name": block.name, "intent": block.intent,
+            "support_role": block.support_role, "content_kind": block.content_kind,
+            "fact_count": len(block.fact_keys), "summary": block.summary,
+            "issues": [{"type": issue.type, "note": issue.note} for issue in block.issues],
+            "gaps": [{"type": gap.type, "note": gap.note} for gap in block.gaps],
+        }
+        actions = action_items(block, text) if text is not None else []
+        if actions:
+            entry["action_items"] = actions
+        catalog.append(entry)
+    return catalog
 
 
 def validate_w1_reduce(
     response: IdmW1ReduceResponseV1, blocks: Sequence[IdmContentBlockV1], context: IdmProjectContextV1,
+    action_blocks: Collection[str] = (),
 ) -> list[IdmIssue]:
+    """Errors trigger a repair; ``IDM_W1_ACTION_ITEM_UNLINKED`` (a block with an explicit action item that no
+    objective links directly, QC 364564 N5) is a warning counted in the stage log."""
+
     issues: list[IdmIssue] = []
     block_ids = {block.block_id for block in blocks}
     lo_ids = [objective.lo_id for objective in response.learning_objectives]
@@ -427,6 +456,9 @@ def validate_w1_reduce(
     for position, link in enumerate(response.lo_links):
         if link.block_id not in block_ids or link.lo_id not in known_los:
             issues.append(IdmIssue("IDM_W1_LINK_INVALID", f"lo_links[{position}]"))
+    direct = {link.block_id for link in response.lo_links if link.relation == "direct"}
+    issues.extend(IdmIssue("IDM_W1_ACTION_ITEM_UNLINKED", "lo_links", "warning")
+                  for block_id in action_blocks if block_id in block_ids and block_id not in direct)
     return _dedupe(issues)
 
 
@@ -626,7 +658,8 @@ async def run_w1_reduce(
     index: FactIndex | None = None,
 ) -> tuple[IdmW1ReduceResponseV1, StageOriginLiteral, dict[str, int]]:
     prompt = w1_reduce_prompt(runtime.locale, project_context=context.model_dump(mode="json"),
-                              catalog=reduce_catalog(blocks))
+                              catalog=reduce_catalog(blocks, index.text if index is not None else None))
+    action_blocks = {block.block_id for block in blocks if index is not None and action_items(block, index.text)}
     codes: Counter[str] = Counter()
     repair = ""
     thinking: ThinkingLevel = THINKING_W1_REDUCE
@@ -649,7 +682,7 @@ async def run_w1_reduce(
                 raise
             codes[error.code] += 1
             break
-        found = validate_w1_reduce(response, blocks, context)
+        found = validate_w1_reduce(response, blocks, context, action_blocks)
         codes.update(issue.code for issue in found)
         if not errors(found):
             return apply_client_context(response, context), "provider", dict(codes)

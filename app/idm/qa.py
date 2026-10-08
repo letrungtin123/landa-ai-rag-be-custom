@@ -18,6 +18,7 @@ from app.idm.contracts import (
     JudgeCriterion,
     JudgeSeverity,
 )
+from app.idm.framework import FrameworkPromise, framework_listed
 from app.idm.mcq import ANSWER_LENGTH_CUE_CODE, OPTION_LETTERS, answer_length_cue, labelled_letters
 from app.idm.policy import (
     FAQ_TITLE_GENERIC_WORDS,
@@ -113,6 +114,8 @@ CALLOUT_UNGROUNDED_CODE: Final = "IDM_W5_CALLOUT_UNGROUNDED"
 CALLOUT_TO_PROSE_CODE: Final = "IDM_W5_CALLOUT_TO_PROSE"
 FAQ_RESTATES_HTML_CODE: Final = "IDM_W5_FAQ_RESTATES_HTML"
 FAQ_TITLE_MISMATCH_CODE: Final = "IDM_W5_FAQ_TITLE_MISMATCH"
+# N5: the unit or html slot title names "N <items>" ("Tổng quan 5 chuyển dịch") but the html does not list them.
+FRAMEWORK_INCOMPLETE_CODE: Final = "IDM_W5_FRAMEWORK_INCOMPLETE"
 # A warning block renders as <blockquote> (app.idm.node_acceptance); "callout"/"note" are its aliases.
 CALLOUT_KIND: Final = "warning"
 
@@ -273,12 +276,13 @@ def worksheet_complete(component: dict[str, Any], evidence: EvidenceIndex | None
 
 def deterministic_slot_findings(
     unit: dict[str, Any], brief: IdmUnitBriefV1, owned_text_by_slot: Sequence[str],
-    evidence: EvidenceIndex | None = None,
+    evidence: EvidenceIndex | None = None, framework: FrameworkPromise | None = None,
 ) -> list[SlotFinding]:
     """IDM checks on top of the shared staged validator (spec §7.7.2(b)).
 
     With ``evidence`` (the facts the writer was given), FAQ answers and callouts must restate them and a
-    worksheet's self-check list must come from them.
+    worksheet's self-check list must come from them. With ``framework`` (the "N <items>" a title of the
+    unit promises), the unit's teaching html must list every item (reported on its first html slot).
     """
 
     components = [item for item in unit.get("components", []) if isinstance(item, dict)]
@@ -321,6 +325,12 @@ def deterministic_slot_findings(
                 if ((len(answer) >= ANSWER_LEAK_MIN_CHARS and answer in html and ("dap an" in html or "answer" in html))
                         or copied_options(component, preceding_html)):
                     findings.append(SlotFinding(ANSWER_LEAK_CODE, index))
+    # The overview is taught, not practised: a worksheet html slot neither promises nor lists it.
+    html_slots = [index for index, component in enumerate(components) if component.get("type") == "html"
+                  and not (index < len(brief.components) and brief.components[index].role == "practice")]
+    if framework is not None and html_slots and not framework_listed(
+            framework, [components[index] for index in html_slots], preceding_html):
+        findings.append(SlotFinding(FRAMEWORK_INCOMPLETE_CODE, html_slots[0]))
     return findings
 
 
@@ -352,12 +362,13 @@ def advisory_slot_findings(unit: dict[str, Any], exempt: Collection[int] = ()) -
 
 
 def final_unit_findings(unit: dict[str, Any], brief: IdmUnitBriefV1, owned_text_by_slot: Sequence[str],
-                        evidence: EvidenceIndex | None, fallback_slots: Collection[int]) -> list[SlotFinding]:
+                        evidence: EvidenceIndex | None, fallback_slots: Collection[int], *,
+                        framework: FrameworkPromise | None = None) -> list[SlotFinding]:
     """What the returned unit still has (QC course 364564, N8): the IDM checks of its provider slots plus the
     review-only notes. A code seen before a repair is not in it unless the final unit still fails it."""
 
     exempt = set(fallback_slots)
-    found = [item for item in deterministic_slot_findings(unit, brief, owned_text_by_slot, evidence)
+    found = [item for item in deterministic_slot_findings(unit, brief, owned_text_by_slot, evidence, framework)
              if item.component_index not in exempt]
     return [*found, *advisory_slot_findings(unit, exempt)]
 
@@ -588,6 +599,8 @@ _REVIEW_HINT_VI: Final = {
     FAQ_RESTATES_HTML_CODE: "câu hỏi đáp chỉ nhắc lại nội dung vừa học — nên thay bằng ngộ nhận, trường hợp đặc biệt "
                             "hoặc tình huống nếu… thì",
     FAQ_TITLE_MISMATCH_CODE: "tiêu đề phần hỏi đáp không khớp các câu hỏi bên trong",
+    FRAMEWORK_INCOMPLETE_CODE: "tiêu đề nêu một khung gồm nhiều thành phần nhưng nội dung chưa liệt kê đủ các thành "
+                               "phần đó — bổ sung bản đồ tổng quan hoặc đổi tiêu đề theo nội dung",
 }
 _REVIEW_HINT_EN: Final = {
     ANSWER_LEAK_CODE: "an option nearly copies the example or text shown right before the question — learners can "
@@ -598,6 +611,8 @@ _REVIEW_HINT_EN: Final = {
     FAQ_RESTATES_HTML_CODE: "FAQ items only repeat what was just taught — replace them with a misconception, an edge "
                             "case or a what-if",
     FAQ_TITLE_MISMATCH_CODE: "the FAQ title does not match its questions",
+    FRAMEWORK_INCOMPLETE_CODE: "the title names a framework of several items but the content does not list all of "
+                               "them — add the overview or retitle it to what it teaches",
 }
 
 
@@ -672,11 +687,11 @@ def blocking_count(findings: Sequence[IdmJudgeFindingV1]) -> int:
 __all__ = [
     "ANSWER_LEAK_CODE", "CALLOUT_KIND", "CALLOUT_TO_PROSE_CODE", "CALLOUT_UNGROUNDED_CODE", "CRITERIA",
     "FAQ_ITEMS_DROPPED_CODE", "FAQ_RESTATES_HTML_CODE", "FAQ_TITLE_MISMATCH_CODE", "FAQ_UNGROUNDED_CODE",
-    "JUDGE_CRITERIA", "NOT_APPLICABLE", "PRACTICE_CRITERIA", "TITLE_CRITERION", "WORKSHEET_INCOMPLETE_CODE",
-    "JudgeOutcome", "SlotFinding", "advisory_slot_findings", "blocking_count", "build_unit_author_note",
-    "build_unit_quality", "callouts_as_paragraphs", "copied_options", "deterministic_slot_findings",
-    "faq_item_verdicts", "faq_title_mismatch", "final_unit_findings", "has_practice_slot", "html_before",
-    "learner_view",
-    "repair_targets", "restated_faq_items", "run_judge", "settle_applicability", "settled_codes",
-    "unexplained_options", "ungrounded_callouts", "ungrounded_faq_items", "worksheet_complete",
+    "FRAMEWORK_INCOMPLETE_CODE", "JUDGE_CRITERIA", "NOT_APPLICABLE", "PRACTICE_CRITERIA", "TITLE_CRITERION",
+    "WORKSHEET_INCOMPLETE_CODE", "JudgeOutcome", "SlotFinding", "advisory_slot_findings", "blocking_count",
+    "build_unit_author_note", "build_unit_quality", "callouts_as_paragraphs", "copied_options",
+    "deterministic_slot_findings", "faq_item_verdicts", "faq_title_mismatch", "final_unit_findings",
+    "has_practice_slot", "html_before", "learner_view", "repair_targets", "restated_faq_items", "run_judge",
+    "settle_applicability", "settled_codes", "unexplained_options", "ungrounded_callouts", "ungrounded_faq_items",
+    "worksheet_complete",
 ]

@@ -202,7 +202,11 @@ objectives and the Must Do list.
    with the source content. Use ids lo_1, lo_2, ... in order.
 4. Must Do (1-5 per objective): concrete actions or decisions performed at work ("Phân loại khiếu nại theo mức
    độ", "Quyết định tự xử lý hay escalate"). A Must Do is not a topic. kind: do | decide. Ids md_1, md_2, ...
-   Every objective needs at least one Must Do.
+   Every objective needs at least one Must Do. Every explicit action item of the source ("HÀNH ĐỘNG CEO",
+   "Hành động", "Việc cần làm", "Action", "Next step"; blocks listed with action_items in BLOCK_CATALOG) is a
+   Must Do candidate: make it a Must Do of the objective it serves, or name it inside a Must Do statement;
+   link its block to that objective with relation direct. When an objective names an enumerated framework
+   ("5 chuyển dịch"), the action items of all its parts are candidates, not only some of them.
 5. lo_links: list a link ONLY when a block serves an objective, with relation direct (needed to perform it) or
    supporting (helps). Do not list context, unrelated or unknown links: a block without a link is treated as
    unrelated and becomes a Nice to Know/Remove candidate later - do not delete it.
@@ -272,7 +276,9 @@ TASK: Week 4 (course level) - group Must Dos into Modules and Lessons and order 
   block and every reference block belongs to exactly one lesson; the content_chars of one lesson's blocks add up
   to at most 90000. Every Must Do that is not blocked is the primary
   or secondary Must Do of exactly one learning lesson.
-- Order by prerequisite first, then by the real work process. Shared foundations first.
+- Order by prerequisite first, then by the real work process. Shared foundations first. When an objective names
+  an enumerated framework ("5 chuyển dịch", "6 trụ cột"), the block that presents the whole framework belongs to
+  the first lesson that serves that objective, so that lesson can open with an overview of all its items.
 - Linear path only. Do not invent routing, pre-tests or role branches.
 - Estimate each lesson (screens, minutes) from Must Do complexity, risk of error and practice intensity - not from
   source length. If DURATION_TARGET_MINUTES is given, fit it: cut Nice to Know first, move lookup content to the
@@ -361,6 +367,11 @@ For each lesson:
    problem, la_sortable, la_crossword and the worksheet html may have role "practice"; a worksheet html always has
    the problem that checks it in the same unit.
    component_index is the 1-based position inside the unit; unit_index is 1-based inside the lesson.
+   Unit titles name what the unit actually teaches (never "Tổng quan 5 chuyển dịch" over a unit about something
+   else). When an objective this module serves names an enumerated framework ("5 chuyển dịch", "6 trụ cột",
+   "3 giai đoạn"), the first lesson that serves it opens with ONE orientation unit (segment context_explain, an
+   html component) whose title names the framework with its number ("Bản đồ 5 chuyển dịch") and whose html lists
+   every item of it; later units and lessons teach the items one by one.
 7. For every component write the storyboard development notes in {locale_name(locale)} (author_review):
    purpose (which Must Do / practice / support it serves - required), example_scenario (the example or situation
    used; start with "[AI soạn — cần SME xác nhận]" / "[AI-drafted — SME to confirm]" when you drafted it),
@@ -439,7 +450,9 @@ Writing rules (learner-facing, {locale_name(locale)}):
   or rule as a warning; such text is a plain paragraph, or is left out.
 - Never invent rules, thresholds, criteria, labels or consequences the facts do not state, not even as the
   labels of a template or the edges of a diagram.
-- Every slot title and section heading names what that slot or section actually teaches.
+- Every slot title and section heading names what that slot or section actually teaches. When UNIT_BRIEF or a
+  slot title names an enumerated framework ("5 chuyển dịch", "6 trụ cột", "3 giai đoạn"), the html lists every
+  item of it, by the name the facts use, in one bullets, steps or table block.
 - Use drafted scenarios/examples only where the brief marks them ai_drafted; they must not add rules.
 - LESSON_CONTEXT_FACTS are read-only background from earlier units; use them for consistency and for the
   correctness criteria, do not re-teach them.
@@ -633,6 +646,9 @@ UNIT_RULE_TEXT: Final[dict[str, str]] = {
     "IDM_W5_CALLOUT_UNGROUNDED": "a warning block is shown as a quotation/callout: quote or closely restate what "
                                  "SOURCE_FACTS state, or make it a paragraph block; never a rule, threshold or "
                                  "consequence the facts do not state",
+    "IDM_W5_FRAMEWORK_INCOMPLETE": "the unit or slot title names a framework of several items: list every item by "
+                                   "the name the facts use in one bullets, steps or table block of this html slot, "
+                                   "or make the slot title and headings name what the slot teaches",
     "IDM_W5_WORKSHEET_INCOMPLETE": "a worksheet slot needs a task block, the template to complete (table rows or "
                                    "steps) and a final self-check bullets block whose items are the practice "
                                    "criteria taken from the facts",
