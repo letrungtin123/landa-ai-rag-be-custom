@@ -2445,7 +2445,7 @@
      }
     ],
     "notes": {
-     "course": "[Thiết kế theo quy trình ID — idm-1]\n• Mục tiêu học tập và đối tượng học: do AI đề xuất từ tài liệu — cần xác nhận.\n• Thời lượng ước tính: 35 phút (5 mục, 3 chương).\n• Nội dung chuyển sang Tài liệu tra cứu/Job Aid: 2 khối. Nội dung loại khỏi khoá học: 2 khối (Nice to Know/Remove).\n• Cần chuyên gia bổ sung (Hold) — chờ SME xác nhận (2), chưa đưa vào bài học:\n  1. Phải phản hồi khách hàng trong bao lâu? — Thời hạn 24 giờ mâu thuẫn với 48 giờ cho khiếu nại cấp 2. Câu hỏi cho SME: Khiếu nại cấp 2 phải phản hồi trong 24 giờ hay 48 giờ? Must Do chưa dạy được: Phản hồi khách hàng đúng thời hạn.\n  2. Ghi nhận khiếu nại trên CRM như thế nào? — Hướng dẫn CRM dựa trên ảnh chụp phiên bản 2021, có thể đã lỗi thời. Câu hỏi cho SME: Giao diện CRM hiện tại còn đúng các bước Tạo mới, chọn mã và đính kèm phiếu không?\n• Nội dung tham khảo đã lược (Nice to know) — 1 khối, tác giả có thể bổ sung thủ công:\n  - Phiên bản và ngày áp dụng của quy trình: Nội dung về: Phiên bản và ngày áp dụng của quy trình\n• Cấu trúc được thiết kế theo Must Do, không theo mục lục tài liệu.",
+     "course": "[Thiết kế theo quy trình ID — idm-1]\n• Mục tiêu học tập và đối tượng học: do AI đề xuất từ tài liệu — cần xác nhận.\n• Thời lượng ước tính: 35 phút (5 mục, 3 chương).\n• Nội dung chuyển sang Tài liệu tra cứu/Job Aid: 2 khối. Nội dung loại khỏi khoá học: 2 khối (Nice to Know/Remove).\n• Cần chuyên gia bổ sung (Hold) — chờ SME xác nhận (2), chưa đưa vào bài học:\n  1. Phải phản hồi khách hàng trong bao lâu? — Thời hạn 24 giờ mâu thuẫn với 48 giờ cho khiếu nại cấp 2. Câu hỏi cho SME: Khiếu nại cấp 2 phải phản hồi trong 24 giờ hay 48 giờ? Must Do chưa dạy được: Phản hồi khách hàng đúng thời hạn.\n  2. Ghi nhận khiếu nại trên CRM như thế nào? — Hướng dẫn CRM dựa trên ảnh chụp phiên bản 2021, có thể đã lỗi thời. Câu hỏi cho SME: Giao diện CRM hiện tại còn đúng các bước Tạo mới, chọn mã và đính kèm phiếu không?\n• Nội dung tham khảo đã lược (Nice to know) — 1 khối, tác giả có thể bổ sung thủ công:\n  - Phiên bản và ngày áp dụng của quy trình: Nội dung về: Phiên bản và ngày áp dụng của quy trình\n• Nội dung đã loại khỏi khoá (Remove) — 1 khối, kèm lý do:\n  - Phòng Chăm sóc Khách hàng đã phát triển ra sao?: Quyết định theo luồng Week 2.\n• Cấu trúc được thiết kế theo Must Do, không theo mục lục tài liệu.",
      "modules": {
       "mod_01": "Mục tiêu hiệu suất: Phân loại đúng nhóm và mức độ của mọi khiếu nại tiếp nhận\n• Mục tiêu học tập phục vụ:\n  - Người học có thể phân loại khiếu nại theo nhóm và mức độ nghiêm trọng dựa trên bảng cấp độ\n• 2 mục, ước tính 12 phút.",
       "mod_02": "Mục tiêu hiệu suất: Quyết định đúng khi nào tự xử lý và khi nào phải escalate\n• Mục tiêu học tập phục vụ:\n  - Người học có thể quyết định tự xử lý hay escalate khiếu nại theo tiêu chí bắt buộc\n• 1 mục, ước tính 10 phút.",
@@ -2465,7 +2465,7 @@
      "w2": "provider",
      "w4": "provider"
     },
-    "design_hash": "e78728133738e6dd98efe4361ed7fc0b1717f9be5347aed40b111c5713270672"
+    "design_hash": "b94289063c18ea03931ec80cb021ffe41ee5b9fea0d5fc0d59299c85ee7c225b"
    },
    "usage": {
     "inputTokens": 1924,
@@ -2484,8 +2484,8 @@
     "op": "generate",
     "model": "test-model",
     "schema": "IdmW1SectionResponseV1",
-    "prompt_sha256": "179fd884732247f1a08065be9ce8628b72564b2bef6ad7ca5dc3bb7cfed2beb3",
-    "prompt_chars": 9817,
+    "prompt_sha256": "b745a612430d20d88d929d8aaa397e75c4456179aff1195dbc2fa299f8fcad2f",
+    "prompt_chars": 10139,
     "config": {
      "max_output_tokens": 12000,
      "response_mime_type": "application/json",
@@ -2500,8 +2500,8 @@
     "op": "generate",
     "model": "test-model",
     "schema": "IdmW1ReduceResponseV1",
-    "prompt_sha256": "24c82e9bd3be88c9d8bab448f55fd8a90608bc154c46e8520719092bd5578297",
-    "prompt_chars": 8038,
+    "prompt_sha256": "04c339f3285390b05249052cb713ddb3961518c66405f78080eebbc6d9b36397",
+    "prompt_chars": 8515,
     "config": {
      "max_output_tokens": 24000,
      "response_mime_type": "application/json",
@@ -2516,8 +2516,8 @@
     "op": "generate",
     "model": "test-model",
     "schema": "IdmW2BlueprintResponseV1",
-    "prompt_sha256": "565eebb79b8e3f85e925b08b9782e3a1251aa2ab1f17ed9f9f443a28d0220e38",
-    "prompt_chars": 10542,
+    "prompt_sha256": "832811ce722fa12924c4e2b1f866f8240d29d8fb4c13c426fcba8ad915dcba50",
+    "prompt_chars": 10869,
     "config": {
      "max_output_tokens": 32000,
      "response_mime_type": "application/json",
@@ -2532,8 +2532,8 @@
     "op": "generate",
     "model": "test-model",
     "schema": "IdmW4CourseResponseV1",
-    "prompt_sha256": "6b31e81c2edeef229116feec6ef44898129d5713c8084df23abd429fc4c6fbce",
-    "prompt_chars": 8020,
+    "prompt_sha256": "b9a2d5f3c84e911640b5c6f9c8123e7768992df4261d62948e750368e88efd86",
+    "prompt_chars": 8263,
     "config": {
      "max_output_tokens": 16000,
      "response_mime_type": "application/json",
