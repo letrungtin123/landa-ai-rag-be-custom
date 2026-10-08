@@ -13,6 +13,7 @@ from typing import Any, Final
 from app.idm.contracts import (
     IdmBlueprintRowV1,
     IdmComponentDesignV1,
+    IdmComponentType,
     IdmContentBlockV1,
     IdmFeedbackFocusV1,
     IdmLessonDesignV1,
@@ -22,7 +23,13 @@ from app.idm.contracts import (
     IdmShardDesignV1,
     IdmUnitDesignV1,
 )
-from app.idm.policy import MAX_OBLIGATION_COMPONENT_INDEX
+from app.idm.policy import (
+    AI_DRAFTED_MARKER_EN,
+    AI_DRAFTED_MARKER_VI,
+    ALLOWED_COMPONENT_TYPES_IDM,
+    MAX_OBLIGATION_COMPONENT_INDEX,
+    WORKSHEET_COMPONENT_TYPE,
+)
 from app.idm.runtime import IdmStageError
 from app.idm.text import produces_output, single_line
 from app.instructional_quality import build_source_grounded_single_choice
@@ -37,6 +44,9 @@ from app.lesson_author_orchestration_v2_provider import ChapterShardPlanV2, Sour
 
 _MAX_ACTIVITIES: Final = 3
 _MAX_UNITS_PER_LESSON: Final = 12
+# Bounds of IdmPracticeTaskV1.criteria_fact_keys and IdmComponentDesignV1.block_ids.
+_MAX_CRITERIA_FACTS: Final = 24
+_MAX_COMPONENT_BLOCKS: Final = 12
 
 
 @dataclass(frozen=True)
@@ -52,6 +62,9 @@ class ModuleScope:
     locale: str
     # Must Do id -> "do" | "decide": a "do" Must Do needs a practice that produces the output (R5).
     must_do_kind: dict[str, str] = field(default_factory=dict)
+    # Must Do id -> course LO statement it serves (a fallback lesson objective names the course LO, N12).
+    must_do_objective: dict[str, str] = field(default_factory=dict)
+    allowed_types: frozenset[str] = frozenset(ALLOWED_COMPONENT_TYPES_IDM)
 
     def block_texts(self, block_ids: Sequence[str]) -> list[str]:
         return [
@@ -63,6 +76,47 @@ class ModuleScope:
 
     def lesson_fact_keys(self, plan: IdmLessonPlanV1) -> set[str]:
         return {key for block_id in plan.block_ids for key in self.blocks[block_id].fact_keys}
+
+    def unit_fact_keys(self, unit: IdmUnitDesignV1) -> list[str]:
+        return [key for block_id in unit.block_ids for key in self.blocks[block_id].fact_keys]
+
+    def doing_must_do(self, must_do_id: str | None) -> bool:
+        """A Must Do of kind "do" whose action yields a work product (practised with a worksheet)."""
+
+        return produces_output(self.must_do_statement.get(must_do_id or "", ""),
+                               self.must_do_kind.get(must_do_id or "", ""))
+
+
+def must_do_unit_position(
+    units: Sequence[IdmUnitDesignV1],
+    scope: ModuleScope,
+    must_do_id: str | None,
+    criteria_fact_keys: Sequence[str] = (),
+) -> int:
+    """0-based unit that owns the Must Do block: where its practice (or open obligation) belongs.
+
+    QC course 364564 (N1): the obligation of a fallback lesson went to the first unit that merely
+    mentioned the Must Do. A practice sits at or after the last unit that teaches one of its
+    criteria facts (spec §7.6.3, "facts that decide a practice are taught before it"); among those
+    units the one whose block is classified ``must_do`` for that Must Do wins over one that only
+    lists it, and a later unit wins a tie (practice follows the teaching). Without any owner the
+    practice goes to the last criteria unit, else to the last unit.
+    """
+
+    criteria = set(criteria_fact_keys)
+    taught = [position for position, unit in enumerate(units) if criteria & set(scope.unit_fact_keys(unit))]
+    first = taught[-1] if taught else 0
+
+    def owns(unit: IdmUnitDesignV1, *, strict: bool) -> bool:
+        return any(must_do_id in scope.rows[block_id].must_do_ids
+                   and (not strict or scope.rows[block_id].classification == "must_do")
+                   for block_id in unit.block_ids)
+
+    for strict in (True, False):
+        owners = [position for position in range(first, len(units)) if owns(units[position], strict=strict)]
+        if must_do_id and owners:
+            return owners[-1]
+    return first if taught else len(units) - 1
 
 
 def build_module_scope(
@@ -92,6 +146,7 @@ def build_module_scope(
         or {fact.fact_key for fact in facts} != expected_facts
     ):
         raise IdmStageError("IDM_MODULE_CONTEXT_INVALID")
+    statement_of = {objective.lo_id: objective.statement for objective in context.learning_objectives}
     return ModuleScope(
         blocks=blocks,
         rows=rows,
@@ -101,6 +156,9 @@ def build_module_scope(
         must_do_statement={item.must_do_id: item.statement for item in context.must_dos},
         locale=context.project_context.locale,
         must_do_kind={item.must_do_id: item.kind for item in context.must_dos},
+        must_do_objective={item.must_do_id: statement_of[item.lo_id] for item in context.must_dos
+                           if item.lo_id in statement_of},
+        allowed_types=frozenset(context.allowed_component_types),
     )
 
 
@@ -166,24 +224,32 @@ def fallback_lesson(
             )
         )
     practices: list[IdmPracticeTaskV1] = []
+    worksheet = False
     if plan.kind == "learning" and provider_practices:
-        # §7.6.4/§7.6.5: the provider practice survives the layout fallback as a hold for the SME.
-        practices = _held(provider_practices, scope, plan)
+        # §7.6.4/§7.6.5: the provider practice survives the layout fallback as a hold for the SME; the
+        # practice of a doing Must Do stays a worksheet the learner completes (QC course 364564, N1).
+        practices, units, worksheet = _salvaged_practices(plan, scope, units, provider_practices, objective)
     elif plan.kind == "learning":
         practices, units = _fallback_practice(plan, scope, units, objective)
     activities_hint = title_hint or plan.title
     notes = _vi(locale, f"Bố cục dự phòng tự động cho: {activities_hint}. Cần rà soát.",
                 f"Automatic fallback layout for: {activities_hint}. Review needed.")
-    primary = plan.primary_must_do_id or ""
-    if plan.kind == "learning" and produces_output(scope.must_do_statement.get(primary, ""),
-                                                   scope.must_do_kind.get(primary, "")):
+    if worksheet:
+        notes += " " + _vi(locale, "Bài luyện tập của AI được giữ thành phiếu thực hành (worksheet) kèm câu hỏi "
+                                   "đối chiếu bài mẫu; hệ thống chưa chấm câu trả lời tự luận.",
+                           "The AI practice is kept as a worksheet with a question on a sample answer; the LMS "
+                           "does not grade free-text answers.")
+    elif plan.kind == "learning" and scope.doing_must_do(plan.primary_must_do_id):
         notes += " " + _vi(locale, "Must Do loại làm: cần bổ sung phiếu thực hành (worksheet) để người học tự làm.",
                            "A doing Must Do: add a worksheet practice so the learner produces the output.")
+    # The lesson objectives are the course objectives it serves, as in a provider lesson; the unit's
+    # lesson-local "lo_N" references then resolve to the course LO statement (QC course 364564, N12).
+    course_objective = scope.must_do_objective.get(plan.primary_must_do_id or "", objective)
     return IdmLessonDesignV1(
         lesson_key=plan.lesson_key,
         title=single_line(plan.title, 180).ljust(3, "."),
         objective=single_line(objective, 500).ljust(5, "."),
-        learning_objectives=[single_line(objective, 500)],
+        learning_objectives=[single_line(course_objective, 500)],
         practice_tasks=practices,
         assessment=single_line(
             _vi(
@@ -205,15 +271,7 @@ def _fallback_practice(
     objective: str,
 ) -> tuple[list[IdmPracticeTaskV1], list[IdmUnitDesignV1]]:
     locale = scope.locale
-    primary = plan.primary_must_do_id
-    target = next(
-        (
-            position
-            for position, unit in enumerate(units)
-            if any(primary in scope.rows[block_id].must_do_ids for block_id in unit.block_ids)
-        ),
-        len(units) - 1,
-    )
+    target = must_do_unit_position(units, scope, plan.primary_must_do_id)
     unit_blocks = list(units[target].block_ids)
     texts = scope.block_texts(unit_blocks)
     if build_source_grounded_single_choice(plan.title, texts, locale=locale) is None:
@@ -275,6 +333,76 @@ def _fallback_practice(
     return [practice], units
 
 
+def _salvaged_practices(
+    plan: IdmLessonPlanV1,
+    scope: ModuleScope,
+    units: list[IdmUnitDesignV1],
+    provider_practices: Sequence[IdmPracticeTaskV1],
+    objective: str,
+) -> tuple[list[IdmPracticeTaskV1], list[IdmUnitDesignV1], bool]:
+    """Provider practices of a fallback lesson: holds, or a worksheet for a doing Must Do (N1).
+
+    A Must Do of kind "do" that yields a work product is practised with a worksheet (html slot,
+    role practice) checked by a single-choice problem on a sample answer (spec §10.1, QC 234653
+    R5). Held, that practice became an MCQ obligation of the first unit (QC 364564, N1); kept, the
+    first provider practice turns the unit that owns the Must Do block into the worksheet unit
+    (one html per unit, so its explanation html becomes the worksheet) and the other practices stay
+    held for the SME.
+    """
+
+    held = _held(provider_practices, scope, plan)
+    if (not scope.doing_must_do(plan.primary_must_do_id)
+            or WORKSHEET_COMPONENT_TYPE not in scope.allowed_types):
+        return held, units, False
+    first = provider_practices[0]
+    allowed = scope.lesson_fact_keys(plan)
+    target = must_do_unit_position(units, scope, plan.primary_must_do_id,
+                                   [key for key in first.criteria_fact_keys if key in allowed])
+    taught = {key for unit in units[: target + 1] for key in scope.unit_fact_keys(unit)}
+    criteria = ([key for key in first.criteria_fact_keys if key in taught]
+                or scope.unit_fact_keys(units[target]))[:_MAX_CRITERIA_FACTS]
+    practice = first.model_copy(update={
+        "hold": False, "hold_question": None, "criteria_fact_keys": criteria,
+        "sentence": single_line(first.sentence, 280), "context_input": single_line(first.context_input, 300),
+        "learner_action": single_line(first.learner_action, 200), "result": single_line(first.result, 200),
+        "feedback_focus": clean_feedback(first.feedback_focus),
+    })
+    units = list(units)
+    units[target] = _worksheet_unit(units[target], practice, scope, objective)
+    return [practice, *(item for item in held[1:] if item.practice_id != practice.practice_id)], units, True
+
+
+def _worksheet_unit(unit: IdmUnitDesignV1, practice: IdmPracticeTaskV1, scope: ModuleScope,
+                    objective: str) -> IdmUnitDesignV1:
+    locale = scope.locale
+    blocks = list(unit.block_ids)[:_MAX_COMPONENT_BLOCKS]
+    marker = AI_DRAFTED_MARKER_VI if locale == "vi" else AI_DRAFTED_MARKER_EN
+    scenario = (single_line(f"{marker} {practice.context_input}", 2000)
+                if practice.scenario_origin == "ai_drafted" else None)
+    purpose = single_line(_vi(locale, f"Luyện tập Must Do: {objective}", f"Practice the Must Do: {objective}"), 1200)
+
+    def slot(index: int, kind: IdmComponentType, title: str, rationale: str, navigation: str) -> IdmComponentDesignV1:
+        return IdmComponentDesignV1(
+            component_index=index, type=kind, role="practice", title=single_line(title, 180).ljust(3, "."),
+            rationale=rationale, block_ids=blocks, practice_id=practice.practice_id, support_items=[],
+            author_review=ArchitectureComponentAuthorReviewV2(
+                purpose=purpose, example_scenario=scenario, visual_asset=None, user_behavior_navigation=navigation))
+
+    components = [slot(
+        1, WORKSHEET_COMPONENT_TYPE, _vi(locale, f"Phiếu thực hành: {objective}", f"Worksheet: {objective}"),
+        _vi(locale, "Phiếu thực hành: nhiệm vụ, mẫu cần điền, ví dụ ngắn và danh sách tự kiểm từ tiêu chí.",
+            "Worksheet: task, template to complete, a short example and a self-check list from the criteria."),
+        _vi(locale, "Tự làm phiếu trên bản của mình rồi tự kiểm theo danh sách.",
+            "Complete the worksheet on your own copy, then check it against the list."))]
+    if "problem" in scope.allowed_types:
+        components.append(slot(
+            2, "problem", _vi(locale, "Đối chiếu bài mẫu với tiêu chí", "Check a sample answer against the criteria"),
+            _vi(locale, "Kiểm tra việc áp dụng tiêu chí của phiếu trên một bài mẫu.",
+                "Checks how the worksheet criteria apply to a sample answer."),
+            _vi(locale, "Chọn một đáp án và xem phản hồi.", "Choose one answer and read the feedback.")))
+    return unit.model_copy(update={"segment": "practice_feedback", "components": components})
+
+
 def _held(practices: Sequence[IdmPracticeTaskV1], scope: ModuleScope, plan: IdmLessonPlanV1) -> list[IdmPracticeTaskV1]:
     allowed = scope.lesson_fact_keys(plan)
     question = _vi(
@@ -329,17 +457,9 @@ def held_practice_obligations(
         for practice in lesson.practice_tasks:
             if not practice.hold:
                 continue
-            unit_index = next(
-                (
-                    position
-                    for position, unit in enumerate(lesson.units, start=1)
-                    if any(
-                        lesson_plan.primary_must_do_id in scope.rows[block_id].must_do_ids
-                        for block_id in unit.block_ids
-                    )
-                ),
-                len(lesson.units),
-            )
+            # The unit that owns the Must Do block, not the first unit that mentions it (QC 364564, N1).
+            unit_index = 1 + must_do_unit_position(lesson.units, scope, lesson_plan.primary_must_do_id,
+                                                   practice.criteria_fact_keys)
             unit = lesson.units[unit_index - 1]
             # Each held practice of a unit takes its own planned slot after the real components.
             component_index = len(unit.components) + 1 + taken.get(unit_index, 0)
@@ -362,9 +482,14 @@ def held_practice_obligations(
                     "lesson_index": lesson_index,
                     "unit_index": unit_index,
                     "component_index": component_index,
+                    # Lesson-local refs ("lo_N" = the lesson's N-th objective): the V2 shard contract
+                    # requires them on both sides (``LessonArchitectureV2``, Node ``isLocalObjectiveRef``).
                     "learning_objective_refs": [
                         f"lo_{position}" for position in range(1, len(lesson.learning_objectives) + 1)
                     ],
+                    # The only kind the V2 contract has (Python ``AssessmentObligationV2``, Node architecture
+                    # reader). In a fallback lesson the practice of a doing Must Do is kept as a worksheet
+                    # slot instead (``_salvaged_practices``), so it never becomes an MCQ obligation there.
                     "required_assessment_kind": "single_choice",
                     "relevant_scope_ids": [scope.scope_of_block[block_id] for block_id in unit.block_ids],
                     "relevant_evidence_fact_ids": [
