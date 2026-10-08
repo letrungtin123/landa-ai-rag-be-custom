@@ -5,6 +5,11 @@ import re
 import unittest
 from pathlib import Path
 
+from fastapi.routing import APIRoute
+
+from app.api.deps import require_internal_token
+from app.main import app
+
 REPO_ROOT = Path(__file__).resolve().parents[1]
 APP_ROOT = REPO_ROOT / "app"
 
@@ -27,41 +32,18 @@ class ArchitectureLayerTests(unittest.TestCase):
         self.assertEqual(offenders, [])
 
     def test_all_non_health_routes_declare_internal_auth_dependency(self) -> None:
-        # Routes are declared on ``app`` (app/main.py) or on a route module's ``router`` (PRD-2).
-        paths = [APP_ROOT / "main.py", *sorted((APP_ROOT / "api" / "routes").glob("*.py"))]
-        offenders = []
-        declared = 0
-        for path in paths:
-            tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
-            for node in tree.body:
-                if not isinstance(node, (ast.AsyncFunctionDef, ast.FunctionDef)):
-                    continue
-                for decorator in node.decorator_list:
-                    if not isinstance(decorator, ast.Call) or not isinstance(decorator.func, ast.Attribute):
-                        continue
-                    if not isinstance(decorator.func.value, ast.Name) or decorator.func.value.id not in {
-                        "app", "router",
-                    }:
-                        continue
-                    if decorator.func.attr not in {"get", "post", "put", "patch", "delete"}:
-                        continue
-                    declared += 1
-                    route = (
-                        decorator.args[0].value
-                        if decorator.args and isinstance(decorator.args[0], ast.Constant)
-                        else ""
-                    )
-                    if route in {"/healthz", "/readyz"}:
-                        continue
-                    dependencies = next(
-                        (keyword.value for keyword in decorator.keywords if keyword.arg == "dependencies"),
-                        None,
-                    )
-                    if dependencies is None or "require_internal_token" not in ast.unparse(dependencies):
-                        offenders.append(f"{path.name}:{route}:{node.lineno}")
+        # Checked on the assembled application: every API route outside liveness/readiness
+        # carries the internal-auth dependency, wherever the route module declares it.
+        routes = [route for route in app.routes if isinstance(route, APIRoute)]
+        offenders = [
+            route.path
+            for route in routes
+            if route.path not in {"/healthz", "/readyz"}
+            and require_internal_token not in {dependency.call for dependency in route.dependant.dependencies}
+        ]
         self.assertEqual(offenders, [])
-        # Guard against the scan silently finding nothing after a move.
-        self.assertGreaterEqual(declared, 15)
+        # Guard against the check silently finding nothing after a move.
+        self.assertGreaterEqual(len(routes), 15)
 
     def test_idm_package_never_imports_web_framework_or_service_module(self) -> None:
         # §19.2: app/idm receives its runtime by injection and stays framework free.

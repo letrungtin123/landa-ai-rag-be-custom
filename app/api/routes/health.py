@@ -6,7 +6,7 @@ import asyncio
 import logging
 from typing import Any
 
-from fastapi import APIRouter, Depends
+from fastapi import Depends, FastAPI
 from fastapi.responses import JSONResponse, Response
 
 from app.api.deps import require_internal_token
@@ -21,16 +21,11 @@ from app.services.runtime import SCHEMA_CHECK_TIMEOUT_SECONDS
 logger = logging.getLogger(SERVICE_LOGGER_NAME)
 
 
-router = APIRouter()
-
-
-@router.get("/healthz")
 async def healthz() -> dict[str, str]:
     """Liveness only: the process is serving requests. Never touches dependencies."""
     return {"status": "ok"}
 
 
-@router.get("/readyz")
 async def readyz() -> JSONResponse:
     """Readiness: started, not draining, database reachable and the schema check passed."""
     pool = service_runtime.db_pool
@@ -53,7 +48,6 @@ async def readyz() -> JSONResponse:
     return JSONResponse(content={"status": "ready"})
 
 
-@router.get("/v1/meta", dependencies=[Depends(require_internal_token)])
 async def service_meta() -> dict[str, Any]:
     """Build and contract identity so the backend can detect a version skew between servers."""
     build_sha = settings.build_sha.strip()
@@ -71,7 +65,14 @@ async def service_meta() -> dict[str, Any]:
     }
 
 
-@router.get("/metrics", dependencies=[Depends(require_internal_token)])
 async def metrics_endpoint() -> Response:
     body, content_type = metrics.render_metrics()
     return Response(content=body, media_type=content_type)
+
+
+def register(app: FastAPI) -> None:
+    """Declare these routes on ``app`` itself (see ``app.api.routes``)."""
+    app.add_api_route("/healthz", healthz, methods=["GET"])
+    app.add_api_route("/readyz", readyz, methods=["GET"])
+    app.add_api_route("/v1/meta", service_meta, methods=["GET"], dependencies=[Depends(require_internal_token)])
+    app.add_api_route("/metrics", metrics_endpoint, methods=["GET"], dependencies=[Depends(require_internal_token)])

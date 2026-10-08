@@ -17,7 +17,7 @@ from pydantic import BaseModel, ValidationError
 
 from app.api.deps import get_db, require_internal_token
 from app.api.routes import chat as chat_routes
-from app.api.routes import health
+from app.api.routes import health as health_routes
 from app.api.routes import kb as kb_routes
 from app.api.routes import lesson_author_legacy as lesson_author_legacy_routes
 from app.core.config import settings
@@ -179,14 +179,14 @@ app.add_exception_handler(Exception, unhandled_error_handler)
 app.add_exception_handler(RequestValidationError, request_validation_error_handler)
 
 
-app.include_router(health.router)
+health_routes.register(app)
 
 
-app.include_router(kb_routes.router)
+kb_routes.register(app)
 
 
-app.include_router(chat_routes.router)
-app.include_router(lesson_author_legacy_routes.router)
+chat_routes.register(app)
+lesson_author_legacy_routes.register(app)
 
 
 # Configure the package logger so every app.* module (app.idm, app.core.request_context, ...)
