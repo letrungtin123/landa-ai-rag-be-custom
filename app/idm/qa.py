@@ -433,7 +433,8 @@ _REVIEW_HINT_EN: Final = {
 
 def _check_lines(vi: bool, deterministic_codes: Sequence[str], remaining: Sequence[SlotFinding] | None,
                  fixed_codes: Sequence[str], slot_types: Sequence[str]) -> list[str]:
-    """"Đã tự sửa" (settled during generation), one review line per hinted finding, then what still warns."""
+    """The "Đã tự sửa" line (settled during generation), one review line per hinted finding, then what still
+    warns on the returned unit."""
 
     lines: list[str] = []
     fixed = _codes(sorted(set(fixed_codes)))

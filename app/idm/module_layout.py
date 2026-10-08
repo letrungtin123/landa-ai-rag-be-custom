@@ -172,7 +172,8 @@ def fallback_lesson(
     title_hint: str | None = None,
     provider_practices: Sequence[IdmPracticeTaskV1] = (),
 ) -> IdmLessonDesignV1:
-    """One unit per block with one HTML component; a grounded check when the source allows."""
+    """One unit per block with one HTML component; a grounded check when the source allows, or the
+    provider practice (held, or the worksheet unit of a doing Must Do)."""
 
     locale = scope.locale
     objective = scope.must_do_statement.get(plan.primary_must_do_id or "", plan.title)
