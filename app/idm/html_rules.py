@@ -2,7 +2,7 @@
 
 An ``html`` slot is written as ``semantic_content`` (ordered sections of typed blocks) and
 rendered by Node. The shared staged validator stays authoritative
-(``app.main.semantic_learning_visible_text`` on top of
+(``app.services.lesson_author.proposal_validation.semantic_learning_visible_text`` on top of
 ``app.ordered_learning_content.flatten_ordered_content``, ``staged_component_payload_code``
 and ``staged_instructional_finding``). It reports only the first failure and only as
 ``HTML_SEMANTIC_INVALID``, while the provider wire schema drops every length and count
@@ -30,7 +30,7 @@ from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from typing import Any, Final
 
-# --- limits (mirror app.main.SEMANTIC_LEARNING_HTML_LIMITS and flatten_ordered_content) ------
+# --- limits (mirror proposal_validation.SEMANTIC_LEARNING_HTML_LIMITS and flatten_ordered_content) ---
 ORDERED_CONTENT_VERSION: Final = 2
 MAX_SECTIONS: Final = 12
 MAX_BLOCKS_PER_SECTION: Final = 12
@@ -73,7 +73,7 @@ _GROUP_UNIT: Final[Mapping[str, str]] = {
     "paragraphs": "paragraph+task blocks", "bullet_points": "bullet items", "ordered_steps": "step items",
     "warnings": "warning blocks",
 }
-# Same expression as app.main.staged_component_payload_code (applied to the JSON text).
+# Same expression as staged.provider_schemas.staged_component_payload_code (applied to the JSON text).
 PRESENTATION_RE: Final = re.compile(
     r"<\s*/?\s*(?:script|iframe|style|div|span)\b|\b(?:style|class|onerror|onclick)\s*=", re.IGNORECASE)
 _WORD_RE: Final = re.compile(r"\w+", re.UNICODE)

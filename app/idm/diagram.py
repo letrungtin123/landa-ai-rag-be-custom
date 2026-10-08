@@ -1,6 +1,7 @@
 """Source-locked step diagram for IDM ``la_diagram`` slots (run e869f43a).
 
-The shared builder (``app.main._orchestration_v2_source_relationship_diagram`` on top of
+The shared builder (``app.services.orchestration_v2.source_locked._orchestration_v2_source_relationship_diagram``
+on top of
 ``app.instructional_quality.source_relationship_pairs``) treats every arrow as a
 relationship. A slogan such as "Chain title: no action → meaningless" therefore became the
 nodes "Chain title: no action" → "meaningless" next to the real step chain, and the same

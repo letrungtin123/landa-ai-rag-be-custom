@@ -67,7 +67,7 @@ ARG WITH_LIBREOFFICE=false
 ARG APP_UID=10001
 ARG GIT_SHA=unknown
 
-# LibreOffice is only used to convert legacy .doc uploads (app/main.py extract_doc); without it the
+# LibreOffice is only used to convert legacy .doc uploads (app/services/ingestion/extract.py extract_doc); without it the
 # service falls back to byte decoding. The package version follows the pinned base image's Debian
 # release; pin it via snapshot.debian.org if bit-for-bit reproducibility is required.
 RUN set -eux; \
@@ -106,7 +106,7 @@ ENV PATH="/opt/venv/bin:${PATH}" \
     AI_RAG_WORKERS=1
 
 # Bytecode is compiled at build time because the root filesystem is read-only at runtime
-# (app/main.py alone is ~20k lines). Code stays root-owned and read-only for the app user.
+# (the service code is ~45k lines). Code stays root-owned and read-only for the app user.
 RUN python -m compileall -q -j 0 --invalidation-mode unchecked-hash /app/app
 
 LABEL org.opencontainers.image.title="landa-ai-rag" \

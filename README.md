@@ -92,7 +92,7 @@ Các mã production mới gồm REQUEST_TOO_LARGE, DOCUMENT_LIMIT_EXCEEDED, SERV
 
 Hạ tầng nên cấp role riêng thay vì dùng quyền rộng. Service chỉ cần:
 
-- SELECT trên kb_documents, knowledge_bases, rag_document_indexes, rag_chunks, rag_document_structure_nodes và các bảng read-model lesson-author hiện được query trong app/main.py.
+- SELECT trên kb_documents, knowledge_bases, rag_document_indexes, rag_chunks, rag_document_structure_nodes và các bảng read-model lesson-author; toàn bộ SQL nằm trong app/repositories (test `tests/test_repository_sql.py` đối chiếu bảng/quyền với `app/infra/schema_check.py`).
 - INSERT, UPDATE, DELETE trên rag_document_indexes, rag_chunks, rag_document_structure_nodes cho ingestion/reindex/delete.
 - Quyền sequence tương ứng nếu schema dùng sequence.
 - Không cần CREATE, ALTER, DROP, role management, RLS bypass hoặc quyền trên tenant khác.
@@ -145,7 +145,14 @@ Danh sách này là inventory cho hạ tầng tạo least-privilege role; checkp
 
 ## Architecture direction
 
-Code production mới đặt trong app/core, sau đó PRD-2 sẽ tách route/service/infra khỏi app/main.py. Domain/service không được import app.main; mọi provider/network dependency phải inject được để test không gọi mạng.
+Sau PRD-2 (`tests/test_architecture_layers.py` giữ các quy tắc phụ thuộc):
+
+- `app/main.py`: chỉ app factory (`create_app()`: middleware, error handler, đăng ký route); `app.main:app` là entrypoint (`python -m app`, PM2, Docker).
+- `app/api/deps.py` (auth nội bộ, DB pool) và `app/api/routes/` (health, kb, chat, lesson_author_legacy, orchestration_v2): handler mỏng, mỗi module có `register(app)`.
+- `app/schemas/`: request/response model theo nhóm route.
+- `app/services/`: runtime (pool, giới hạn, readiness), provider (Gemini gateway; patch target `app.services.provider.generate_content`), ingestion, retrieval, chat, orchestration_v2, lesson_author (pipeline V5 legacy, xoá ở PRD-3).
+- `app/repositories/`: toàn bộ SQL; `app/infra/`: DB, storage, schema check, Gemini client pool; `app/idm/`: pipeline IDM (không import FastAPI, DB hay `app.main`).
+- Log của service vẫn dùng logger `app.main` (`app.core.logging.SERVICE_LOGGER_NAME`).
 
 ## Deploy boundary
 

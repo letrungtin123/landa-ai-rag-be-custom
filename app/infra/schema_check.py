@@ -2,7 +2,7 @@
 
 Mirrors the ownership contract of plan §1.1 and the grants of
 ``supabase/manual_sql/20261008_1600_ai_rag_least_privilege_role.sql``: tables and columns the
-SQL in ``app/main.py`` touches, the ``vector`` / ``pg_trgm`` extensions it relies on, and that
+SQL in ``app/repositories`` touches, the ``vector`` / ``pg_trgm`` extensions it relies on, and that
 ``current_user`` holds the privileges (and, under row level security, a policy) for each use.
 The check runs inside a READ ONLY transaction and only reads catalogs. A failure lists object
 *names* only; it never includes data.
