@@ -195,7 +195,7 @@ from app.idm.policy import IDM_CONTRACT_VERSION, IDM_PIPELINE_VERSION, IDM_PROMP
 from app.idm.course_design import run_idm_course_design
 from app.idm.module_design import run_idm_module_design
 from app.idm.diagram import idm_source_step_diagram
-from app.idm.source_locked import idm_source_grounded_single_choice, render_idm_source_locked_html
+from app.idm.source_locked import idm_source_faq, idm_source_grounded_single_choice, render_idm_source_locked_html
 from app.idm.storyboard import IdmUnitDeps, run_idm_unit
 from app.idm.runtime import (
     RUN_STOPPING_PROVIDER_CODES,
@@ -10602,6 +10602,7 @@ def build_orchestration_v2_source_locked_components(
     html_renderer: Callable[..., str] = render_source_locked_html,
     single_choice_builder: Callable[..., dict[str, Any] | None] = build_source_grounded_single_choice,
     diagram_builder: Callable[..., dict[str, Any] | None] | None = None,
+    faq_builder: Callable[..., list[dict[str, str]] | None] | None = None,
 ) -> list[dict[str, Any] | None]:
     """One source-locked component per server-owned plan slot, in plan order.
 
@@ -10616,7 +10617,7 @@ def build_orchestration_v2_source_locked_components(
     return [_orchestration_v2_source_locked_component(contract, plan, fact_by_id, locale,
                                                       html_renderer=html_renderer,
                                                       single_choice_builder=single_choice_builder,
-                                                      diagram_builder=diagram_builder)
+                                                      diagram_builder=diagram_builder, faq_builder=faq_builder)
             for plan in contract.component_plan]
 
 
@@ -10629,6 +10630,7 @@ def _orchestration_v2_source_locked_component(
     html_renderer: Callable[..., str] = render_source_locked_html,
     single_choice_builder: Callable[..., dict[str, Any] | None] = build_source_grounded_single_choice,
     diagram_builder: Callable[..., dict[str, Any] | None] | None = None,
+    faq_builder: Callable[..., list[dict[str, str]] | None] | None = None,
 ) -> dict[str, Any] | None:
     evidence_fact_ids = list(dict.fromkeys([
         *plan.source_fact_ids,
@@ -10672,6 +10674,12 @@ def _orchestration_v2_source_locked_component(
         if problem is None:
             return None
         component.update(problem)
+    elif plan.type == "la_faq" and faq_builder is not None:
+        # IDM units inject a builder that also uses labelled source definitions (run c2e5ac41).
+        items = faq_builder(title, fact_texts, locale=locale)
+        if items is None:
+            return None
+        component["items"] = items
     elif plan.type == "la_faq":
         answers = _source_locked_faq_answers(fact_texts)
         if len(answers) < 2:
@@ -19002,7 +19010,8 @@ def _idm_unit_deps(request: RagLessonAuthorUnitV2Request) -> IdmUnitDeps:
                                     for item in plan.supporting_evidence_fact_ids))
     source_locked_components = build_orchestration_v2_source_locked_components(
         contract, request.locale, html_renderer=render_idm_source_locked_html,
-        single_choice_builder=idm_source_grounded_single_choice, diagram_builder=idm_source_step_diagram)
+        single_choice_builder=idm_source_grounded_single_choice, diagram_builder=idm_source_step_diagram,
+        faq_builder=idm_source_faq)
     return IdmUnitDeps(
         build_instance_model=build_staged_instance_response_model,
         bind_instance_payload=bind_staged_instance_payload,

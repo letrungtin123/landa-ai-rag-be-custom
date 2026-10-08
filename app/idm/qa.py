@@ -309,6 +309,7 @@ def build_unit_author_note(
     failure_codes: Sequence[str] = (),
     whole_fallback: bool = False,
     faq_items_dropped: int = 0,
+    faq_items_invalid: int = 0,
 ) -> str:
     """Template note for the unit ``implementation_notes``; no IDs, no ``<``/``>``.
 
@@ -356,6 +357,10 @@ def build_unit_author_note(
     if faq_items_dropped:
         parts.append(f"Đã bỏ {faq_items_dropped} câu hỏi đáp có nội dung ngoài tài liệu." if vi
                      else f"{faq_items_dropped} FAQ item(s) with claims outside the source were removed.")
+    if faq_items_invalid:
+        parts.append(f"Đã bỏ {faq_items_invalid} câu hỏi đáp hệ thống không lưu được (ký tự góc nhọn, câu hỏi trùng)."
+                     if vi else f"{faq_items_invalid} FAQ item(s) the course editor cannot store (angle brackets, "
+                                "repeated question) were removed.")
     if deterministic_codes and not whole_fallback:
         parts.append("Kiểm tra tự động còn cảnh báo: " + ", ".join(sorted(set(deterministic_codes))[:6]) + "."
                      if vi else "Automatic checks still warn: " + ", ".join(sorted(set(deterministic_codes))[:6]) + ".")

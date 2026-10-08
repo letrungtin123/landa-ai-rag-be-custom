@@ -14,7 +14,14 @@ Stages:
   (``tests/idm_golden_module.py``); ``options.hold_lessons`` turns the practice
   of the listed lessons into a held practice without a practice component.
 * ``unit``           — deterministic W5 writer answers generated from the
-  request's contract and brief; the W6 judge always passes.
+  request's contract and brief (or ``options.writer`` / ``options.repair`` answers
+  given by the caller); the W6 judge always passes.
+* ``golden_unit``    — the golden IDM unit requests of ``tests/test_idm_storyboard.py`` with a valid
+  writer answer each (``worksheet``: html practice worksheet + problem; ``escalate``: problem +
+  la_faq; ``severity``: html explanation + problem).
+* ``acceptance``     — the Python mirror of Node's unit acceptance
+  (``app.idm.node_acceptance``) for each ``request.units[i]`` against ``request.contract``:
+  the first finding as ``{"check", "code", "path"}`` or ``null`` (Node parity test).
 """
 
 from __future__ import annotations
@@ -29,6 +36,9 @@ from unittest.mock import patch
 import httpx
 
 from app import main
+from app.idm.node_acceptance import node_acceptance_findings
+from app.idm.storyboard import acceptance_context, parse_brief
+from app.lesson_author_orchestration_v2_provider import UnitGenerationContractV2
 from tests import idm_golden as g
 from tests import idm_golden_module as gm
 
@@ -142,17 +152,24 @@ def writer_answer(request: dict[str, Any]) -> dict[str, Any]:
 
 
 class UnitGenerate:
-    """Writer answers from the contract, a passing judge, and no repair answers."""
+    """Writer answers from the contract (or the caller's), a passing judge, and the caller's repair answers."""
 
-    def __init__(self, request: dict[str, Any]) -> None:
+    def __init__(self, request: dict[str, Any], options: dict[str, Any] | None = None) -> None:
         self.request = request
+        self.writer: list[Any] = list((options or {}).get("writer") or [])
+        self.repair: list[Any] = list((options or {}).get("repair") or [])
         self.calls: list[str] = []
 
     async def __call__(self, api_key: str, model: str, prompt: str, **options: Any) -> tuple[str, Any]:
         name = options["response_schema"].__name__
         self.calls.append(name)
         if name.startswith("StagedInstancePayloadUnit"):
-            text = json.dumps(writer_answer(self.request), ensure_ascii=False)
+            text = json.dumps(self.writer.pop(0) if self.writer else writer_answer(self.request), ensure_ascii=False)
+        elif name.startswith("StagedMultiRepair"):
+            if not self.repair:
+                raise main.HTTPException(status_code=503, detail={"code": "AI_PROVIDER_UNAVAILABLE",
+                                                                  "message": "bridge has no repair answer"})
+            text = json.dumps(self.repair.pop(0), ensure_ascii=False)
         elif name.startswith("IdmJudgeResponseV1"):
             text = json.dumps({"verdict": "pass", "findings": [
                 {"criterion": criterion, "severity": "pass", "component_index": None, "witness": "ok"}
@@ -177,7 +194,36 @@ def _held_module(module_key: str, hold_lessons: list[str]) -> dict[str, Any]:
     return response
 
 
+def golden_units() -> dict[str, Any]:
+    """Golden unit requests with a valid writer answer each (``severity``: html explain + problem)."""
+
+    from tests import test_idm_storyboard as sb  # noqa: PLC0415 - test fixtures, loaded only for this stage
+
+    units = {"worksheet": (sb.worksheet_body, sb.worksheet_writer), "escalate": (sb.escalate_body, sb.escalate_writer),
+             "severity": (sb.severity_body, sb.severity_writer)}
+    result: dict[str, Any] = {}
+    for name, (body_of, writer_of) in units.items():
+        body = body_of()
+        result[name] = {"request": body, "writer": writer_of(body)}
+    return result
+
+
+def acceptance(request: dict[str, Any]) -> list[dict[str, Any] | None]:
+    contract = UnitGenerationContractV2.model_validate(request["contract"])
+    context = acceptance_context(contract, parse_brief(contract))
+    results: list[dict[str, Any] | None] = []
+    for item in request["units"]:
+        findings = node_acceptance_findings(item["unit"], context, provider_validated=item["provider_validated"])
+        results.append(None if not findings else {"check": findings[0].check, "code": findings[0].code,
+                                                  "path": findings[0].path})
+    return results
+
+
 async def run(stage: str, request: dict[str, Any], options: dict[str, Any]) -> dict[str, Any]:
+    if stage == "golden_unit":
+        return {"status": 200, "response": golden_units(), "calls": []}
+    if stage == "acceptance":
+        return {"status": 200, "response": {"results": acceptance(request)}, "calls": []}
     if stage == "course_skeleton":
         fake: Any = GoldenGenerate(g.golden_provider())
     elif stage == "chapter_shard":
@@ -185,7 +231,7 @@ async def run(stage: str, request: dict[str, Any], options: dict[str, Any]) -> d
         answer = _held_module(module_key, list(options.get("hold_lessons", [])))
         fake = GoldenGenerate(g.FakeIdmProvider({"IdmW3W4ModuleResponseV1": [answer]}))
     elif stage == "unit":
-        fake = UnitGenerate(request)
+        fake = UnitGenerate(request, options)
     else:
         raise ValueError(f"unknown stage {stage}")
     main.app.dependency_overrides[main.require_internal_token] = lambda: None

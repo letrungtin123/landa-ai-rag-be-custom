@@ -432,7 +432,11 @@ Writing rules (learner-facing, {locale_name(locale)}):
 - Use drafted scenarios/examples only where the brief marks them ai_drafted; they must not add rules.
 - LESSON_CONTEXT_FACTS are read-only background from earlier units; use them for consistency and for the
   correctness criteria, do not re-teach them.
-- No file names, page or slide numbers, citations, internal IDs, "theo tài liệu nguồn", emails or URLs.
+- No file names, page or slide numbers, citations, internal IDs, "theo tài liệu nguồn", emails or URLs; never a
+  number right after the word trang/trạng, page or slide (write "Hiện trạng: có 3 lần", not "Hiện trạng: 3 lần").
+- Text of la_faq, la_sortable, la_crossword and la_diagram slots never contains the characters "<" or ">".
+- In one html slot never repeat the same paragraph, list item or callout; a worksheet may repeat its template's
+  row labels (and blank-cell guidance) in the worked example table.
 - When UNIT_BRIEF.job_aid_signpost is set, point the learner to the Job Aid in one sentence.
 - covered_source_fact_ids: list exactly the owned fact keys given for that slot.
 - title of each slot: a short learner-facing title; selection_rationale: one sentence for the author.
@@ -527,7 +531,49 @@ UNIT_RULE_TEXT: Final[dict[str, str]] = {
     "HTML_GENERIC_REVIEW_COPY": "write instruction for the learner, not notes about reviewing the source",
     "HTML_NON_INSTRUCTIONAL_CONTACT_COPY": "remove URLs, websites and e-mail addresses",
     "HTML_OCR_NOISE": "remove runs of repeated characters",
-    "HTML_DUPLICATE_BLOCK": "do not repeat the same paragraph, list item or table cell",
+    "HTML_DUPLICATE_BLOCK": "do not repeat the same paragraph, list item or table cell (a worksheet may repeat only "
+                            "its template's table cells)",
+    # Node's revision-0 acceptance rules (app.idm.node_acceptance; codes as Node logs them).
+    "HTML_SOURCE_REVIEW_COPY": "write instruction for the learner, not notes about reviewing the source",
+    "HTML_SOURCE_ATTRIBUTION": 'no attribution to the source ("theo tài liệu", "dựa trên nguồn", "source states")',
+    "HTML_SOURCE_LOCATOR": 'never put a number right after the word trang/trạng, page, slide or chunk (even after '
+                           '":" or "số"); it reads as a page reference: write words in between ("Hiện trạng: có 3 lần '
+                           '...")',
+    "HTML_SOURCE_FILENAME": "no file names in learner text",
+    "HTML_INTERNAL_IDENTIFIER": "no fact keys, source refs or internal IDs in learner text",
+    "HTML_BOILERPLATE": "no paragraph, item or cell that is only a URL, an e-mail address or a thank-you line",
+    "HTML_SEMANTIC_RENDER_INVALID": "semantic_content breaks the ordered-content format (see HTML SLOT FORMAT)",
+    "HTML_CONTRACT_INVALID": "plain text only inside the ordered blocks",
+    "HTML_TOO_THIN": "the slot needs at least 180 visible characters",
+    "HTML_TOO_LARGE": "shorten the slot",
+    "HTML_TABLE_TOO_LARGE": "split the table: at most 100 rows",
+    "IDM_HTML_DENSITY_EXCEEDED": "condense the slot to the length budget in the HTML SLOT FORMAT",
+    "IDM_HTML_VISIBLE_TEXT_INVALID": "semantic_content breaks the ordered-content format (see HTML SLOT FORMAT)",
+    "PROBLEM_NOT_SINGLE_CHOICE": 'problem_type is "multiple_choice" with exactly one correct choice',
+    "PROBLEM_UNSUPPORTED_RESPONSE": 'problem_type is "multiple_choice" with exactly one correct choice',
+    "PROBLEM_QUESTION_INCOMPLETE": "one complete question of at least 20 characters",
+    "PROBLEM_CHOICE_COUNT": "3-6 choices",
+    "PROBLEM_CORRECT_COUNT": "exactly one choice with correct true",
+    "PROBLEM_CHOICES_NOT_DISTINCT": "every choice at least 8 characters and clearly different from the others (not "
+                                    "only in case, accents or punctuation)",
+    "PROBLEM_CORRECT_BOILERPLATE": "the correct choice is an instructional statement, not a URL, e-mail or phone",
+    "PROBLEM_EXPLANATION_MISSING": "an explanation of at least 20 characters that states the source criterion",
+    "PROBLEM_ANSWER_REQUIRED": 'problem_type is "multiple_choice" with exactly one correct choice',
+    "PROBLEM_TEXT_INVALID": "question, choices and explanation are plain text without control characters",
+    "PROBLEM_XML_UNSUPPORTED": "question, choices and explanation are plain text without control characters",
+    "FAQ_ITEM_COUNT": "at least two question-and-answer items",
+    "FAQ_TEXT_FORBIDDEN_CHARACTER": 'questions and answers are plain text: never the characters "<" or ">" (write '
+                                    '"→" or words such as "nhỏ hơn"/"less than")',
+    "SORTABLE_ITEM_COUNT": "at least three ordered items",
+    "SORTABLE_TEXT_FORBIDDEN_CHARACTER": 'the question and items are plain text: never the characters "<" or ">"',
+    "SORTABLE_DUPLICATE_ITEM": "items must differ",
+    "CROSSWORD_WORD_COUNT": "at least three terms with clues",
+    "CROSSWORD_TEXT_FORBIDDEN_CHARACTER": 'clues and hints are plain text: never the characters "<" or ">"',
+    "CROSSWORD_WORD_LAYOUT": "every term is a distinct word of 2-24 letters or digits with a clue",
+    "DIAGRAM_NODE_COUNT": "at least two labelled nodes",
+    "DIAGRAM_TEXT_FORBIDDEN_CHARACTER": 'labels, tooltips and edge labels are plain text: never "<" or ">"',
+    "RESPONSE_COMPONENT_IDENTITY": "keep the slot type and order of UNIT_BRIEF",
+    "RESPONSE_FACT_IDS": "covered_source_fact_ids lists exactly the owned fact keys of this slot",
     "REQUIRED_ARTIFACT_NOT_PRESERVED": "keep the list, table or warning structure the plan requires for this slot",
     "LEARNER_CONTENT_SOURCE_ATTRIBUTION": "no attribution to the source document in learner text",
     "LEARNER_CONTENT_SOURCE_LOCATOR": "no page, slide or section locators in learner text",

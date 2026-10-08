@@ -11,6 +11,9 @@ pipeline and stay byte-identical (spec §11.6); IDM units get these variants thr
   markdown emphasis markers are removed.
 * Single choice: the question names the term as the source wrote it (never its crossword
   answer form), shows at most four options and explains why the other options are wrong.
+* FAQ: explicit source conditions first (the legacy rule), then labelled source definitions
+  ("Label: complete sentence"); each answer is the source sentence itself (run c2e5ac41: a
+  worksheet unit whose FAQ had no rebuild failed its ``fallback_only`` retry with 422).
 
 Both stay deterministic and never add a claim the source does not make.
 """
@@ -27,14 +30,17 @@ from app.idm.text import idm_fold
 from app.instructional_quality import (
     CALLOUT_RE,
     CHECKLIST_ITEM_RE,
+    MIN_FAQ_QUESTION_CHARS,
     ORDERED_STEP_RE,
     TABLE_ROW_RE,
     TERM_DEFINITION_RE,
     build_source_locked_single_choice,
     clean_source_facts,
+    faq_answer_is_complete,
     normalize_visible_text,
     ordered_source_steps,
     parse_structured_table_rows,
+    source_clarification_signals,
     source_term_definitions,
 )
 
@@ -392,3 +398,66 @@ def idm_source_grounded_single_choice(title: str, values: Iterable[Any], *, loca
                     locale),
             }
     return None
+
+
+_FAQ_MAX_ITEMS: Final = 4
+_FAQ_MAX_ANSWER_CHARS: Final = 600
+_FAQ_MIN_ITEMS: Final = 2
+_FAQ_LABEL_MIN_CHARS: Final = 6
+_FAQ_LABEL_MAX_CHARS: Final = 100
+_FAQ_LABEL_TRIM: Final = " .;,-*" + chr(0x2013) + chr(0x2014) + chr(0x2022)
+# Learner text of an interactive component never carries angle brackets or C0 controls (Node workspace schema).
+_FAQ_UNSAFE_RE: Final = re.compile("[<>" + "".join(chr(code) for code in (*range(0x00, 0x09), 0x0B, 0x0C,
+                                                                           *range(0x0E, 0x20))) + "]")
+_LEAD_LABEL_RE: Final = re.compile(r"[:.!?]")
+
+
+def _faq_question(label: str, title: str, index: int, locale: str) -> str:
+    en = locale == "en"
+    if _FAQ_LABEL_MIN_CHARS <= len(label) <= _FAQ_LABEL_MAX_CHARS:
+        return f"What should learners understand about {label}?" if en else f"Người học cần hiểu gì về {label}?"
+    if index == 0:
+        return f"What should learners remember about '{title}'?" if en else f"Người học cần ghi nhớ gì về '{title}'?"
+    return (f"Which point {index + 1} needs attention in '{title}'?" if en
+            else f"Điểm thứ {index + 1} cần lưu ý trong '{title}' là gì?")
+
+
+def idm_source_faq(title: str, values: Iterable[Any], *, locale: str) -> list[dict[str, str]] | None:
+    """FAQ items of a source-locked IDM ``la_faq`` slot (or ``None`` below two items).
+
+    Each answer is one complete source sentence: an explicit condition/exception first (the
+    legacy rule), then the definition of a labelled fact ("Quy luật chi phí: Đầu tư 1 đồng ...").
+    The question only names the label, so no claim is added; title-case headings are skipped.
+    """
+
+    facts = clean_source_facts(list(values), preserve_table_numeric=True)
+    pairs = [(_LEAD_LABEL_RE.split(answer, maxsplit=1)[0].strip(), answer)
+             for answer in source_clarification_signals(facts)]
+    for value in facts:
+        if TABLE_ROW_RE.match(value) or ORDERED_STEP_RE.match(value):
+            continue
+        match = TERM_DEFINITION_RE.match(value)
+        if not match:
+            continue
+        label = normalize_visible_text(match.group(1)).strip(_FAQ_LABEL_TRIM)
+        definition = normalize_visible_text(match.group(2)).strip()
+        if (label and len(label.split()) <= _LABEL_MAX_WORDS and faq_answer_is_complete(definition)
+                and _sentence_like(definition)):
+            pairs.append((label, definition))
+    items: list[dict[str, str]] = []
+    answers: set[str] = set()
+    questions: set[str] = set()
+    for label, text in pairs:
+        answer = text[:_FAQ_MAX_ANSWER_CHARS].strip()
+        question = _faq_question(label, title, len(items), locale)
+        if (not _key(answer) or _key(answer) in answers or _key(question) in questions
+                or len(question) < MIN_FAQ_QUESTION_CHARS or not faq_answer_is_complete(answer)
+                or _FAQ_UNSAFE_RE.search(question + answer)):
+            continue
+        answers.add(_key(answer))
+        questions.add(_key(question))
+        items.append({"question": question, "answer": answer})
+        if len(items) == _FAQ_MAX_ITEMS:
+            break
+    return items if len(items) >= _FAQ_MIN_ITEMS else None
+

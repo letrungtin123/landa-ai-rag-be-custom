@@ -2,8 +2,10 @@
 
 The writer fills exactly the server-owned component slots of the unit contract.
 Acceptance reuses the shared staged validators (injected through
-:class:`IdmUnitDeps`, so ``app.idm`` never imports ``app.main``) and adds the IDM
-checks. A failing slot gets one scoped repair, then the source-locked fallback.
+:class:`IdmUnitDeps`, so ``app.idm`` never imports ``app.main``), then Node's own
+revision-0 acceptance rules (:mod:`app.idm.node_acceptance`), and adds the IDM
+checks. A failing slot gets one scoped repair, then the source-locked fallback; a
+unit Node would reject is never returned (run c2e5ac41).
 """
 
 from __future__ import annotations
@@ -28,6 +30,12 @@ from app.idm.html_rules import (
     minimum_visible_chars,
     normalize_html_semantic,
 )
+from app.idm.node_acceptance import (
+    AcceptanceContext,
+    AcceptanceFinding,
+    acceptance_log,
+    node_acceptance_findings,
+)
 from app.idm.policy import (
     EXTRA_WORDS_PER_MUST_KNOW_BLOCK,
     IDM_FAQ_MIN_ITEMS,
@@ -37,6 +45,7 @@ from app.idm.policy import (
     SEGMENT_WORD_BUDGET,
     THINKING_W5,
     VISIBLE_CHARS_PER_WORD,
+    WORKSHEET_COMPONENT_TYPE,
 )
 from app.idm.prompts import (
     COMPACT_UNIT,
@@ -93,6 +102,7 @@ _FIELD_OF_PATH_RE: Final = re.compile(r"^components\[\d+\]\.?")
 # source-locked html fallback would replace the practice with plain explanation.
 _REVIEW_FIRST_CODES: Final = frozenset({WORKSHEET_INCOMPLETE_CODE})
 _MAX_HINT_FACT_KEYS: Final = 24
+_FALLBACK_INVALID: Final = "ORCHESTRATION_V2_UNIT_FALLBACK_INVALID"
 
 
 def safe_error_details(error: BaseException) -> list[dict[str, Any]]:
@@ -182,6 +192,33 @@ def output_budget(brief: IdmUnitBriefV1, contract: UnitGenerationContractV2) -> 
             "max_visible_chars": words * VISIBLE_CHARS_PER_WORD, "max_words": words}
 
 
+def acceptance_context(contract: UnitGenerationContractV2, brief: IdmUnitBriefV1) -> AcceptanceContext:
+    """What Node's unit acceptance reads from the contract (``acceptOrchestrationV2GeneratedUnit``)."""
+
+    budget = output_budget(brief, contract)
+    return AcceptanceContext(
+        unit_title=contract.unit_title, unit_source_fact_ids=tuple(contract.unit_source_fact_ids),
+        plans=tuple(plan.model_dump(mode="json") for plan in contract.component_plan),
+        exact_identifiers=tuple(value for fact in contract.source_facts for value in (fact.fact_key, fact.source_ref)
+                                if value),
+        budget={"max_words": budget["max_words"], "max_visible_chars": budget["max_visible_chars"]},
+        worksheet_slots=frozenset(index for index, slot in enumerate(brief.components)
+                                  if slot.role == "practice" and slot.type == WORKSHEET_COMPONENT_TYPE))
+
+
+@dataclass
+class NodeAcceptanceUnitFinding:
+    """A Node acceptance rule in the shape of a shared-validator finding (``code``, ``path``)."""
+
+    code: str
+    path: str
+    acceptance: AcceptanceFinding
+
+    @classmethod
+    def of(cls, acceptance: AcceptanceFinding) -> NodeAcceptanceUnitFinding:
+        return cls(acceptance.code, acceptance.path, acceptance)
+
+
 def build_idm_expected(contract: UnitGenerationContractV2, brief: IdmUnitBriefV1, deps: IdmUnitDeps,
                        locale: str) -> dict[str, Any]:
     """The staged validator's ``expected`` dict with the IDM output budget."""
@@ -266,10 +303,16 @@ class IdmUnitWriter:
         # Provider, time-budget and repair failures behind a fallback (codes only, never provider text).
         self.failure_codes: list[str] = []
         self.faq_items_dropped = 0
+        # FAQ items dropped because Node's workspace schema rejects them (not a grounding problem).
+        self.faq_items_invalid = 0
         self.budget: dict[str, Any] = self.expected["instructional_output_budget"]
         self.min_html_chars = minimum_visible_chars(self.budget.get("source_content_chars"))
         # Deterministic html fixes applied before validation (counted, never content).
         self.html_fixes: Counter[str] = Counter()
+        # Node's revision-0 acceptance rules: never return a unit Node rejects (run c2e5ac41).
+        self.acceptance = acceptance_context(contract, brief)
+        self.last_acceptance: list[AcceptanceFinding] = []
+        self.acceptance_seen: list[str] = []
 
     # -- prompts ----------------------------------------------------------------------------
     def writer_prompt(self) -> str:
@@ -323,6 +366,10 @@ class IdmUnitWriter:
                 explained.add("HTML_SEMANTIC_INVALID")
             if any(item.code == "HTML_PRESENTATION_MARKUP" for item in violations):
                 explained.add("HTML_PRESENTATION_FORBIDDEN")
+            acceptance_lines = self.acceptance_rule_lines(index)
+            lines.extend(acceptance_lines)
+            if acceptance_lines:
+                explained.update(item.code for item in self.last_acceptance if item.component_index == index)
             for code, issue_index in issues:
                 if issue_index == index and code not in explained:
                     if code == FAQ_UNGROUNDED_CODE and isinstance(component, dict):
@@ -414,6 +461,7 @@ class IdmUnitWriter:
             "finding": None if finding is None else f"{finding.code}@{_safe_path(finding.path) or ''}",
             "idm_findings": [f"{code}@components[{index}]" for code, index in idm],
             "html_rules": html_rules[:_MAX_LOGGED_DETAILS], "html_fixes": dict(sorted(self.html_fixes.items())),
+            "node_acceptance": acceptance_log(self.last_acceptance, _MAX_LOGGED_DETAILS),
             "fallback_slots": list(draft.fallback_slots),
         })
 
@@ -421,12 +469,56 @@ class IdmUnitWriter:
         """First shared-validator finding plus IDM slot findings (fallback slots exempt)."""
 
         expected = self.expected_fallback if draft.fallback_slots else self.expected
-        finding = self.deps.validate_unit(draft.unit, expected)
+        finding: UnitFinding | None = self.deps.validate_unit(draft.unit, expected)
+        self.last_acceptance = []
+        if finding is None:
+            # Node rejects the whole unit on the first of these; each is settled like a shared-validator finding.
+            self.last_acceptance = self.node_acceptance(draft)
+            finding = NodeAcceptanceUnitFinding.of(self.last_acceptance[0]) if self.last_acceptance else None
         exempt = {*draft.fallback_slots, *draft.review_slots}
         idm = [(item.code, item.component_index)
                for item in deterministic_slot_findings(draft.unit, self.brief, self.owned_text, self.evidence)
                if item.component_index not in exempt]
         return finding, idm
+
+    def node_acceptance(self, draft: _Draft, *, whole_fallback: bool = False) -> list[AcceptanceFinding]:
+        """Node acceptance findings of ``draft`` (budget only on provider content, as Node measures it)."""
+
+        findings = node_acceptance_findings(draft.unit, self.acceptance,
+                                            provider_validated=not whole_fallback and not draft.fallback_slots)
+        self.acceptance_seen.extend(item for item in acceptance_log(findings) if item not in self.acceptance_seen)
+        return findings
+
+    def acceptance_rule_lines(self, index: int) -> list[str]:
+        """Repair lines for the Node rules a slot breaks (the finer detail code where Node's code is coarse)."""
+
+        slot = f"c{index}"
+        lines: list[str] = []
+        for item in self.last_acceptance:
+            if item.component_index != index:
+                continue
+            location = ", ".join(f"{slot}.items[{position}]" for position in item.items) or slot
+            lines.append(rule_line(slot, item.detail or item.code, location))
+        return lines
+
+    def prune_items(self, draft: _Draft, index: int, finding: AcceptanceFinding) -> _Draft | None:
+        """Drop the FAQ items Node would reject while the slot keeps its minimum item count."""
+
+        components = list(draft.unit.get("components", []))
+        component = components[index] if 0 <= index < len(components) else None
+        items = component.get("items") if isinstance(component, dict) else None
+        if (not isinstance(component, dict) or component.get("type") != "la_faq" or not isinstance(items, list)
+                or not finding.items):
+            return None
+        drop = set(finding.items)
+        keep = [item for position, item in enumerate(items) if position not in drop]
+        if len(keep) < IDM_FAQ_MIN_ITEMS:
+            return None
+        components[index] = {**component, "items": keep}
+        self.faq_items_invalid += len(items) - len(keep)
+        self.runtime.adjustments["w5_faq_items_invalid_dropped"] += len(items) - len(keep)
+        return _Draft({**draft.unit, "components": components}, list(draft.fallback_slots), draft.repair_applied,
+                      list(draft.review_slots), dict(draft.reasons))
 
     # -- provider steps -----------------------------------------------------------------------
     async def write(self, repair: str = "", thinking: ThinkingLevel = THINKING_W5) -> dict[str, Any]:
@@ -527,6 +619,10 @@ class IdmUnitWriter:
         if finding is not None and slot is not None:
             issues.append((finding.code, slot))
             locations[(finding.code, slot)] = _safe_path(finding.path) or ""
+        # Every slot Node would reject is repaired in the same call, not only the first one.
+        issues.extend(dict.fromkeys((item.code, item.component_index) for item in self.last_acceptance[1:]
+                                    if item.component_index is not None
+                                    and (item.code, item.component_index) not in issues))
         # A failed repair (budget, provider, invalid answer) falls through to slot fallback.
         repaired = False
         try:
@@ -550,6 +646,13 @@ class IdmUnitWriter:
                 return None
             reasons = [*([finding.code] if finding is not None else []),
                        *(code for code, index in idm if index == bad)]
+            if isinstance(finding, NodeAcceptanceUnitFinding):
+                # A safe deterministic alternative first: drop only the FAQ items Node would reject.
+                pruned = self.prune_items(draft, bad, finding.acceptance)
+                if pruned is not None:
+                    self.codes.append(finding.code)
+                    draft = pruned
+                    continue
             if finding is None:
                 # Still-ungrounded FAQ answers are dropped while the slot keeps two grounded items (R6).
                 pruned = self.prune_faq(draft, bad) if set(reasons) == {FAQ_UNGROUNDED_CODE} else None
@@ -575,9 +678,22 @@ class IdmUnitWriter:
 def _whole_fallback(writer: IdmUnitWriter) -> dict[str, Any]:
     source = writer.deps.source_locked_unit
     if source is None or writer.deps.validate_unit(source, writer.expected_fallback) is not None:
-        raise IdmStageError("ORCHESTRATION_V2_UNIT_FALLBACK_INVALID")
+        raise IdmStageError(_FALLBACK_INVALID)
+    rejected = writer.node_acceptance(_Draft(dict(source), list(range(len(writer.plans)))), whole_fallback=True)
+    if rejected:
+        _log_node_rejection(writer, "whole_fallback", rejected)
+        raise IdmStageError(_FALLBACK_INVALID)
     record_deterministic_fallback(writer.runtime, stage="idm_w5_unit", code="IDM_W5_UNIT_FALLBACK")
     return dict(source)
+
+
+def _log_node_rejection(writer: IdmUnitWriter, stage: str, findings: Sequence[AcceptanceFinding]) -> None:
+    """The same check/code/path Node would log as ``acceptance_*`` (never content)."""
+
+    log_stage("idm_unit_node_acceptance", {
+        "correlation_id": writer.runtime.correlation_id, "unit_path": writer.contract.unit_path, "stage": stage,
+        "findings": acceptance_log(findings, _MAX_LOGGED_DETAILS),
+    })
 
 
 async def run_idm_unit(
@@ -621,21 +737,14 @@ async def run_idm_unit(
                     draft, judge = await _judge_and_repair(writer, draft, deps.judge_mode)
             except TimeoutError:
                 judge = JudgeOutcome("skipped_budget")
+    if draft is not None and (rejected := writer.node_acceptance(draft)):
+        # Unreachable while settle() applies the same rules; never hand Node a unit it rejects.
+        _log_node_rejection(writer, "final", rejected)
+        writer.failure_codes.append("IDM_NODE_ACCEPTANCE_REJECTED")
+        draft = None
     whole_fallback = draft is None
     if draft is None:
         draft = _Draft(_whole_fallback(writer), list(range(len(writer.plans))))
-    reviewable = (whole_fallback or bool(draft.fallback_slots) or bool(draft.review_slots)
-                  or deps.evidence_review_required
-                  or blocking_count(judge.findings) > 0
-                  or (ai_drafted and _q5(judge) != "pass"))
-    note = build_unit_author_note(
-        locale=runtime.locale, judge=judge, deterministic_codes=writer.codes, fallback_slots=draft.fallback_slots,
-        ai_drafted=ai_drafted, slot_reasons=draft.reasons, review_slots=draft.review_slots,
-        slot_types=[plan["type"] for plan in writer.plans], failure_codes=writer.failure_codes,
-        whole_fallback=whole_fallback, faq_items_dropped=writer.faq_items_dropped)
-    quality = build_unit_quality(mode=deps.judge_mode, judge=judge, repair_applied=draft.repair_applied,
-                                 deterministic_codes=writer.codes, author_note=note)
-    unit = {**draft.unit, "idm_quality": quality.model_dump(mode="json")}
     usage_complete = runtime.usage.complete and runtime.provider_failure_code is None
     if whole_fallback:
         usage: dict[str, int] = {"inputTokens": 0, "outputTokens": 0, "embeddingTokens": 0, "totalTokens": 0}
@@ -644,6 +753,22 @@ async def run_idm_unit(
     else:
         usage = runtime.usage.as_usage()
         usage_source = "provider" if usage_complete else "reserved_upper_bound"
+    # Node admits the validated lane only for provider-accounted content: a draft kept after a failed
+    # repair or judge call (reserved upper-bound accounting) is a reviewable structured draft.
+    provider_lane = usage_source == "provider" and not whole_fallback and not draft.fallback_slots
+    reviewable = (not provider_lane or bool(draft.review_slots)
+                  or deps.evidence_review_required
+                  or blocking_count(judge.findings) > 0
+                  or (ai_drafted and _q5(judge) != "pass"))
+    note = build_unit_author_note(
+        locale=runtime.locale, judge=judge, deterministic_codes=writer.codes, fallback_slots=draft.fallback_slots,
+        ai_drafted=ai_drafted, slot_reasons=draft.reasons, review_slots=draft.review_slots,
+        slot_types=[plan["type"] for plan in writer.plans], failure_codes=writer.failure_codes,
+        whole_fallback=whole_fallback, faq_items_dropped=writer.faq_items_dropped,
+        faq_items_invalid=writer.faq_items_invalid)
+    quality = build_unit_quality(mode=deps.judge_mode, judge=judge, repair_applied=draft.repair_applied,
+                                 deterministic_codes=writer.codes, author_note=note)
+    unit = {**draft.unit, "idm_quality": quality.model_dump(mode="json")}
     log_stage("idm_unit_quality", {
         "correlation_id": runtime.correlation_id, "unit_path": contract.unit_path,
         "judge_status": judge.status, "finding_counts": quality.finding_counts.model_dump(),
@@ -651,14 +776,16 @@ async def run_idm_unit(
         "review_slots": draft.review_slots, "html_fixes": dict(sorted(writer.html_fixes.items())),
         "whole_fallback": whole_fallback, "codes": sorted(set(writer.codes)),
         "failure_codes": sorted(set(writer.failure_codes)), "faq_items_dropped": writer.faq_items_dropped,
+        "faq_items_invalid": writer.faq_items_invalid,
         "slot_reasons": {str(index): codes for index, codes in sorted(draft.reasons.items())},
+        "node_acceptance": writer.acceptance_seen[:_MAX_LOGGED_DETAILS],
         "call_count": runtime.usage.calls, "duration_ms": int((time.perf_counter() - started) * _MS),
     })
     return {
         "contract_version": 2, "source_snapshot_hash": contract.source_snapshot_hash,
         "unit_path": contract.unit_path, "unit": unit, "usage": usage, "usage_complete": usage_complete,
         "usage_source": usage_source,
-        "content_origin": "structured_fallback" if whole_fallback or draft.fallback_slots else "provider_validated",
+        "content_origin": "provider_validated" if provider_lane else "structured_fallback",
         "quality_state": "review_required" if reviewable else "validated",
         "attempt_trace": runtime.trace,
     }

@@ -415,12 +415,27 @@ class UnitEndpointTests(StoryboardEndpointTestCase):
         self.assertNotIn("fallback", [e["outcome"] for e in data["attempt_trace"]])
 
     async def test_faq_without_two_grounded_items_follows_the_slot_fallback_rules(self) -> None:
-        # No source-locked FAQ can be built for this unit: the slot is kept for author review, with the reason.
+        # The IDM FAQ fallback restates the unit's explicit source conditions (run c2e5ac41): the slot is replaced.
         body = escalate_body()
         grounded = escalate_writer(body)["components"]["c1"]["items"][0]["answer"]
         bad = escalate_with_faq(body, grounded, UNGROUNDED_ANSWER)
         provider = FakeGenerate(**{WRITER: [bad], REPAIR: [slot_repair(bad, 1)], JUDGE: [judge()]})
         status, data, _ = await self.post(body, provider)
+        self.assertEqual(status, 200)
+        self.assert_envelope(data, "structured_fallback", "review_required", "provider")
+        faq = data["unit"]["components"][1]
+        self.assertIs(faq["source_locked_fallback"], True)
+        facts = " ".join(fact["fact_text"] for fact in body["unit_contract"]["source_facts"])
+        self.assertTrue(all(item["answer"] in facts for item in faq["items"]))
+
+    async def test_faq_without_two_grounded_items_and_no_fallback_is_kept_for_review(self) -> None:
+        # No source-locked FAQ can be built for this unit: the slot is kept for author review, with the reason.
+        body = escalate_body()
+        grounded = escalate_writer(body)["components"]["c1"]["items"][0]["answer"]
+        bad = escalate_with_faq(body, grounded, UNGROUNDED_ANSWER)
+        provider = FakeGenerate(**{WRITER: [bad], REPAIR: [slot_repair(bad, 1)], JUDGE: [judge()]})
+        with patch("app.main.idm_source_faq", lambda *_args, **_kwargs: None):
+            status, data, _ = await self.post(body, provider)
         self.assertEqual(status, 200)
         quality = self.assert_envelope(data, "provider_validated", "review_required", "provider")
         self.assertEqual(len(data["unit"]["components"][1]["items"]), 2)
@@ -510,8 +525,11 @@ class JudgeEndpointTests(StoryboardEndpointTestCase):
                 provider = FakeGenerate(**{WRITER: [writer], JUDGE: [major], REPAIR: [answer]})
                 status, data, _ = await self.post(body, provider, mode="repair")
                 self.assertEqual(status, 200)
-                source = "reserved_upper_bound" if name == "provider" else "provider"
-                quality = self.assert_envelope(data, "provider_validated", "review_required", source)
+                # Node admits the validated lane only for provider-accounted content: a failed repair call
+                # (reserved upper-bound accounting) makes the kept draft a reviewable structured draft.
+                envelope = (("structured_fallback", "reserved_upper_bound") if name == "provider"
+                            else ("provider_validated", "provider"))
+                quality = self.assert_envelope(data, envelope[0], "review_required", envelope[1])
                 self.assertEqual(provider.names, [WRITER, JUDGE, REPAIR])
                 self.assertEqual((quality.judge_status, quality.repair_applied), ("review_required", False))
                 self.assertEqual(data["unit"]["components"][0]["explanation"],
