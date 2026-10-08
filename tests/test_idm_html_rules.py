@@ -18,7 +18,6 @@ import unittest
 from collections import Counter
 from typing import Any
 
-from app import main
 from app.idm.html_rules import (
     DEFAULT_MIN_VISIBLE_CHARS,
     GROUP_LIMITS,
@@ -44,6 +43,7 @@ from app.services.lesson_author.proposal_validation import (
 )
 from app.services.lesson_author.staged import provider_schemas as staged_schemas
 from app.services.lesson_author.staged import validation as staged_validation
+from app.services.orchestration_v2 import unit as unit_service
 from app.workflows.contracts import WorkflowFailure
 from tests.idm_test_support import make_runtime
 from tests.test_idm_storyboard import (
@@ -367,7 +367,7 @@ class WriterRepairLoopTests(unittest.IsolatedAsyncioTestCase):
     async def run_unit(self, *answers: tuple[str, Any]) -> tuple[dict[str, Any], FakeGenerate, list[str]]:
         body = severity_body()
         request = RagLessonAuthorUnitV2Request.model_validate(body)
-        deps = dataclasses.replace(main._idm_unit_deps(request), judge_mode="off")
+        deps = dataclasses.replace(unit_service._idm_unit_deps(request), judge_mode="off")
         queues: dict[str, list[Any]] = {}
         for family, answer in answers:
             queues.setdefault(family, []).append(answer)
@@ -403,7 +403,7 @@ class WriterRepairLoopTests(unittest.IsolatedAsyncioTestCase):
         # Root cause evidence: the repair wire schema hides ``version`` and the shared reader needs it.
         body = severity_body()
         request = RagLessonAuthorUnitV2Request.model_validate(body)
-        deps = main._idm_unit_deps(request)
+        deps = unit_service._idm_unit_deps(request)
         writer = IdmUnitWriter(request.unit_contract, parse_brief(request.unit_contract), deps, make_runtime(None))
         unit = writer.bind(json.dumps(severity_writer(body), ensure_ascii=False))
         text = json.dumps(good_c0(body), ensure_ascii=False)
@@ -497,7 +497,7 @@ class WriterRepairLoopTests(unittest.IsolatedAsyncioTestCase):
     def test_writer_prompt_states_the_html_rules_up_front_only_for_html_units(self) -> None:
         request = RagLessonAuthorUnitV2Request.model_validate(severity_body())
         writer = IdmUnitWriter(request.unit_contract, parse_brief(request.unit_contract),
-                               main._idm_unit_deps(request), make_runtime(None))
+                               unit_service._idm_unit_deps(request), make_runtime(None))
         prompt = writer.writer_prompt()
         self.assertLess(prompt.index("HTML SLOT FORMAT"), prompt.index("Writing rules"))
         for expected in ("no HTML tags", "one heading level only", "fills only \"items\"",
@@ -506,7 +506,7 @@ class WriterRepairLoopTests(unittest.IsolatedAsyncioTestCase):
             self.assertIn(expected, prompt)
         request = RagLessonAuthorUnitV2Request.model_validate(escalate_body())
         writer = IdmUnitWriter(request.unit_contract, parse_brief(request.unit_contract),
-                               main._idm_unit_deps(request), make_runtime(None))
+                               unit_service._idm_unit_deps(request), make_runtime(None))
         self.assertNotIn("HTML SLOT FORMAT", writer.writer_prompt())
         bare = unit_writer_prompt("en", course_title="C", audience="A", lesson_title="L", lesson_objective="O",
                                   practice_sentences=[], previous_title=None, next_title=None,

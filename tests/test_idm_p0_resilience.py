@@ -54,6 +54,8 @@ from app.infra.provider_limits import classify_provider_limit
 from app.schemas.common import AiUsage
 from app.schemas.orchestration_v2 import RagLessonAuthorChapterShardV2Request
 from app.services import provider as provider_service
+from app.services.orchestration_v2 import idm as v2_idm
+from app.services.orchestration_v2.common import ORCHESTRATION_V2_PROVIDER_FALLBACK_CODES
 from tests import idm_golden as g
 from tests.idm_test_support import ALLOWANCE, assert_node_trace, make_runtime
 from tests.test_idm_endpoints import (
@@ -289,7 +291,7 @@ class ProviderStopTests(unittest.IsolatedAsyncioTestCase):
     def test_runtime_takes_the_rate_limit_wait_from_settings(self) -> None:
         request = RagLessonAuthorChapterShardV2Request.model_validate(idm_shard_body())
         with patch.object(main.settings, "provider_rate_limit_max_wait_ms", 45_000):
-            item = main._idm_runtime(request, budget_ms=60_000, allowance=None)
+            item = v2_idm._idm_runtime(request, budget_ms=60_000, allowance=None)
         self.assertEqual(item.rate_limit_max_wait_ms, 45_000)
         self.assertEqual(type(main.settings).model_fields["provider_rate_limit_max_wait_ms"].default, 60_000)
 
@@ -411,7 +413,7 @@ class ProviderRetryLoopTests(unittest.TestCase):
         async def sleep(seconds: float) -> None:
             sleeps.append(seconds)
 
-        with patch("app.main.asyncio.sleep", sleep):
+        with patch("app.services.provider.asyncio.sleep", sleep):
             try:
                 result: Any = asyncio.run(provider_service.call_provider_with_timeout(
                     run, "m", on_provider_diagnostic=events.append, **options))
@@ -451,7 +453,7 @@ class ProviderRetryLoopTests(unittest.TestCase):
     def test_legacy_code_sets_treat_a_rate_limit_like_the_quota_code_they_knew(self) -> None:
         error = HTTPException(503, {"code": "AI_PROVIDER_RATE_LIMITED"})
         self.assertTrue(provider_service.is_non_retryable_provider_error(error))
-        self.assertIn("AI_PROVIDER_RATE_LIMITED", main.ORCHESTRATION_V2_PROVIDER_FALLBACK_CODES)
+        self.assertIn("AI_PROVIDER_RATE_LIMITED", ORCHESTRATION_V2_PROVIDER_FALLBACK_CODES)
 
 
 class TokenAllowanceTests(unittest.IsolatedAsyncioTestCase):

@@ -24,6 +24,7 @@ from app.idm.storyboard import build_idm_expected, output_budget, parse_brief, r
 from app.lesson_author_orchestration_v2_provider import UnitGenerationContractV2
 from app.schemas.common import AiUsage
 from app.schemas.orchestration_v2 import RagLessonAuthorUnitV2Request
+from app.services.orchestration_v2 import unit as unit_service
 from tests import idm_golden as g
 from tests import idm_golden_unit as gu
 from tests.idm_test_support import assert_node_trace, golden_design, golden_shard, make_runtime, rehash_contract
@@ -252,7 +253,7 @@ class OutputBudgetTests(unittest.TestCase):
         body = severity_body()
         request = RagLessonAuthorUnitV2Request.model_validate(body)
         brief = parse_brief(request.unit_contract)
-        expected = build_idm_expected(request.unit_contract, brief, main._idm_unit_deps(request), "vi")
+        expected = build_idm_expected(request.unit_contract, brief, unit_service._idm_unit_deps(request), "vi")
         self.assertEqual(expected["instructional_output_budget"]["max_words"], 450)
         self.assertEqual(expected["component_types"], ["html", "problem"])
         self.assertEqual(expected["diagram_relationships_by_plan_id"], {})
@@ -439,7 +440,7 @@ class UnitEndpointTests(StoryboardEndpointTestCase):
         grounded = escalate_writer(body)["components"]["c1"]["items"][0]["answer"]
         bad = escalate_with_faq(body, grounded, UNGROUNDED_ANSWER)
         provider = FakeGenerate(**{WRITER: [bad], REPAIR: [slot_repair(bad, 1)], JUDGE: [judge()]})
-        with patch("app.main.idm_source_faq", lambda *_args, **_kwargs: None):
+        with patch("app.services.orchestration_v2.unit.idm_source_faq", lambda *_args, **_kwargs: None):
             status, data, _ = await self.post(body, provider)
         self.assertEqual(status, 200)
         quality = self.assert_envelope(data, "provider_validated", "review_required", "provider")
@@ -591,7 +592,7 @@ class InjectedDepsTests(unittest.IsolatedAsyncioTestCase):
                        unbuildable_slots: tuple[int, ...] = ()) -> dict[str, Any]:
         body = severity_body()
         request = RagLessonAuthorUnitV2Request.model_validate(body)
-        deps = dataclasses.replace(main._idm_unit_deps(request), validate_unit=validate, judge_mode="off",
+        deps = dataclasses.replace(unit_service._idm_unit_deps(request), validate_unit=validate, judge_mode="off",
                                    evidence_review_required=review)
         if unbuildable_slots:
             slots = [None if index in unbuildable_slots else component
@@ -664,7 +665,7 @@ class LegacyUnitPathTests(StoryboardEndpointTestCase):
         legacy_writer = AsyncMock(side_effect=ValueError("legacy writer reached"))
         idm_unit = AsyncMock()
         with patch("app.services.lesson_author.staged.writer.generate_staged_lesson_author_proposal", legacy_writer), \
-                patch("app.main.run_idm_unit", idm_unit):
+                patch("app.services.orchestration_v2.unit.run_idm_unit", idm_unit):
             status, data, provider = await self.post(body)
         self.assertEqual(status, 200)
         legacy_writer.assert_awaited_once()

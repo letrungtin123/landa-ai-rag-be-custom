@@ -13,6 +13,7 @@ from contextlib import asynccontextmanager
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import asyncpg
 import certifi
 import httpx
 from pydantic import ValidationError
@@ -438,7 +439,7 @@ class StartupTests(unittest.TestCase):
             self.assertIsNone(runtime_service.db_pool)
 
         with (
-            patch.object(main.asyncpg, "create_pool", create_pool),
+            patch.object(asyncpg, "create_pool", create_pool),
             patch.object(runtime_service, "require_settings", MagicMock()),
             patch.object(main.settings, "supabase_service_key", ""),
             patch.object(runtime_service.schema_guard, "refresh", refresh),

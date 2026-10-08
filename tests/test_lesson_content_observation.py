@@ -249,7 +249,6 @@ class ContentObservationTests(unittest.TestCase):
         self.assertIn("Do not place internal fact IDs", policy)
 
     def test_actual_stage_two_logs_shadow_result_without_extra_call_or_payload_change(self):
-        from app import main
         from tests.test_lesson_prompt_policy import request_and_unit
         request, generated = request_and_unit("html", "vi")
         provider = AsyncMock(return_value=(json.dumps(generated), AiUsage()))
@@ -267,7 +266,6 @@ class ContentObservationTests(unittest.TestCase):
         self.assertIn('"objective_actions"', provider.await_args.args[2])
 
     def test_shadow_exception_does_not_fail_generation_or_expose_error_body(self):
-        from app import main
         from tests.test_lesson_prompt_policy import request_and_unit
         request, generated = request_and_unit("html", "en")
         provider = AsyncMock(return_value=(json.dumps(generated), AiUsage()))
@@ -281,7 +279,6 @@ class ContentObservationTests(unittest.TestCase):
         self.assertEqual(provider.await_count, 1)
 
     def test_existing_scoped_repair_keeps_two_calls_and_observes_final_checkpoint_once(self):
-        from app import main
         from tests.test_chapter_checkpoint import checkpoint_result
         from tests.test_checkpoint_component_quality_repair import instance_wire
         from tests.test_checkpoint_coverage_repair import coverage_fixture

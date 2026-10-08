@@ -187,7 +187,7 @@ class EndpointRobustnessTests(EndpointTestCase):
             IdmFeedbackFocusV1.model_validate({})
         except ValidationError as error:
             failure = error
-        with patch("app.main.run_idm_module_design", side_effect=failure):
+        with patch("app.services.orchestration_v2.chapter_shard.run_idm_module_design", side_effect=failure):
             reply = await self.post(SHARD_URL, idm_shard_body())
         self.assertEqual(reply.status_code, 422)
         self.assertEqual(reply.json()["detail"]["code"], "IDM_STAGE_OUTPUT_INVALID")

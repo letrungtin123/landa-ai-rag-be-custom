@@ -14,12 +14,13 @@ import unittest
 from typing import Any
 from unittest.mock import patch
 
-from app import instructional_quality, main
+from app import instructional_quality
 from app.idm.source_locked import idm_source_grounded_single_choice, render_idm_source_locked_html
 from app.instructional_quality import render_source_locked_html
 from app.schemas.orchestration_v2 import RagLessonAuthorUnitV2Request
 from app.services.lesson_author.staged import validation as staged_validation
 from app.services.orchestration_v2 import source_locked as v2_source_locked
+from app.services.orchestration_v2 import unit as unit_service
 from tests.test_idm_storyboard import severity_body
 
 
@@ -157,10 +158,11 @@ class IdmSingleChoiceTests(unittest.TestCase):
 class IdmWiringTests(unittest.TestCase):
     def test_idm_units_use_the_idm_builders_and_legacy_defaults_are_unchanged(self) -> None:
         request = RagLessonAuthorUnitV2Request.model_validate(severity_body())
-        with patch("app.main.render_idm_source_locked_html", wraps=render_idm_source_locked_html) as renderer, \
-                patch("app.main.idm_source_grounded_single_choice",
+        with patch("app.services.orchestration_v2.unit.render_idm_source_locked_html",
+                   wraps=render_idm_source_locked_html) as renderer, \
+                patch("app.services.orchestration_v2.unit.idm_source_grounded_single_choice",
                       wraps=idm_source_grounded_single_choice) as question:
-            deps = main._idm_unit_deps(request)
+            deps = unit_service._idm_unit_deps(request)
             legacy = v2_source_locked.build_orchestration_v2_source_locked_components(request.unit_contract, "vi")
         self.assertEqual((renderer.call_count, question.call_count), (1, 1))
         assert deps.source_locked_components is not None

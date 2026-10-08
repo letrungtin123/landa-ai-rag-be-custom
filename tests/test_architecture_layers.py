@@ -45,6 +45,15 @@ class ArchitectureLayerTests(unittest.TestCase):
         # Guard against the check silently finding nothing after a move.
         self.assertGreaterEqual(len(routes), 15)
 
+    def test_routes_are_declared_only_in_api_route_modules(self) -> None:
+        # PRD-2: app/main.py is the app factory; route handlers live in app/api/routes.
+        offenders = [
+            f"{route.path}:{route.endpoint.__module__}"
+            for route in app.routes
+            if isinstance(route, APIRoute) and not route.endpoint.__module__.startswith("app.api.routes.")
+        ]
+        self.assertEqual(offenders, [])
+
     def test_idm_package_never_imports_web_framework_or_service_module(self) -> None:
         # §19.2: app/idm receives its runtime by injection and stays framework free.
         forbidden = ("fastapi", "starlette", "app.main", "app.api", "asyncpg", "httpx", "requests")

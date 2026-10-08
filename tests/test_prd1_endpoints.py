@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import asyncpg
 import httpx
 from fastapi import HTTPException
 
@@ -135,7 +136,7 @@ class LifespanTests(unittest.TestCase):
         pool = MagicMock()
         pool.close = AsyncMock()
         with (
-            patch.object(main.asyncpg, "create_pool", AsyncMock(return_value=pool)) as create_pool,
+            patch.object(asyncpg, "create_pool", AsyncMock(return_value=pool)) as create_pool,
             patch.object(runtime_service, "create_client", MagicMock(return_value="supabase")),
             patch.object(runtime_service, "require_settings", MagicMock()),
             # SEP-1: the legacy storage client exists only while a service key is configured.

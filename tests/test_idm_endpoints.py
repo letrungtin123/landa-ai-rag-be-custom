@@ -22,6 +22,9 @@ from app.idm.runtime import IdmBudgetError, IdmProviderError, IdmStageError
 from app.lesson_author_orchestration_v2 import ChapterBlueprintShardV2, CourseSkeletonV2
 from app.schemas.common import AiUsage
 from app.schemas.orchestration_v2 import RagLessonAuthorChapterShardV2Request, RagLessonAuthorCourseSkeletonV2Request
+from app.services.orchestration_v2 import chapter_shard as chapter_shard_service
+from app.services.orchestration_v2 import course_skeleton as course_skeleton_service
+from app.services.orchestration_v2 import idm as v2_idm
 from tests import idm_golden as g
 from tests import idm_golden_module as gm
 from tests.idm_test_support import golden_design, module_inputs, module_response
@@ -181,8 +184,8 @@ class LegacyDispatchTests(unittest.IsolatedAsyncioTestCase):
 
     async def compare(self, endpoint: Any, legacy: Any, request: Any, answers: list[Any]) -> dict[str, Any]:
         with patch("app.services.provider.generate_content", AsyncMock(side_effect=copy.deepcopy(answers))), \
-                patch("app.main.run_idm_course_design", AsyncMock()) as course, \
-                patch("app.main.run_idm_module_design", AsyncMock()) as module:
+                patch("app.services.orchestration_v2.course_skeleton.run_idm_course_design", AsyncMock()) as course, \
+                patch("app.services.orchestration_v2.chapter_shard.run_idm_module_design", AsyncMock()) as module:
             dispatched = await endpoint(request)
         with patch("app.services.provider.generate_content", AsyncMock(side_effect=copy.deepcopy(answers))):
             direct = await legacy(request=request)
@@ -198,8 +201,9 @@ class LegacyDispatchTests(unittest.IsolatedAsyncioTestCase):
                  if k not in {"contract_version", "source_snapshot_hash", "locale"}}
         usage = AiUsage(outputTokens=20)
         for answers in ([(json.dumps(draft), usage)], [("{}", usage), ("{}", usage)]):
-            result = await self.compare(main.lesson_author_orchestration_v2_course_skeleton,
-                                        main._lesson_author_orchestration_v2_course_skeleton, request, answers)
+            result = await self.compare(course_skeleton_service.lesson_author_orchestration_v2_course_skeleton,
+                                        course_skeleton_service._lesson_author_orchestration_v2_course_skeleton,
+                request, answers)
             self.assertNotIn("idm", result)
 
     async def test_chapter_shard_without_idm_context(self) -> None:
@@ -208,8 +212,9 @@ class LegacyDispatchTests(unittest.IsolatedAsyncioTestCase):
         usage = AiUsage(outputTokens=20)
         for answers in ([(json.dumps({"lessons": [lesson_wire(["scope-1"])]}), usage)],
                         [("{}", usage), ("{}", usage)]):
-            result = await self.compare(main.lesson_author_orchestration_v2_chapter_shard,
-                                        main._lesson_author_orchestration_v2_chapter_shard, request, answers)
+            result = await self.compare(chapter_shard_service.lesson_author_orchestration_v2_chapter_shard,
+                                        chapter_shard_service._lesson_author_orchestration_v2_chapter_shard, request,
+                answers)
             self.assertNotIn("idm_design", result["shard"])
 
 
@@ -217,13 +222,13 @@ class TransportMappingTests(unittest.IsolatedAsyncioTestCase):
     async def mapped(self, error: Exception) -> IdmProviderError:
         with patch("app.services.provider.generate_content", AsyncMock(side_effect=error)), \
                 self.assertRaises(IdmProviderError) as caught:
-            await main._idm_generate("key", "model", "prompt", json_mode=True)
+            await v2_idm._idm_generate("key", "model", "prompt", json_mode=True)
         return caught.exception
 
     async def test_success_passes_options_through(self) -> None:
         generate = AsyncMock(return_value=("{}", AiUsage(outputTokens=1)))
         with patch("app.services.provider.generate_content", generate):
-            self.assertEqual((await main._idm_generate("key", "model", "prompt", thinking_level="low"))[0], "{}")
+            self.assertEqual((await v2_idm._idm_generate("key", "model", "prompt", thinking_level="low"))[0], "{}")
         generate.assert_awaited_once_with("key", "model", "prompt", thinking_level="low")
 
     async def test_service_errors_map_to_idm_provider_errors(self) -> None:
@@ -254,23 +259,24 @@ class TransportMappingTests(unittest.IsolatedAsyncioTestCase):
             self.assertFalse((await self.mapped(RuntimeError("PRIVATE"))).terminal)
 
     def test_http_error_and_runtime_helpers(self) -> None:
-        provider = main._idm_http_error(IdmProviderError("AI_PROVIDER_TIMEOUT", terminal=False, http_status=504))
-        stage = main._idm_http_error(IdmStageError("IDM_W5_BRIEF_CONTRACT_MISMATCH"))
-        budget = main._idm_http_error(IdmBudgetError("IDM_DEADLINE_EXCEEDED"))
+        provider = v2_idm._idm_http_error(IdmProviderError("AI_PROVIDER_TIMEOUT", terminal=False, http_status=504))
+        stage = v2_idm._idm_http_error(IdmStageError("IDM_W5_BRIEF_CONTRACT_MISMATCH"))
+        budget = v2_idm._idm_http_error(IdmBudgetError("IDM_DEADLINE_EXCEEDED"))
         self.assertEqual((provider.status_code, provider.detail["code"]), (504, "AI_PROVIDER_TIMEOUT"))
         self.assertEqual((stage.status_code, stage.detail["code"]), (422, "IDM_W5_BRIEF_CONTRACT_MISMATCH"))
         self.assertEqual((budget.status_code, budget.detail["code"]), (422, "IDM_DEADLINE_EXCEEDED"))
         request = RagLessonAuthorChapterShardV2Request.model_validate(idm_shard_body())
         context = request.idm_module_context
         assert context is not None
-        runtime = main._idm_runtime(request, budget_ms=60_000, allowance=context.token_allowance)
+        runtime = v2_idm._idm_runtime(request, budget_ms=60_000, allowance=context.token_allowance)
         self.assertEqual((runtime.locale, runtime.model, runtime.correlation_id), ("vi", "test-model",
                                                                                    request.correlation_id))
-        self.assertEqual((runtime.token_allowance.input_tokens, runtime.token_allowance.output_tokens),  # type: ignore[union-attr]
+        self.assertEqual((runtime.token_allowance.input_tokens, runtime.token_allowance.output_tokens),
+                         # type: ignore[union-attr]
                          (400_000, 131_072))
         self.assertTrue(55 < runtime.remaining_seconds() <= 60)
         self.assertEqual(runtime.provider_call_timeout_ms, main.settings.idm_provider_call_timeout_ms)
-        self.assertIsNone(main._idm_runtime(request, budget_ms=1_000, allowance=None).token_allowance)
+        self.assertIsNone(v2_idm._idm_runtime(request, budget_ms=1_000, allowance=None).token_allowance)
         self.assertEqual(gm.ALLOWED_TYPES, list(context.allowed_component_types))
 
 

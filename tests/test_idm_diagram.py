@@ -14,13 +14,13 @@ import unittest
 from itertools import pairwise
 from typing import Any
 
-from app import main
 from app.idm.contracts import brief_hash_of
 from app.idm.diagram import idm_diagram_relationships, idm_source_step_diagram
 from app.idm.storyboard import build_idm_expected, parse_brief, run_idm_unit
 from app.instructional_quality import clean_source_facts, source_relationship_pairs
 from app.schemas.orchestration_v2 import RagLessonAuthorUnitV2Request
 from app.services.orchestration_v2 import source_locked as v2_source_locked
+from app.services.orchestration_v2 import unit as unit_service
 from tests.idm_test_support import make_runtime, rehash_contract
 from tests.test_idm_storyboard import REPAIR, WRITER, FakeGenerate, severity_body, severity_writer
 
@@ -132,7 +132,7 @@ class StepDiagramBuilderTests(unittest.TestCase):
     def test_idm_units_inject_the_step_builder_and_legacy_defaults_are_unchanged(self) -> None:
         request = RagLessonAuthorUnitV2Request.model_validate(diagram_body(STEP_FACTS))
         legacy = v2_source_locked.build_orchestration_v2_source_locked_components(request.unit_contract, "vi")[1]
-        idm = main._idm_unit_deps(request).source_locked_components
+        idm = unit_service._idm_unit_deps(request).source_locked_components
         assert legacy is not None and idm is not None and idm[1] is not None
         plan = request.unit_contract.component_plan[1]
         facts = clean_source_facts([fact.fact_text for fact in request.unit_contract.source_facts
@@ -143,7 +143,7 @@ class StepDiagramBuilderTests(unittest.TestCase):
         self.assertEqual({key: value for key, value in idm[1].items() if key not in {"name", "nodes", "edges"}},
                          {key: value for key, value in legacy.items() if key not in {"name", "nodes", "edges"}})
         none_request = RagLessonAuthorUnitV2Request.model_validate(diagram_body(NO_STEP_FACTS))
-        slots = main._idm_unit_deps(none_request).source_locked_components
+        slots = unit_service._idm_unit_deps(none_request).source_locked_components
         assert slots is not None
         self.assertIsNone(slots[1])
         self.assertIsNotNone(
@@ -153,7 +153,7 @@ class StepDiagramBuilderTests(unittest.TestCase):
 class DiagramSlotFlowTests(unittest.IsolatedAsyncioTestCase):
     async def run_unit(self, facts: list[str], *answers: tuple[str, Any]) -> tuple[dict[str, Any], FakeGenerate]:
         request = RagLessonAuthorUnitV2Request.model_validate(diagram_body(facts))
-        deps = dataclasses.replace(main._idm_unit_deps(request), judge_mode="off")
+        deps = dataclasses.replace(unit_service._idm_unit_deps(request), judge_mode="off")
         queues: dict[str, list[Any]] = {}
         for family, answer in answers:
             queues.setdefault(family, []).append(answer)
@@ -165,7 +165,7 @@ class DiagramSlotFlowTests(unittest.IsolatedAsyncioTestCase):
     def test_required_relationships_are_the_step_chain_only(self) -> None:
         request = RagLessonAuthorUnitV2Request.model_validate(diagram_body(STEP_FACTS))
         contract = request.unit_contract
-        expected = build_idm_expected(contract, parse_brief(contract), main._idm_unit_deps(request), "vi")
+        expected = build_idm_expected(contract, parse_brief(contract), unit_service._idm_unit_deps(request), "vi")
         plan_id = contract.component_plan[1].component_plan_id
         self.assertEqual(expected["diagram_relationships_by_plan_id"],
                          {plan_id: CHAIN_PAIRS})

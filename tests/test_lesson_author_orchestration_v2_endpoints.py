@@ -11,11 +11,11 @@ from app.lesson_author_orchestration_v2_provider import (
     ChapterShardProviderWireV2,
     CourseSkeletonProviderWireV2,
 )
-from app.main import (
+from app.services.orchestration_v2.chapter_shard import lesson_author_orchestration_v2_chapter_shard
+from app.services.orchestration_v2.course_skeleton import lesson_author_orchestration_v2_course_skeleton
+from app.services.orchestration_v2.source_snapshot import lesson_author_orchestration_v2_source_snapshot
+from app.services.orchestration_v2.unit import (
     ORCHESTRATION_V2_UNIT_FALLBACK_RESPONSE_HEADROOM_MS,
-    lesson_author_orchestration_v2_chapter_shard,
-    lesson_author_orchestration_v2_course_skeleton,
-    lesson_author_orchestration_v2_source_snapshot,
     lesson_author_orchestration_v2_unit,
 )
 from app.schemas.common import AiUsage
