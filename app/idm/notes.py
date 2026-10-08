@@ -15,6 +15,7 @@ from app.idm.policy import (
     IDM_NOTES_LESSON_MAX_CHARS,
     IDM_NOTES_MAX_HOLD_ITEMS,
     IDM_NOTES_MAX_NICE_TO_KNOW,
+    IDM_NOTES_MAX_REMOVED,
     IDM_NOTES_MAX_SME_QUESTIONS,
     IDM_NOTES_MODULE_MAX_CHARS,
     IDM_NOTES_SUMMARY_CHARS,
@@ -35,10 +36,18 @@ class HoldNote(NamedTuple):
 
 
 class SkippedBlockNote(NamedTuple):
-    """A Nice to Know block left out of the lessons: name and a one-line summary."""
+    """A block left out of the lessons: name and a one-line summary (Nice to Know) or reason (Remove)."""
 
     name: str
     summary: str
+
+
+class KeptDefinitionNote(NamedTuple):
+    """A block W2 proposed to leave out that the server kept because it defines a course term (N4)."""
+
+    name: str
+    terms: tuple[str, ...]
+    proposed: str
 
 _INTERNAL_ID_RE: Final = re.compile(
     r"\[?\b(?:cb_\d{4}|sec_\d{3}|lo_\d{1,2}|md_\d{1,2}|lsn_\d{3}|mod_\d{2}|pt_\d|idmcb_[0-9a-f]{32}"
@@ -134,11 +143,14 @@ def build_course_notes(
     known_ids: Iterable[str] = (),
     pending_objectives: Sequence[str] = (),
     nice_to_know: Sequence[SkippedBlockNote | tuple[str, str]] = (),
+    removed: Sequence[SkippedBlockNote | tuple[str, str]] = (),
+    kept_definitions: Sequence[KeptDefinitionNote] = (),
 ) -> str:
     """Course ``implementation_notes`` (spec §8.4).
 
     Every Hold item (block, reason, SME question, Must Dos it blocks), every objective that waits
-    for the SME and the Nice to Know blocks reach the author (QC course 234653, R3/R4). Sections
+    for the SME, the definition blocks kept against the W2 proposal, the Nice to Know blocks and the
+    removed blocks with their reason reach the author (QC course 234653 R3/R4, 364564 N4). Sections
     are filled in that order within the 7,000-character limit; whatever does not fit is counted
     ("và N mục khác") and stays complete in the workspace panels.
     """
@@ -179,12 +191,27 @@ def build_course_notes(
         else "• Learning objectives awaiting the SME (not shown as course outcomes):",
         [f"  - {_sentence(item)}." for item in dict.fromkeys(pending_objectives) if item.strip()], more,
         IDM_NOTES_MAX_HOLD_ITEMS)
+    proposed_vi = {"remove": "Remove", "nice_to_know": "Nice to know"}
+    budget.section(
+        f"• Giữ lại vì định nghĩa thuật ngữ cốt lõi (Week 2 đề xuất loại) — {len(kept_definitions)} khối:" if vi
+        else f"• Kept because they define a core term (Week 2 proposed to leave them out) — "
+             f"{len(kept_definitions)} blocks:",
+        [f"  - {item.name}: {', '.join(item.terms)} "
+         + (f"(đề xuất ban đầu: {proposed_vi.get(item.proposed, item.proposed)})." if vi
+            else f"(first proposed: {proposed_vi.get(item.proposed, item.proposed)}).")
+         for item in kept_definitions], more, IDM_NOTES_MAX_REMOVED)
     skipped = [item if isinstance(item, SkippedBlockNote) else SkippedBlockNote(*item) for item in nice_to_know]
     budget.section(
         f"• Nội dung tham khảo đã lược (Nice to know) — {len(skipped)} khối, tác giả có thể bổ sung thủ công:" if vi
         else f"• Reference content left out (Nice to know) — {len(skipped)} blocks the author may add back:",
         [f"  - {item.name}: {single_line(item.summary, IDM_NOTES_SUMMARY_CHARS)}" for item in skipped], more,
         IDM_NOTES_MAX_NICE_TO_KNOW)
+    dropped = [item if isinstance(item, SkippedBlockNote) else SkippedBlockNote(*item) for item in removed]
+    budget.section(
+        f"• Nội dung đã loại khỏi khoá (Remove) — {len(dropped)} khối, kèm lý do:" if vi
+        else f"• Content removed from the course (Remove) — {len(dropped)} blocks, with the reason:",
+        [f"  - {item.name}: {single_line(item.summary, IDM_NOTES_SUMMARY_CHARS)}" for item in dropped], more,
+        IDM_NOTES_MAX_REMOVED)
     questions = [question for question in dict.fromkeys(sme_questions) if question]
     budget.section("• Câu hỏi khác cho SME:" if vi else "• Other questions for the SME:",
                    [f"  - {question}" for question in questions], more, IDM_NOTES_MAX_SME_QUESTIONS)

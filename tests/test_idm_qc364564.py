@@ -12,6 +12,7 @@ Package B (prompts, judge and grounding):
 * N9: three blockquotes (warning blocks) looked like quotations but stated what the source never says.
 * N10: an explanation contradicted its option; explanations must name every option.
 * N11: FAQ items repeated the table just taught; two FAQ titles did not match their questions.
+* N4: the block defining BiC (the course's "BiC 5.0") was removed as history and the author was not told.
 * N5: "5 chuyển dịch" was never presented as a whole; the unit titled "Tổng quan 5 chuyển dịch" taught
   something else; the source's "HÀNH ĐỘNG CEO" items were not Must Do candidates.
 
@@ -26,11 +27,19 @@ import unittest
 from typing import Any
 from unittest.mock import AsyncMock
 
+from app.idm.blueprint import KeptDefinition, keep_term_definitions
 from app.idm.content_map import action_items, reduce_catalog, validate_w1_reduce
-from app.idm.contracts import IdmJudgeFindingV1, IdmLessonDesignV1, IdmUnitBriefV1
+from app.idm.contracts import (
+    IdmCourseDesignV1,
+    IdmJudgeFindingV1,
+    IdmLessonDesignV1,
+    IdmProjectContextV1,
+    IdmUnitBriefV1,
+)
 from app.idm.framework import build_promise, framework_coverage, framework_listed, framework_promise
 from app.idm.mcq import labelled_letters, normalize_single_choice
 from app.idm.module_design import with_orientation_note
+from app.idm.notes import KeptDefinitionNote, SkippedBlockNote, build_course_notes
 from app.idm.qa import (
     JudgeOutcome,
     SlotFinding,
@@ -46,6 +55,7 @@ from app.idm.qa import (
     ungrounded_callouts,
 )
 from app.idm.storyboard import run_idm_unit
+from app.idm.terms import course_terms, defined_terms, defines, mentions
 from app.idm.text import evidence_index
 from app.schemas.common import AiUsage
 from app.schemas.orchestration_v2 import RagLessonAuthorUnitV2Request
@@ -57,6 +67,9 @@ from tests.idm_test_support import golden_design, golden_shard, make_runtime, mo
 from tests.test_idm_content_map import CONTEXT as CONTENT_CONTEXT
 from tests.test_idm_content_map import golden_blocks as golden_content_blocks
 from tests.test_idm_content_map import reduce_response as golden_reduce_response
+from tests.test_idm_course_design import golden_design as golden_course_design
+from tests.test_idm_course_design import golden_request as golden_course_request
+from tests.test_idm_course_design import run_design as run_course_design
 from tests.test_idm_module_design import design_module
 from tests.test_idm_storyboard import (
     JUDGE,
@@ -646,3 +659,114 @@ class ActionItemTests(unittest.TestCase):
         self.assertEqual([(issue.code, issue.severity) for issue in found],
                          [("IDM_W1_ACTION_ITEM_UNLINKED", "warning")])
         self.assertEqual(validate_w1_reduce(golden_reduce_response(), blocks, CONTENT_CONTEXT, {"cb_0009"}), [])
+
+
+# --- N4: a block that defines a course term is never left out; removed blocks reach the author -------
+DEFINITION = "CSKH 360 = Lắng nghe trọn vẹn + Phản hồi đúng hạn → Khách hàng trung thành."
+
+
+def defining_facts() -> list[Any]:
+    """The golden source with its history block (cb_0002, removed by W2) also stating the course formula."""
+
+    facts = g.source_facts()
+    return [fact.model_copy(update={"fact_text": DEFINITION}) if fact.fact_key == g.key(1, 3) else fact
+            for fact in facts]
+
+
+def defining_context(**changes: Any) -> dict[str, Any]:
+    return {**g.project_context(), "course_title_hint": "CSKH 360: xử lý khiếu nại khách hàng", **changes}
+
+
+class TermTests(unittest.TestCase):
+    def test_course_terms_and_definitions(self) -> None:
+        terms = course_terms(["QC check 3", "Executive Training Playbook - BiC Modun 1_ Change Mindset"],
+                             ["Người học có thể đánh giá vị trí doanh nghiệp trên Ladder BiC 5.0",
+                              "Người học có thể áp dụng mô hình Tam Doanh cho CEO"])
+        self.assertEqual(terms, ["Tam Doanh", "Ladder", "BiC", "CEO", "QC"])
+        for text in ("BiC = Lean System + Efficiency → Preventive & Proactive", "Công thức: BiC = Lean System",
+                     "BiC (Business in Change) là chương trình nâng cao năng suất", "- Mô hình BiC 5.0: Proactive"):
+            self.assertTrue(defines(text, "BiC"), text)
+        for text in ("Năm 2008 Bộ KH&CN khởi động BiC", "Mục tiêu của BiC là tăng hiệu quả", "Lưu ý: BiC cần cam kết",
+                     "BiC thế hệ thứ nhất là chương trình của Bộ"):
+            self.assertFalse(defines(text, "BiC"), text)
+        self.assertEqual(defined_terms(["Năm 2008 khởi động BiC.", "BiC = Lean + Efficiency"], ["CEO", "BiC"]),
+                         ["BiC"])
+        self.assertTrue(mentions("Đánh giá BiC 5.0 của doanh nghiệp", "BiC"))
+        self.assertFalse(mentions("bicycle", "BiC"))
+
+    def rows_and_blocks(self) -> tuple[Any, Any, Any]:
+        design = golden_course_design()
+        return design, list(design.blueprint), list(design.blocks)
+
+    def test_golden_blueprint_is_unchanged(self) -> None:
+        design, rows, blocks = self.rows_and_blocks()
+        kept_rows, kept = keep_term_definitions(
+            rows, blocks, context=design.project_context, objectives=design.learning_objectives,
+            must_dos=design.must_dos, fact_text={fact.fact_key: fact.fact_text for fact in g.source_facts()})
+        self.assertEqual((kept_rows, kept), (rows, []))
+
+    def test_left_out_definition_becomes_must_know_or_reference(self) -> None:
+        design, rows, blocks = self.rows_and_blocks()
+        context = IdmProjectContextV1.model_validate(defining_context())
+        text = {fact.fact_key: fact.fact_text for fact in defining_facts()}
+        for proposed in ("remove", "nice_to_know"):
+            demoted = [row.model_copy(update={"classification": proposed}) if row.block_id == "cb_0002" else row
+                       for row in rows]
+            kept_rows, kept = keep_term_definitions(demoted, blocks, context=context,
+                                                    objectives=design.learning_objectives, must_dos=design.must_dos,
+                                                    fact_text=text)
+            row = next(item for item in kept_rows if item.block_id == "cb_0002")
+            self.assertEqual((row.classification, row.placement, row.treatment, row.must_do_ids, row.lo_id),
+                             ("must_know", "course", "condense", ["md_1"], "lo_1"))
+            self.assertEqual(row.detail_level, "Giữ nguyên định nghĩa/công thức của CSKH; lược phần lịch sử và bối "
+                                               "cảnh.")
+            self.assertIn(f"Week 2 đề xuất {proposed}", row.rationale)
+            self.assertEqual(kept, [KeptDefinition("cb_0002", ("CSKH",), proposed)])
+        # No Must Do is served by a course block yet: the definition becomes Reference / Job Aid.
+        outside = [row.model_copy(update={"classification": "remove", "placement": "excluded", "treatment": "remove",
+                                          "must_do_ids": []}) for row in rows]
+        kept_rows, _ = keep_term_definitions(outside, blocks, context=context, objectives=design.learning_objectives,
+                                             must_dos=design.must_dos, fact_text=text)
+        row = next(item for item in kept_rows if item.block_id == "cb_0002")
+        self.assertEqual((row.classification, row.placement, row.treatment, row.must_do_ids),
+                         ("reference", "reference_job_aid", "move_to_reference", []))
+
+
+class TermDefinitionCourseTests(unittest.IsolatedAsyncioTestCase):
+    async def test_definition_of_a_title_term_cannot_be_removed(self) -> None:
+        # The QC regression: W2 removes the block that holds the course formula together with its history.
+        course = json.loads(json.dumps(g.W4_COURSE))
+        course["modules"][0]["lessons"][0]["block_ids"] = ["cb_0002", "cb_0003", "cb_0004"]
+        provider = g.golden_provider({"IdmW4CourseResponseV1": [course]})
+        request = golden_course_request(defining_facts(), defining_context())
+        result, _ = await run_course_design(provider, request=request)
+        design = IdmCourseDesignV1.model_validate(result["idm"])
+        row = next(item for item in design.blueprint if item.block_id == "cb_0002")
+        self.assertEqual((row.classification, row.must_do_ids), ("must_know", ["md_1"]))
+        self.assertEqual({item.disposition for item in design.dispositions if item.block_id == "cb_0002"},
+                         {"course"})
+        self.assertEqual(design.stage_origins, {"w1_map": "provider", "w1_reduce": "provider", "w2": "provider",
+                                                "w4": "provider"})
+        self.assertIn("• Giữ lại vì định nghĩa thuật ngữ cốt lõi (Week 2 đề xuất loại) — 1 khối:\n"
+                      "  - Phòng Chăm sóc Khách hàng đã phát triển ra sao?: CSKH (đề xuất ban đầu: Remove).",
+                      design.notes.course)
+        self.assertNotIn("(Remove) — ", design.notes.course)
+        w2_prompt = next(call["prompt"] for call in provider.calls if call["schema"] == "IdmW2BlueprintResponseV1")
+        self.assertIn("Never classify as\nnice_to_know or remove a block that defines", w2_prompt)
+        w1_prompt = next(call["prompt"] for call in provider.calls if call["schema"] == "IdmW1SectionResponseV1")
+        self.assertIn("A formula or definition of a term", w1_prompt)
+
+    def test_course_notes_list_removed_blocks_with_their_reason(self) -> None:
+        notes = golden_course_design().notes.course
+        self.assertIn("• Nội dung đã loại khỏi khoá (Remove) — 1 khối, kèm lý do:\n"
+                      "  - Phòng Chăm sóc Khách hàng đã phát triển ra sao?: Quyết định theo luồng Week 2.", notes)
+        common: dict[str, Any] = {"ai_proposed": False, "total_minutes": 10, "lesson_count": 1, "module_count": 1,
+                                  "reference_block_count": 0, "excluded_block_count": 1, "holds": [],
+                                  "sme_questions": [], "fallback_stages": []}
+        english = build_course_notes(locale="en", removed=[SkippedBlockNote("BiC history", "Outdated programme.")],
+                                     kept_definitions=[KeptDefinitionNote("What is BiC?", ("BiC",), "nice_to_know")],
+                                     **common)
+        self.assertIn("• Kept because they define a core term (Week 2 proposed to leave them out) — 1 blocks:\n"
+                      "  - What is BiC?: BiC (first proposed: Nice to know).", english)
+        self.assertIn("• Content removed from the course (Remove) — 1 blocks, with the reason:\n"
+                      "  - BiC history: Outdated programme.", english)

@@ -167,6 +167,9 @@ TASK: Week 1 - build the SME Content Map for ONE section of the source.
    noise with a reason: page_furniture | contact_or_promo | toc_or_title_only | duplicate_verbatim | unreadable.
    Teaching value is NOT decided here; only true non-content goes to noise. Background or history text is still
    a block (Week 2 decides to remove it). A heading line belongs to the block it introduces.
+   A formula or definition of a term ("X = A + B", "X là ...", "X is ...") is its own block (intent know,
+   content_kind concept, named "X là gì?" / "What is X?"), never merged with the history, origin or background
+   narrative around it, even on the same page: Week 2 may drop the history but must keep the definition.
 4. Record issues only with concrete evidence and the fact_keys involved: unclear | duplicate | conflict |
    too_general | too_detailed | outdated.
 5. Record content gaps that will matter for examples, practice, feedback or assessment: missing_example |
@@ -243,7 +246,10 @@ detail_level: one sentence on what to keep ("Định nghĩa ngắn + dấu hiệ
 "Chỉ 6 nhóm bước chính; ngoại lệ hiếm chuyển sang Job Aid").
 Rules: repeated content is not automatically important; SME emphasis is a signal to check, not a decision;
 full legal text, code lists, contact lists, forms and rare exceptions -> reference/job aid; department history and
-background trivia -> nice_to_know or remove; "remove" is not a judgement of quality.
+background trivia -> nice_to_know or remove; "remove" is not a judgement of quality. Never classify as
+nice_to_know or remove a block that defines or gives the formula of a term that appears in the course title
+(PROJECT_CONTEXT.course_title_hint or a source document name), an objective or a Must Do: it is must_know
+(or reference), with a detail_level that keeps the definition and drops the history around it.
 must_know rows list the must_do_ids they enable; must_do rows list the Must Do they represent; lo_id is the
 objective the block serves (null when none). Only must_do/must_know rows may hold.
 combine: set combine_into (another block id with the same classification). separate: separate_into =

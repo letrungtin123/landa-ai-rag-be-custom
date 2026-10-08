@@ -119,6 +119,8 @@ IDM_NOTES_MAX_SME_QUESTIONS: Final = 10
 # one-line summary to add one back by hand (QC course 234653, R4). The full list is in the UI panel.
 IDM_NOTES_MAX_NICE_TO_KNOW: Final = 12
 IDM_NOTES_SUMMARY_CHARS: Final = 160
+# Removed blocks with the W2 reason, and definition blocks kept against the W2 proposal (QC course 364564, N4).
+IDM_NOTES_MAX_REMOVED: Final = 12
 IDM_UNIT_AUTHOR_NOTE_MAX_CHARS: Final = 1_500
 
 # --- FAQ evidence guard (QC course 234653, R6) ------------------------------------------------

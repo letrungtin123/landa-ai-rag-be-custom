@@ -8,6 +8,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any, Final
 
+from app.idm.blueprint import KeptDefinition
 from app.idm.contracts import (
     IdmAudienceV1,
     IdmAuthorNotesV1,
@@ -27,7 +28,14 @@ from app.idm.contracts import (
     StageOrigin,
     design_hash_of,
 )
-from app.idm.notes import HoldNote, SkippedBlockNote, build_course_notes, build_lesson_notes, build_module_notes
+from app.idm.notes import (
+    HoldNote,
+    KeptDefinitionNote,
+    SkippedBlockNote,
+    build_course_notes,
+    build_lesson_notes,
+    build_module_notes,
+)
 from app.idm.policy import (
     IDM_CONTRACT_VERSION,
     IDM_DURATION_OVER_TARGET_RATIO,
@@ -415,6 +423,8 @@ class AssemblyInput:
     plan: IdmW4CourseResponseV1
     dispositions: Sequence[IdmDispositionV1]
     stage_origins: dict[str, StageOrigin]
+    # Blocks W2 left out although they define a course term, kept by the server (N4).
+    kept_definitions: Sequence[KeptDefinition] = ()
 
 
 def assemble_idm_course_design(data: AssemblyInput) -> IdmCourseDesignV1:
@@ -484,6 +494,7 @@ def _build_notes(data: AssemblyInput) -> IdmAuthorNotesV1:
     must_do_text = {item.must_do_id: item.statement for item in data.must_dos}
     statements = {item.lo_id: item.statement for item in data.objectives}
     row_by_id = {row.block_id: row for row in data.rows}
+    names = {block.block_id: block.name for block in data.blocks}
     pending = pending_objective_ids(data.objectives, data.must_dos, data.blocked)
     course = build_course_notes(
         locale=locale, ai_proposed=ai_proposed, total_minutes=sum(lesson.est_minutes for lesson in lessons),
@@ -498,6 +509,11 @@ def _build_notes(data: AssemblyInput) -> IdmAuthorNotesV1:
         pending_objectives=[statements[lo_id] for lo_id in pending],
         nice_to_know=[SkippedBlockNote(block.name, block.summary) for block in data.blocks
                       if block.block_id in row_by_id and row_by_id[block.block_id].classification == "nice_to_know"],
+        # QC course 364564 (N4): the removed "BiC Legacy" block was never mentioned to the author.
+        removed=[SkippedBlockNote(block.name, row_by_id[block.block_id].rationale) for block in data.blocks
+                 if block.block_id in row_by_id and row_by_id[block.block_id].classification == "remove"],
+        kept_definitions=[KeptDefinitionNote(names[item.block_id], item.terms, item.proposed)
+                          for item in data.kept_definitions if item.block_id in names],
     )
     blooms = {item.must_do_id: item.bloom for item in data.must_dos}
     modules = {module.module_key: build_module_notes(

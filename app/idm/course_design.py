@@ -122,6 +122,7 @@ async def run_idm_course_design(
         audience=reduce_response.target_audience, objectives=objectives, must_dos=must_dos,
         blocks=blueprint.blocks, links=blueprint.links, rows=blueprint.rows, blocked=blocked, holds=holds,
         plan=architecture.plan, dispositions=dispositions, stage_origins=stage_origins,
+        kept_definitions=blueprint.kept_definitions,
     ))
     skeleton = await asyncio.to_thread(project_course_skeleton, design, architecture.plan)
 
