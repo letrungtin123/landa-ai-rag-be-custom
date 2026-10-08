@@ -12,6 +12,25 @@ from app.main import app
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 APP_ROOT = REPO_ROOT / "app"
+# Framework-free domain modules (§19.2 "module thuần").
+PURE_MODULE_PATTERNS = (
+    "source_*.py", "instructional_*.py", "lesson_quality.py", "semantic_review.py", "workflows/*.py",
+    "assessment_*.py", "learner_content_purity.py", "ordered_learning_content.py", "media_brief.py",
+    "component_capabilities.py", "lesson_author_*.py", "lesson_content_observation.py", "lesson_prompt_policy.py",
+)
+MAX_ROUTE_HANDLER_LINES = 30
+
+
+def imported_modules(path: Path) -> list[tuple[str, set[str]]]:
+    """(module, imported names) of every import statement in ``path`` (absolute imports only)."""
+    tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+    found: list[tuple[str, set[str]]] = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            found.extend((alias.name, set()) for alias in node.names)
+        elif isinstance(node, ast.ImportFrom) and node.level == 0 and node.module:
+            found.append((node.module, {alias.name for alias in node.names}))
+    return found
 
 
 class ArchitectureLayerTests(unittest.TestCase):
@@ -65,6 +84,62 @@ class ArchitectureLayerTests(unittest.TestCase):
                          else [node.module or ""] if isinstance(node, ast.ImportFrom) else [])
                 offenders.extend(f"{path.name}:{name}" for name in names
                                  if any(name == item or name.startswith(item + ".") for item in forbidden))
+        self.assertEqual(offenders, [])
+
+    def test_layers_import_only_what_the_layer_table_allows(self) -> None:
+        # §19.2 dependency table. ``fastapi.HTTPException`` is the one web-framework name the
+        # service layer still uses: it is the provider/service error type of the code moved out of
+        # app/main.py, and turning it into AppError would change error bodies (correlation_id).
+        layers: dict[str, tuple[list[Path], tuple[str, ...]]] = {
+            "services": (sorted((APP_ROOT / "services").rglob("*.py")),
+                         ("starlette", "app.api", "app.main")),
+            "repositories": (sorted((APP_ROOT / "repositories").rglob("*.py")),
+                             ("fastapi", "starlette", "app.api", "app.main", "app.services", "app.idm")),
+            "schemas": (sorted((APP_ROOT / "schemas").rglob("*.py")),
+                        ("fastapi", "starlette", "app.api", "app.main", "app.services", "app.repositories",
+                         "app.infra")),
+            "pure": (sorted(path for pattern in PURE_MODULE_PATTERNS for path in APP_ROOT.glob(pattern)),
+                     ("fastapi", "starlette", "app.api", "app.main", "app.services", "app.repositories",
+                      "app.infra", "asyncpg", "httpx", "requests")),
+        }
+        offenders = []
+        for layer, (paths, forbidden) in layers.items():
+            self.assertTrue(paths, layer)
+            for path in paths:
+                for name, imported in imported_modules(path):
+                    if any(name == item or name.startswith(item + ".") for item in forbidden):
+                        offenders.append(f"{layer}:{path.relative_to(APP_ROOT).as_posix()}:{name}")
+                    if layer == "services" and name.split(".")[0] == "fastapi" and imported != {"HTTPException"}:
+                        offenders.append(f"{layer}:{path.relative_to(APP_ROOT).as_posix()}:{name}:{imported}")
+        self.assertEqual(offenders, [])
+
+    def test_no_application_module_imports_app_main(self) -> None:
+        # app/__main__.py names "app.main:app" as a string for uvicorn; nothing imports the factory module.
+        offenders = [
+            f"{path.relative_to(APP_ROOT).as_posix()}:{name}"
+            for path in sorted(APP_ROOT.rglob("*.py"))
+            for name, imported in imported_modules(path)
+            if name == "app.main" or (name == "app" and "main" in imported)
+        ]
+        self.assertEqual(offenders, [])
+
+    def test_file_sizes_follow_std5(self) -> None:
+        # PRD-2 exit gate: app/main.py is the app factory only; moved legacy files stay <= 2,500 lines.
+        sizes = {path.relative_to(APP_ROOT).as_posix(): len(path.read_text(encoding="utf-8").splitlines())
+                 for path in APP_ROOT.rglob("*.py")}
+        self.assertLessEqual(sizes["main.py"], 200)
+        self.assertEqual({name: lines for name, lines in sizes.items() if lines > 2500}, {})
+
+    def test_route_handlers_stay_thin(self) -> None:
+        # Route modules only bind HTTP to services: no handler body grows into business logic.
+        offenders = []
+        for path in sorted((APP_ROOT / "api" / "routes").glob("*.py")):
+            tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+            for node in tree.body:
+                if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.end_lineno is not None:
+                    length = node.end_lineno - node.lineno + 1
+                    if length > MAX_ROUTE_HANDLER_LINES:
+                        offenders.append(f"{path.name}:{node.name}:{length}")
         self.assertEqual(offenders, [])
 
     def test_document_queries_keep_tenant_filter_and_safe_error_code(self) -> None:
