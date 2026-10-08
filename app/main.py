@@ -1,6 +1,12 @@
-from __future__ import annotations
+"""FastAPI application factory of the landa-ai-rag service.
 
-import logging
+``app.main:app`` is the ASGI entrypoint (``python -m app``, PM2, the Docker image). The factory
+only wires the application: middleware, error handlers and route registration. Route handlers
+live in ``app.api.routes``, business logic in ``app.services``, all SQL in ``app.repositories``
+and the process resources (database pool, limits, readiness state) in ``app.services.runtime``.
+"""
+
+from __future__ import annotations
 
 from fastapi import FastAPI
 from fastapi.exceptions import RequestValidationError
@@ -16,83 +22,75 @@ from app.core.lifespan import build_lifespan
 from app.core.logging import configure_application_logging
 from app.core.middleware import RequestBodyLimitMiddleware
 from app.core.request_context import DisconnectCancellationMiddleware, RequestContextMiddleware
-from app.schemas.common import AiUsage as AiUsage
-from app.schemas.lesson_author import RagLessonAuthorCheckpointRequest as RagLessonAuthorCheckpointRequest
-from app.schemas.orchestration_v2 import (
-    RagLessonAuthorCourseSkeletonV2Request as RagLessonAuthorCourseSkeletonV2Request,
-)
+from app.schemas.common import AiUsage
+from app.schemas.lesson_author import RagLessonAuthorCheckpointRequest
+from app.schemas.orchestration_v2 import RagLessonAuthorCourseSkeletonV2Request
 from app.services import runtime as service_runtime
-from app.services.lesson_author.architecture_validation import (
-    validate_v5_instructional_coherence as validate_v5_instructional_coherence,
-)
-from app.services.lesson_author.checkpoint import (
-    build_lesson_author_checkpoint_result as build_lesson_author_checkpoint_result,
-)
-from app.services.lesson_author.proposal_validation import (
-    semantic_learning_visible_text as semantic_learning_visible_text,
-)
-from app.services.lesson_author.staged.provider_schemas import (
-    staged_component_payload_code as staged_component_payload_code,
-)
+from app.services.lesson_author.architecture_validation import validate_v5_instructional_coherence
+from app.services.lesson_author.checkpoint import build_lesson_author_checkpoint_result
+from app.services.lesson_author.proposal_validation import semantic_learning_visible_text
+from app.services.lesson_author.staged.provider_schemas import staged_component_payload_code
 from app.services.meta import API_VERSION
-from app.services.provider import generate_content as generate_content
+from app.services.provider import generate_content
 
-app = FastAPI(
-    title="Internal AI RAG Service",
-    version=API_VERSION,
-    docs_url="/docs" if settings.is_development else None,
-    redoc_url="/redoc" if settings.is_development else None,
-    openapi_url="/openapi.json" if settings.is_development else None,
-    # Resolved at call time: startup/shutdown are defined further down.
-    lifespan=build_lifespan(
-        state=service_runtime.runtime_state,
-        startup=lambda: service_runtime.startup(),
-        shutdown=lambda: service_runtime.shutdown(),
-        grace_seconds=settings.shutdown_grace_seconds,
-    ),
-)
+# Besides ``app`` and ``create_app``, these names are re-exported for the Node backend's cross-language
+# tests, which run ``python -c "from app.main import <name>"`` (and patch ``app.main.generate_content``)
+# against this checkout. Remove a name only after the backend test imports it from its new module.
+__all__ = [
+    "AiUsage",
+    "RagLessonAuthorCheckpointRequest",
+    "RagLessonAuthorCourseSkeletonV2Request",
+    "app",
+    "build_lesson_author_checkpoint_result",
+    "create_app",
+    "generate_content",
+    "semantic_learning_visible_text",
+    "staged_component_payload_code",
+    "validate_v5_instructional_coherence",
+]
 
-
-# add_middleware wraps outward: request context (outermost) -> body limit ->
-# disconnect cancellation (buffers the already size-checked body) -> routes.
-app.add_middleware(DisconnectCancellationMiddleware)
-
-
-app.add_middleware(
-    RequestBodyLimitMiddleware,
-    max_request_bytes=settings.max_request_bytes,
-    idm_max_request_bytes=settings.idm_max_request_bytes,
-)
+# Registration order is the order of app.routes (and of the OpenAPI document in development).
+ROUTE_MODULES = (health_routes, kb_routes, chat_routes, lesson_author_legacy_routes, orchestration_v2_routes)
 
 
-app.add_middleware(RequestContextMiddleware, state=service_runtime.runtime_state)
+def create_app() -> FastAPI:
+    application = FastAPI(
+        title="Internal AI RAG Service",
+        version=API_VERSION,
+        docs_url="/docs" if settings.is_development else None,
+        redoc_url="/redoc" if settings.is_development else None,
+        openapi_url="/openapi.json" if settings.is_development else None,
+        # The lambdas resolve service_runtime.startup/shutdown at call time (tests replace them).
+        lifespan=build_lifespan(
+            state=service_runtime.runtime_state,
+            startup=lambda: service_runtime.startup(),  # noqa: PLW0108
+            shutdown=lambda: service_runtime.shutdown(),  # noqa: PLW0108
+            grace_seconds=settings.shutdown_grace_seconds,
+        ),
+    )
+    # add_middleware wraps outward: request context (outermost) -> body limit ->
+    # disconnect cancellation (buffers the already size-checked body) -> routes.
+    application.add_middleware(DisconnectCancellationMiddleware)
+    application.add_middleware(
+        RequestBodyLimitMiddleware,
+        max_request_bytes=settings.max_request_bytes,
+        idm_max_request_bytes=settings.idm_max_request_bytes,
+    )
+    application.add_middleware(RequestContextMiddleware, state=service_runtime.runtime_state)
+    # Starlette types exception handlers by the base Exception; these accept their subclass.
+    application.add_exception_handler(AppError, app_error_handler)  # type: ignore[arg-type]
+    application.add_exception_handler(Exception, unhandled_error_handler)
+    application.add_exception_handler(
+        RequestValidationError, request_validation_error_handler,  # type: ignore[arg-type]
+    )
+    for routes in ROUTE_MODULES:
+        routes.register(application)
+    return application
 
 
-app.add_exception_handler(AppError, app_error_handler)
+app = create_app()
 
 
-app.add_exception_handler(Exception, unhandled_error_handler)
-
-
-app.add_exception_handler(RequestValidationError, request_validation_error_handler)
-
-
-health_routes.register(app)
-
-
-kb_routes.register(app)
-
-
-chat_routes.register(app)
-
-
-lesson_author_legacy_routes.register(app)
-orchestration_v2_routes.register(app)
-
-
-# Configure the package logger so every app.* module (app.idm, app.core.request_context, ...)
-# emits through the JSON handler, not only this module.
+# Configure the package logger so every app.* module (app.idm, app.core.request_context and the
+# services that log as "app.main") emits through the JSON handler.
 configure_application_logging("app")
-
-
-logger = logging.getLogger(__name__)

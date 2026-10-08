@@ -130,7 +130,7 @@ def _pdf_page_content(page: Any) -> tuple[str, dict[str, Any]]:
         lines: list[str] = []
         block_sizes: list[float] = []
         line_units: list[dict[str, Any]] = []
-        bbox = block.get("bbox")
+        bbox: Any = block.get("bbox")
         for line in block.get("lines", []):
             spans = line.get("spans", []) if isinstance(line, dict) else []
             line_text = clean_text("".join(str(span.get("text") or "") for span in spans if isinstance(span, dict)))
@@ -246,7 +246,7 @@ def extract_pdf(path: Path) -> list[ExtractedSection]:
         import pymupdf
 
         sections: list[ExtractedSection] = []
-        with pymupdf.open(stream=data, filetype="pdf") as document:
+        with pymupdf.open(stream=data, filetype="pdf") as document:  # type: ignore[no-untyped-call]
             if document.page_count > settings.max_document_pages:
                 raise DocumentLimitError()
             visual_regions_by_page = collect_pdf_visual_regions(document)
@@ -271,7 +271,7 @@ def extract_pdf(path: Path) -> list[ExtractedSection]:
     reader = PdfReader(io.BytesIO(data))
     if len(reader.pages) > settings.max_document_pages:
         raise DocumentLimitError()
-    sections: list[ExtractedSection] = []
+    sections = []
     for index, page in enumerate(reader.pages, start=1):
         text = clean_text(page.extract_text() or "")
         if text:

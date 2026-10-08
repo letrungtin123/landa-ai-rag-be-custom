@@ -250,7 +250,8 @@ def provider_retry_delay_seconds(attempt: int) -> float:
     """Exponential backoff with +/-20% jitter, capped by the configured maximum."""
     base = PROVIDER_TRANSIENT_RETRY_DELAY_SECONDS * (2 ** max(0, attempt))
     jittered = base * random.uniform(0.8, 1.2)  # noqa: S311 - jitter, not security
-    return max(0.0, min(jittered, settings.provider_retry_max_ms / 1000))
+    delay: float = max(0.0, min(jittered, settings.provider_retry_max_ms / 1000))
+    return delay
 
 
 def provider_retry_hint_seconds(error: Exception) -> float | None:
@@ -504,7 +505,7 @@ async def call_provider_with_timeout(
 
 
 async def embed_text_batch(
-    api_key: str,
+    api_key: str | SecretStr,
     model: str,
     contents: list[str],
     *,
@@ -535,7 +536,7 @@ async def embed_text_batch(
 
 
 async def embed_texts(
-    api_key: str,
+    api_key: str | SecretStr,
     model: str,
     contents: list[str],
     *,
@@ -563,7 +564,7 @@ async def embed_texts(
 
 
 async def generate_content(
-    api_key: str,
+    api_key: str | SecretStr,
     model: str,
     prompt: str,
     *,
@@ -648,12 +649,15 @@ async def generate_content(
             },
         )
 
+    rate_limit_options: dict[str, Any] = (
+        {"rate_limit_max_wait_ms": rate_limit_max_wait_ms} if rate_limit_max_wait_ms is not None else {}
+    )
     response = await call_provider_with_timeout(
         run,
         model,
         request_timeout_ms=provider_timeout_ms,
         on_provider_diagnostic=on_provider_diagnostic if on_provider_telemetry is not None else None,
-        **({"rate_limit_max_wait_ms": rate_limit_max_wait_ms} if rate_limit_max_wait_ms is not None else {}),
+        **rate_limit_options,
     )
     # Capture real provider metadata before SDK response access/parsing can fail.
     # An HTTP success is not a validated lesson, nor permission to persist it.
@@ -727,6 +731,15 @@ NON_RETRYABLE_PROVIDER_ERROR_CODES = frozenset({
 })
 
 
+def http_error_detail(error: HTTPException) -> dict[str, Any]:
+    """The structured ``detail`` of a service HTTPException (``{"code", "message"}``), else ``{}``.
+
+    Starlette types ``detail`` as ``str``; the service raises dict details, so it is read untyped.
+    """
+    detail: Any = error.detail
+    return detail if isinstance(detail, dict) else {}
+
+
 def is_non_retryable_provider_error(error: HTTPException) -> bool:
-    detail = error.detail if isinstance(error.detail, dict) else {}
+    detail = http_error_detail(error)
     return detail.get("code") in NON_RETRYABLE_PROVIDER_ERROR_CODES

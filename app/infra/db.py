@@ -21,7 +21,7 @@ from dataclasses import dataclass
 from typing import Any, Literal
 from urllib.parse import parse_qs, urlsplit
 
-import asyncpg  # type: ignore[import-untyped]
+import asyncpg
 
 from app.infra.net import is_loopback_host
 

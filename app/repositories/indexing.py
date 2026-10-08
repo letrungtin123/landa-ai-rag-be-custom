@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
-from typing import Any
+from typing import Any, cast
 
 import asyncpg
 
@@ -32,10 +32,9 @@ async def load_document(pool: asyncpg.Pool, tenant_id: str, kb_id: str, document
 
 
 async def start_index_row(pool: asyncpg.Pool, row: asyncpg.Record, embedding_model: str) -> str:
-    async with pool.acquire() as conn:
-        async with conn.transaction():
-            await conn.execute(
-                """
+    async with pool.acquire() as conn, conn.transaction():
+        await conn.execute(
+            """
                 UPDATE rag_document_indexes
                 SET status = 'error',
                     error_reason = 'Phiên học tài liệu trước đó chưa hoàn tất và đã được thay bằng phiên mới.',
@@ -45,19 +44,19 @@ async def start_index_row(pool: asyncpg.Pool, row: asyncpg.Record, embedding_mod
                   AND engine = 'self_built_rag'
                   AND status = 'running'
                 """,
-                row["id"],
-            )
-            version = await conn.fetchval(
-                """
+            row["id"],
+        )
+        version = await conn.fetchval(
+            """
                 SELECT COALESCE(MAX(version), 0) + 1
                 FROM rag_document_indexes
                 WHERE document_id = $1::uuid
                   AND engine = 'self_built_rag'
                 """,
-                row["id"],
-            )
-            return await conn.fetchval(
-                """
+            row["id"],
+        )
+        return cast(str, await conn.fetchval(
+            """
                 INSERT INTO rag_document_indexes (
                   tenant_id, kb_id, document_id, version, status, is_active,
                   embedding_model, embedding_dimensions, started_at
@@ -66,12 +65,12 @@ async def start_index_row(pool: asyncpg.Pool, row: asyncpg.Record, embedding_mod
                         $5, 768, now())
                 RETURNING id::text
                 """,
-                row["tenant_id"],
-                row["kb_id"],
-                row["id"],
-                version,
-                embedding_model,
-            )
+            row["tenant_id"],
+            row["kb_id"],
+            row["id"],
+            version,
+            embedding_model,
+        ))
 
 
 async def mark_index_error(pool: asyncpg.Pool, index_id: str | None, reason: str) -> None:

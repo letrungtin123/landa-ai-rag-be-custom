@@ -24,7 +24,12 @@ from app.schemas.chat import RagChatRequest
 from app.schemas.common import AiUsage
 from app.services import provider
 from app.services.orchestration_v2.common import _orchestration_v2_http_error
-from app.services.provider import provider_http_error_status, require_provider_api_key, safe_provider_error_diagnostics
+from app.services.provider import (
+    http_error_detail,
+    provider_http_error_status,
+    require_provider_api_key,
+    safe_provider_error_diagnostics,
+)
 
 logger = logging.getLogger(SERVICE_LOGGER_NAME)
 
@@ -40,7 +45,7 @@ async def _idm_generate(api_key: str, model: str, prompt: str, **options: Any) -
     try:
         return await provider.generate_content(api_key, model, prompt, **options)
     except HTTPException as error:
-        code = str((error.detail if isinstance(error.detail, dict) else {}).get("code") or "AI_PROVIDER_UNAVAILABLE")
+        code = str(http_error_detail(error).get("code") or "AI_PROVIDER_UNAVAILABLE")
         if code in RUN_STOPPING_PROVIDER_CODES:
             raise IdmProviderError(code, terminal=True, http_status=503) from error
         raise IdmProviderError(code, terminal=code not in TRANSIENT_PROVIDER_CODES,

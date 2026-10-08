@@ -77,7 +77,7 @@ async def lesson_author_orchestration_v2_source_snapshot(
     for index_row in indexes:
         document_id = str(index_row["document_id"])
         declared_chunks = int(index_row["chunk_count"] or 0)
-        summary = structure_rows_by_document.get(document_id) or {}
+        summary: Any = structure_rows_by_document.get(document_id) or {}
         revision = str(summary.get("source_evidence_revision") or "").strip().casefold()
         valid_revision = revision if re.fullmatch(r"[0-9a-f]{64}", revision) else None
         actual_chunks = int(summary.get("actual_chunk_count") if summary.get("actual_chunk_count") is not None
@@ -145,7 +145,7 @@ async def lesson_author_orchestration_v2_source_snapshot(
             "legacy_document_count": legacy_document_count,
             "selected_document_count": len(document_ids),
         }, sort_keys=True))
-    authority_payload = {
+    authority_payload: dict[str, Any] = {
         "mode": authority_mode,
         "source": authority_source,
         "complete": bool(chapter_policy.get("complete")),
@@ -216,7 +216,9 @@ async def lesson_author_orchestration_v2_source_snapshot(
             clean_text(str(row.get("content") or "")),
             preserve_table_numeric=table_count > 0 or "table" in content_kinds,
         )
-        page = row.get("source_page") if isinstance(row.get("source_page"), int) and row.get("source_page") > 0 else None
+        page = (row.get("source_page")
+                if isinstance(row.get("source_page"), int) and row.get("source_page") > 0  # type: ignore[operator]
+                else None)
         source_ref = str(metadata.get("source_ref") or row.get("source_section") or "").strip()[:255] or None
         heading = metadata.get("heading_path")
         if isinstance(heading, list):

@@ -476,7 +476,7 @@ class IndexDocumentCharacterizationTests(unittest.TestCase):
                           else AssertionError("download not expected"))
         with patch("app.services.provider.embed_texts", new=embedder), \
                 patch("app.services.ingestion.storage.download_storage_object", new=downloader), \
-                self.assertLogs(main.logger, level="INFO") as logs:
+                self.assertLogs(index_service.logger, level="INFO") as logs:
             try:
                 outcome: Any = asyncio.run(index_service.index_document(request or index_request(), pool=db))
             except Exception as error:

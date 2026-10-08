@@ -31,7 +31,7 @@ from app.services.orchestration_v2.common import (
     _orchestration_v2_http_error,
 )
 from app.services.orchestration_v2.idm import _idm_http_error, _idm_runtime
-from app.services.provider import combine_usage
+from app.services.provider import combine_usage, http_error_detail
 
 logger = logging.getLogger(SERVICE_LOGGER_NAME)
 
@@ -67,8 +67,9 @@ async def _lesson_author_orchestration_v2_chapter_shard(
             request.locale, request.skeleton, request.shard_plan, request.source_facts,
         )
     except (OrchestrationContractError, StopIteration) as error:
-        code = error.code if isinstance(error, OrchestrationContractError) else "ARCHITECTURE_SHARD_IDENTITY_MISMATCH"
-        raise _orchestration_v2_http_error(code, "The chapter shard context is invalid.") from error
+        context_code = (error.code if isinstance(error, OrchestrationContractError)
+                        else "ARCHITECTURE_SHARD_IDENTITY_MISMATCH")
+        raise _orchestration_v2_http_error(context_code, "The chapter shard context is invalid.") from error
     logger.info("lesson_author_orchestration_v2 %s", json.dumps({
         "event": "provider_schema_projection_ready", "correlation_id": request.correlation_id,
         "generation_stage": "chapter_shard", "chapter_key": request.shard_plan.chapter_key,
@@ -90,7 +91,7 @@ async def _lesson_author_orchestration_v2_chapter_shard(
                 generation_stage="chapter_shard",
             )
         except HTTPException as error:
-            detail = error.detail if isinstance(error.detail, dict) else {}
+            detail = http_error_detail(error)
             code = detail.get("code")
             if code not in ORCHESTRATION_V2_PROVIDER_FALLBACK_CODES:
                 raise
@@ -137,7 +138,7 @@ async def _lesson_author_orchestration_v2_chapter_shard(
                     "quality_state": "validated"}
         except OrchestrationContractError as error:
             last_code = error.code
-            safe_errors = [{"type": "contract_error", "loc": [], "code": error.code}]
+            safe_errors: list[dict[str, Any]] = [{"type": "contract_error", "loc": [], "code": error.code}]
         except (ValidationError, ValueError, json.JSONDecodeError) as error:
             last_code = "ARCHITECTURE_SHARD_INVALID"
             safe_errors = ([{"type": item.get("type"), "loc": list(item.get("loc") or ())}
@@ -206,7 +207,7 @@ async def _lesson_author_orchestration_v2_chapter_shard(
     fallback = fallback_chapter_shard_draft_v2(
         request.skeleton, request.shard_plan, request.source_facts,
     )
-    compiler_diagnostics: list[dict[str, Any]] = []
+    compiler_diagnostics = []
     shard = bind_chapter_shard_v2(
         fallback,
         skeleton=request.skeleton,

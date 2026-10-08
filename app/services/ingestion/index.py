@@ -36,7 +36,7 @@ from app.services.ingestion import extract as extraction
 from app.services.ingestion.chunking import build_chunks, build_index_diagnostics
 from app.services.ingestion.extract import ExtractedSection, index_document_temp_path
 from app.services.ingestion.storage import fetch_index_source
-from app.services.provider import normalize_embedding_model
+from app.services.provider import http_error_detail, normalize_embedding_model
 from app.services.text import clean_text
 from app.source_structure import analyze_source_structure
 
@@ -54,7 +54,7 @@ def retryable_provider_failure(exc: BaseException) -> AppError | None:
     """Map a transient provider failure (quota/rate limit/unavailable/timeout) to a retryable 503."""
     if not isinstance(exc, HTTPException) or exc.status_code not in RETRYABLE_PROVIDER_HTTP_STATUSES:
         return None
-    detail = exc.detail if isinstance(exc.detail, dict) else {}
+    detail = http_error_detail(exc)
     code = str(detail.get("code") or "")
     message = detail.get("message")
     return AppError(

@@ -39,6 +39,11 @@ class StagedUnitFinding(str):
 
     Only diagnostic() is loggable; the legacy message may contain private IDs.
     """
+
+    code: str
+    path: str
+    repairable: bool
+
     def __new__(cls, message: str, code: str, path: str = "unit", repairable: bool = False):
         value = super().__new__(cls, message)
         value.code, value.path, value.repairable = code, path, repairable

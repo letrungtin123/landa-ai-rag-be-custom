@@ -294,7 +294,7 @@ class SourceChapterPolicyIntegrationTests(unittest.IsolatedAsyncioTestCase):
              patch("app.services.lesson_author.blueprint.generate_validated_lesson_author_blueprint", new=AsyncMock(
                  side_effect=WorkflowFailure("PROVIDER_ERROR", "Mocked Architect boundary"))) as architect, \
              patch("app.services.provider.generate_content", new=AsyncMock()) as provider, \
-             patch("app.main.logger.info") as log:
+             patch("app.services.lesson_author.blueprint_workflow.logger.info") as log:
             with self.assertRaises(HTTPException) as failure:
                 await lesson_author_blueprint(blueprint_request(), pool=None)
         self.assertEqual(failure.exception.detail["code"], "PROVIDER_ERROR")
@@ -340,7 +340,7 @@ class SourceChapterPolicyIntegrationTests(unittest.IsolatedAsyncioTestCase):
         context = build_source_structure_context([doc], locale="en")
         with patch("app.services.retrieval.search.retrieve_chunks", new=AsyncMock(return_value=([], AiUsage(), context))), \
              patch("app.services.provider.generate_content", new=AsyncMock()) as provider, \
-             patch("app.main.logger.info") as log:
+             patch("app.services.lesson_author.blueprint_workflow.logger.info") as log:
             with self.assertRaises(HTTPException) as failure:
                 await lesson_author_blueprint(blueprint_request(), pool=None)
         self.assertEqual(failure.exception.status_code, 422)

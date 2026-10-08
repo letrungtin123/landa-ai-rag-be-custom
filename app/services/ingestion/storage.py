@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from pathlib import Path
+from typing import cast
 
 from app.core.config import settings
 from app.core.document_limits import assert_document_size
@@ -25,7 +26,8 @@ def download_storage_object(storage_path: str) -> bytes:
             "SOURCE_DOWNLOAD_URL_REQUIRED", 422,
             "The index request must include a signed source download URL.",
         )
-    return service_runtime.supabase_client.storage.from_(settings.supabase_storage_bucket).download(storage_path)
+    bucket = service_runtime.supabase_client.storage.from_(settings.supabase_storage_bucket)
+    return cast(bytes, bucket.download(storage_path))
 
 
 async def fetch_index_source(request: RagIndexRequest, storage_path: str, destination: Path) -> int:

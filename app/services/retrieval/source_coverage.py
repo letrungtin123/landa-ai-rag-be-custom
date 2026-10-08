@@ -227,7 +227,7 @@ def _append_unique_source_line(lines: list[str], line: str) -> None:
 
 def _build_unpaginated_source_sections(
     rows: list[dict[str, Any]],
-    structure_nodes: list[dict[str, Any]],
+    structure_nodes: list[Any],
 ) -> list[dict[str, Any]]:
     """Map DOCX/HTML chunks to inferred headings and remove chunk overlap."""
     nodes_by_document: dict[str, list[dict[str, Any]]] = {}

@@ -217,7 +217,7 @@ async def retrieve_chunks(
         # A selected chapter is an authoritative boundary. Relevance-ranked
         # chunks outside that range are never allowed to fill the context and
         # silently contaminate the generated lesson plan.
-        rows: list[dict[str, Any]] = []
+        rows = []
         seen_scope_content: set[str] = set()
         for row in sorted(
             scope_rows,

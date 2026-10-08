@@ -252,7 +252,7 @@ class ContentObservationTests(unittest.TestCase):
         from tests.test_lesson_prompt_policy import request_and_unit
         request, generated = request_and_unit("html", "vi")
         provider = AsyncMock(return_value=(json.dumps(generated), AiUsage()))
-        with patch("app.services.provider.generate_content", provider), patch("app.main.logger.info") as log:
+        with patch("app.services.provider.generate_content", provider), patch("app.services.lesson_author.staged.writer.logger.info") as log:
             proposal, _ = asyncio.run(staged_writer.generate_staged_lesson_author_proposal(
                 request, "Private evidence", "", source_rows=[],
                 source_coverage_manifest={"facts": [{"fact_id": "fact-1", "text": "Private evidence is not taught in this fixture."}]}))
@@ -269,7 +269,7 @@ class ContentObservationTests(unittest.TestCase):
         from tests.test_lesson_prompt_policy import request_and_unit
         request, generated = request_and_unit("html", "en")
         provider = AsyncMock(return_value=(json.dumps(generated), AiUsage()))
-        with patch("app.services.provider.generate_content", provider), patch("app.main.logger.info") as log, \
+        with patch("app.services.provider.generate_content", provider), patch("app.services.lesson_author.staged.writer.logger.info") as log, \
                 patch("app.services.lesson_author.staged.writer.observe_lesson_content", side_effect=ValueError("PRIVATE_EXCEPTION")):
             asyncio.run(staged_writer.generate_staged_lesson_author_proposal(request, "Evidence", "", source_rows=[],
                 source_coverage_manifest={"facts": [{"fact_id": "fact-1", "text": "Evidence"}]}))
@@ -285,7 +285,7 @@ class ContentObservationTests(unittest.TestCase):
         request, valid, broken, scope, manifest, delta = coverage_fixture()
         provider = AsyncMock(side_effect=[(json.dumps(instance_wire(broken)), AiUsage()),
                                           (json.dumps(delta), AiUsage())])
-        with patch("app.services.provider.generate_content", provider), patch("app.main.logger.info") as log:
+        with patch("app.services.provider.generate_content", provider), patch("app.services.lesson_author.staged.writer.logger.info") as log:
             result = asyncio.run(checkpoint_result(request, manifest))
         self.assertEqual(result["status"], "unit_ready")
         self.assertEqual(provider.await_count, 2)

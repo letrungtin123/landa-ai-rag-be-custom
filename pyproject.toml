@@ -19,6 +19,8 @@ ignore = [
 
 [tool.ruff.lint.per-file-ignores]
 "tests/**/*.py" = ["S101", "S105", "S106", "PLR2004"]
+# Repository functions take their statement's $n parameters positionally, in placeholder order.
+"app/repositories/*.py" = ["PLR0917"]
 
 [tool.mypy]
 python_version = "3.12"
@@ -27,20 +29,45 @@ warn_unreachable = true
 show_error_codes = true
 plugins = ["pydantic.mypy"]
 
-# Legacy modules imported by strict code (app/idm). They keep the "no new errors"
-# baseline (STD-2) until PRD-2 moves and types them; strict modules still see
-# their signatures.
+# Legacy modules imported by strict code (app/idm, app/api, app/services outside the legacy
+# lesson-author pipeline, ...). They keep the "no new errors" baseline (STD-2); strict modules
+# still see their signatures. app.services.lesson_author is the legacy V5 writer/repair pipeline
+# moved verbatim in PRD-2 (deleted in PRD-3).
 [[tool.mypy.overrides]]
 module = [
+  "app.assessment_planner",
+  "app.assessment_selection_contract",
+  "app.component_capabilities",
   "app.instructional_density",
+  "app.instructional_opportunities",
   "app.instructional_quality",
   "app.learner_content_purity",
+  "app.lesson_author_blueprint",
+  "app.lesson_author_checkpoint",
   "app.lesson_author_orchestration_v2",
   "app.lesson_author_orchestration_v2_provider",
+  "app.lesson_author_provider_schema",
+  "app.lesson_content_observation",
+  "app.lesson_prompt_policy",
+  "app.lesson_quality",
+  "app.media_brief",
   "app.ordered_learning_content",
+  "app.semantic_review",
+  "app.services.lesson_author.*",
+  "app.source_chapter_policy",
   "app.source_evidence_bundle",
+  "app.source_map",
+  "app.source_readiness",
+  "app.source_structure",
+  "app.source_visual_observation",
+  "app.workflows.*",
 ]
 ignore_errors = true
+
+# Third-party packages that ship no type information.
+[[tool.mypy.overrides]]
+module = ["asyncpg", "asyncpg.*", "openpyxl", "openpyxl.*", "xlrd"]
+ignore_missing_imports = true
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

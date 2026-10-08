@@ -330,5 +330,6 @@ def _orchestration_v2_source_locked_component(
                 return None
             component.update(diagram)
     else:
-        return None
+        # Defensive: a component type without a source-locked builder gets no slot.
+        return None  # type: ignore[unreachable]
     return component

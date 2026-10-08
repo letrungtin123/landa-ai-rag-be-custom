@@ -141,7 +141,7 @@ class LessonPromptPolicyTests(unittest.TestCase):
         request = request.model_copy(update={"correlation_id": "11111111-1111-4111-8111-111111111111"})
         before = deepcopy(generated)
         provider = AsyncMock(return_value=(json.dumps(generated), AiUsage()))
-        with patch("app.services.provider.generate_content", provider), patch("app.main.logger.info") as log:
+        with patch("app.services.provider.generate_content", provider), patch("app.services.lesson_author.staged.writer.logger.info") as log:
             proposal, _ = asyncio.run(generate_staged_lesson_author_proposal(
                 request, "PRIVATE_SOURCE", "", source_rows=[],
                 source_coverage_manifest={"facts": [{"fact_id": "fact-1", "text": "PRIVATE_SOURCE"}]},

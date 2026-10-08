@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Any, Literal
 from uuid import UUID
 
-from pydantic import Field, SecretStr, model_validator
+from pydantic import ConfigDict, Field, SecretStr, model_validator
 
 from app.idm.contracts import IdmCourseSkeletonRequestV1, IdmModuleContextV1
 from app.lesson_author_orchestration_v2 import CourseSkeletonV2
@@ -20,10 +20,11 @@ from app.schemas.chat import RagChatRequest
 
 
 class RagLessonAuthorSourceSnapshotV2Request(RagChatRequest):
-    model_config = {"extra": "forbid"}
+    model_config = ConfigDict(extra="forbid")
     # Source paging is deterministic database work. It deliberately carries no
     # tenant provider secret because this endpoint cannot call Gemini.
-    api_key: SecretStr = Field(default="source-snapshot-no-provider", repr=False)
+    # The default stays the plain (unvalidated) string, exactly as before typing was enforced.
+    api_key: SecretStr = Field(default="source-snapshot-no-provider", repr=False)  # type: ignore[assignment]
     contract_version: Literal[2] = 2
     source_snapshot_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
     cursor: dict[str, Any] | None = None
@@ -32,7 +33,7 @@ class RagLessonAuthorSourceSnapshotV2Request(RagChatRequest):
     page_max_bytes: int = Field(default=4_194_304, ge=1, le=4_194_304, strict=True)
 
     @model_validator(mode="after")
-    def validate_source_snapshot_request(self) -> "RagLessonAuthorSourceSnapshotV2Request":
+    def validate_source_snapshot_request(self) -> RagLessonAuthorSourceSnapshotV2Request:
         if self.target != "lesson_author" or not self.kb_id or not self.correlation_id or not self.source_documents:
             raise ValueError("ORCHESTRATION_V2_SOURCE_REQUEST_INVALID")
         if self.cursor is not None:
@@ -49,7 +50,7 @@ class RagLessonAuthorSourceSnapshotV2Request(RagChatRequest):
 
 
 class RagLessonAuthorCourseSkeletonV2Request(RagChatRequest):
-    model_config = {"extra": "forbid"}
+    model_config = ConfigDict(extra="forbid")
     contract_version: Literal[2] = 2
     source_snapshot_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
     scope_catalog: list[SourceScopeCatalogEntryV2] = Field(min_length=1, max_length=4096)
@@ -59,7 +60,7 @@ class RagLessonAuthorCourseSkeletonV2Request(RagChatRequest):
     idm: IdmCourseSkeletonRequestV1 | None = None
 
     @model_validator(mode="after")
-    def validate_course_skeleton_request(self) -> "RagLessonAuthorCourseSkeletonV2Request":
+    def validate_course_skeleton_request(self) -> RagLessonAuthorCourseSkeletonV2Request:
         if self.target != "lesson_author" or not self.correlation_id:
             raise ValueError("ORCHESTRATION_V2_SKELETON_REQUEST_INVALID")
         if self.idm is not None and self.idm.project_context.locale != self.locale:
@@ -71,7 +72,7 @@ class RagLessonAuthorCourseSkeletonV2Request(RagChatRequest):
 
 
 class RagLessonAuthorChapterShardV2Request(RagChatRequest):
-    model_config = {"extra": "forbid"}
+    model_config = ConfigDict(extra="forbid")
     contract_version: Literal[2] = 2
     skeleton: CourseSkeletonV2
     shard_plan: ChapterShardPlanV2
@@ -81,7 +82,7 @@ class RagLessonAuthorChapterShardV2Request(RagChatRequest):
     idm_module_context: IdmModuleContextV1 | None = None
 
     @model_validator(mode="after")
-    def validate_chapter_shard_request(self) -> "RagLessonAuthorChapterShardV2Request":
+    def validate_chapter_shard_request(self) -> RagLessonAuthorChapterShardV2Request:
         if self.target != "lesson_author" or not self.correlation_id or self.locale != self.skeleton.locale:
             raise ValueError("ORCHESTRATION_V2_CHAPTER_REQUEST_INVALID")
         if self.idm_module_context is not None and (
@@ -95,7 +96,7 @@ class RagLessonAuthorChapterShardV2Request(RagChatRequest):
 
 
 class RagLessonAuthorUnitV2Request(RagChatRequest):
-    model_config = {"extra": "forbid"}
+    model_config = ConfigDict(extra="forbid")
     contract_version: Literal[2] = 2
     unit_contract: UnitGenerationContractV2
     max_attempts: int = Field(default=2, ge=1, le=2)
@@ -103,7 +104,7 @@ class RagLessonAuthorUnitV2Request(RagChatRequest):
     fallback_only: bool = Field(default=False, strict=True)
 
     @model_validator(mode="after")
-    def validate_unit_request(self) -> "RagLessonAuthorUnitV2Request":
+    def validate_unit_request(self) -> RagLessonAuthorUnitV2Request:
         document_ids = {document.document_id for document in self.source_documents}
         if (self.target != "lesson_author" or not self.correlation_id or not self.source_documents
                 or self.locale not in {"vi", "en"}

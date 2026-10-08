@@ -6,7 +6,7 @@ import json
 import logging
 
 from fastapi import HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, SecretStr
 
 from app.core.logging import SERVICE_LOGGER_NAME
 from app.schemas.common import AiUsage
@@ -28,13 +28,13 @@ def _orchestration_v2_http_error(code: str, message: str, *, status_code: int = 
 
 
 async def _orchestration_v2_generate_content(
-    api_key: str,
+    api_key: str | SecretStr,
     model: str,
     prompt: str,
     *,
     max_output_tokens: int,
     response_schema: type[BaseModel],
-    correlation_id: str,
+    correlation_id: str | None,
     generation_stage: str,
 ) -> tuple[str, AiUsage]:
     """Call Gemini with a safe, terminal classification for definitive refusals.

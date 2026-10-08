@@ -223,7 +223,7 @@ class CanonicalAssessmentEndpointTests(unittest.IsolatedAsyncioTestCase):
                              "known_source_refs": {n["source_ref"] for n in nodes}}
                 with patch("app.services.retrieval.search.retrieve_chunks", new=AsyncMock(return_value=([], AiUsage(), structure))), \
                      patch("app.services.provider.generate_content", new=AsyncMock(side_effect=provider)), \
-                     patch("app.main.logger.info", side_effect=capture):
+                     patch("app.services.lesson_author.blueprint_workflow.logger.info", side_effect=capture):
                     result = await lesson_author_blueprint(request, pool=object())
                 allocation = result["blueprint"]["source_fact_allocation"]
                 self.assertEqual(allocation["allocated_count"], count)

@@ -30,7 +30,7 @@ from app.services.orchestration_v2.common import (
     _orchestration_v2_generate_content,
 )
 from app.services.orchestration_v2.idm import _idm_http_error, _idm_runtime
-from app.services.provider import combine_usage
+from app.services.provider import combine_usage, http_error_detail
 
 logger = logging.getLogger(SERVICE_LOGGER_NAME)
 
@@ -79,7 +79,7 @@ async def _lesson_author_orchestration_v2_course_skeleton(
                 generation_stage="course_skeleton",
             )
         except HTTPException as error:
-            detail = error.detail if isinstance(error.detail, dict) else {}
+            detail = http_error_detail(error)
             code = detail.get("code")
             if code not in ORCHESTRATION_V2_PROVIDER_FALLBACK_CODES:
                 raise

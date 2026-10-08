@@ -8,7 +8,7 @@ import logging
 import re
 from copy import deepcopy
 from time import perf_counter
-from typing import Any, Literal
+from typing import Any, Literal, cast
 
 from google.genai import types
 from pydantic import BaseModel, ValidationError
@@ -299,7 +299,7 @@ async def _lesson_author_orchestration_v2_unit_legacy(
         # on this exact provenance/quality pair for provider-free replay.
         fallback_quality_state = "review_required"
         semantic_summary = (
-            semantic_review_unavailable(unit, "SEMANTIC_REVIEW_NOT_RUN")
+            semantic_review_unavailable(cast("dict[str, Any]", unit), "SEMANTIC_REVIEW_NOT_RUN")
             if semantic_review_mode != "off" else None
         )
         logger.warning("lesson_author_orchestration_v2 %s", json.dumps({
@@ -411,7 +411,7 @@ async def _lesson_author_orchestration_v2_unit_legacy(
                 metadata.get("provider_http_status") == 200
                 and metadata.get("usage_source") == "provider"
                 and all(type(value) is int and value >= 0 for value in counts)
-                and counts[2] >= counts[0] + counts[1]
+                and counts[2] >= counts[0] + counts[1]  # type: ignore[operator]  # ints, checked just above
             ):
                 invocation_usage_complete = True
             outcome = {

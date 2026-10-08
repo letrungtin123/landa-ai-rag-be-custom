@@ -81,13 +81,13 @@ def storage_policy() -> storage_infra.StoragePolicy:
 
 
 async def _on_database_connected(pool: Any) -> None:
-    global db_pool
+    global db_pool  # noqa: PLW0603 - process-wide pool, swapped by the reconnect callback
     db_pool = pool
     await schema_guard.refresh(pool, timeout_seconds=SCHEMA_CHECK_TIMEOUT_SECONDS)
 
 
 async def startup() -> None:
-    global database, supabase_client
+    global database, supabase_client  # noqa: PLW0603 - process resources created at startup
     require_settings()
     try:
         allowed_origins = storage_infra.parse_allowed_origins(settings.storage_allowed_origins, settings.supabase_url)
@@ -121,7 +121,7 @@ async def startup() -> None:
 
 
 async def shutdown() -> None:
-    global db_pool, database
+    global db_pool, database  # noqa: PLW0603 - process resources released at shutdown
     runtime, database = database, None
     if runtime is not None:
         await runtime.close()

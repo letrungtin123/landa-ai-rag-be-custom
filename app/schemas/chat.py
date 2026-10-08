@@ -9,6 +9,9 @@ from pydantic import BaseModel, Field, SecretStr, field_validator
 from app.core.config import settings
 from app.schemas.common import validate_uuid_string
 
+# Source documents one RAG request may scope retrieval to (prompt and query size bound).
+MAX_SOURCE_DOCUMENTS = 20
+
 
 class RagChatMessage(BaseModel):
     role: Literal["user", "assistant", "model"]
@@ -79,6 +82,6 @@ class RagChatRequest(BaseModel):
     @field_validator("source_documents")
     @classmethod
     def validate_source_document_count(cls, value: list[RagSourceDocument]) -> list[RagSourceDocument]:
-        if len(value) > 20:
+        if len(value) > MAX_SOURCE_DOCUMENTS:
             raise ValueError("Tối đa 20 tài liệu nguồn cho mỗi request RAG.")
         return value
