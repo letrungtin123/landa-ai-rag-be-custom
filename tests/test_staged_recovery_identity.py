@@ -11,7 +11,6 @@ from google import genai
 from google.genai import models, types
 
 from app.main import (
-    LessonAuthorProposalValidationError,
     build_staged_lesson_content_response_model,
     generate_staged_lesson_author_proposal,
     match_staged_unit_by_title,
@@ -22,6 +21,7 @@ from app.main import (
     staged_payload_diagnostics,
     validate_staged_unit_content,
 )
+from app.services.lesson_author.errors import LessonAuthorProposalValidationError
 from app.schemas.common import AiUsage
 from tests.test_component_instance_contract import PROFILE
 from tests.test_lesson_prompt_policy import content_payload, request_and_unit

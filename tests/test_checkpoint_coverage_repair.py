@@ -19,6 +19,7 @@ from tests.test_checkpoint_component_quality_repair import instance_wire
 from tests.test_chapter_checkpoint import checkpoint_result
 from tests.test_lesson_prompt_policy import content_payload
 from app.schemas.common import AiUsage
+from app.services.lesson_author.errors import LessonAuthorProposalValidationError
 
 
 def coverage_fixture():
@@ -148,10 +149,10 @@ class CheckpointCoverageRepairTests(unittest.TestCase):
     def test_coverage_edits_require_explicit_target_authority_and_are_atomic(self):
         _, _, broken, _, _, delta = coverage_fixture()
         before = deepcopy(broken)
-        with self.assertRaisesRegex(main.LessonAuthorProposalValidationError, "PROTECTED_FIELD"):
+        with self.assertRaisesRegex(LessonAuthorProposalValidationError, "PROTECTED_FIELD"):
             main.merge_staged_component_payload_delta(broken, delta, [2])
         delta["components"][0]["words"] = []
-        with self.assertRaises(main.LessonAuthorProposalValidationError):
+        with self.assertRaises(LessonAuthorProposalValidationError):
             main.merge_staged_component_payload_delta(broken, delta, [2], coverage_targets=[2])
         self.assertEqual(broken, before)
 

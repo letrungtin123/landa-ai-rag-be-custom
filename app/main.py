@@ -7,7 +7,6 @@ import json
 import logging
 import re
 from copy import deepcopy
-from dataclasses import dataclass
 from datetime import datetime, timezone
 from enum import Enum
 from time import monotonic, perf_counter
@@ -148,7 +147,6 @@ from app.media_brief import build_media_brief
 from app.ordered_learning_content import (
     ProviderSemanticVersionError,
     bind_provider_semantic_versions,
-    flatten_ordered_content,
     semantic_shape_diagnostics,
 )
 from app.prompt_safety import untrusted_block, untrusted_content_rule
@@ -182,6 +180,38 @@ from app.services import runtime as service_runtime
 from app.services.deadlines import record_fallback, run_with_deadline
 from app.services.ingestion.chunking import SOURCE_EVIDENCE_LEGACY_REVIEW_REQUIRED, SOURCE_EVIDENCE_READY
 from app.services.ingestion.extract import ExtractedSection
+from app.services.lesson_author.architecture_shape import (
+    _V5_ACTION_OR_PROCEDURE_OBJECTIVE,
+    _V5_GENERIC_EXPLANATION_INTENTS,
+    _V5_TEACHING_INTENTS,
+    _blueprint_path_object,
+    _is_v4_supporting_factless_unit,
+    _is_v5_supporting_factless_unit,
+    _repair_parent_lesson_path,
+    _safe_json_shape,
+    _semantic_delta_blocks,
+    _v5_text_ids,
+    _workflow_issue,
+    _workflow_issue_from_blueprint_validation_error,
+)
+from app.services.lesson_author.errors import LessonAuthorProposalValidationError
+from app.services.lesson_author.proposal_validation import (
+    MIN_LESSON_AUTHOR_HTML_TEXT_CHARS,
+    MIN_STAGED_LESSON_AUTHOR_HTML_TEXT_CHARS,
+    _normalize_structural_title,
+    normalize_lesson_author_proposal_tree,
+    parse_course_architecture_repair_payload,
+    parse_lesson_author_json,
+    semantic_learning_visible_text,
+    validate_lesson_author_proposal_shape,
+)
+from app.services.lesson_author.source_context import (
+    MAX_WORKFLOW_REPAIR_TARGET_CHARS,
+    V5ImmutableSourceContext,
+    assert_v5_immutable_source_context,
+    assert_v5_scoped_repair_target_bound,
+    create_v5_immutable_source_context,
+)
 from app.services.meta import API_VERSION
 from app.services.provider import (
     PROVIDER_TRANSIENT_MAX_ATTEMPTS,
@@ -256,6 +286,8 @@ app.add_exception_handler(RequestValidationError, request_validation_error_handl
 
 
 app.include_router(health.router)
+
+
 app.include_router(kb_routes.router)
 
 
@@ -267,8 +299,6 @@ configure_application_logging("app")
 logger = logging.getLogger(__name__)
 MAX_SOURCE_STRUCTURE_DOCUMENTS = 40
 MAX_SOURCE_OUTLINE_CHARS = 16000
-MAX_WORKFLOW_REPAIR_TARGET_CHARS = 24000
-MAX_V5_SCOPED_REPAIR_TARGETS = 8
 
 
 SOURCE_RANGE_RE = re.compile(
@@ -276,200 +306,6 @@ SOURCE_RANGE_RE = re.compile(
     r"(?:đến|den|to)\s+(?:(?:slide|slides|trang|page|pages)\s+)?(\d+)\b",
     flags=re.IGNORECASE,
 )
-
-
-def _v5_source_context_payload(
-    source_map: dict[str, Any],
-    source_coverage_manifest: dict[str, Any] | None,
-) -> dict[str, Any]:
-    """Return provenance-only state used to fingerprint immutable V5 inputs.
-
-    The payload intentionally excludes fact/source text. It contains just the
-    server-owned identifiers and exact scope membership needed to prove that a
-    request has not silently changed its canonical source basis between an
-    Architect candidate, a repair patch, allocation and final validation.
-    """
-
-    manifest_fact_ids = sorted({
-        str(fact.get("fact_id") or "").strip()
-        for fact in (source_coverage_manifest or {}).get("facts", [])
-        if isinstance(fact, dict) and str(fact.get("fact_id") or "").strip()
-    })
-    scopes: list[dict[str, Any]] = []
-    for scope in source_map.get("source_evidence_scopes", []):
-        if not isinstance(scope, dict):
-            continue
-        scope_id = str(scope.get("id") or "").strip()
-        if not scope_id:
-            continue
-        scopes.append({
-            "id": scope_id,
-            "document_id": str(scope.get("document_id") or "").strip(),
-            "section_id": str(scope.get("section_id") or "").strip(),
-            "source_ref": str(scope.get("source_ref") or "").strip(),
-            "concept_ids": sorted({
-                str(value).strip()
-                for value in scope.get("concept_ids", [])
-                if isinstance(value, str) and value.strip()
-            }),
-            "source_fact_ids": sorted({
-                str(value).strip()
-                for value in scope.get("source_fact_ids", [])
-                if isinstance(value, str) and value.strip()
-            }),
-        })
-    documents = sorted({
-        str(document.get("id") or "").strip()
-        for document in source_map.get("documents", [])
-        if isinstance(document, dict) and str(document.get("id") or "").strip()
-    })
-    return {
-        "source_map_version": str(source_map.get("version") or ""),
-        "document_ids": documents,
-        "canonical_fact_ids": manifest_fact_ids,
-        "evidence_scopes": sorted(scopes, key=lambda value: value["id"]),
-        "sections": sorted({
-            str(section.get("id") or "").strip()
-            for section in source_map.get("sections", [])
-            if isinstance(section, dict) and str(section.get("id") or "").strip()
-        }),
-        "concepts": sorted({
-            str(concept.get("id") or "").strip()
-            for concept in source_map.get("concepts", [])
-            if isinstance(concept, dict) and str(concept.get("id") or "").strip()
-        }),
-    }
-
-
-def _v5_source_context_fingerprint(
-    source_map: dict[str, Any],
-    source_coverage_manifest: dict[str, Any] | None,
-) -> str:
-    serialized = json.dumps(
-        _v5_source_context_payload(source_map, source_coverage_manifest),
-        ensure_ascii=True,
-        sort_keys=True,
-        separators=(",", ":"),
-    ).encode("utf-8")
-    return hashlib.sha256(serialized).hexdigest()
-
-
-@dataclass(frozen=True)
-class V5ImmutableSourceContext:
-    """One request-scoped, server-owned V5 source authority.
-
-    No candidate Blueprint is ever used to rebuild this object. Callers get a
-    deep copy for validation/allocation so provider repair cannot mutate the
-    authoritative map, manifest or exact evidence-scope membership.
-    """
-
-    source_map: dict[str, Any]
-    source_coverage_manifest: dict[str, Any]
-    fingerprint: str
-    canonical_fact_count: int
-    evidence_scope_count: int
-    source_document_ids: tuple[str, ...]
-
-    def source_map_copy(self) -> dict[str, Any]:
-        return deepcopy(self.source_map)
-
-    def manifest_copy(self) -> dict[str, Any]:
-        return deepcopy(self.source_coverage_manifest)
-
-
-def create_v5_immutable_source_context(
-    source_map: dict[str, Any],
-    source_coverage_manifest: dict[str, Any] | None,
-) -> V5ImmutableSourceContext:
-    """Freeze a complete V5 Source Map/manifest before any provider output."""
-
-    map_snapshot = deepcopy(source_map)
-    manifest_snapshot = deepcopy(source_coverage_manifest or {})
-    payload = _v5_source_context_payload(map_snapshot, manifest_snapshot)
-    fact_ids = payload["canonical_fact_ids"]
-    scope_fact_ids = [
-        fact_id
-        for scope in payload["evidence_scopes"]
-        for fact_id in scope["source_fact_ids"]
-    ]
-    if (
-        (fact_ids and not payload["evidence_scopes"])
-        or len(scope_fact_ids) != len(fact_ids)
-        or len(set(scope_fact_ids)) != len(scope_fact_ids)
-        or set(scope_fact_ids) != set(fact_ids)
-    ):
-        raise WorkflowFailure(
-            "V5_SOURCE_CONTEXT_INVARIANT_FAILED",
-            "The immutable V5 Source Map does not contain exactly one evidence scope membership for every canonical fact.",
-            internal_code="V5_SOURCE_CONTEXT_SCOPE_MEMBERSHIP_INVALID",
-            failure_stage="source_map_build",
-            diagnostics={
-                "canonical_fact_count": len(fact_ids),
-                "evidence_scope_fact_membership_count": len(scope_fact_ids),
-                "evidence_scope_count": len(payload["evidence_scopes"]),
-            },
-        )
-    return V5ImmutableSourceContext(
-        source_map=map_snapshot,
-        source_coverage_manifest=manifest_snapshot,
-        fingerprint=_v5_source_context_fingerprint(map_snapshot, manifest_snapshot),
-        canonical_fact_count=len(fact_ids),
-        evidence_scope_count=len(payload["evidence_scopes"]),
-        source_document_ids=tuple(payload["document_ids"]),
-    )
-
-
-def assert_v5_immutable_source_context(
-    context: V5ImmutableSourceContext | None,
-    *,
-    stage: str,
-) -> V5ImmutableSourceContext:
-    """Fail closed if V5 source ownership context is absent or was mutated."""
-
-    if context is None:
-        raise WorkflowFailure(
-            "V5_SOURCE_CONTEXT_INVARIANT_FAILED",
-            "V5 Course Architecture requires an immutable server-owned source context.",
-            internal_code="V5_SOURCE_CONTEXT_MISSING",
-            failure_stage=stage,
-        )
-    fingerprint = _v5_source_context_fingerprint(
-        context.source_map,
-        context.source_coverage_manifest,
-    )
-    if fingerprint != context.fingerprint:
-        raise WorkflowFailure(
-            "V5_SOURCE_CONTEXT_INVARIANT_FAILED",
-            "Immutable V5 source context changed during course architecture processing.",
-            internal_code="V5_SOURCE_CONTEXT_MUTATED",
-            failure_stage=stage,
-            diagnostics={
-                "canonical_fact_count": context.canonical_fact_count,
-                "evidence_scope_count": context.evidence_scope_count,
-            },
-        )
-    return context
-
-
-def assert_v5_scoped_repair_target_bound(
-    targets: list[RepairTarget],
-    context: V5ImmutableSourceContext,
-) -> None:
-    """Reject a degraded V5 candidate before it can create a broad prompt."""
-
-    if len(targets) > MAX_V5_SCOPED_REPAIR_TARGETS:
-        raise WorkflowFailure(
-            "ARCHITECTURE_REPAIR_SCOPE_TOO_LARGE",
-            "The V5 candidate has too many repair targets for a bounded local patch request.",
-            internal_code="V5_REPAIR_TARGET_SET_TOO_LARGE",
-            failure_stage="architecture_repair_target_snapshot",
-            diagnostics={
-                "repair_target_count": len(targets),
-                "max_repair_target_count": MAX_V5_SCOPED_REPAIR_TARGETS,
-                "canonical_fact_count": context.canonical_fact_count,
-                "evidence_scope_count": context.evidence_scope_count,
-            },
-        )
 
 
 KEYWORD_STOPWORDS = {
@@ -4709,481 +4545,6 @@ def build_lesson_author_blueprint_prompt(
         authoritative_source_nodes=authoritative_source_nodes,
         source_chapter_policy=source_chapter_policy,
     )
-
-
-def parse_lesson_author_json(text: str, label: str) -> dict[str, Any]:
-    try:
-        parsed = json.loads(text)
-    except json.JSONDecodeError:
-        match = re.search(r"\{.*\}", text, flags=re.DOTALL)
-        if not match:
-            raise HTTPException(status_code=502, detail=f"AI không trả JSON {label} hợp lệ.")
-        try:
-            parsed = json.loads(match.group(0))
-        except json.JSONDecodeError as exc:
-            raise HTTPException(status_code=502, detail=f"AI không trả JSON {label} hợp lệ.") from exc
-    if not isinstance(parsed, dict):
-        raise HTTPException(status_code=502, detail=f"AI không trả JSON {label} dạng object hợp lệ.")
-    return parsed
-
-
-def parse_course_architecture_repair_payload(text: str) -> dict[str, Any]:
-    """Preserve the existing JSON acceptance rules with typed repair failures."""
-
-    candidate = text.strip()
-    diagnostics = {
-        "response_chars": len(text),
-        "response_bytes": len(text.encode("utf-8")),
-        "json_candidate_found": False,
-    }
-    if not candidate:
-        raise WorkflowFailure(
-            "ARCHITECTURE_REPAIR_INVALID",
-            "Provider returned an empty scoped architecture repair.",
-            internal_code="ARCH_REPAIR_EMPTY_RESPONSE",
-            failure_stage="architecture_repair_json_parser",
-            diagnostics=diagnostics,
-        )
-    try:
-        parsed = json.loads(candidate)
-        diagnostics["json_candidate_found"] = True
-    except json.JSONDecodeError as first_error:
-        match = re.search(r"\{.*\}", candidate, flags=re.DOTALL)
-        if not match:
-            raise WorkflowFailure(
-                "ARCHITECTURE_REPAIR_INVALID",
-                "Provider returned invalid JSON for scoped architecture repair.",
-                internal_code="ARCH_REPAIR_JSON_INVALID",
-                failure_stage="architecture_repair_json_parser",
-                diagnostics={
-                    **diagnostics,
-                    "json_error_position": first_error.pos,
-                    "json_error_kind": "decode_error",
-                },
-            ) from first_error
-        try:
-            parsed = json.loads(match.group(0))
-            diagnostics["json_candidate_found"] = True
-        except json.JSONDecodeError as error:
-            raise WorkflowFailure(
-                "ARCHITECTURE_REPAIR_INVALID",
-                "Provider returned invalid JSON for scoped architecture repair.",
-                internal_code="ARCH_REPAIR_JSON_INVALID",
-                failure_stage="architecture_repair_json_parser",
-                diagnostics={
-                    **diagnostics,
-                    "json_error_position": error.pos,
-                    "json_error_kind": "embedded_decode_error",
-                },
-            ) from error
-    if not isinstance(parsed, dict):
-        raise WorkflowFailure(
-            "ARCHITECTURE_REPAIR_INVALID",
-            "Provider returned a non-object scoped architecture repair.",
-            internal_code="ARCH_REPAIR_RESPONSE_NOT_OBJECT",
-            failure_stage="architecture_repair_json_parser",
-            diagnostics=diagnostics,
-        )
-    return parsed
-
-
-def _normalize_structural_title(value: Any, fallback: str) -> str:
-    raw = value.strip() if isinstance(value, str) else ""
-    return (strip_source_range_suffix(raw) or fallback).strip()[:180]
-
-
-def normalize_lesson_author_proposal_tree(proposal: dict[str, Any]) -> dict[str, Any]:
-    """Repair common flattened lesson shapes before strict proposal validation."""
-    normalized = dict(proposal)
-    chapters = normalized.get("chapters")
-    if not isinstance(chapters, list):
-        return normalized
-
-    next_chapters: list[Any] = []
-    for chapter_index, chapter_value in enumerate(chapters, start=1):
-        if not isinstance(chapter_value, dict):
-            next_chapters.append(chapter_value)
-            continue
-        chapter = dict(chapter_value)
-        chapter["title"] = _normalize_structural_title(
-            chapter.get("title"),
-            f"Chương {chapter_index}",
-        )
-        lessons = chapter.get("lessons")
-        if not isinstance(lessons, list):
-            next_chapters.append(chapter)
-            continue
-
-        next_lessons: list[Any] = []
-        for lesson_index, lesson_value in enumerate(lessons, start=1):
-            if not isinstance(lesson_value, dict):
-                next_lessons.append(lesson_value)
-                continue
-            lesson = dict(lesson_value)
-            lesson["title"] = _normalize_structural_title(
-                lesson.get("title"),
-                f"Mục {lesson_index}",
-            )
-            nested_content = lesson.get("content") if isinstance(lesson.get("content"), dict) else {}
-            units = lesson.get("units")
-            if isinstance(units, dict):
-                units = [units]
-            if not isinstance(units, list) or not units:
-                flattened_components = (
-                    lesson.get("components")
-                    or lesson.get("blocks")
-                    or nested_content.get("components")
-                    or nested_content.get("blocks")
-                )
-                if isinstance(flattened_components, list) and flattened_components:
-                    units = [{
-                        "title": lesson["title"],
-                        "components": flattened_components,
-                        "source_refs": lesson.get("source_refs", []),
-                    }]
-                else:
-                    flattened_html = (
-                        lesson.get("html")
-                        or nested_content.get("html")
-                        or (lesson.get("content") if isinstance(lesson.get("content"), str) else "")
-                    )
-                    if isinstance(flattened_html, str) and flattened_html.strip():
-                        units = [{
-                            "title": lesson["title"],
-                            "components": [{
-                                "type": "html",
-                                "title": lesson["title"],
-                                "html": flattened_html,
-                            }],
-                            "source_refs": lesson.get("source_refs", []),
-                        }]
-            if isinstance(units, list):
-                units = [
-                    {
-                        **unit,
-                        "title": _normalize_structural_title(
-                            unit.get("title"),
-                            f"Bài học {unit_index + 1}",
-                        ),
-                    }
-                    if isinstance(unit, dict) else unit
-                    for unit_index, unit in enumerate(units, start=1)
-                ]
-            lesson["units"] = units
-            next_lessons.append(lesson)
-        chapter["lessons"] = next_lessons
-        next_chapters.append(chapter)
-
-    normalized["chapters"] = next_chapters
-    return normalized
-
-
-class LessonAuthorProposalValidationError(ValueError):
-    """Raised when a detailed lesson proposal cannot be applied safely."""
-    def __init__(self, message: str, *, code: str = "UNIT_SHAPE_INVALID", path: str = "unit", repairable: bool = False):
-        super().__init__(message)
-        self.code, self.path, self.repairable = code, path, repairable
-
-
-MIN_LESSON_AUTHOR_HTML_TEXT_CHARS = 180
-MIN_STAGED_LESSON_AUTHOR_HTML_TEXT_CHARS = 320
-
-
-SEMANTIC_LEARNING_HTML_LIMITS = {
-    "heading": 240,
-    "paragraphs": (12, 2_000),
-    "bullet_points": (20, 800),
-    "ordered_steps": (20, 1_000),
-    "warnings": (8, 1_000),
-    "comparison_rows": (30, 500, 1_000),
-}
-
-
-def semantic_learning_visible_text(value: Any) -> tuple[str, str | None]:
-    """Validate the shared semantic payload and extract renderer-visible text.
-
-    Node owns HTML rendering. Python only verifies the same bounded semantic
-    vocabulary before accepting provider output, so an oversize value cannot
-    be silently clipped after this workflow has declared source coverage.
-    """
-    if not isinstance(value, dict) or not value:
-        return "", "Semantic explanatory content must be a non-empty object."
-    try:
-        value = flatten_ordered_content(value)
-    except ValueError as exc:
-        return "", str(exc)
-    visible: list[str] = []
-    heading = value.get("heading")
-    if heading is not None:
-        if not isinstance(heading, str) or not heading.strip():
-            return "", "Semantic heading must be non-empty text."
-        if len(heading.strip()) > SEMANTIC_LEARNING_HTML_LIMITS["heading"]:
-            return "", "Semantic heading exceeds the renderer character limit."
-        visible.append(heading.strip())
-    fields: list[tuple[str, Any]] = [
-        ("paragraphs", value.get("paragraphs")),
-        ("bullet_points", value.get("bullet_points", value.get("bullets"))),
-        ("ordered_steps", value.get("ordered_steps", value.get("steps"))),
-        ("warnings", value.get("warnings", value.get("warning"))),
-    ]
-    for field_name, raw_items in fields:
-        if raw_items is None:
-            continue
-        if not isinstance(raw_items, list):
-            return "", f"Semantic {field_name} must be an array."
-        max_items, max_characters = SEMANTIC_LEARNING_HTML_LIMITS[field_name]
-        if len(raw_items) > max_items:
-            return "", f"Semantic {field_name} exceeds the {max_items}-item renderer limit."
-        for raw_item in raw_items:
-            if not isinstance(raw_item, str):
-                return "", f"Semantic {field_name} contains a non-string item."
-            if not raw_item.strip():
-                return "", f"Semantic {field_name} contains an empty text value."
-            item = raw_item.strip()
-            if len(item) > max_characters:
-                return "", f"Semantic {field_name} contains text exceeding the renderer character limit."
-            visible.append(item)
-    raw_rows = value.get("comparison_rows", value.get("table_rows"))
-    if raw_rows is not None:
-        if not isinstance(raw_rows, list):
-            return "", "Semantic comparison_rows must be an array."
-        max_rows, max_label_characters, max_value_characters = SEMANTIC_LEARNING_HTML_LIMITS["comparison_rows"]
-        if len(raw_rows) > max_rows:
-            return "", f"Semantic comparison_rows exceeds the {max_rows}-row renderer limit."
-        for raw_row in raw_rows:
-            if not isinstance(raw_row, dict):
-                return "", "Semantic comparison_rows contains an invalid row."
-            label = raw_row.get("label")
-            row_value = raw_row.get("value")
-            if not isinstance(label, str) or not label.strip() or not isinstance(row_value, str) or not row_value.strip():
-                return "", "Semantic comparison_rows contains an incomplete row."
-            if len(label.strip()) > max_label_characters or len(row_value.strip()) > max_value_characters:
-                return "", "Semantic comparison_rows contains text exceeding the renderer limit."
-            visible.extend([label.strip(), row_value.strip()])
-    if not visible:
-        return "", "Semantic explanatory content has no renderer-visible text."
-    return " ".join(visible), None
-
-
-def _merged_lesson_author_component(component: dict[str, Any]) -> dict[str, Any]:
-    """Expose nested RAG component payloads to the same validation rules."""
-    nested_content = component.get("content")
-    merged = dict(nested_content) if isinstance(nested_content, dict) else {}
-    merged.update(component)
-    return merged
-
-
-def _non_empty_component_items(value: Any, *, kind: str) -> list[Any]:
-    if not isinstance(value, list):
-        return []
-    valid: list[Any] = []
-    for item in value:
-        if isinstance(item, str) and item.strip():
-            valid.append(item)
-            continue
-        if not isinstance(item, dict):
-            continue
-        if kind == "sortable":
-            text = item.get("text") or item.get("label") or item.get("title")
-        elif kind == "faq":
-            text = item.get("question")
-            answer = item.get("answer") or item.get("a") or item.get("content")
-            if isinstance(text, str) and text.strip() and isinstance(answer, str) and answer.strip():
-                valid.append(item)
-            continue
-        else:
-            text = item.get("answer") or item.get("term") or item.get("text")
-        if isinstance(text, str) and text.strip():
-            valid.append(item)
-    return valid
-
-
-def validate_lesson_author_proposal_shape(proposal: dict[str, Any]) -> None:
-    """Reject incomplete proposal trees before they reach CMS block creation."""
-    chapters = proposal.get("chapters")
-    # Keep compatibility with the historical changes-based prompt. The
-    # backend still performs the final lossless conversion and validation.
-    if not isinstance(chapters, list) or not chapters:
-        changes = proposal.get("changes")
-        if isinstance(changes, list) and changes:
-            return
-        raise LessonAuthorProposalValidationError(
-            "Proposal phải có ít nhất một chương hoặc danh sách thay đổi hợp lệ.",
-        )
-    if len(chapters) > 1:
-        raise LessonAuthorProposalValidationError(
-            "Proposal soạn chi tiết chỉ được chứa một chương trong mỗi lần xử lý.",
-        )
-
-    for chapter_index, chapter_value in enumerate(chapters, start=1):
-        if not isinstance(chapter_value, dict):
-            raise LessonAuthorProposalValidationError(f"Chương {chapter_index} không hợp lệ.")
-        lessons = chapter_value.get("lessons")
-        if not isinstance(lessons, list) or not lessons:
-            raise LessonAuthorProposalValidationError(f"Chương {chapter_index} chưa có bài học.")
-        for lesson_index, lesson_value in enumerate(lessons, start=1):
-            if not isinstance(lesson_value, dict):
-                raise LessonAuthorProposalValidationError(
-                    f"Bài học {lesson_index} trong chương {chapter_index} không hợp lệ.",
-                )
-            units = lesson_value.get("units")
-            if not isinstance(units, list) or not units:
-                raise LessonAuthorProposalValidationError(
-                    f"Bài học {lesson_index} trong chương {chapter_index} chưa có unit.",
-                )
-            for unit_index, unit_value in enumerate(units, start=1):
-                if not isinstance(unit_value, dict):
-                    raise LessonAuthorProposalValidationError(
-                        f"Unit {unit_index} trong bài học {lesson_index} không hợp lệ.",
-                    )
-                components = unit_value.get("components")
-                if not isinstance(components, list) or not components:
-                    components = unit_value.get("blocks")
-                if isinstance(components, list) and components:
-                    if not all(isinstance(component, dict) for component in components):
-                        raise LessonAuthorProposalValidationError(
-                            f"Unit {unit_index} trong bài học {lesson_index} có component không hợp lệ.",
-                        )
-                    for component_index, component in enumerate(components):
-                        normalized_component = _merged_lesson_author_component(component)
-                        nested_content = component.get("content") if isinstance(component.get("content"), dict) else {}
-                        component_type = str(
-                            normalized_component.get("type")
-                            or normalized_component.get("block_type")
-                            or nested_content.get("type")
-                            or nested_content.get("block_type")
-                            or ""
-                        ).strip().casefold()
-                        if component_type in {"la_sortable", "sortable", "ordering"}:
-                            sortable_items = _non_empty_component_items(
-                                normalized_component.get("items")
-                                or normalized_component.get("ordered_items")
-                                or normalized_component.get("steps"),
-                                kind="sortable",
-                            )
-                            if len(sortable_items) < 3:
-                                raise LessonAuthorProposalValidationError(
-                                    "Sortable component requires at least 3 ordered items.",
-                                    code="SORTABLE_ITEM_COUNT_INVALID", path=f"components[{component_index}].items", repairable=True,
-                                )
-                        elif component_type in {"la_faq", "faq"}:
-                            faq_items = _non_empty_component_items(
-                                normalized_component.get("items"),
-                                kind="faq",
-                            )
-                            if len(faq_items) < 2:
-                                raise LessonAuthorProposalValidationError(
-                                    "FAQ component requires at least 2 Q&A items.",
-                                    code="FAQ_ITEM_COUNT_INVALID", path=f"components[{component_index}].items", repairable=True,
-                                )
-                        elif component_type in {
-                            "problem",
-                            "question",
-                            "quiz",
-                            "la_problem",
-                            "multiple_choice",
-                            "multiple-select",
-                            "multiple_select",
-                            "multi_choice",
-                            "multi_select",
-                            "mcq",
-                            "single_choice",
-                            "dropdown",
-                            "select",
-                            "numerical",
-                            "numeric",
-                            "short_text",
-                            "short-answer",
-                            "short_answer",
-                        }:
-                            raw_problem_type = str(
-                                normalized_component.get("problem_type")
-                                or normalized_component.get("subtype")
-                                or normalized_component.get("response_type")
-                                or component_type
-                                or "multiple_choice"
-                            ).strip().casefold()
-                            problem_type = {
-                                "mcq": "multiple_choice",
-                                "single_choice": "multiple_choice",
-                                "multi_choice": "multiple_select",
-                                "multi_select": "multiple_select",
-                                "checkbox": "multiple_select",
-                                "checkboxes": "multiple_select",
-                                "select": "dropdown",
-                                "option": "dropdown",
-                                "numeric": "numerical",
-                                "short_answer": "short_text",
-                                "string": "short_text",
-                            }.get(raw_problem_type, raw_problem_type)
-                            if problem_type in {"numerical", "short_text"}:
-                                answer = normalized_component.get("answer")
-                                if not str(answer or "").strip():
-                                    raise LessonAuthorProposalValidationError(
-                                        "Problem component requires an answer.",
-                                        code="PROBLEM_ANSWER_REQUIRED", path=f"components[{component_index}].answer", repairable=True,
-                                    )
-                            else:
-                                option_key = "options" if problem_type == "dropdown" else "choices"
-                                options = normalized_component.get(option_key)
-                                if not isinstance(options, list) or len(_non_empty_component_items(options, kind="choice")) < 2:
-                                    raise LessonAuthorProposalValidationError(
-                                        "Problem component requires at least 2 answer choices.",
-                                        code="PROBLEM_CHOICES_INVALID", path=f"components[{component_index}].choices", repairable=True,
-                                    )
-                        if component_type in {"html", "text", "content"}:
-                            semantic_content = normalized_component.get("semantic_content")
-                            if semantic_content is not None:
-                                visible_text, semantic_failure = semantic_learning_visible_text(semantic_content)
-                                if semantic_failure:
-                                    raise LessonAuthorProposalValidationError(semantic_failure, code="HTML_SEMANTIC_INVALID", path=f"components[{component_index}].semantic_content", repairable=True)
-                            else:
-                                html_value = (
-                                    component.get("html")
-                                    or component.get("data")
-                                    or (component.get("content") if isinstance(component.get("content"), str) else "")
-                                    or nested_content.get("html")
-                                    or nested_content.get("data")
-                                    or nested_content.get("content")
-                                    or ""
-                                )
-                                visible_text = re.sub(r"<[^>]+>", " ", str(html_value))
-                                visible_text = re.sub(r"\s+", " ", visible_text).strip()
-                            # A deterministic source-locked baseline is a
-                            # review surface, not a claim that the model
-                            # produced a complete lesson. Keep readable source
-                            # visible instead of turning a sparse-but-valid
-                            # document into a blank terminal failure.
-                            source_locked = (
-                                component.get("source_locked_fallback") is True
-                                or normalized_component.get("source_locked_fallback") is True
-                            )
-                            minimum_html_chars = 1 if source_locked else MIN_LESSON_AUTHOR_HTML_TEXT_CHARS
-                            if len(visible_text) < minimum_html_chars:
-                                raise LessonAuthorProposalValidationError(
-                                    f"HTML component trong Unit {unit_index} phải có ít nhất {minimum_html_chars} ký tự nội dung hiển thị.",
-                                    code="HTML_INSUFFICIENT_DEPTH", path=f"components[{component_index}].semantic_content", repairable=True,
-                                )
-                    continue
-                if isinstance(unit_value.get("html"), str) and unit_value["html"].strip():
-                    visible_text = re.sub(r"<[^>]+>", " ", unit_value["html"])
-                    visible_text = re.sub(r"\s+", " ", visible_text).strip()
-                    if len(visible_text) < MIN_LESSON_AUTHOR_HTML_TEXT_CHARS:
-                        raise LessonAuthorProposalValidationError(
-                            f"HTML trong Unit {unit_index} phải có ít nhất {MIN_LESSON_AUTHOR_HTML_TEXT_CHARS} ký tự nội dung hiển thị.",
-                        )
-                    continue
-                if isinstance(unit_value.get("content"), str) and unit_value["content"].strip():
-                    visible_text = re.sub(r"<[^>]+>", " ", unit_value["content"])
-                    visible_text = re.sub(r"\s+", " ", visible_text).strip()
-                    if len(visible_text) < MIN_LESSON_AUTHOR_HTML_TEXT_CHARS:
-                        raise LessonAuthorProposalValidationError(
-                            f"Nội dung trong Unit {unit_index} phải có ít nhất {MIN_LESSON_AUTHOR_HTML_TEXT_CHARS} ký tự hiển thị.",
-                        )
-                    continue
-                raise LessonAuthorProposalValidationError(
-                    f"Unit {unit_index} trong bài học {lesson_index} chưa có nội dung.",
-                )
 
 
 # A chapter can exceed the single-response JSON budget even when its source
@@ -10902,153 +10263,6 @@ async def generate_validated_lesson_author_blueprint(
     )
 
 
-def _workflow_issue(
-    code: str,
-    message: str,
-    *,
-    severity: Literal["error", "warning", "info"] = "error",
-    path: str = "course",
-    related_paths: list[str] | None = None,
-    constraint: str | None = None,
-    expected_type: str | None = None,
-    actual_type: str | None = None,
-    validator: str | None = None,
-    schema_error_code: str | None = None,
-    schema_path: str | None = None,
-) -> WorkflowIssue:
-    issue: WorkflowIssue = {"code": code, "severity": severity, "message": message, "path": path}
-    if related_paths:
-        issue["related_paths"] = related_paths
-    if constraint:
-        issue["constraint"] = constraint
-    if expected_type:
-        issue["expected_type"] = expected_type
-    if actual_type:
-        issue["actual_type"] = actual_type
-    if validator:
-        issue["validator"] = validator
-    if schema_error_code:
-        issue["schema_error_code"] = schema_error_code
-    if schema_path:
-        issue["schema_path"] = schema_path
-    return issue
-
-
-def _workflow_path_from_blueprint_schema_path(schema_path: str) -> str:
-    """Map a safe JSON-style schema path to the smallest repairable node."""
-
-    match = re.match(
-        r"^chapters\[(\d+)\](?:\.lessons\[(\d+)\](?:\.units\[(\d+)\])?)?",
-        schema_path,
-    )
-    if match is None:
-        return "course"
-    path = f"chapter_{int(match.group(1)) + 1}"
-    if match.group(2) is not None:
-        path += f".lesson_{int(match.group(2)) + 1}"
-    if match.group(3) is not None:
-        path += f".unit_{int(match.group(3)) + 1}"
-    return path
-
-
-def _workflow_issue_from_blueprint_validation_error(
-    error: LessonAuthorBlueprintValidationError,
-) -> WorkflowIssue:
-    """Preserve content-safe parser diagnostics for scoped repair and logs."""
-
-    diagnostic = error.safe_diagnostic()
-    return _workflow_issue(
-        error.code,
-        "Blueprint structural validation failed.",
-        path=_workflow_path_from_blueprint_schema_path(diagnostic["path"]),
-        schema_path=diagnostic["path"],
-        constraint=diagnostic["constraint"],
-        expected_type=diagnostic["expected_type"],
-        actual_type=diagnostic["actual_type"],
-        validator=diagnostic["validator"],
-        schema_error_code=diagnostic["error_code"],
-    )
-
-
-def _blueprint_path_object(blueprint: dict[str, Any], path: str) -> dict[str, Any] | None:
-    """Resolve only deterministic chapter/lesson/unit repair paths."""
-    match = re.fullmatch(r"course|chapter_(\d+)(?:\.lesson_(\d+)(?:\.unit_(\d+))?)?", path)
-    if match is None:
-        return None
-    if path == "course":
-        return blueprint
-    chapters = blueprint.get("chapters") if isinstance(blueprint.get("chapters"), list) else []
-    chapter_index = int(match.group(1)) - 1
-    if not 0 <= chapter_index < len(chapters) or not isinstance(chapters[chapter_index], dict):
-        return None
-    node: dict[str, Any] = chapters[chapter_index]
-    if match.group(2) is None:
-        return node
-    lessons = node.get("lessons") if isinstance(node.get("lessons"), list) else []
-    lesson_index = int(match.group(2)) - 1
-    if not 0 <= lesson_index < len(lessons) or not isinstance(lessons[lesson_index], dict):
-        return None
-    node = lessons[lesson_index]
-    if match.group(3) is None:
-        return node
-    units = node.get("units") if isinstance(node.get("units"), list) else []
-    unit_index = int(match.group(3)) - 1
-    return units[unit_index] if 0 <= unit_index < len(units) and isinstance(units[unit_index], dict) else None
-
-
-def _safe_json_shape(value: Any) -> str:
-    """Return a non-sensitive JSON shape for structured validation logs."""
-
-    if isinstance(value, list):
-        return f"array[length={len(value)}]"
-    if value is None:
-        return "null"
-    if isinstance(value, dict):
-        return "object"
-    if isinstance(value, bool):
-        return "boolean"
-    if isinstance(value, (int, float)):
-        return "number"
-    if isinstance(value, str):
-        return "string"
-    return type(value).__name__
-
-
-def _is_v4_supporting_factless_unit(unit: dict[str, Any]) -> bool:
-    """Return whether a factless v4 unit is proven to be non-primary.
-
-    This is intentionally narrow.  A unit may be factless only after the
-    server allocator has completed globally and only when neither the unit
-    nor any retained semantic block claims primary instructional ownership.
-    It is not a fallback for an incomplete primary allocation.
-    """
-
-    blocks = unit.get("learning_blocks")
-    return (
-        isinstance(blocks, list)
-        and bool(blocks)
-        and not bool(unit.get("primary_concept_ids"))
-        and all(
-            isinstance(block, dict) and not bool(block.get("primary_concept_ids"))
-            for block in blocks
-        )
-    )
-
-
-def _is_v5_supporting_factless_unit(unit: dict[str, Any]) -> bool:
-    """A v5 support unit has no primary evidence-scope ownership."""
-    blocks = unit.get("learning_blocks")
-    return (
-        isinstance(blocks, list)
-        and bool(blocks)
-        and not bool(unit.get("source_fact_ids"))
-        and all(
-            isinstance(block, dict) and not bool(block.get("primary_evidence_scope_ids"))
-            for block in blocks
-        )
-    )
-
-
 def _validate_v4_unit_source_fact_ownership(blueprint: dict[str, Any]) -> list[WorkflowIssue]:
     """Enforce v4 primary evidence ownership without inventing support facts."""
 
@@ -11082,32 +10296,6 @@ def _validate_v4_unit_source_fact_ownership(blueprint: dict[str, Any]) -> list[W
                     actual_type=_safe_json_shape(fact_ids),
                 ))
     return issues
-
-
-_V5_TEACHING_INTENTS = {
-    "concept_explanation", "definition", "example", "worked_example",
-    "procedure", "comparison", "warning", "tip",
-}
-
-
-_V5_GENERIC_EXPLANATION_INTENTS = {"concept_explanation", "definition", "introduction"}
-
-
-_V5_ACTION_OR_PROCEDURE_OBJECTIVE = re.compile(
-    r"\b(?:apply|perform|demonstrate|execute|practice|procedure|process|"
-    r"áp\s+dụng|thực\s+hiện|thực\s+hành|quy\s+trình|vận\s+hành)\b",
-    flags=re.IGNORECASE,
-)
-
-
-def _v5_text_ids(value: Any) -> set[str]:
-    if not isinstance(value, list):
-        return set()
-    return {
-        item.strip()
-        for item in value
-        if isinstance(item, str) and item.strip()
-    }
 
 
 def _v5_lesson_block_records(
@@ -12512,10 +11700,6 @@ def _repair_unit_parent_and_index(blueprint: dict[str, Any], path: str) -> tuple
     return (units, unit_index) if 0 <= unit_index < len(units) else None
 
 
-def _repair_parent_lesson_path(path: str) -> str:
-    return path.rsplit(".unit_", 1)[0] if ".unit_" in path else path
-
-
 def _repair_lesson_parent_and_index(blueprint: dict[str, Any], path: str) -> tuple[list[Any], int] | None:
     match = re.fullmatch(r"chapter_(\d+)\.lesson_(\d+)", path)
     if match is None:
@@ -13104,11 +12288,6 @@ def _semantic_delta_unit_and_lesson(
             semantic_operation=operation,
         )
     return unit, lesson
-
-
-def _semantic_delta_blocks(unit: dict[str, Any]) -> list[dict[str, Any]]:
-    blocks = unit.get("learning_blocks")
-    return [block for block in blocks if isinstance(block, dict)] if isinstance(blocks, list) else []
 
 
 def _v5_target_evidence_scope_ids(target: RepairTarget) -> set[str]:

@@ -10,13 +10,13 @@ from app.main import (
     extract_source_coverage_facts,
     extract_lesson_author_unit_batches,
     format_source_coverage_manifest,
-    LessonAuthorProposalValidationError,
     parse_source_range,
     should_stage_lesson_author_proposal,
     source_coverage_metrics,
     target_source_scope_is_incomplete,
     validate_lesson_author_source_coverage,
 )
+from app.services.lesson_author.errors import LessonAuthorProposalValidationError
 from app.services.ingestion.chunking import build_index_diagnostics
 from app.services.ingestion.extract import ExtractedSection
 from app.schemas.lesson_author import RagLessonAuthorRequest

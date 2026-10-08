@@ -14,6 +14,7 @@ from tests.test_chapter_checkpoint import checkpoint_result
 from tests.staged_schema_probe import capture_sdk_body
 from tests import test_checkpoint_provider_sdk as sdk_fixture
 from app.schemas.common import AiUsage
+from app.services.lesson_author.errors import LessonAuthorProposalValidationError
 
 
 def fixture():
@@ -148,13 +149,13 @@ class MultiComponentRepairSlotTests(unittest.TestCase):
         before = deepcopy(broken)
         for value, code in cases:
             diagnostics = {}
-            with self.subTest(code=code), self.assertRaisesRegex(main.LessonAuthorProposalValidationError, code):
+            with self.subTest(code=code), self.assertRaisesRegex(LessonAuthorProposalValidationError, code):
                 main.decode_staged_multi_repair(json.dumps(value), broken, [0, 3], [3], diagnostics)
             self.assertNotIn('PRIVATE', json.dumps(diagnostics))
             self.assertEqual(diagnostics['expected_slot_count'], 2)
         for text in ('{"components":{"c0":{},"c0":{},"c3":{}}}', '{"components":{},"components":{}}'):
             diagnostics = {}
-            with self.assertRaisesRegex(main.LessonAuthorProposalValidationError, 'COMPONENT_REPAIR_DUPLICATE_JSON_KEY'):
+            with self.assertRaisesRegex(LessonAuthorProposalValidationError, 'COMPONENT_REPAIR_DUPLICATE_JSON_KEY'):
                 main.decode_staged_multi_repair(text, broken, [0, 3], [3], diagnostics)
             self.assertEqual(diagnostics['duplicate_key_count'], 1)
         self.assertEqual(broken, before)

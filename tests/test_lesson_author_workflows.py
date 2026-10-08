@@ -19,8 +19,8 @@ from app.main import (
     apply_course_architecture_repair_patches,
     apply_lesson_generation_repair_patches,
     build_course_architecture_repair_prompt,
-    parse_course_architecture_repair_payload,
 )
+from app.services.lesson_author.proposal_validation import parse_course_architecture_repair_payload
 
 
 def issue(code: str, *, path: str = "chapter_1.lesson_1", severity: str = "error", related_paths: list[str] | None = None) -> dict[str, object]:

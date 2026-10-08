@@ -15,6 +15,8 @@ from tests.test_staged_instance_output import checkpoint_instance_fixture
 from tests.test_checkpoint_component_quality_repair import instance_wire
 from tests.test_chapter_checkpoint import checkpoint_result
 from app.schemas.common import AiUsage
+from app.services.lesson_author.errors import LessonAuthorProposalValidationError
+from app.services.lesson_author import proposal_validation
 
 
 def uat_fixture():
@@ -74,7 +76,7 @@ class StagedOrderedWriterTests(unittest.TestCase):
 
     def test_wrong_provider_version_rejected_but_legacy_reader_preserved(self):
         legacy = {"heading": "Legacy", "paragraphs": ["Stored explanation."]}
-        self.assertIsNone(main.semantic_learning_visible_text(legacy)[1])
+        self.assertIsNone(proposal_validation.semantic_learning_visible_text(legacy)[1])
         main.StagedSemanticContent.model_validate(legacy)
         for version in (1, 3, "2", True):
             bad = {"components": [{"semantic_content": {"version": version, "sections": []}}]}
@@ -138,7 +140,7 @@ class StagedOrderedWriterTests(unittest.TestCase):
         _, unit, _, _ = uat_fixture()
         unit["components"][0]["covered_source_fact_ids"] = unit["source_fact_ids"][:47]
         delta = {"components": [{"component_index": 0, "covered_source_fact_ids": unit["source_fact_ids"][:]}]}
-        with self.assertRaisesRegex(main.LessonAuthorProposalValidationError, "COVERAGE_WITHOUT_CONTENT"):
+        with self.assertRaisesRegex(LessonAuthorProposalValidationError, "COVERAGE_WITHOUT_CONTENT"):
             main.merge_staged_component_payload_delta(unit, delta, [0], coverage_targets=[0])
 
     def test_diagnostics_use_allowlisted_names_counts_and_no_raw_values(self):

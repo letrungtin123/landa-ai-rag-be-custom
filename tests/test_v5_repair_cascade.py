@@ -22,7 +22,6 @@ from app.lesson_author_blueprint import (
 from app.main import (
     LessonAuthorBlueprintGenerationError,
     _repair_patch_domain_diagnostics,
-    _workflow_issue_from_blueprint_validation_error,
     _v5_deterministic_evidence_alignment_candidate,
     _v5_deterministic_assessment_alignment_payload,
     _v5_prepare_evidence_alignment_targets,
@@ -31,17 +30,20 @@ from app.main import (
     allocate_blueprint_source_fact_ids,
     allocate_source_map_architecture_facts,
     apply_course_architecture_repair_patches,
-    assert_v5_immutable_source_context,
-    assert_v5_scoped_repair_target_bound,
     build_course_architect_prompt,
     build_course_architecture_repair_prompt,
     build_v5_scoped_repair_source_context,
-    create_v5_immutable_source_context,
     generate_validated_lesson_author_blueprint,
     validate_course_architecture_evidence_scope,
     validate_course_architecture_workflow,
     validate_v5_instructional_coherence,
     validate_v5_post_allocation_instructional_depth,
+)
+from app.services.lesson_author.architecture_shape import _workflow_issue_from_blueprint_validation_error
+from app.services.lesson_author.source_context import (
+    assert_v5_immutable_source_context,
+    assert_v5_scoped_repair_target_bound,
+    create_v5_immutable_source_context,
 )
 from app.schemas.common import AiUsage
 from app.source_map import build_source_map

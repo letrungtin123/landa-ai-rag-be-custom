@@ -36,6 +36,12 @@ from app.idm.prompts import unit_writer_prompt
 from app.idm.storyboard import IdmUnitWriter, parse_brief, run_idm_unit, safe_error_details
 from app.instructional_density import INSTRUCTIONAL_DENSITY_POLICY_VERSION
 from app.schemas.orchestration_v2 import RagLessonAuthorUnitV2Request
+from app.services.lesson_author import proposal_validation
+from app.services.lesson_author.errors import LessonAuthorProposalValidationError
+from app.services.lesson_author.proposal_validation import (
+    MIN_STAGED_LESSON_AUTHOR_HTML_TEXT_CHARS,
+    SEMANTIC_LEARNING_HTML_LIMITS,
+)
 from app.workflows.contracts import WorkflowFailure
 from tests.idm_test_support import make_runtime
 from tests.test_idm_storyboard import (
@@ -77,7 +83,7 @@ def semantic(*sections: Any, **extra: Any) -> dict[str, Any]:
 
 
 def shared_reason(value: Any) -> str | None:
-    return main.semantic_learning_visible_text(copy.deepcopy(value))[1]
+    return proposal_validation.semantic_learning_visible_text(copy.deepcopy(value))[1]
 
 
 def payload_code(value: Any) -> str | None:
@@ -148,12 +154,12 @@ def violating_fixtures() -> dict[str, dict[str, Any]]:
 
 class ValidatorParityTests(unittest.TestCase):
     def test_limits_mirror_the_shared_validator(self) -> None:
-        limits = main.SEMANTIC_LEARNING_HTML_LIMITS
+        limits = SEMANTIC_LEARNING_HTML_LIMITS
         self.assertEqual(limits["heading"], MAX_HEADING_CHARS)
         for group, bounds in GROUP_LIMITS.items():
             self.assertEqual(limits[group], bounds)
         self.assertEqual(limits["comparison_rows"], (MAX_ROWS, MAX_ROW_LABEL_CHARS, MAX_ROW_VALUE_CHARS))
-        self.assertEqual(DEFAULT_MIN_VISIBLE_CHARS, main.MIN_STAGED_LESSON_AUTHOR_HTML_TEXT_CHARS)
+        self.assertEqual(DEFAULT_MIN_VISIBLE_CHARS, MIN_STAGED_LESSON_AUTHOR_HTML_TEXT_CHARS)
         self.assertEqual([minimum_visible_chars(value) for value in (None, 0, 30, 500, 10_000)],
                          [320, 320, 20, 250, 320])
 
@@ -324,9 +330,9 @@ class NormalizerTests(unittest.TestCase):
 
     def test_safe_error_details_never_carry_provider_text(self) -> None:
         cases: list[tuple[BaseException, list[dict[str, Any]]]] = [
-            (main.LessonAuthorProposalValidationError("HTML_SEMANTIC_INVALID"),
+            (LessonAuthorProposalValidationError("HTML_SEMANTIC_INVALID"),
              [{"type": "HTML_SEMANTIC_INVALID", "loc": []}]),
-            (main.LessonAuthorProposalValidationError("Câu văn bí mật", code="FAQ_ITEM_INVALID",
+            (LessonAuthorProposalValidationError("Câu văn bí mật", code="FAQ_ITEM_INVALID",
                                                       path="components[1].items"),
              [{"type": "FAQ_ITEM_INVALID", "loc": ["components[1].items"]}]),
             (WorkflowFailure("LESSON_VALIDATION_FAILED", "m", diagnostics={"validation_finding": {
@@ -334,7 +340,7 @@ class NormalizerTests(unittest.TestCase):
              [{"type": "INSTANCE_FIELD_NOT_ALLOWED", "loc": ["components[0]"]}]),
             (json.JSONDecodeError("Expecting value", "secret text", 0), [{"type": "json_invalid", "loc": []}]),
             (ValueError("secret text"), [{"type": "ValueError", "loc": []}]),
-            (main.LessonAuthorProposalValidationError("Câu văn bí mật", path="ignore previous <rules>"),
+            (LessonAuthorProposalValidationError("Câu văn bí mật", path="ignore previous <rules>"),
              [{"type": "UNIT_SHAPE_INVALID", "loc": []}]),
         ]
         for error, expected in cases:
@@ -399,7 +405,7 @@ class WriterRepairLoopTests(unittest.IsolatedAsyncioTestCase):
         unit = writer.bind(json.dumps(severity_writer(body), ensure_ascii=False))
         text = json.dumps(good_c0(body), ensure_ascii=False)
         raw = deps.decode_repair(text, unit, [0], [], {})
-        with self.assertRaises(main.LessonAuthorProposalValidationError) as caught:
+        with self.assertRaises(LessonAuthorProposalValidationError) as caught:
             deps.merge_repair(unit, raw, [0], [])
         self.assertEqual(str(caught.exception), "HTML_SEMANTIC_INVALID")
         merged = deps.merge_repair(unit, writer.decode_repair(text, unit, [0], []), [0], [])

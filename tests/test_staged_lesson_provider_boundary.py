@@ -14,7 +14,6 @@ from pydantic import create_model, ValidationError
 from app.main import (
     build_staged_lesson_content_response_model,
     generate_staged_lesson_author_proposal,
-    semantic_learning_visible_text,
     staged_response_schema_diagnostics,
     validate_staged_unit_content,
     staged_component_payload_code,
@@ -25,8 +24,9 @@ from app.main import (
     staged_evidence_scope_diagnostics,
     staged_payload_diagnostics,
     ARCHITECT_COMPONENT_OPPORTUNITY_POLICY,
-    LessonAuthorProposalValidationError,
 )
+from app.services.lesson_author.errors import LessonAuthorProposalValidationError
+from app.services.lesson_author.proposal_validation import semantic_learning_visible_text
 from app.schemas.common import AiUsage
 from app.schemas.lesson_author import RagLessonAuthorRequest
 from app.workflows.contracts import WorkflowFailure
