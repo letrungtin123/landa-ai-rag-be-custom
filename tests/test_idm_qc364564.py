@@ -72,6 +72,9 @@ class AnswerLeakTests(StoryboardEndpointTestCase):
         quality = self.assert_envelope(data, "provider_validated", "validated", "provider")
         self.assertEqual(provider.names, [WRITER, REPAIR, JUDGE])
         self.assertIn('{"code":"IDM_W5_ANSWER_LEAK","path":"components[1]"}', provider.calls[1]["prompt"])
+        # The repair targets the copying option, never the worksheet shown before it (package A report).
+        self.assertIn("c1 IDM_W5_ANSWER_LEAK at c1: an option of this question copies the example or text shown "
+                      "before it: rewrite THAT option", provider.calls[1]["prompt"])
         self.assertIn("Đã tự sửa: IDM_W5_ANSWER_LEAK.", quality.author_note)
         self.assertNotIn("còn cảnh báo", quality.author_note)
         self.assertEqual(quality.deterministic_codes, ["IDM_W5_ANSWER_LEAK"])

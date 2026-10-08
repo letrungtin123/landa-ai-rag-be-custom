@@ -610,7 +610,9 @@ UNIT_RULE_TEXT: Final[dict[str, str]] = {
                                   "agreement with that option's text and the answer key",
     "IDM_W5_FEEDBACK_NOT_TEACHING": "feedback of at least 60 characters that names the criterion; never only "
                                     "Correct/Incorrect",
-    "IDM_W5_ANSWER_LEAK": "earlier html must not reveal the correct answer of this question",
+    "IDM_W5_ANSWER_LEAK": "an option of this question copies the example or text shown before it: rewrite THAT "
+                          "option (and its part of the explanation) in new words or about a different case so the "
+                          "learner must apply the criterion; keep the earlier html as it is",
     "IDM_W5_VERBATIM_COPY": "rewrite for the learner instead of copying the source text",
     "IDM_W5_FAQ_UNGROUNDED": "answer only from these facts: rewrite each listed answer so it restates what "
                              "SOURCE_FACTS or LESSON_CONTEXT_FACTS say, with no number, example, reason or advice "
