@@ -6,8 +6,11 @@ strictly. One summary of 301 characters used to reject a whole W1-reduce/W2/W4 a
 Before strict validation this module walks the answer along the server model's JSON
 schema and, for author-facing text only:
 
-* cuts a free-text string that exceeds its ``maxLength`` by at most a small margin
-  (``single_line`` to the bound) — a far longer string still fails and is repaired;
+* cuts a free-text string that exceeds its ``maxLength`` to the bound at a sentence or word
+  boundary, however far over it is (QC course 364564, N1: one 300+ character
+  ``learner_action`` rejected a whole W4 repair answer and the lesson lost its practice);
+  a cut within a small margin counts as ``IDM_RESPONSE_FIELD_TRIMMED``, a longer one as
+  ``IDM_RESPONSE_FIELD_TRIMMED_LONG`` so the prompts can be tuned;
 * drops list items beyond ``maxItems`` for annotation lists (SME questions, issues,
   gaps, prerequisites, merges/conflicts, support items, judge findings) whose shorter
   form is still a correct answer;
@@ -24,14 +27,15 @@ from typing import Any, Final
 
 from pydantic import BaseModel
 
-from app.idm.text import single_line
+from app.idm.text import trim_at_boundary
 
 TRIMMED_STRING_CODE: Final = "IDM_RESPONSE_FIELD_TRIMMED"
+TRIMMED_LONG_STRING_CODE: Final = "IDM_RESPONSE_FIELD_TRIMMED_LONG"
 TRIMMED_LIST_CODE: Final = "IDM_RESPONSE_LIST_TRIMMED"
 CLAMPED_NUMBER_CODE: Final = "IDM_RESPONSE_NUMBER_CLAMPED"
 
-# A string is cut only when it exceeds the bound by at most this share of the bound (and
-# always by up to ``_MIN_MARGIN_CHARS``); a longer string means the field was misused.
+# A cut within this share of the bound (and always within ``_MIN_MARGIN_CHARS``) is an ordinary
+# trim; a longer string is still cut but counted apart (the field was used for more than it holds).
 _MARGIN_SHARE: Final = 0.5
 _MIN_MARGIN_CHARS: Final = 50
 _SAFE_LIST_FIELDS: Final = frozenset({
@@ -106,10 +110,9 @@ class _Walker:
         if len(value.strip()) <= limit:
             return value
         text = " ".join(value.split())
-        if len(text) > limit + max(_MIN_MARGIN_CHARS, int(limit * _MARGIN_SHARE)):
-            return value  # far too long: strict validation reports it and the repair fixes it
-        self.codes[TRIMMED_STRING_CODE] += 1
-        return text if len(text) <= limit else single_line(text, limit)
+        far = len(text) > limit + max(_MIN_MARGIN_CHARS, int(limit * _MARGIN_SHARE))
+        self.codes[TRIMMED_LONG_STRING_CODE if far else TRIMMED_STRING_CODE] += 1
+        return text if len(text) <= limit else trim_at_boundary(text, limit)
 
 
 def _matches(branch: dict[str, Any], value: Any, definitions: dict[str, Any]) -> bool:

@@ -32,6 +32,7 @@ from app.idm.text import (
     produces_output,
     sanitize_author_text,
     single_line,
+    trim_at_boundary,
 )
 from app.lesson_author_orchestration_v2_provider import SourceSnapshotFactV2
 from tests.idm_golden import DOCUMENT_ID, key, source_facts
@@ -88,6 +89,19 @@ class TextHelperTests(unittest.TestCase):
         self.assertEqual(single_line("<x>", 10), "‹x›")  # noqa: RUF001
         self.assertEqual(single_line("abcdefghij", 5), "abcd…")
         self.assertEqual(single_line("abcde", 5), "abcde")
+
+    def test_trim_at_boundary_prefers_a_sentence_then_a_word(self) -> None:
+        # QC course 364564 (N1): over-long provider text is shortened at a boundary, never mid-word.
+        self.assertEqual(trim_at_boundary("Một câu.\n Hai   câu.", 40), "Một câu. Hai câu.")
+        self.assertEqual(trim_at_boundary("Bước một xong. Bước hai đang làm dở dang", 26), "Bước một xong.")
+        self.assertEqual(trim_at_boundary("alpha beta gamma delta", 15), "alpha beta…")
+        self.assertEqual(trim_at_boundary("alpha, beta; gamma delta", 13), "alpha, beta…")
+        # A sentence end too early in the bound, or no space at all: the word, then a hard cut.
+        self.assertEqual(trim_at_boundary("A. bbbbbbbb cccccccc dddd", 22), "A. bbbbbbbb cccccccc…")
+        self.assertEqual(trim_at_boundary("x" * 30, 10), "x" * 9 + "…")
+        self.assertEqual(trim_at_boundary("<b> " * 10, 12), "‹b› ‹b› ‹b›…")  # noqa: RUF001 - editor-safe glyphs
+        for limit in (5, 50, 200):
+            self.assertLessEqual(len(trim_at_boundary("Người học ghi rõ mục tiêu. " * 40, limit)), limit)
 
     def test_is_generic_title(self) -> None:
         for title in ("Giới thiệu", "TỔNG QUAN", "Thông tin chung:", "Nội dung", "Phần 2", "Part 3", "mục 1",

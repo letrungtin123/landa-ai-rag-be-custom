@@ -78,6 +78,32 @@ def single_line(value: str, max_length: int) -> str:
 
 
 _MAX_INDENT: Final = 4
+_SENTENCE_STOP_RE: Final = re.compile(r"[.!?…](?=\s)")
+# A boundary cut keeps at least this share of the bound; an earlier boundary would drop too much text.
+_MIN_BOUNDARY_SHARE: Final = 0.5
+_TRAILING_JOINERS: Final = " ,;:-–—"  # noqa: RUF001 - dashes a clause may end with before the cut
+
+
+def trim_at_boundary(value: str, max_length: int) -> str:
+    """One line of at most ``max_length`` characters, cut at a sentence end or else a word boundary.
+
+    QC course 364564 (N1): one ``learner_action`` of 300+ characters rejected a whole W4 repair
+    answer. Over-long author text is shortened instead: the last full sentence that keeps at least
+    half of the bound, otherwise the last whole word followed by an ellipsis.
+    """
+
+    text = sanitize_author_text(" ".join(value.split()), len(value) + 1).replace("\n", " ")
+    if len(text) <= max_length:
+        return text
+    floor = int(max_length * _MIN_BOUNDARY_SHARE)
+    # A stop counts only when a space follows it inside the bound, so the cut never ends mid-word.
+    stops = [match.end() for match in _SENTENCE_STOP_RE.finditer(text[: max_length + 1])]
+    if stops and stops[-1] >= floor:
+        return text[: stops[-1]]
+    room = max_length - len(_ELLIPSIS)
+    space = text.rfind(" ", 0, room + 1)
+    head = text[:space] if space >= floor else text[:room]
+    return head.rstrip(_TRAILING_JOINERS) + _ELLIPSIS
 
 
 def is_generic_title(value: str) -> bool:

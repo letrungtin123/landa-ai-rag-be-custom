@@ -23,7 +23,13 @@ from pydantic import BaseModel
 
 from app import main
 from app.idm import runtime as idm_runtime
-from app.idm.coerce import CLAMPED_NUMBER_CODE, TRIMMED_LIST_CODE, TRIMMED_STRING_CODE, coerce_provider_answer
+from app.idm.coerce import (
+    CLAMPED_NUMBER_CODE,
+    TRIMMED_LIST_CODE,
+    TRIMMED_LONG_STRING_CODE,
+    TRIMMED_STRING_CODE,
+    coerce_provider_answer,
+)
 from app.idm.contracts import (
     IdmCourseSkeletonRequestV1,
     IdmLessonDesignV1,
@@ -210,12 +216,29 @@ class CoercionTests(unittest.TestCase):
         self.assertEqual((len(block.summary), len(block.sme_questions)), (300, 5))
         self.assertEqual(dict(codes), {TRIMMED_STRING_CODE: 1, TRIMMED_LIST_CODE: 1})
 
-    def test_identifiers_structure_and_far_too_long_text_stay_strict(self) -> None:
-        value = self.section_answer(summary="y" * 2_000, local_id="b" + "1" * 300, fact_keys=["k" * 300])
+    def test_identifiers_and_structure_stay_strict(self) -> None:
+        value = self.section_answer(local_id="b" + "1" * 300, fact_keys=["k" * 300])
         value["blocks"] = value["blocks"] * 41
         adjusted, codes = coerce_provider_answer(IdmW1SectionResponseV1, value)
         self.assertEqual(adjusted, value)
         self.assertEqual(dict(codes), {})
+
+    def test_far_too_long_text_is_cut_at_a_boundary_and_counted_apart(self) -> None:
+        # QC course 364564 (N1): a far longer string used to stay as it was and reject the whole answer.
+        sentence = "Người học điền từng ô của phiếu theo đúng thứ tự các bước đã học. "
+        words = "Người học ghi rõ mục tiêu, người phụ trách và thời hạn của từng việc " * 30
+        value = self.section_answer(summary=sentence * 30, name=words)
+        adjusted, codes = coerce_provider_answer(IdmW1SectionResponseV1, value)
+        block = IdmW1SectionResponseV1.model_validate(adjusted).blocks[0]
+        self.assertEqual(dict(codes), {TRIMMED_LONG_STRING_CODE: 2})
+        self.assertLessEqual(len(block.summary), 300)
+        self.assertTrue(block.summary.endswith("các bước đã học."))  # the last whole sentence
+        self.assertGreater(len(block.summary), 150)
+        self.assertLessEqual(len(block.name), 180)
+        self.assertTrue(block.name.endswith("…"))  # no sentence end: the last whole word
+        head = block.name[:-1]
+        self.assertTrue(words.startswith(head))
+        self.assertIn(words[len(head)], " ,")  # cut between two words
 
     def test_estimates_are_clamped_and_lesson_objective_strings_trimmed(self) -> None:
         lesson = {"lesson_key": "lsn_001", "kind": "learning", "title": "Phân loại khiếu nại",
