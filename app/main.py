@@ -193,6 +193,7 @@ from app.services.provider import (
     require_provider_api_key,
     safe_provider_error_diagnostics,
 )
+from app.services.provider import generate_content as generate_content
 from app.services.text import clean_text
 from app.source_chapter_policy import bind_source_chapters, resolve_source_chapter_policy
 from app.source_map import build_course_architect_context, build_source_map
