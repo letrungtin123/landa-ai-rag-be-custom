@@ -47,8 +47,8 @@ Danh sách đầy đủ và giá trị mẫu nằm trong .env.example. Nhóm b�
 | Nhóm | Biến |
 |---|---|
 | Runtime | AI_RAG_ENV, AI_RAG_HOST, AI_RAG_PORT, AI_RAG_WORKERS |
-| Database | DATABASE_URL |
-| Supabase | SUPABASE_URL, SUPABASE_SERVICE_KEY, SUPABASE_STORAGE_BUCKET |
+| Database | DATABASE_URL (pool/TLS: AI_RAG_DB_POOL_MIN/MAX, AI_RAG_DB_SSL_MODE, AI_RAG_DB_SSL_ROOT_CERT, AI_RAG_DB_STATEMENT_CACHE_SIZE, AI_RAG_DB_CONNECT_TIMEOUT_SECONDS) |
+| Storage | SUPABASE_URL hoặc AI_RAG_STORAGE_ALLOWED_ORIGINS, SUPABASE_STORAGE_BUCKET; SUPABASE_SERVICE_KEY chỉ cho backend cũ chưa gửi signed URL |
 | Auth | AI_RAG_AUTH_MODE, AI_RAG_SERVICE_TOKEN, AI_RAG_SERVICE_HMAC_SECRETS |
 | Request limits | AI_RAG_MAX_REQUEST_BYTES, AI_RAG_IDM_MAX_REQUEST_BYTES |
 | Document limits | AI_RAG_MAX_DOCUMENT_BYTES, AI_RAG_MAX_DOCUMENT_PAGES, AI_RAG_MAX_OOXML_UNCOMPRESSED_BYTES, AI_RAG_MAX_OOXML_ENTRIES, AI_RAG_MAX_OOXML_COMPRESSION_RATIO, AI_RAG_MAX_XLSX_CELLS, AI_RAG_LIBREOFFICE_TIMEOUT_SECONDS |
@@ -103,13 +103,22 @@ Danh sách này là inventory cho hạ tầng tạo least-privilege role; checkp
 ## Service endpoints
 
 - Public liveness: GET /healthz (không chạm DB).
-- Public readiness: GET /readyz — 200 khi đã khởi động, không đang drain và DB trả lời trong AI_RAG_READINESS_DB_TIMEOUT_MS; ngược lại 503 NOT_READY (không lộ chi tiết lỗi).
-- Authenticated: GET /metrics (Prometheus text), POST /v1/kb/documents/index, delete document/KB, POST /v1/chat, Lesson Author legacy và Orchestration V2 endpoints.
+- Public readiness: GET /readyz — 200 khi đã khởi động, không đang drain, DB trả lời trong AI_RAG_READINESS_DB_TIMEOUT_MS và schema check đã pass; ngược lại 503 `NOT_READY` / `SCHEMA_CHECK_FAILED` / `SCHEMA_CHECK_UNAVAILABLE` (không lộ chi tiết lỗi).
+- Authenticated: GET /metrics (Prometheus text), GET /v1/meta (build sha, contract versions, kết quả schema check), POST /v1/kb/documents/index, delete document/KB, POST /v1/chat, Lesson Author legacy và Orchestration V2 endpoints.
+
+## Tách server (SEP-1)
+
+- DB không với tới lúc khởi động: process vẫn chạy (/healthz 200, /readyz 503, route DB trả 503 `DATABASE_NOT_READY`), pool tự kết nối lại nền với backoff; log `database_connect_failed` chỉ có loại lỗi/SQLSTATE.
+- Pool: AI_RAG_DB_POOL_MIN/MAX, AI_RAG_DB_SSL_MODE (+ AI_RAG_DB_SSL_ROOT_CERT), AI_RAG_DB_STATEMENT_CACHE_SIZE (0 sau PgBouncer transaction), AI_RAG_DB_CONNECT_TIMEOUT_SECONDS, application_name `landa-ai-rag`, TCP keepalive phía server.
+- Schema check chỉ đọc catalog (READ ONLY): bảng/cột mà SQL của service dùng, extension vector/pg_trgm, quyền bảng/cột của current_user và policy RLS áp dụng được (khớp `supabase/manual_sql/20261008_1600_ai_rag_least_privilege_role.sql`). Lỗi được log theo tên object.
+- Index tải file qua `source_download_url` (backend ký, TTL 10 phút): https (http chỉ cho loopback), origin thuộc AI_RAG_STORAGE_ALLOWED_ORIGINS, path phải đúng `/{bucket}/{kb_documents.file_path}`, redirect chỉ cùng origin, stream tối đa AI_RAG_MAX_DOCUMENT_BYTES. URL là bí mật: không log. Không có URL thì dùng SUPABASE_SERVICE_KEY (đường cũ) nếu có, nếu không trả 422 `SOURCE_DOWNLOAD_URL_REQUIRED`.
+- Ingestion: loại file lấy từ đuôi của file_path, đuôi không hỗ trợ → 422 `DOCUMENT_TYPE_UNSUPPORTED`; tenant/loại/kích thước/nội dung rỗng được kiểm trước khi tạo index row; provider 503/429/timeout khi embedding → HTTP 503 kèm mã provider (backend retry).
+- PDF nhiều cột đọc theo cột (AI_RAG_PDF_COLUMN_AWARE, mặc định bật); trang một cột giữ nguyên thứ tự cũ.
 
 ## Runtime behaviour (PRD-1)
 
 - Chạy bằng `python -m app`; host/port/workers/keep-alive/graceful shutdown lấy từ AI_RAG_* (xem .env.example). PM2 dùng `kill_timeout` 65 s để uvicorn kịp drain.
-- Lifespan: startup tạo DB pool + Supabase client; shutdown đánh dấu draining (/readyz → 503), chờ request đang chạy tối đa AI_RAG_SHUTDOWN_GRACE_SECONDS, rồi đóng pool, Gemini client pool và executor.
+- Lifespan: startup tạo DB pool (không crash khi DB chưa sẵn sàng, xem SEP-1) + Supabase client cũ nếu có SUPABASE_SERVICE_KEY; shutdown đánh dấu draining (/readyz → 503), chờ request đang chạy tối đa AI_RAG_SHUTDOWN_GRACE_SECONDS, rồi đóng pool, Gemini client pool và executor.
 - Giới hạn đồng thời theo loại việc: provider calls, index jobs, CPU work. Hết chỗ quá AI_RAG_LIMITER_ACQUIRE_TIMEOUT_MS → 503 `SERVICE_BUSY`.
 - Parse tài liệu, phân tích cấu trúc, chunking, build Source Map và validate Blueprint chạy ngoài event loop (thread pool có giới hạn; parse tài liệu có thể chuyển sang process pool bằng AI_RAG_EXTRACTION_EXECUTOR=process).
 - Deadline tổng mỗi route (504 `REQUEST_DEADLINE_EXCEEDED`; index trả `INDEX_DEADLINE_EXCEEDED`):

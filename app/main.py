@@ -35,8 +35,11 @@ from app.core import metrics
 from app.core.concurrency import ConcurrencyRuntime, deadline_seconds
 from app.core.config import settings, validate_startup_settings
 from app.core.document_limits import (
+    INDEX_DOCUMENT_SUFFIXES,
+    UnsupportedDocumentTypeError,
     assert_document_size,
     assert_tenant_storage_path,
+    document_source_suffix,
     run_limited_subprocess,
     validate_ooxml_archive,
 )
@@ -56,7 +59,11 @@ from app.core.security import (
     require_configured_service_auth,
     require_internal_auth as verify_internal_auth,
 )
+from app.infra import db as db_infra
 from app.infra import gemini as gemini_infra
+from app.infra import schema_check as schema_infra
+from app.infra import storage as storage_infra
+from app.infra.pdf_layout import column_reading_order
 from app.infra.provider_limits import RATE_LIMITED_CODE, classify_provider_limit
 from app.lesson_author_blueprint import (
     ACTION_OBJECTIVE_REPAIR_INTENTS,
@@ -153,11 +160,13 @@ from app.lesson_author_checkpoint import (
     checkpoint_expected_units, select_checkpoint_unit,
 )
 from app.lesson_author_orchestration_v2 import (
+    ORCHESTRATION_CONTRACT_VERSION,
     CourseSkeletonV2,
     OrchestrationContractError,
     canonical_hash as orchestration_v2_canonical_hash,
 )
 from app.lesson_author_orchestration_v2_provider import (
+    ORCHESTRATION_V2_PROVIDER_SCHEMA_PROJECTION_VERSION,
     CHAPTER_SHARD_PROVIDER_SCHEMA_METADATA,
     COURSE_SKELETON_PROVIDER_SCHEMA_METADATA,
     ChapterShardProviderWireV2,
@@ -182,6 +191,7 @@ from app.lesson_author_orchestration_v2_provider import (
     unit_contract_v5_architecture_v2,
 )
 from app.idm.contracts import IdmCourseSkeletonRequestV1, IdmModuleContextV1
+from app.idm.policy import IDM_CONTRACT_VERSION, IDM_PIPELINE_VERSION, IDM_PROMPT_POLICY_VERSION
 from app.idm.course_design import run_idm_course_design
 from app.idm.module_design import run_idm_module_design
 from app.idm.diagram import idm_source_step_diagram
@@ -861,6 +871,9 @@ class RagIndexRequest(BaseModel):
     embedding_model: str
     embedding_dimensions: int = 768
     api_key: SecretStr = Field(repr=False)
+    # SEP-1: short-lived URL the backend signed for kb_documents.file_path. It embeds a bearer
+    # token, so it is a secret (never logged, never echoed). Absent: legacy service-key download.
+    source_download_url: SecretStr | None = Field(default=None, repr=False, max_length=8_192)
 
     @field_validator("tenant_id", "kb_id", "document_id")
     @classmethod
@@ -1025,27 +1038,94 @@ async def require_internal_token(request: Request) -> None:
 
 async def get_db() -> asyncpg.Pool:
     if db_pool is None:
-        raise HTTPException(status_code=503, detail="Database pool is not ready.")
+        # The pool is (re)connecting in the background; the backend's durable workers retry 503.
+        raise AppError("DATABASE_NOT_READY", 503, "The database connection is not ready.")
     return db_pool
 
 
-async def startup() -> None:
-    global db_pool, supabase_client
-    require_settings()
-    db_pool = await asyncpg.create_pool(
+# --- database, storage and schema runtime (SEP-1) -------------------------------------------
+SERVICE_NAME = "landa-ai-rag"
+SCHEMA_CHECK_TIMEOUT_SECONDS = 10.0
+# 2: /v1/kb/documents/index accepts source_download_url (backend-signed storage URL).
+RAG_INDEX_REQUEST_VERSION = 2
+BUILD_SHA_PATTERN = re.compile(r"^[0-9A-Za-z._-]{1,64}$")
+database: db_infra.DatabaseRuntime | None = None
+schema_guard = schema_infra.SchemaGuard()
+
+
+def database_config() -> db_infra.DatabaseConfig:
+    return db_infra.DatabaseConfig(
         dsn=settings.database_url,
-        min_size=1,
-        max_size=8,
-        command_timeout=settings.database_command_timeout_seconds,
+        production=settings.is_production,
+        pool_min=settings.db_pool_min,
+        pool_max=settings.db_pool_max,
+        ssl_mode=settings.db_ssl_mode,
+        ssl_root_cert=settings.db_ssl_root_cert,
+        statement_cache_size=settings.db_statement_cache_size,
+        connect_timeout_seconds=float(settings.db_connect_timeout_seconds),
+        command_timeout_seconds=float(settings.database_command_timeout_seconds),
+        tcp_keepalives_idle_seconds=settings.db_tcp_keepalives_idle_seconds,
     )
-    supabase_client = create_client(settings.supabase_url, settings.supabase_service_key)
+
+
+def storage_policy() -> storage_infra.StoragePolicy:
+    return storage_infra.StoragePolicy(
+        allowed_origins=storage_infra.parse_allowed_origins(settings.storage_allowed_origins, settings.supabase_url),
+        bucket=settings.supabase_storage_bucket,
+        max_bytes=settings.max_document_bytes,
+        timeout_seconds=float(settings.storage_download_timeout_seconds),
+        ca_file=settings.storage_ca_file,
+    )
+
+
+async def _on_database_connected(pool: Any) -> None:
+    global db_pool
+    db_pool = pool
+    await schema_guard.refresh(pool, timeout_seconds=SCHEMA_CHECK_TIMEOUT_SECONDS)
+
+
+async def startup() -> None:
+    global database, supabase_client
+    require_settings()
+    try:
+        allowed_origins = storage_infra.parse_allowed_origins(settings.storage_allowed_origins, settings.supabase_url)
+    except ValueError:
+        raise RuntimeError("AI_RAG_STORAGE_ALLOWED_ORIGINS is invalid.") from None
+    supabase_client = None
+    if settings.supabase_url and settings.supabase_service_key:
+        # Legacy download path for index requests without a signed URL (removed once the
+        # backend sends one everywhere and SUPABASE_SERVICE_KEY is dropped from this service).
+        supabase_client = create_client(settings.supabase_url, settings.supabase_service_key)
+    logger.info(
+        "storage_access_configured",
+        extra={"event": "storage_access_configured", "legacy_service_key": supabase_client is not None,
+               "allowed_origin_count": len(allowed_origins)},
+    )
+    config = database_config()
+    logger.info(
+        "database_configured",
+        extra={"event": "database_configured", "ssl_mode": db_infra.effective_ssl_mode(config),
+               "pool_min": config.pool_min, "pool_max": config.pool_max,
+               "statement_cache_size": config.statement_cache_size},
+    )
+    schema_guard.reset()
+    # Never crash-loops: an unreachable database leaves /readyz at 503 and retries in the background.
+    database = db_infra.DatabaseRuntime(
+        create_pool=db_infra.create_pool_factory(config),
+        on_connected=_on_database_connected,
+        retry_max_seconds=float(settings.db_connect_retry_max_seconds),
+    )
+    await database.start()
 
 
 async def shutdown() -> None:
-    global db_pool
-    if db_pool is not None:
+    global db_pool, database
+    runtime, database = database, None
+    if runtime is not None:
+        await runtime.close()
+    elif db_pool is not None:
         await db_pool.close()
-        db_pool = None
+    db_pool = None
     gemini_infra.client_pool.clear()
     concurrency.shutdown()
 
@@ -1058,9 +1138,10 @@ async def healthz() -> dict[str, str]:
 
 @app.get("/readyz")
 async def readyz() -> JSONResponse:
-    """Readiness: started, not draining, configuration validated and database reachable."""
+    """Readiness: started, not draining, database reachable and the schema check passed."""
     pool = db_pool
     ready = runtime_state.started and not runtime_state.draining and pool is not None
+    code = "NOT_READY"
     if ready and pool is not None:
         try:
             async with asyncio.timeout(settings.readiness_db_timeout_ms / 1000):
@@ -1068,9 +1149,43 @@ async def readyz() -> JSONResponse:
         except Exception:
             logger.warning("readiness_database_unavailable", extra={"event": "readiness_database_unavailable"})
             ready = False
+    if ready and pool is not None:
+        schema = await schema_guard.current(pool, timeout_seconds=SCHEMA_CHECK_TIMEOUT_SECONDS)
+        if not schema.ok:
+            ready = False
+            code = schema.code or "SCHEMA_CHECK_FAILED"
     if not ready:
-        return JSONResponse(status_code=503, content=error_payload("NOT_READY", "The service is not ready."))
+        return JSONResponse(status_code=503, content=error_payload(code, "The service is not ready."))
     return JSONResponse(content={"status": "ready"})
+
+
+def service_contract_versions() -> dict[str, Any]:
+    return {
+        "orchestration_v2_contract_version": ORCHESTRATION_CONTRACT_VERSION,
+        "orchestration_v2_provider_schema_projection": ORCHESTRATION_V2_PROVIDER_SCHEMA_PROJECTION_VERSION,
+        "idm_pipeline_version": IDM_PIPELINE_VERSION,
+        "idm_contract_version": IDM_CONTRACT_VERSION,
+        "idm_prompt_policy_version": IDM_PROMPT_POLICY_VERSION,
+        "rag_index_request_version": RAG_INDEX_REQUEST_VERSION,
+    }
+
+
+@app.get("/v1/meta", dependencies=[Depends(require_internal_token)])
+async def service_meta() -> dict[str, Any]:
+    """Build and contract identity so the backend can detect a version skew between servers."""
+    build_sha = settings.build_sha.strip()
+    return {
+        "service": SERVICE_NAME,
+        "build_sha": build_sha if BUILD_SHA_PATTERN.fullmatch(build_sha) else "unknown",
+        "api_version": app.version,
+        "contracts": service_contract_versions(),
+        "capabilities": {
+            "index_source_download_url": True,
+            "legacy_storage_service_key": supabase_client is not None,
+        },
+        "database": {"state": database.state if database is not None else "idle"},
+        "schema_check": schema_guard.summary(),
+    }
 
 
 @app.get("/metrics", dependencies=[Depends(require_internal_token)])
@@ -1164,6 +1279,40 @@ def _bbox_overlap_ratio(first: tuple[float, float, float, float], second: tuple[
     return intersection / area if area else 0.0
 
 
+def _pdf_column_fragments(
+    text_entries: list[dict[str, Any]],
+    table_entries: list[dict[str, Any]],
+) -> list[dict[str, Any]] | None:
+    """Re-read a multi-column page line by line; ``None`` for a single-column page.
+
+    PyMuPDF merges lines that share a baseline across columns into one block, so columns are
+    detected on line boxes. Consecutive lines of the same block in the new order form one
+    fragment (joined like a block); tables stay whole.
+    """
+    units: list[tuple[tuple[str, int], dict[str, Any]]] = []
+    for block_number, entry in enumerate(text_entries):
+        for line in entry.get("lines") or []:
+            units.append((("text", block_number), line))
+    for table_number, entry in enumerate(table_entries):
+        units.append((("table", table_number), entry))
+    permutation = column_reading_order([unit["bbox"] for _, unit in units])
+    if permutation is None:
+        return None
+    fragments: list[dict[str, Any]] = []
+    previous_group: tuple[str, int] | None = None
+    for index in permutation:
+        group, unit = units[index]
+        if group == previous_group:
+            fragment = fragments[-1]
+            fragment["text"] = f"{fragment['text']}\n{unit['text']}"
+            fragment["max_font_size"] = max(fragment["max_font_size"], float(unit.get("max_font_size") or 0.0))
+        else:
+            fragments.append({"kind": group[0], "text": unit["text"],
+                              "max_font_size": float(unit.get("max_font_size") or 0.0)})
+        previous_group = group
+    return fragments
+
+
 def _pdf_page_content(page: Any) -> tuple[str, dict[str, Any]]:
     page_dict = page.get_text("dict", sort=True) or {}
     span_sizes: list[float] = []
@@ -1173,24 +1322,36 @@ def _pdf_page_content(page: Any) -> tuple[str, dict[str, Any]]:
             continue
         lines: list[str] = []
         block_sizes: list[float] = []
+        line_units: list[dict[str, Any]] = []
+        bbox = block.get("bbox")
         for line in block.get("lines", []):
             spans = line.get("spans", []) if isinstance(line, dict) else []
             line_text = clean_text("".join(str(span.get("text") or "") for span in spans if isinstance(span, dict)))
-            if line_text:
-                lines.append(line_text)
+            line_sizes: list[float] = []
             for span in spans:
                 if isinstance(span, dict) and isinstance(span.get("size"), (int, float)):
                     size = float(span["size"])
                     block_sizes.append(size)
                     span_sizes.append(size)
+                    line_sizes.append(size)
+            if line_text:
+                lines.append(line_text)
+                line_bbox = line.get("bbox") if isinstance(line, dict) else None
+                line_units.append({
+                    "bbox": tuple(float(value) for value in (
+                        line_bbox if isinstance(line_bbox, (list, tuple)) and len(line_bbox) == 4 else bbox
+                    )),
+                    "text": line_text,
+                    "max_font_size": max(line_sizes, default=0.0),
+                })
         text = "\n".join(lines).strip()
-        bbox = block.get("bbox")
         if text and isinstance(bbox, (list, tuple)) and len(bbox) == 4:
             text_entries.append({
                 "kind": "text",
                 "bbox": tuple(float(value) for value in bbox),
                 "text": text,
                 "max_font_size": max(block_sizes, default=0.0),
+                "lines": line_units,
             })
 
     table_entries: list[dict[str, Any]] = []
@@ -1220,10 +1381,19 @@ def _pdf_page_content(page: Any) -> tuple[str, dict[str, Any]]:
         [*visible_text_entries, *table_entries],
         key=lambda entry: (entry["bbox"][1], entry["bbox"][0]),
     )
+    heading_entries = visible_text_entries
+    reading_order = "top_to_bottom_left_to_right"
+    if settings.pdf_column_aware:
+        # Side-by-side columns are read column by column; single-column pages keep the order above.
+        fragments = _pdf_column_fragments(visible_text_entries, table_entries)
+        if fragments is not None:
+            ordered_entries = fragments
+            heading_entries = [fragment for fragment in fragments if fragment["kind"] == "text"]
+            reading_order = "columns_left_to_right"
 
     body_font_size = sorted(span_sizes)[(len(span_sizes) - 1) // 2] if span_sizes else 0.0
     heading_candidates: list[dict[str, Any]] = []
-    for entry in visible_text_entries:
+    for entry in heading_entries:
         title = entry["text"].replace("\n", " ").strip()
         size = float(entry.get("max_font_size") or 0.0)
         if (
@@ -1242,7 +1412,7 @@ def _pdf_page_content(page: Any) -> tuple[str, dict[str, Any]]:
         "content_kinds": sorted({entry["kind"] for entry in ordered_entries}),
         "table_count": len(table_entries),
         "heading_candidates": heading_candidates,
-        "reading_order": "top_to_bottom_left_to_right",
+        "reading_order": reading_order,
     }
 
 
@@ -1494,9 +1664,6 @@ def extract_plain_text(path: Path) -> list[ExtractedSection]:
     return [ExtractedSection(text=clean_text(decode_bytes(path.read_bytes())))]
 
 
-INDEX_DOCUMENT_SUFFIXES = frozenset({".pdf", ".docx", ".doc", ".pptx", ".xlsx", ".xls", ".txt", ".md", ".csv"})
-
-
 def index_document_temp_path(temp_dir: str, document_id: str, original_name: str | None) -> Path:
     """Return a server-owned temporary path while preserving extractor routing."""
     suffix = Path(original_name or "").suffix.lower()
@@ -1512,8 +1679,10 @@ def index_document_temp_path(temp_dir: str, document_id: str, original_name: str
 def extract_sections(path: Path, file_name: str) -> list[ExtractedSection]:
     ext = Path(file_name).suffix.lower()
     assert_document_size(path.stat().st_size, maximum=settings.max_document_bytes)
+    # The zip-bomb guard keys off the same suffix the extractor is routed by (F2).
     validate_ooxml_archive(
         path,
+        suffix=ext,
         max_uncompressed_bytes=settings.max_ooxml_uncompressed_bytes,
         max_entries=settings.max_ooxml_entries,
         max_compression_ratio=settings.max_ooxml_compression_ratio,
@@ -2311,9 +2480,57 @@ async def generate_content(
 
 
 def download_storage_object(storage_path: str) -> bytes:
+    """Legacy download with SUPABASE_SERVICE_KEY, used only when the request has no signed URL."""
     if supabase_client is None:
-        raise RuntimeError("Supabase client is not ready.")
+        raise AppError(
+            "SOURCE_DOWNLOAD_URL_REQUIRED", 422,
+            "The index request must include a signed source download URL.",
+        )
     return supabase_client.storage.from_(settings.supabase_storage_bucket).download(storage_path)
+
+
+async def fetch_index_source(request: RagIndexRequest, storage_path: str, destination: Path) -> int:
+    """Copy the stored document to ``destination`` (no index row exists yet) and return its size."""
+    if request.source_download_url is not None:
+        size = await storage_infra.download_to_file(
+            request.source_download_url.get_secret_value(),
+            destination,
+            policy=storage_policy(),
+            object_path=storage_path,
+        )
+        source = "signed_url"
+    else:
+        raw = await asyncio.to_thread(download_storage_object, storage_path)
+        size = len(raw)
+        assert_document_size(size, maximum=settings.max_document_bytes)
+        destination.write_bytes(raw)
+        source = "service_key"
+    logger.info(
+        "rag_index_downloaded",
+        extra={"event": "rag_index_downloaded", "tenant_id": request.tenant_id,
+               "document_id": request.document_id, "bytes": size, "storage_source": source},
+    )
+    return size
+
+
+SAFE_ERROR_CODE_PATTERN = re.compile(r"^[A-Z][A-Z0-9_]{2,95}$")
+# Provider answers after which the same index request may succeed later (F5).
+RETRYABLE_PROVIDER_HTTP_STATUSES = frozenset({429, 502, 503, 504})
+
+
+def retryable_provider_failure(exc: BaseException) -> AppError | None:
+    """Map a transient provider failure (quota/rate limit/unavailable/timeout) to a retryable 503."""
+    if not isinstance(exc, HTTPException) or exc.status_code not in RETRYABLE_PROVIDER_HTTP_STATUSES:
+        return None
+    detail = exc.detail if isinstance(exc.detail, dict) else {}
+    code = str(detail.get("code") or "")
+    message = detail.get("message")
+    return AppError(
+        code if SAFE_ERROR_CODE_PATTERN.fullmatch(code) else "AI_PROVIDER_UNAVAILABLE",
+        503,
+        message if isinstance(message, str) and message.strip()
+        else "AI provider hiện không khả dụng. Vui lòng thử lại sau.",
+    )
 
 
 async def load_document(pool: asyncpg.Pool, tenant_id: str, kb_id: str, document_id: str) -> asyncpg.Record:
@@ -2506,7 +2723,8 @@ async def _index_document(request: RagIndexRequest, pool: asyncpg.Pool) -> dict[
     if request.embedding_dimensions != 768:
         raise HTTPException(status_code=400, detail="RAG hiện chỉ hỗ trợ embedding 768 chiều.")
     row = await load_document(pool, request.tenant_id, request.kb_id, request.document_id)
-    if row["file_path"] is None and not row["content"]:
+    # F4: whitespace-only content has nothing to learn; reject it before any index row exists.
+    if row["file_path"] is None and not clean_text(str(row["content"] or "")):
         raise HTTPException(status_code=400, detail="Tài liệu không có file nguồn hoặc nội dung để học.")
 
     index_id: str | None = None
@@ -2520,29 +2738,25 @@ async def _index_document(request: RagIndexRequest, pool: asyncpg.Pool) -> dict[
                 extra={"event": "rag_index_started", "tenant_id": request.tenant_id,
                        "kb_id": request.kb_id, "document_id": request.document_id},
             )
-            index_id = await start_index_row(pool, row, effective_embedding_model)
-            if row["file_path"]:
-                assert_tenant_storage_path(str(row["file_path"]), request.tenant_id)
-                raw = await asyncio.to_thread(download_storage_object, row["file_path"])
-                raw_bytes = len(raw)
-                assert_document_size(raw_bytes, maximum=settings.max_document_bytes)
-                logger.info(
-                    "rag_index_downloaded",
-                    extra={"event": "rag_index_downloaded", "tenant_id": request.tenant_id,
-                           "document_id": request.document_id, "bytes": raw_bytes},
-                )
-                with tempfile.TemporaryDirectory() as temp_dir:
-                    file_path = index_document_temp_path(temp_dir, str(row["id"]), row["name"])
-                    file_path.write_bytes(raw)
-                    # The SDK returns the whole object; drop it once on disk so a
-                    # large document is not held twice while parsing.
-                    del raw
-                    sections = await concurrency.run_extraction(extract_sections, file_path, file_path.name)
-            else:
-                content_bytes = len(str(row["content"] or "").encode("utf-8"))
-                assert_document_size(content_bytes, maximum=settings.max_document_bytes)
-                raw_bytes = content_bytes
-                sections = [ExtractedSection(text=clean_text(row["content"] or ""))]
+            with tempfile.TemporaryDirectory() as temp_dir:
+                # F1/F3: ownership, type, size and the download are settled before the index row is
+                # created, so a rejected request never supersedes the document's running index.
+                source_path: Path | None = None
+                if row["file_path"]:
+                    storage_path = str(row["file_path"])
+                    assert_tenant_storage_path(storage_path, request.tenant_id)
+                    # Routed by the stored object's extension; unknown types are rejected (F1).
+                    suffix = document_source_suffix(storage_path)
+                    source_path = index_document_temp_path(temp_dir, str(row["id"]), f"source{suffix}")
+                    raw_bytes = await fetch_index_source(request, storage_path, source_path)
+                else:
+                    raw_bytes = len(str(row["content"] or "").encode("utf-8"))
+                    assert_document_size(raw_bytes, maximum=settings.max_document_bytes)
+                index_id = await start_index_row(pool, row, effective_embedding_model)
+                if source_path is not None:
+                    sections = await concurrency.run_extraction(extract_sections, source_path, source_path.name)
+                else:
+                    sections = [ExtractedSection(text=clean_text(row["content"] or ""))]
             logger.info(
                 "rag_index_extracted",
                 extra={"event": "rag_index_extracted", "tenant_id": request.tenant_id,
@@ -2595,37 +2809,43 @@ async def _index_document(request: RagIndexRequest, pool: asyncpg.Pool) -> dict[
                     )
                     if index_status != "running":
                         raise ValueError("Phiên học tài liệu đã bị thay thế bởi phiên mới hơn.")
-                    for chunk_no, (chunk, embedding) in enumerate(zip(chunks, embeddings)):
-                        await conn.execute(
-                            """
-                            INSERT INTO rag_chunks (
-                              tenant_id, kb_id, document_id, index_id, chunk_no,
-                              content, content_hash, token_count, source_page,
-                              source_section, metadata, embedding
-                            )
-                            VALUES ($1::uuid, $2::uuid, $3::uuid, $4::uuid, $5::int,
-                                    $6, $7, $8::int, $9::int, $10, $11::jsonb, $12::vector)
-                            """,
-                            row["tenant_id"],
-                            row["kb_id"],
-                            row["id"],
-                            index_id,
-                            chunk_no,
-                            chunk["content"],
-                            chunk["content_hash"],
-                            chunk["token_count"],
-                            chunk["page"],
-                            chunk["section"],
-                            json.dumps(
-                                {
-                                    "source_name": row["name"],
-                                    "document_type": row["type"],
-                                    **(chunk.get("metadata") or {}),
-                                },
-                                ensure_ascii=False,
-                            ),
-                            vector_literal(embedding),
+                    # One pipelined executemany inside the same transaction (SEP-1 #7): one round trip
+                    # per batch instead of one per chunk when the database is on another server.
+                    await conn.executemany(
+                        """
+                        INSERT INTO rag_chunks (
+                          tenant_id, kb_id, document_id, index_id, chunk_no,
+                          content, content_hash, token_count, source_page,
+                          source_section, metadata, embedding
                         )
+                        VALUES ($1::uuid, $2::uuid, $3::uuid, $4::uuid, $5::int,
+                                $6, $7, $8::int, $9::int, $10, $11::jsonb, $12::vector)
+                        """,
+                        [
+                            (
+                                row["tenant_id"],
+                                row["kb_id"],
+                                row["id"],
+                                index_id,
+                                chunk_no,
+                                chunk["content"],
+                                chunk["content_hash"],
+                                chunk["token_count"],
+                                chunk["page"],
+                                chunk["section"],
+                                json.dumps(
+                                    {
+                                        "source_name": row["name"],
+                                        "document_type": row["type"],
+                                        **(chunk.get("metadata") or {}),
+                                    },
+                                    ensure_ascii=False,
+                                ),
+                                vector_literal(embedding),
+                            )
+                            for chunk_no, (chunk, embedding) in enumerate(zip(chunks, embeddings))
+                        ],
+                    )
                     await persist_structure_nodes_if_available(conn, row, index_id, structure)
                     await delete_previous_structure_nodes_if_available(conn, row, index_id)
                     await conn.execute(
@@ -2684,12 +2904,15 @@ async def _index_document(request: RagIndexRequest, pool: asyncpg.Pool) -> dict[
                 "usage": embedding_usage.model_dump(),
             }
     except Exception as exc:
+        retryable = retryable_provider_failure(exc)
         if isinstance(exc, TimeoutError) and deadline.expired():
             error_code = "INDEX_DEADLINE_EXCEEDED"
             metrics.DEADLINE_EXCEEDED.labels(route="/v1/kb/documents/index").inc()
+        elif retryable is not None:
+            error_code = retryable.code
         else:
             error_code = exc.code if isinstance(exc, AppError) else "INDEX_DOCUMENT_FAILED"
-        if isinstance(exc, DocumentLimitError):
+        if isinstance(exc, (DocumentLimitError, UnsupportedDocumentTypeError)):
             metrics.DOCUMENT_LIMIT_REJECTIONS.labels(code=exc.code).inc()
         await mark_index_error(pool, index_id, error_code)
         logger.exception(
@@ -2700,6 +2923,15 @@ async def _index_document(request: RagIndexRequest, pool: asyncpg.Pool) -> dict[
         )
         if isinstance(exc, DocumentLimitError):
             raise
+        if index_id is None and isinstance(exc, AppError):
+            # Rejected before any index row (type, ownership, storage): keep the HTTP status.
+            raise
+        if retryable is not None:
+            # F5: a transient provider failure is a retryable 503 carrying the provider code, so the
+            # backend's durable worker retries it instead of reading HTTP 200 + status "error".
+            raise retryable from None
+        if isinstance(exc, AppError) and exc.http_status >= 500:
+            raise  # e.g. SERVICE_BUSY from the provider limiter: retryable as well
         return {
             "status": "error",
             "chunk_count": 0,

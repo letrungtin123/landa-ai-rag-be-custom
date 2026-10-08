@@ -16,6 +16,7 @@ from fastapi import HTTPException
 from app import main
 from app.core import metrics
 from app.core.errors import AppError
+from app.infra.schema_check import SchemaCheckResult
 
 APP_ROOT = Path(__file__).resolve().parents[1] / "app"
 TOKEN = "prd1-test-token-0123456789"
@@ -57,6 +58,7 @@ class AsgiTestCase(unittest.TestCase):
             item.stop()
         main.runtime_state.reset()
         main.db_pool = None
+        main.schema_guard.reset()
 
     def request(self, method: str, path: str, **kwargs: Any) -> httpx.Response:
         async def scenario() -> httpx.Response:
@@ -77,6 +79,8 @@ class HealthAndReadinessTests(AsgiTestCase):
         self.assertEqual(self.request("GET", "/readyz").status_code, 503)
         main.runtime_state.started = True
         main.db_pool = ReadyPool()  # type: ignore[assignment]
+        # SEP-1: readiness also requires a passed schema check (covered in test_sep1_runtime).
+        main.schema_guard.record(SchemaCheckResult(status="ok"))
         response = self.request("GET", "/readyz")
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json(), {"status": "ready"})
@@ -123,6 +127,10 @@ class LifespanTests(unittest.TestCase):
             patch.object(main.asyncpg, "create_pool", AsyncMock(return_value=pool)) as create_pool,
             patch.object(main, "create_client", MagicMock(return_value="supabase")),
             patch.object(main, "require_settings", MagicMock()),
+            # SEP-1: the legacy storage client exists only while a service key is configured.
+            patch.object(main.settings, "supabase_url", "http://127.0.0.1:54321"),
+            patch.object(main.settings, "supabase_service_key", "legacy-service-key"),
+            patch.object(main.schema_guard, "refresh", AsyncMock()),
             patch.object(main.gemini_infra.client_pool, "clear") as clear_clients,
             patch.object(main.concurrency, "shutdown") as shutdown_executors,
         ):
@@ -379,10 +387,13 @@ class FallbackMetricTests(unittest.TestCase):
 
 class SourceCodeSecurityTests(unittest.TestCase):
     def test_no_direct_outbound_http_clients_in_application_code(self) -> None:
-        """SEC-13: only the Gemini and Supabase SDKs talk to the network."""
+        """SEC-13: only the Gemini SDK, the (legacy) Supabase SDK and the allowlisted storage
+        adapter ``app/infra/storage.py`` (SEP-1 signed-URL downloads) talk to the network."""
         forbidden_modules = {"requests", "urllib.request", "urllib3", "aiohttp", "http.client"}
+        allowed_httpx = {"app/infra/storage.py"}
         offenders: list[str] = []
         for path in APP_ROOT.rglob("*.py"):
+            relative = path.relative_to(APP_ROOT.parent).as_posix()
             tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
             for node in ast.walk(tree):
                 names: list[str] = []
@@ -390,8 +401,9 @@ class SourceCodeSecurityTests(unittest.TestCase):
                     names = [alias.name for alias in node.names]
                 elif isinstance(node, ast.ImportFrom) and node.module:
                     names = [node.module]
-                if any(name in forbidden_modules or name == "httpx" for name in names):
-                    offenders.append(f"{path.relative_to(APP_ROOT.parent).as_posix()}:{node.lineno}")
+                if any(name in forbidden_modules or (name == "httpx" and relative not in allowed_httpx)
+                       for name in names):
+                    offenders.append(f"{relative}:{node.lineno}")
         self.assertEqual(offenders, [])
 
     def test_new_runtime_layers_respect_import_direction(self) -> None:

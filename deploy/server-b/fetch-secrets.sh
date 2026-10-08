@@ -53,8 +53,8 @@ PINNED = {
     "AI_RAG_ENV", "AI_RAG_HOST", "AI_RAG_PORT", "AI_RAG_WORKERS", "AI_RAG_PROXY_HEADERS",
     "AI_RAG_FORWARDED_ALLOW_IPS", "AI_RAG_KEEP_ALIVE_TIMEOUT_SECONDS", "TMPDIR",
 }
-# SUPABASE_* are required by startup validation until SEP-1 removes the storage key.
-REQUIRED = ["DATABASE_URL", "AI_RAG_AUTH_MODE", "AI_RAG_SERVICE_HMAC_SECRETS", "SUPABASE_URL", "SUPABASE_SERVICE_KEY"]
+# SEP-1: storage access is a backend-signed URL; the service key is not needed on server B.
+REQUIRED = ["DATABASE_URL", "AI_RAG_AUTH_MODE", "AI_RAG_SERVICE_HMAC_SECRETS"]
 errors = []
 
 
@@ -95,6 +95,10 @@ for key in sorted(set(values) & PINNED):
 for key in REQUIRED:
     if not values.get(key, "").strip():
         fail(f"{key}: required")
+if not (values.get("AI_RAG_STORAGE_ALLOWED_ORIGINS", "").strip() or values.get("SUPABASE_URL", "").strip()):
+    fail("AI_RAG_STORAGE_ALLOWED_ORIGINS: required (origin of the backend-signed storage URLs)")
+if values.get("SUPABASE_SERVICE_KEY"):
+    print("warning: SUPABASE_SERVICE_KEY is set; since SEP-1 server B does not need it, remove it", file=sys.stderr)
 
 auth_mode = values.get("AI_RAG_AUTH_MODE", "")
 if auth_mode and auth_mode != "hmac":

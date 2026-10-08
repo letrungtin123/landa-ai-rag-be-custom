@@ -420,7 +420,7 @@ class ExtractSectionsRoutingTests(TempDirTestCase):
             main.extract_sections(big, big.name)
         extractor.assert_not_called()
 
-    def test_ooxml_archive_guard_runs_on_path_suffix(self) -> None:
+    def test_ooxml_archive_guard_runs_on_the_routing_suffix(self) -> None:
         bogus = self.dir / "bogus.docx"
         bogus.write_bytes(b"not a zip archive")
         with self.assertRaises(DocumentLimitError) as caught:
@@ -430,12 +430,15 @@ class ExtractSectionsRoutingTests(TempDirTestCase):
         write_docx(real)
         with patch.object(main.settings, "max_ooxml_entries", 1), self.assertRaises(DocumentLimitError):
             main.extract_sections(real, real.name)
-        # Characterized: the guard keys off the *path* suffix while routing keys off file_name,
-        # so a mismatched pair bypasses the OOXML limits (index_document always passes path.name).
+        # Changed 2026-10-08 (SEP-1, F2): the guard used the *path* suffix while routing used file_name,
+        # so a mismatched pair reached the zip parser unguarded. Both now use the routing suffix.
         disguised = self.dir / "disguised.bin"
         disguised.write_bytes(real.read_bytes())
+        with patch.object(main.settings, "max_ooxml_entries", 1), self.assertRaises(DocumentLimitError):
+            main.extract_sections(disguised, "real.docx")
+        # The reverse pair is routed to the plain-text reader, which never decompresses: no guard needed.
         with patch.object(main.settings, "max_ooxml_entries", 1):
-            self.assertTrue(main.extract_sections(disguised, "real.docx")[0].text.startswith("Muc 1"))
+            self.assertTrue(main.extract_sections(real, "real.txt")[0].text.startswith("PK"))
 
     def test_index_document_temp_path(self) -> None:
         root = self.dir.resolve()
@@ -475,11 +478,14 @@ class IndexDocumentCharacterizationTests(unittest.TestCase):
         with patch.object(main.settings, "chunk_max_chars", 200), patch.object(main.settings, "chunk_overlap_chars", 0):
             result, embedder, downloader, records = self.run_index(db)
         downloader.assert_not_called()
+        # Changed 2026-10-08 (SEP-1 #7): the three chunk rows go in one executemany (same SQL, same
+        # columns, values and order) inside the same transaction instead of one execute per chunk.
         self.assertEqual(db.labels(), [
             "load_document", "supersede_running_indexes", "next_index_version", "insert_index_row",
-            "lock_index_row", "insert_chunk", "insert_chunk", "insert_chunk", "insert_structure_nodes",
+            "lock_index_row", "insert_chunk", "insert_structure_nodes",
             "delete_structure_nodes", "deactivate_other_indexes", "activate_index", "delete_indexes",
         ])
+        self.assertEqual([method for method, sql, _ in db.calls if "INSERT INTO rag_chunks" in sql], ["executemany"])
         # Savepoint for the optional structure table rolls back; the outer index transaction commits.
         self.assertEqual(db.events, [("begin", 1), ("commit", 1), ("begin", 1), ("begin", 2), ("rollback", 2),
                                      ("commit", 1)])
@@ -488,7 +494,7 @@ class IndexDocumentCharacterizationTests(unittest.TestCase):
         self.assertEqual(db.args_for("supersede_running_indexes"), [(DOC_ID,)])
         self.assertEqual(db.args_for("insert_index_row"), [(TENANT_ID, KB_ID, DOC_ID, 3, "gemini-embedding-001")])
         self.assertEqual(db.args_for("lock_index_row"), [(INDEX_ID, DOC_ID)])
-        chunk_args = db.args_for("insert_chunk")
+        [(chunk_args,)] = db.args_for("insert_chunk")
         self.assertEqual([args[:5] for args in chunk_args], [(TENANT_ID, KB_ID, DOC_ID, INDEX_ID, n) for n in range(3)])
         contents = [args[5] for args in chunk_args]
         self.assertTrue(all(content.startswith(f"Paragraph {n + 1}:") for n, content in enumerate(contents)))
@@ -551,18 +557,34 @@ class IndexDocumentCharacterizationTests(unittest.TestCase):
                                      ("commit", 1)])
         self.assertIn("rag_index_downloaded", [getattr(r, "event", None) for r in records])
 
-    def test_unsupported_suffix_is_indexed_as_text_and_legacy_model_is_normalized(self) -> None:
-        # Characterized: index_document_temp_path maps unknown suffixes to ".txt", so the
-        # "unsupported format" branch of extract_sections is unreachable from this endpoint.
-        db = FakeDb(document=document_row(name="payload.exe", file_path=f"{TENANT_ID}/{KB_ID}/payload.exe"))
+    def test_unsupported_suffix_is_rejected_before_any_index_row(self) -> None:
+        # Changed 2026-10-08 (SEP-1, F1): an unknown suffix used to be indexed as ".txt". The extractor is
+        # now chosen from the stored object's extension (kb_documents.file_path) and anything without an
+        # extractor is a 422 DOCUMENT_TYPE_UNSUPPORTED: nothing is downloaded and no index row is created.
+        for file_path in (f"{TENANT_ID}/{KB_ID}/payload.exe", f"{TENANT_ID}/{KB_ID}/no-extension"):
+            with self.subTest(file_path=file_path):
+                db = FakeDb(document=document_row(name="payload.exe", file_path=file_path))
+                outcome, embedder, downloader, _ = self.run_index(db)
+                self.assertIsInstance(outcome, AppError)
+                self.assertEqual((outcome.code, outcome.http_status), ("DOCUMENT_TYPE_UNSUPPORTED", 422))
+                downloader.assert_not_called()
+                self.assertEqual((db.labels(), embedder.calls), (["load_document"], []))
+
+    def test_extension_comes_from_the_storage_path_and_legacy_model_is_normalized(self) -> None:
+        # A KB article's display name has no extension; its stored ".md" object is still routed correctly.
+        db = FakeDb(document=document_row(name="Article title", file_path=f"{TENANT_ID}/kb-articles/a-1.md"))
         result, embedder, _, _ = self.run_index(db, request=index_request(embedding_model=" text-embedding-004 "),
-                                                download=b"plain bytes from an exe-named upload")
+                                                download=b"# Title\n\nPlain markdown body")
         self.assertEqual(result["status"], "learned")
-        self.assertEqual(db.args_for("insert_chunk")[0][5], "plain bytes from an exe-named upload")
+        [(chunk_rows,)] = db.args_for("insert_chunk")
+        self.assertEqual(chunk_rows[0][5], "# Title\n\nPlain markdown body")
         self.assertEqual(db.args_for("insert_index_row")[0][4], "gemini-embedding-001")  # legacy alias mapped
         self.assertEqual(embedder.calls[0]["model"], "gemini-embedding-001")
 
-    def test_document_limit_errors_mark_index_and_propagate(self) -> None:
+    def test_document_limit_errors_propagate_and_only_parse_time_limits_touch_the_index(self) -> None:
+        # Changed 2026-10-08 (SEP-1, F3): ownership and size are checked before the index row is created,
+        # so these rejections no longer supersede the running index. Only a limit found while parsing the
+        # downloaded file (the OOXML guard) still marks the row it created.
         cases = {
             "foreign_tenant_path": (document_row(file_path=f"{OTHER_TENANT_ID}/{KB_ID}/x.txt"), None),
             "traversal_path": (document_row(file_path=f"{TENANT_ID}/../{OTHER_TENANT_ID}/x.txt"), None),
@@ -576,9 +598,10 @@ class IndexDocumentCharacterizationTests(unittest.TestCase):
                 outcome, embedder, downloader, records = self.run_index(db, download=download)
                 self.assertIsInstance(outcome, DocumentLimitError)
                 self.assertEqual(outcome.code, "DOCUMENT_LIMIT_EXCEEDED")
-                # The index row is created before the ownership/size checks, then marked failed.
-                self.assertEqual(db.args_for("insert_index_row")[0][:3], (TENANT_ID, KB_ID, DOC_ID))
-                self.assertEqual(db.args_for("mark_index_error"), [(INDEX_ID, "DOCUMENT_LIMIT_EXCEEDED")])
+                parsed = name == "unsafe_ooxml"
+                self.assertEqual(len(db.args_for("insert_index_row")), int(parsed))
+                expected_marks = [(INDEX_ID, "DOCUMENT_LIMIT_EXCEEDED")] if parsed else []
+                self.assertEqual(db.args_for("mark_index_error"), expected_marks)
                 self.assertEqual(embedder.calls, [])
                 self.assertEqual(downloader.called, name in {"download_too_large", "unsafe_ooxml"})
                 failed = [r for r in records if getattr(r, "event", None) == "rag_index_failed"]
@@ -602,20 +625,43 @@ class IndexDocumentCharacterizationTests(unittest.TestCase):
                 self.assertEqual(db.events, [("begin", 1), ("commit", 1), ("begin", 1), ("rollback", 1)])
                 self.assertEqual(db.labels()[-2:], ["lock_index_row", "mark_index_error"])
 
-    def test_non_limit_failures_return_error_payload_instead_of_raising(self) -> None:
-        provider_down = HTTPException(status_code=503, detail={"code": "AI_PROVIDER_UNAVAILABLE"})
+    def test_non_retryable_failures_return_error_payload_instead_of_raising(self) -> None:
         app_error = AppError(code="CUSTOM_APP_ERROR", http_status=409, safe_message="custom")
-        cases = {  # Characterized: a provider 503 HTTPException is flattened into the error payload.
-            "provider_http_503": (document_row(), FakeEmbedder(error=provider_down), "INDEX_DOCUMENT_FAILED", 1),
-            "app_error_code_kept": (document_row(), FakeEmbedder(error=app_error), "CUSTOM_APP_ERROR", 1),
-            "whitespace_content": (document_row(content="  \n\t "), FakeEmbedder(), "INDEX_DOCUMENT_FAILED", 0),
-        }
-        for name, (row, embedder, reason, embed_calls) in cases.items():
+        provider_rejected = HTTPException(status_code=400, detail={"code": "AI_PROVIDER_REQUEST_REJECTED"})
+        for name, error, reason in (("app_error_code_kept", app_error, "CUSTOM_APP_ERROR"),
+                                    ("provider_4xx", provider_rejected, "INDEX_DOCUMENT_FAILED")):
             with self.subTest(case=name):
-                db = FakeDb(document=row)
-                result, used, _, _ = self.run_index(db, embedder=embedder)
+                db = FakeDb(document=document_row())
+                result, used, _, _ = self.run_index(db, embedder=FakeEmbedder(error=error))
                 self.assert_failed(db, result, reason)
-                self.assertEqual(len(used.calls), embed_calls)
+                self.assertEqual(len(used.calls), 1)
+
+    def test_transient_provider_failures_raise_a_retryable_503_with_the_provider_code(self) -> None:
+        # Changed 2026-10-08 (SEP-1, F5): a provider 503/429/504 during embedding used to become HTTP 200 +
+        # status "error" (INDEX_DOCUMENT_FAILED), so the backend could not tell it was retryable. The index
+        # row is still marked failed (with the provider code) and the route answers 503 with that code.
+        cases = {
+            "unavailable": (HTTPException(503, detail={"code": "AI_PROVIDER_UNAVAILABLE", "message": "down"}),
+                            "AI_PROVIDER_UNAVAILABLE"),
+            "rate_limited": (HTTPException(503, detail={"code": "AI_PROVIDER_RATE_LIMITED"}),
+                             "AI_PROVIDER_RATE_LIMITED"),
+            "quota": (HTTPException(503, detail={"code": "AI_PROVIDER_QUOTA_EXHAUSTED"}),
+                      "AI_PROVIDER_QUOTA_EXHAUSTED"),
+            "timeout": (HTTPException(504, detail={"code": "AI_PROVIDER_TIMEOUT"}), "AI_PROVIDER_TIMEOUT"),
+            "raw_429_without_code": (HTTPException(429, detail="slow down"), "AI_PROVIDER_UNAVAILABLE"),
+            "service_busy": (AppError(code="SERVICE_BUSY", http_status=503, safe_message="busy"), "SERVICE_BUSY"),
+        }
+        for name, (error, code) in cases.items():
+            with self.subTest(case=name):
+                db = FakeDb(document=document_row())
+                outcome, used, _, records = self.run_index(db, embedder=FakeEmbedder(error=error))
+                self.assertIsInstance(outcome, AppError)
+                self.assertEqual((outcome.code, outcome.http_status), (code, 503))
+                self.assertEqual(db.args_for("mark_index_error"), [(INDEX_ID, code)])
+                self.assertEqual((db.args_for("insert_chunk"), len(used.calls)), ([], 1))
+                self.assertEqual(records[-1].error_code, code)
+                if name == "unavailable":  # the provider's own safe message is kept
+                    self.assertEqual(outcome.safe_message, "down")
 
     def test_corrupt_pdf_upload_returns_error_payload(self) -> None:
         # SEC-7: PDFs are parsed from memory, so a failed open never pins the temp file.
@@ -633,10 +679,13 @@ class IndexDocumentCharacterizationTests(unittest.TestCase):
 
     def test_pre_index_http_errors_touch_no_index_rows(self) -> None:
         self.assertNotIn(API_KEY, repr(index_request()))  # api_key is a SecretStr
+        # Changed 2026-10-08 (SEP-1, F4): whitespace-only content is a 400 here; it used to create an index
+        # row and only then fail with INDEX_DOCUMENT_FAILED.
         cases = ((index_request(embedding_dimensions=1536), document_row(), 400, []),
                  (index_request(), None, 404, ["load_document"]),
                  (index_request(), document_row(content=""), 400, ["load_document"]),
-                 (index_request(), document_row(content=None), 400, ["load_document"]))
+                 (index_request(), document_row(content=None), 400, ["load_document"]),
+                 (index_request(), document_row(content="  \n\t "), 400, ["load_document"]))
         for request, row, status, labels in cases:
             with self.subTest(status=status, row=row):
                 db = FakeDb(document=row)

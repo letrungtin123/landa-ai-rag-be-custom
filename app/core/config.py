@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Literal
 
 from dotenv import load_dotenv
-from pydantic import Field
+from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 APP_ROOT = Path(__file__).resolve().parents[2]
@@ -85,12 +85,16 @@ class Settings(BaseSettings):
         ge=1,
         le=600,
     )
+    # Idle keep-alive of uvicorn. It must outlive every client's idle timeout (nginx upstream 60 s,
+    # the Node agent 30 s) so a reused socket is never closed by the server mid-request (ECONNRESET).
     keep_alive_timeout_seconds: int = Field(
-        default=5,
+        default=75,
         validation_alias="AI_RAG_KEEP_ALIVE_TIMEOUT_SECONDS",
         ge=1,
         le=600,
     )
+    # Reported by GET /v1/meta; the container image sets it from the git sha.
+    build_sha: str = Field(default="unknown", validation_alias="AI_RAG_BUILD_SHA", max_length=64)
     readiness_db_timeout_ms: int = Field(
         default=1_000,
         validation_alias="AI_RAG_READINESS_DB_TIMEOUT_MS",
@@ -193,8 +197,60 @@ class Settings(BaseSettings):
     )
 
     database_url: str = Field(default="", validation_alias="DATABASE_URL")
+    # Postgres pool (SEP-1). The DSN may also carry sslmode/sslrootcert; these settings win.
+    db_pool_min: int = Field(default=1, validation_alias="AI_RAG_DB_POOL_MIN", ge=0, le=64)
+    db_pool_max: int = Field(default=8, validation_alias="AI_RAG_DB_POOL_MAX", ge=1, le=128)
+    # Unset: the DSN sslmode, else "require" in production ("prefer" for a loopback host, where TLS
+    # protects nothing) and "prefer" elsewhere.
+    db_ssl_mode: Literal["disable", "prefer", "require", "verify-ca", "verify-full"] | None = Field(
+        default=None,
+        validation_alias="AI_RAG_DB_SSL_MODE",
+    )
+    db_ssl_root_cert: str = Field(default="", validation_alias="AI_RAG_DB_SSL_ROOT_CERT", max_length=4_096)
+    # 0 disables prepared-statement caching (required behind PgBouncer/Supavisor transaction mode).
+    db_statement_cache_size: int = Field(
+        default=100,
+        validation_alias="AI_RAG_DB_STATEMENT_CACHE_SIZE",
+        ge=0,
+        le=10_000,
+    )
+    db_connect_timeout_seconds: int = Field(
+        default=10,
+        validation_alias="AI_RAG_DB_CONNECT_TIMEOUT_SECONDS",
+        ge=1,
+        le=120,
+    )
+    # Server-side TCP keepalives (tcp_keepalives_* startup settings). 0 sends none, e.g. when a
+    # pooler rejects unknown startup parameters.
+    db_tcp_keepalives_idle_seconds: int = Field(
+        default=60,
+        validation_alias="AI_RAG_DB_TCP_KEEPALIVES_IDLE_SECONDS",
+        ge=0,
+        le=7_200,
+    )
+    db_connect_retry_max_seconds: int = Field(
+        default=30,
+        validation_alias="AI_RAG_DB_CONNECT_RETRY_MAX_SECONDS",
+        ge=1,
+        le=300,
+    )
     supabase_url: str = Field(default="", validation_alias="SUPABASE_URL")
+    # Legacy storage access. Without it the backend must send a signed URL with every index request.
     supabase_service_key: str = Field(default="", validation_alias="SUPABASE_SERVICE_KEY")
+    # Comma-separated origins (scheme://host[:port]) a signed source URL may point to. Empty: the
+    # origin of SUPABASE_URL. Plain http is accepted only for a loopback host.
+    storage_allowed_origins: str = Field(default="", validation_alias="AI_RAG_STORAGE_ALLOWED_ORIGINS",
+                                         max_length=4_096)
+    # PEM bundle that signs the storage server certificate (internal CA). Empty: public CAs (certifi).
+    storage_ca_file: str = Field(default="", validation_alias="AI_RAG_STORAGE_CA_FILE", max_length=4_096)
+    storage_download_timeout_seconds: int = Field(
+        default=120,
+        validation_alias="AI_RAG_STORAGE_DOWNLOAD_TIMEOUT_SECONDS",
+        ge=5,
+        le=600,
+    )
+    # Read multi-column PDF pages column by column (QC D9). false restores top-to-bottom order.
+    pdf_column_aware: bool = Field(default=True, validation_alias="AI_RAG_PDF_COLUMN_AWARE")
     supabase_storage_bucket: str = Field(
         default="landa-storage",
         validation_alias="SUPABASE_STORAGE_BUCKET",
@@ -371,6 +427,12 @@ class Settings(BaseSettings):
         validation_alias="AI_RAG_GEMINI_38_THINKING_LEVEL",
     )
 
+    @model_validator(mode="after")
+    def validate_pool_bounds(self) -> Settings:
+        if self.db_pool_min > self.db_pool_max:
+            raise ValueError("AI_RAG_DB_POOL_MIN must not exceed AI_RAG_DB_POOL_MAX.")
+        return self
+
     @property
     def is_production(self) -> bool:
         return self.environment == "production"
@@ -381,10 +443,11 @@ class Settings(BaseSettings):
 
 
 def missing_required_setting_names(value: Settings) -> list[str]:
+    # SUPABASE_SERVICE_KEY is optional since SEP-1: documents arrive through backend-signed URLs.
+    # SUPABASE_URL is still needed to derive the storage allowlist unless it is configured.
     required = {
         "DATABASE_URL": value.database_url,
-        "SUPABASE_URL": value.supabase_url,
-        "SUPABASE_SERVICE_KEY": value.supabase_service_key,
+        "SUPABASE_URL": value.supabase_url or value.storage_allowed_origins,
     }
     if (
         value.auth_mode in {"token", "token_or_hmac"}

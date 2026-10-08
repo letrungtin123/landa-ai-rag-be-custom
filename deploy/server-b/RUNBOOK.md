@@ -92,7 +92,8 @@ Never `export` compose variables (AI_RAG_IMAGE, ...) in the shell: shell values 
 ## 3. Secrets and configuration
 
 - Secrets Manager secret `<ai-rag-secret-name>` (JSON, KMS-encrypted): `DATABASE_URL`,
-  `AI_RAG_SERVICE_HMAC_SECRETS`, `SUPABASE_URL`, `SUPABASE_SERVICE_KEY` (the last two only until SEP-1).
+  `AI_RAG_SERVICE_HMAC_SECRETS`. No storage key since SEP-1: set `AI_RAG_STORAGE_ALLOWED_ORIGINS` (SSM) to
+  the origin the backend signs storage URLs for, and `AI_RAG_STORAGE_CA_FILE` when Kong uses the internal CA.
 - SSM path `/landa/ai-rag/prod/` (optional): non-secret tunables, e.g. `AI_RAG_AUTH_MODE=hmac`,
   limiter/deadline overrides. A name in both sources is an error.
 - Render: `sudo AWS_REGION=<aws-region> AI_RAG_SECRET_ID=<ai-rag-secret-name> AI_RAG_SSM_PATH=/landa/ai-rag/prod/ /opt/landa-ai/deploy/server-b/fetch-secrets.sh`.
@@ -195,9 +196,12 @@ WantedBy=timers.target
   directly or to Supavisor in **session** mode; transaction mode (6543) needs statement cache 0 (SEP-1).
 - **pg_hba.conf**: `hostssl postgres landa_ai_rag <server-b-private-ip>/32 scram-sha-256` and no
   non-SSL `host` line that matches B; reload Postgres. Role `landa_ai_rag` from SEP-2 (approved SQL).
-- **Storage/Kong**: reachable only on the private IP from `sg-ai-b` (until SEP-1 replaces the service
-  key with signed URLs). If Kong serves HTTPS with the internal CA, confirm the Python storage client
-  trusts that CA; otherwise keep it private-network-only HTTP until SEP-1.
+- **Storage/Kong**: reachable only on the private IP from `sg-ai-b`, over HTTPS (the AI service refuses
+  plain-http signed URLs except to a loopback host). The backend signs URLs (TTL
+  `AI_RAG_STORAGE_SIGNED_URL_TTL_SECONDS`, default 600) and rewrites their origin to
+  `AI_RAG_STORAGE_SIGNED_URL_ORIGIN=https://<server-a-private-dns>:<kong-tls-port>` when its own
+  `SUPABASE_URL` is not reachable from B; B allowlists the same origin and trusts the CA via
+  `AI_RAG_STORAGE_CA_FILE`.
 - **Backend env** (process env, e.g. the PM2 ecosystem file):
   - `AI_RAG_SERVICE_URL=https://<server-b-name>:8443` — origin only, no path: the backend signs
     `url.pathname`, nginx forwards it unchanged.
@@ -217,9 +221,9 @@ is checked out (see `ci.yml`).
 
 ## 9. Known gaps (track before INF-2)
 
-- Startup connects the DB pool before serving (`app/main.py` `startup()`, fixed pool 1..8): if Postgres is
-  unreachable at boot the process exits and Docker restarts it; `/healthz` is not served meanwhile (SEP-1 #1).
-- `SUPABASE_URL`/`SUPABASE_SERVICE_KEY` still required (SEP-1 #3). Outbound allowlist in code: SEP-1 #4.
+- Done in SEP-1: an unreachable Postgres no longer stops the process (`/healthz` 200, `/readyz` 503, background
+  reconnect); `/readyz` also requires the read-only schema/grant check; storage is read through
+  backend-signed URLs under `AI_RAG_STORAGE_ALLOWED_ORIGINS` (no `SUPABASE_SERVICE_KEY` on B).
 - `uvloop` is not in `requirements.lock` (compiled on Windows; the `uvicorn[standard]` marker excludes it).
 - `AI_RAG_EXTRACTION_EXECUTOR=process` would use `fork` on Linux (`app/core/concurrency.py`); keep `thread`.
 - HMAC replay cache is in-process: one instance, `AI_RAG_WORKERS=1`. Scaling needs a shared store + ALB
