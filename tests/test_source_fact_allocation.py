@@ -9,18 +9,18 @@ from app.lesson_author_blueprint import (
     parse_and_validate_lesson_author_blueprint,
     validate_lesson_author_blueprint,
 )
-from app.main import (
-    apply_course_architecture_repair_patches,
-    build_course_architecture_repair_prompt,
-    deterministic_factless_unit_removal_repair,
-    validate_course_architecture_repair_candidate,
-)
 from app.services.lesson_author.architecture_validation import validate_course_architecture_workflow
 from app.services.lesson_author.evidence_scope import (
     allocate_source_map_architecture_facts,
     validate_course_architecture_semantic_scope,
 )
 from app.services.lesson_author.granularity import allocate_blueprint_source_fact_ids
+from app.services.lesson_author.repair.candidate import (
+    deterministic_factless_unit_removal_repair,
+    validate_course_architecture_repair_candidate,
+)
+from app.services.lesson_author.repair.prompt import build_course_architecture_repair_prompt
+from app.services.lesson_author.repair.semantic_delta import apply_course_architecture_repair_patches
 from app.source_map import build_source_map
 from app.workflows.contracts import WorkflowFailure, WorkflowGenerationResult, WorkflowValidationResult
 from app.workflows.course_architecture import (

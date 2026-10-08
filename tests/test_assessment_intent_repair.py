@@ -17,16 +17,16 @@ from app.assessment_planner import (
     evaluate_assessment_teaching_anchor,
 )
 from app.lesson_author_blueprint import build_v5_semantic_delta_repair_response_schema
-from app.main import (
-    _semantic_delta_target_snapshot,
-    _v5_deterministic_assessment_alignment_payload,
-    _v5_prepare_semantic_repair_targets,
-    apply_course_architecture_repair_patches,
-)
 from app.services.lesson_author.architecture_validation import validate_v5_instructional_coherence
 from app.services.lesson_author.evidence_scope import (
     allocate_source_map_architecture_facts,
     validate_course_architecture_evidence_scope,
+)
+from app.services.lesson_author.repair.prompt import _semantic_delta_target_snapshot
+from app.services.lesson_author.repair.semantic_delta import apply_course_architecture_repair_patches
+from app.services.lesson_author.repair.targets import (
+    _v5_deterministic_assessment_alignment_payload,
+    _v5_prepare_semantic_repair_targets,
 )
 from app.source_map import build_source_map
 from app.workflows.contracts import WorkflowFailure, WorkflowGenerationResult, WorkflowValidationResult

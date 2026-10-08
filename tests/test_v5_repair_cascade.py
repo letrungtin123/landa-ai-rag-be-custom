@@ -19,17 +19,6 @@ from app.lesson_author_blueprint import (
     parse_lesson_author_blueprint_candidate,
     validate_lesson_author_blueprint,
 )
-from app.main import (
-    _repair_patch_domain_diagnostics,
-    _v5_deterministic_assessment_alignment_payload,
-    _v5_deterministic_evidence_alignment_candidate,
-    _v5_prepare_assessment_alignment_targets,
-    _v5_prepare_evidence_alignment_targets,
-    _v5_prepare_semantic_repair_targets,
-    apply_course_architecture_repair_patches,
-    build_course_architecture_repair_prompt,
-    build_v5_scoped_repair_source_context,
-)
 from app.schemas.common import AiUsage
 from app.services.lesson_author.architecture_shape import _workflow_issue_from_blueprint_validation_error
 from app.services.lesson_author.architecture_validation import (
@@ -47,6 +36,19 @@ from app.services.lesson_author.evidence_scope import (
 )
 from app.services.lesson_author.granularity import allocate_blueprint_source_fact_ids
 from app.services.lesson_author.prompts import build_course_architect_prompt
+from app.services.lesson_author.repair.candidate import _v5_deterministic_evidence_alignment_candidate
+from app.services.lesson_author.repair.guards import _repair_patch_domain_diagnostics
+from app.services.lesson_author.repair.prompt import (
+    build_course_architecture_repair_prompt,
+    build_v5_scoped_repair_source_context,
+)
+from app.services.lesson_author.repair.semantic_delta import apply_course_architecture_repair_patches
+from app.services.lesson_author.repair.targets import (
+    _v5_deterministic_assessment_alignment_payload,
+    _v5_prepare_assessment_alignment_targets,
+    _v5_prepare_evidence_alignment_targets,
+    _v5_prepare_semantic_repair_targets,
+)
 from app.services.lesson_author.source_context import (
     assert_v5_immutable_source_context,
     assert_v5_scoped_repair_target_bound,

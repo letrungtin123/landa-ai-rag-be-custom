@@ -5,16 +5,14 @@ import json
 import unittest
 
 from app.assessment_planner import compile_v5_assessment_plan
-from app.main import (
-    _assert_v5_primary_provenance_preserved,
-    _v5_prepare_semantic_repair_targets,
-    apply_course_architecture_repair_patches,
-)
 from app.services.lesson_author.architecture_validation import validate_v5_instructional_coherence
 from app.services.lesson_author.evidence_scope import (
     allocate_source_map_architecture_facts,
     validate_course_architecture_evidence_scope,
 )
+from app.services.lesson_author.repair.guards import _assert_v5_primary_provenance_preserved
+from app.services.lesson_author.repair.semantic_delta import apply_course_architecture_repair_patches
+from app.services.lesson_author.repair.targets import _v5_prepare_semantic_repair_targets
 from app.source_map import build_source_map
 from app.workflows.contracts import WorkflowFailure
 from app.workflows.course_architecture import classify_course_repair_targets

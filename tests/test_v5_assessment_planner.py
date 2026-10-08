@@ -10,13 +10,13 @@ from google.genai import models, types
 
 from app.assessment_planner import compile_v5_assessment_plan
 from app.lesson_author_blueprint import build_v5_semantic_delta_repair_response_schema
-from app.main import (
-    _architecture_repair_preserves_unaffected_snapshot,
+from app.services.lesson_author.evidence_scope import allocate_source_map_architecture_facts
+from app.services.lesson_author.repair.guards import _architecture_repair_preserves_unaffected_snapshot
+from app.services.lesson_author.repair.semantic_delta import apply_course_architecture_repair_patches
+from app.services.lesson_author.repair.targets import (
     _v5_deterministic_assessment_alignment_payload,
     _v5_prepare_semantic_repair_targets,
-    apply_course_architecture_repair_patches,
 )
-from app.services.lesson_author.evidence_scope import allocate_source_map_architecture_facts
 from app.source_map import build_source_map
 from app.workflows.contracts import (
     WorkflowFailure,

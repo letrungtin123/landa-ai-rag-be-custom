@@ -3,12 +3,10 @@ from __future__ import annotations
 import copy
 import unittest
 
-from app.main import (
-    apply_course_architecture_repair_patches,
-    apply_lesson_generation_repair_patches,
-    build_course_architecture_repair_prompt,
-)
+from app.services.lesson_author.lesson_generation import apply_lesson_generation_repair_patches
 from app.services.lesson_author.proposal_validation import parse_course_architecture_repair_payload
+from app.services.lesson_author.repair.prompt import build_course_architecture_repair_prompt
+from app.services.lesson_author.repair.semantic_delta import apply_course_architecture_repair_patches
 from app.workflows.contracts import WorkflowFailure, WorkflowGenerationResult, WorkflowValidationResult
 from app.workflows.course_architecture import (
     CourseArchitectureWorkflowCallbacks,

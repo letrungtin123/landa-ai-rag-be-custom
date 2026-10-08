@@ -13,9 +13,9 @@ from app.lesson_prompt_policy import (
     lesson_instructional_quality_policy,
     lesson_output_language_policy,
 )
-from app.main import build_lesson_generation_repair_prompt
 from app.schemas.common import AiUsage
 from app.services.lesson_author.blueprint import generate_validated_lesson_author_blueprint
+from app.services.lesson_author.lesson_generation import build_lesson_generation_repair_prompt
 from app.services.lesson_author.media_review import enrich_lesson_author_blueprint_media_review
 from app.services.lesson_author.prompts import build_course_architect_prompt
 from app.services.lesson_author.staged.writer import generate_staged_lesson_author_proposal

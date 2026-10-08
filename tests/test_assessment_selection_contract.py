@@ -9,13 +9,14 @@ from fastapi import HTTPException
 from app.assessment_planner import compile_v5_assessment_plan
 from app.assessment_selection_contract import VERSION, build_assessment_selection_contract
 from app.component_capabilities import ComponentCapabilities
-from app.main import apply_course_architecture_repair_patches, lesson_author_blueprint
+from app.main import lesson_author_blueprint
 from app.schemas.common import AiUsage
 from app.services.lesson_author.architecture_validation import validate_v5_instructional_coherence
 from app.services.lesson_author.evidence_scope import (
     allocate_source_map_architecture_facts,
     validate_course_architecture_evidence_scope,
 )
+from app.services.lesson_author.repair.semantic_delta import apply_course_architecture_repair_patches
 from app.source_map import build_source_map
 from app.workflows.contracts import WorkflowFailure
 from tests.staged_schema_probe import capture_sdk_body

@@ -11,11 +11,12 @@ import httpx
 from fastapi import HTTPException
 from pydantic import ValidationError
 
-from app import main
+from app import lesson_quality, main
 from app.api import deps as api_deps
 from app.lesson_author_checkpoint import ChapterCheckpointUnit, assemble_checkpoint_chapter, select_checkpoint_unit
 from app.schemas.common import AiUsage
 from app.schemas.lesson_author import RagLessonAuthorCheckpointRequest, RagLessonAuthorRequest
+from app.services.lesson_author import checkpoint as checkpoint_service
 from app.services.lesson_author.staged import skeleton as staged_skeleton
 from app.services.lesson_author.staged import source_locked as staged_source_locked
 from app.workflows.contracts import WorkflowFailure, WorkflowValidationResult
@@ -73,7 +74,7 @@ def provider_result(unit, *, known=True, retry=False):
 
 
 async def checkpoint_result(request, manifest, events=None, retrieval_usage=None):
-    return await main.build_lesson_author_checkpoint_result(
+    return await checkpoint_service.build_lesson_author_checkpoint_result(
         request, context="Synthetic context", source_outline="", source_coverage="", rows=[], manifest=manifest,
         known_source_refs=set(), retrieval={}, retrieval_usage=retrieval_usage or AiUsage(), elapsed_ms=0,
         emit=(events if events is not None else []).append,
@@ -105,9 +106,9 @@ class ChapterCheckpointTests(unittest.TestCase):
         self.assertEqual(request.model_dump(), before)
         self.assertNotIn("Explain", json.dumps(events))
         unit["component_plan"][0]["learning_block_ids"].append("block_b")
-        self.assertFalse(main.instructional_plan_validation_result(architecture).errors)
+        self.assertFalse(lesson_quality.instructional_plan_validation_result(architecture).errors)
         unit["learning_blocks"][1]["intent"] = "knowledge_check"
-        self.assertTrue(main.instructional_plan_validation_result(architecture).errors)
+        self.assertTrue(lesson_quality.instructional_plan_validation_result(architecture).errors)
 
     def test_request_rejects_non_v5_wrong_operation_and_provider_owned_state(self):
         request, _, _ = fixture()
@@ -202,7 +203,7 @@ class ChapterCheckpointTests(unittest.TestCase):
         request, _, _ = fixture()
         with patch("app.services.retrieval.search.retrieve_chunks", AsyncMock(return_value=([], AiUsage(), {}))), \
              patch("app.services.retrieval.search.target_source_scope_is_incomplete", return_value=False), \
-             patch("app.main.build_lesson_author_checkpoint_result", AsyncMock()) as generation:
+             patch("app.services.lesson_author.checkpoint.build_lesson_author_checkpoint_result", AsyncMock()) as generation:
             with self.assertRaises(HTTPException) as raised:
                 asyncio.run(main.lesson_author_chapter_checkpoint(request, pool=None))
         generation.assert_not_called()
@@ -243,7 +244,7 @@ class ChapterCheckpointTests(unittest.TestCase):
     def test_full_quality_failure_cannot_finalize_or_repair_immutable_units(self):
         request, _, manifest = fixture(count=1, action="validate_chapter")
         bad = WorkflowValidationResult([{"code": "ASSESSMENT_NOT_ALIGNED", "severity": "error"}])
-        with patch("app.main.pedagogical_validation_result", return_value=bad), patch("app.services.provider.generate_content", AsyncMock()) as provider:
+        with patch("app.services.lesson_author.checkpoint.pedagogical_validation_result", return_value=bad), patch("app.services.provider.generate_content", AsyncMock()) as provider:
             with self.assertRaises(WorkflowFailure) as raised:
                 asyncio.run(checkpoint_result(request, manifest))
         self.assertEqual(raised.exception.failure_stage, "chapter_checkpoint_pedagogical_validation")
