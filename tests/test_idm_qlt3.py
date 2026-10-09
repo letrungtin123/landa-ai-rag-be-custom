@@ -6,6 +6,7 @@
   and the failing paths of each attempt were never logged.
 * Q3: the orientation unit "Bản đồ 5 chuyển dịch" owned only the introduction block, so the writer could not
   list the five shifts, and its repair timed out against the 120 s unit deadline.
+* Q2: the Canvas worksheet exceeded the 400-word budget twice and became raw PDF text.
 * Q5: two Must Dos had no practice: the fallback kept the provider practice only for kind "do", and
   "Ký cam kết …" was marked "decide"; ``learning_activities`` promised the held practice anyway.
 
@@ -15,6 +16,7 @@ The provider is the local fake; nothing reaches the network.
 from __future__ import annotations
 
 import json
+import re
 import unittest
 from dataclasses import replace
 from typing import Any
@@ -47,6 +49,7 @@ from app.idm.module_layout import ModuleScope, fallback_lesson, must_do_unit_pos
 from app.idm.policy import AI_DRAFTED_MARKER_EN, AI_DRAFTED_MARKER_VI, IDM_PRACTICE_MAX_CRITERIA_FACTS
 from app.idm.prompts import module_prompt
 from app.idm.validation import errors
+from app.idm.worksheet import worksheet_fallback_html
 from tests import idm_golden_module as gm
 from tests.idm_golden import key, keys
 from tests.idm_test_support import rehash_contract
@@ -61,6 +64,8 @@ from tests.test_idm_storyboard import (
     severity_body,
     severity_writer,
     slot_repair,
+    worksheet_body,
+    worksheet_writer,
 )
 
 # The 33 facts of block cb_0022 ("Cách điền biểu mẫu CEO Change Mindset Canvas"), run 8de1c76b.
@@ -529,6 +534,92 @@ class FrameworkOrientationTests(StoryboardEndpointTestCase):
         quality = IdmUnitQualityV1.model_validate(data["unit"]["idm_quality"])
         self.assertIn("Cần xem (IDM_W5_FRAMEWORK_INCOMPLETE", quality.author_note)
         self.assertEqual(len(data["unit"]["components"][0]["semantic_content"]["sections"]), 1)
+
+
+def long_paragraphs(tag: str, count: int, words: int = 150) -> list[dict[str, Any]]:
+    """Distinct filler paragraphs (a long worked example), never a repeated block."""
+
+    return [{"kind": "paragraph", "text": " ".join(f"{tag}{number}chu{index}" for index in range(words)) + ".",
+             "items": [], "rows": []} for number in range(count)]
+
+
+COMMITMENT_FACTS = [
+    "PHẦN KẾT", "BẢN CAM KẾT HÀNH ĐỘNG CỦA LÃNH ĐẠO",
+    "Tôi, người đứng đầu doanh nghiệp, cam kết dẫn dắt doanh nghiệp thực hiện cuộc chuyển đổi thực chất.",
+    "Row 1: 01 Năng Lực Sẽ Trở Thành Best-in", "Row 2: 01 Hành Động Đo Được Trong 90 Ngày; ......................",
+    "Row 3: Chỉ Số Đo Lường Thành Công (KPI /", "Row 4: Người Phụ Trách Triển Khai (Owner); ...................",
+    "NGƯỜI LÃNH ĐẠO CAM KẾT (CEO / FOUNDER)", "Ký, ghi rõ họ tên & Đóng dấu doanh nghiệp",
+]
+
+
+class WorksheetBudgetTests(StoryboardEndpointTestCase):
+    """Q2: the Canvas worksheet was written at 550 then 452 words (budget 400) and became raw PDF text."""
+
+    def test_the_canvas_fallback_is_one_table_of_its_nine_fields(self) -> None:
+        html = str(worksheet_fallback_html("Phiếu thực hành: Canvas", CANVAS_FACTS, "Cho hiện trạng, người học điền "
+                                           "9 ô để xác định việc cần làm", "vi"))
+        self.assertEqual(html.count("<table>"), 1)
+        self.assertEqual(re.findall(r"<tr><td>([^<]*)</td>", html), [
+            "Mindset cần bỏ", "Khát vọng mới", "Giá trị khách hàng", "Năng lực BIC", "Việc cần dừng",
+            "Việc cần bắt đầu", "Ứng dụng AI", "Kết nối hệ sinh thái", "Lời hứa toàn cầu"])
+        self.assertIn("<th>Ô cần điền</th><th>Câu hỏi gợi ý</th><th>Cần ghi</th>", html)
+        self.assertIn("<td>Ghi rõ 01 tư duy cũ cần đoạn tuyệt</td>", html)
+        self.assertIn("<h3>Xác nhận của người đứng đầu doanh nghiệp</h3>", html)
+        self.assertIn("<li>Mindset cần bỏ: Ghi rõ 01 tư duy cũ cần đoạn tuyệt</li>", html)
+        # No upper-case label list, no placeholder paragraph, no heading line of the PDF repeated as text.
+        self.assertNotIn("[", html)
+        self.assertNotIn("MINDSET", html)
+        self.assertNotIn("CÔNG CỤ THỰC CHIẾN", html)
+
+    def test_a_row_form_and_a_reference_table(self) -> None:
+        html = str(worksheet_fallback_html("Cam kết", COMMITMENT_FACTS, None, "en"))
+        self.assertEqual(re.findall(r"<tr><td>([^<]*)</td>", html), [
+            "01 Năng Lực Sẽ Trở Thành Best-in", "01 Hành Động Đo Được Trong 90 Ngày",
+            "Chỉ Số Đo Lường Thành Công (KPI /", "Người Phụ Trách Triển Khai (Owner)"])
+        self.assertIn("<td>(write on your own copy)</td>", html)
+        self.assertIn("<li>Filled in: 01 Hành Động Đo Được Trong 90 Ngày</li>", html)
+        self.assertNotIn("......", html)
+        # A reference table (several filled cells per row) is not a form: the generic fallback renders it.
+        severity = ["Row 1: Cấp độ | Dấu hiệu | Cách xử lý", "Row 2: Cấp 1 | Ảnh hưởng thấp | Nhân viên tự xử lý",
+                    "Row 3: Cấp 2 | Thiệt hại dưới 50 triệu | Thông báo trưởng nhóm"]
+        self.assertIsNone(worksheet_fallback_html("Cấp độ", severity, None, "vi"))
+
+    async def test_over_long_worked_example_is_left_out_without_a_repair_call(self) -> None:
+        body = worksheet_body()
+        writer = worksheet_writer(body)
+        sections = writer["components"]["c0"]["semantic_content"]["sections"]
+        sections[2]["blocks"] = long_paragraphs("vidu", 3)
+        provider = FakeGenerate(**{WRITER: [writer], JUDGE: [judge()]})
+        status, data, _ = await self.post(body, provider)
+        self.assertEqual(status, 200)
+        self.assertEqual(provider.names, [WRITER, JUDGE])
+        quality = self.assert_envelope(data, "provider_validated", "validated", "provider")
+        kept = data["unit"]["components"][0]["semantic_content"]["sections"]
+        self.assertEqual([section["heading"] for section in kept],
+                         [sections[0]["heading"], sections[1]["heading"], sections[3]["heading"]])
+        self.assertIn("đã bỏ phần ví dụ mẫu", quality.author_note)
+        self.assertIn("IDM_W5_WORKSHEET_COMPACTED", quality.deterministic_codes)
+
+    async def test_worksheet_still_over_budget_falls_back_to_a_structured_form(self) -> None:
+        body = worksheet_body()
+        contract = body["unit_contract"]
+        texts = ["Hãy trả lời ngắn gọn vào từng ô của phiếu dưới đây.", "MINDSET CẦN BỎ", "KHÁT VỌNG MỚI",
+                 "Niềm tin cũ nào đang kìm hãm doanh nghiệp?", "Mục tiêu tăng trưởng lớn nhất trong 3 năm tới là gì?"]
+        for fact, text in zip(contract["source_facts"], texts, strict=True):
+            fact["fact_text"] = text
+        rehash_contract(contract)
+        writer = worksheet_writer(body)
+        writer["components"]["c0"]["semantic_content"]["sections"][3]["blocks"] = [
+            {"kind": "bullets", "text": None, "rows": [],
+             "items": [" ".join(f"k{number}t{index}" for index in range(90)) for number in range(6)]}]
+        provider = FakeGenerate(**{WRITER: [writer], REPAIR: [slot_repair(writer, 0)], JUDGE: [judge()]})
+        status, data, _ = await self.post(body, provider)
+        self.assertEqual(status, 200)
+        self.assertEqual(data["content_origin"], "structured_fallback")
+        component = data["unit"]["components"][0]
+        self.assertTrue(component["source_locked_fallback"])
+        self.assertEqual(re.findall(r"<tr><td>([^<]*)</td>", component["html"]), ["Mindset cần bỏ", "Khát vọng mới"])
+        self.assertIn("<h3>Tự kiểm tra</h3>", component["html"])
 
 
 class PracticeTaskBoundTests(unittest.TestCase):

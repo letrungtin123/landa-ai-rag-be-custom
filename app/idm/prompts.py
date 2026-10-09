@@ -454,7 +454,10 @@ Writing rules (learner-facing, {locale_name(locale)}):
   example of one or two filled entries (illustrative when the practice is ai_drafted; it never adds a rule); and a
   final "Tự kiểm tra" / "Self-check" section with one "bullets" block whose items are the criteria, each taken
   only from the practice criteria facts. Do not reveal the answer of the problem slot that follows it; that problem
-  asks the learner to judge a sample entry against the same criteria (exactly one option meets them).
+  asks the learner to judge a sample entry against the same criteria (exactly one option meets them). A worksheet
+  has the same length budget as any html slot, so keep it lean: one template row per field (its value one guiding
+  question of at most 15 words), a worked example of at most two filled entries and at most 6 self-check items;
+  a worksheet still over the budget loses its worked example.
 - la_faq answers restate only what SOURCE_FACTS or LESSON_CONTEXT_FACTS say: no number, example, reason, advice
   or exception they do not state. When the facts cannot answer a question, ask a different question they answer.
 - Each la_faq item adds value: a common misconception, an edge case or a "what if" that the facts answer. Never

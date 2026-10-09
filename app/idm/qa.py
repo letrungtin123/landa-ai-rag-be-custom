@@ -522,6 +522,7 @@ def build_unit_author_note(
     faq_items_restated: int = 0,
     callouts_to_prose: int = 0,
     framework_list_inserted: int = 0,
+    worksheet_compacted: bool = False,
 ) -> str:
     """Template note for the unit ``implementation_notes``; no IDs, no ``<``/``>``.
 
@@ -590,6 +591,11 @@ def build_unit_author_note(
                      "lý thuyết — tác giả nên biên tập cho liền mạch." if vi
                      else f"A list of the framework's {framework_list_inserted} items (names from the source) was "
                           "inserted into the theory block — edit it into the text.")
+    if worksheet_compacted:
+        parts.append("Phiếu thực hành dài hơn giới hạn nên đã bỏ phần ví dụ mẫu (hoặc rút gọn gợi ý trong bảng) — "
+                     "tác giả có thể bổ sung lại một ví dụ ngắn." if vi
+                     else "The worksheet was over its length budget, so its worked example (or the extra guidance in "
+                          "its table) was left out — the author may add a short example back.")
     if not whole_fallback:
         parts.extend(_check_lines(vi, deterministic_codes, remaining, fixed_codes, slot_types))
     if ai_drafted and not whole_fallback:  # a source-locked unit carries no drafted scenario
@@ -665,7 +671,8 @@ def settled_codes(seen: Sequence[str], remaining: Sequence[SlotFinding],
 
 
 # Codes of a deterministic fix that has its own note line ("Đã bỏ …", "Đã chuyển …").
-_NOTE_LINE_CODES: Final = frozenset({FAQ_ITEMS_DROPPED_CODE, CALLOUT_TO_PROSE_CODE, FRAMEWORK_LIST_INSERTED_CODE})
+_NOTE_LINE_CODES: Final = frozenset({FAQ_ITEMS_DROPPED_CODE, CALLOUT_TO_PROSE_CODE, FRAMEWORK_LIST_INSERTED_CODE,
+                                      "IDM_W5_WORKSHEET_COMPACTED"})
 
 
 def build_unit_quality(

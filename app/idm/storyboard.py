@@ -102,6 +102,8 @@ from app.idm.runtime import (
     repair_thinking,
 )
 from app.idm.text import evidence_index
+from app.idm.worksheet import COMPACTED_CODE as WORKSHEET_COMPACTED_CODE
+from app.idm.worksheet import compact_worksheet, worksheet_fallback_html
 from app.instructional_density import INSTRUCTIONAL_DENSITY_POLICY_VERSION
 from app.lesson_author_orchestration_v2_provider import UnitGenerationContractV2
 from app.ordered_learning_content import bind_provider_semantic_versions
@@ -338,6 +340,8 @@ class IdmUnitWriter:
             [contract.unit_title, *(slot.title for slot in teaching)],
             [*self.framework_support, *(fact.fact_text for fact in contract.source_facts)])
         self.framework_inserted = 0
+        # The worksheet left out its worked example to fit the budget (Q2).
+        self.worksheet_compacted = False
         self.codes: list[str] = []
         # Provider, time-budget and repair failures behind a fallback (codes only, never provider text).
         self.failure_codes: list[str] = []
@@ -645,11 +649,39 @@ class IdmUnitWriter:
         component = slots[index] if 0 <= index < len(slots) else None
         return dict(component) if component is not None else None
 
+    def is_worksheet(self, index: int) -> bool:
+        slot = self.brief.components[index] if 0 <= index < len(self.brief.components) else None
+        return slot is not None and slot.role == "practice" and slot.type == WORKSHEET_COMPONENT_TYPE
+
+    def worksheet_fallback(self, index: int) -> dict[str, Any] | None:
+        """The source-locked component of a worksheet slot as a structured form (QC run 8de1c76b, Q2): the
+        fields in one table, the closing lines and a self-check list; ``None`` when the facts hold no form."""
+
+        base = self.fallback_component(index)
+        if base is None or not self.is_worksheet(index):
+            return None
+        plan = self.plans[index]
+        keys = list(dict.fromkeys([*plan["source_fact_ids"], *plan["supporting_evidence_fact_ids"]]))
+        practice = self.brief.components[index].practice
+        structured = worksheet_fallback_html(str(base.get("title") or self.contract.unit_title),
+                                             [self.text_by_id[key] for key in keys if key in self.text_by_id],
+                                             practice.sentence if practice else None, self.runtime.locale)
+        return {**base, "html": structured} if structured else None
+
     def fallback_slot(self, draft: _Draft, index: int, reasons: Sequence[str] = ()) -> _Draft | None:
         component = self.fallback_component(index)
         if component is None:
             return None
         components = list(draft.unit["components"])
+        worksheet = self.worksheet_fallback(index)
+        if worksheet is not None:
+            components[index] = worksheet
+            candidate = _Draft({**draft.unit, "components": components}, sorted({*draft.fallback_slots, index}))
+            finding, _idm = self.problems(candidate)
+            # The structured form is used only when the validators accept it in that slot.
+            if _slot_of(finding) != index:
+                component = worksheet
+                self.runtime.adjustments["w5_worksheet_structured_fallback"] += 1
         components[index] = component
         record_deterministic_fallback(self.runtime, stage="idm_w5_slot", code="IDM_W5_SLOT_FALLBACK")
         return _Draft({**draft.unit, "components": components}, sorted({*draft.fallback_slots, index}),
@@ -685,6 +717,28 @@ class IdmUnitWriter:
                 self.runtime.adjustments[key] += count
         return _Draft({**draft.unit, "components": components}, list(draft.fallback_slots), draft.repair_applied,
                       list(draft.review_slots), dict(draft.reasons))
+
+    def compact_worksheet(self, draft: _Draft, index: int) -> _Draft | None:
+        """An over-budget worksheet without its worked example (then with one-sentence guidance cells), when that
+        fits every html rule and Node's budget and the worksheet stays complete (QC run 8de1c76b, Q2)."""
+
+        components = list(draft.unit.get("components", []))
+        component = components[index] if 0 <= index < len(components) else None
+        if not isinstance(component, dict) or not self.is_worksheet(index):
+            return None
+        compacted = compact_worksheet(component, lambda value: not self.html_violations(value))
+        if compacted is None:
+            return None
+        components[index] = compacted
+        candidate = _Draft({**draft.unit, "components": components}, list(draft.fallback_slots),
+                           draft.repair_applied, list(draft.review_slots), dict(draft.reasons))
+        finding, idm = self.problems(candidate)
+        if _slot_of(finding) == index or any(slot == index for _code, slot in idm):
+            return None
+        self.worksheet_compacted = True
+        self.codes.append(WORKSHEET_COMPACTED_CODE)
+        self.runtime.adjustments["w5_worksheet_compacted"] += 1
+        return candidate
 
     def insert_framework_list(self, draft: _Draft, index: int) -> _Draft | None:
         """The teaching html with one more section listing every promised item by name (QC run 8de1c76b, Q3), when
@@ -746,6 +800,16 @@ class IdmUnitWriter:
         if finding is None and not idm:
             return draft
         self.log_findings("writer", draft, finding, idm)
+        # An over-budget worksheet is compacted before any repair call (QC run 8de1c76b, Q2: 550 then 452 words
+        # against 400, then the raw source fallback); the repair handles what compaction cannot.
+        if finding is not None and finding.code == DENSITY_CODE and (slot := _slot_of(finding)) is not None:
+            compacted = self.compact_worksheet(draft, slot)
+            if compacted is not None:
+                self.codes.append(finding.code)
+                draft = compacted
+                finding, idm = self.problems(draft)
+                if finding is None and not idm:
+                    return draft
         self.codes.extend([finding.code] if finding is not None else [])
         self.codes.extend(code for code, _index in idm)
         issues = list(idm)
@@ -819,6 +883,11 @@ class IdmUnitWriter:
                 if set(reasons) <= _REVIEW_FIRST_CODES:
                     draft = self.keep_for_review(draft, bad, reasons)
                     continue
+            compacted = (self.compact_worksheet(draft, bad)
+                         if finding is not None and finding.code == DENSITY_CODE else None)
+            if compacted is not None:
+                draft = compacted
+                continue
             replaced = self.fallback_slot(draft, bad, reasons)
             if replaced is None:
                 if finding is not None:
@@ -834,6 +903,15 @@ class IdmUnitWriter:
 
 def _whole_fallback(writer: IdmUnitWriter) -> dict[str, Any]:
     source = writer.deps.source_locked_unit
+    worksheets = {index: component for index in range(len(writer.plans))
+                  if (component := writer.worksheet_fallback(index)) is not None}
+    if source is not None and worksheets:
+        # A worksheet slot keeps its form structure in the whole-unit fallback too, when the validators accept it.
+        structured = {**source, "components": [worksheets.get(index, component)
+                                               for index, component in enumerate(source.get("components", []))]}
+        if writer.deps.validate_unit(structured, writer.expected_fallback) is None and not writer.node_acceptance(
+                _Draft(dict(structured), list(range(len(writer.plans)))), whole_fallback=True):
+            source = structured
     if source is None or writer.deps.validate_unit(source, writer.expected_fallback) is not None:
         raise IdmStageError(_FALLBACK_INVALID)
     rejected = writer.node_acceptance(_Draft(dict(source), list(range(len(writer.plans)))), whole_fallback=True)
@@ -931,7 +1009,7 @@ async def run_idm_unit(
         whole_fallback=whole_fallback, faq_items_dropped=writer.faq_items_dropped,
         faq_items_invalid=writer.faq_items_invalid, remaining=remaining, fixed_codes=fixed,
         faq_items_restated=writer.faq_items_restated, callouts_to_prose=writer.callouts_converted,
-        framework_list_inserted=writer.framework_inserted)
+        framework_list_inserted=writer.framework_inserted, worksheet_compacted=writer.worksheet_compacted)
     quality = build_unit_quality(mode=deps.judge_mode, judge=judge, repair_applied=draft.repair_applied,
                                  deterministic_codes=[*writer.codes, *(item.code for item in remaining)],
                                  author_note=note)
