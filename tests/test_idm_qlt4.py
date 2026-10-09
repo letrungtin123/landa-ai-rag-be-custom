@@ -164,15 +164,25 @@ class FrameworkListTests(unittest.TestCase):
             assert promise is not None
             return promise.labels
 
+        # Two tables that each number from 1 are not one list of four.
         rows_a = [f"Row {n}: Bước {n} | Việc {n}" for n in range(1, 4)]
-        self.assertEqual(labels([rows_a, ["Row 1: Bước 4 | Việc thêm"]]), ())
+        rows_b = [f"Row {n}: Bước {n} | Việc khác {n}" for n in range(1, 3)]
+        self.assertEqual(labels([rows_a, rows_b]), ())
         # Five numbered steps do not answer a promise of four, nor three of four.
         five = [f"Bước {n}: việc {n}" for n in range(1, 6)]
         self.assertEqual((labels([five]), labels([five[:3]])), ((), ()))
-        # One heading per block is a framework taught block by block; a block with two of them is not.
+        # One sequence continued over consecutive blocks (one heading per block, or steps 1-2 then 3-4) is one list;
+        # a sequence that goes back is not.
         headed = [[f"Bước {n}: việc {n}", "Giải thích"] for n in range(1, 5)]
         self.assertEqual(len(labels(headed)), 4)
-        self.assertEqual(labels([*headed[:2], [*headed[2], *headed[3]]]), ())
+        self.assertEqual(len(labels([*headed[:2], [*headed[2], *headed[3]]])), 4)
+        self.assertEqual(labels([headed[1], headed[0], headed[2], headed[3]]), ())
+        # "Bốn bước hoàn tất" numbered 9-12 in the unit's own block is its list; W4 never hands a unit steps 1-4 of
+        # another block for it (the shard must number the whole framework from 1).
+        last = [f"Bước {n}: việc {n}" for n in range(9, 13)]
+        self.assertEqual(len(labels([last])), 4)
+        self.assertIsNone(unit_framework_brief(["Bốn bước hoàn tất hồ sơ"], [last], [five[:4], last], "vi"))
+        self.assertIsNone(unit_framework_brief(["Bốn bước hoàn tất hồ sơ"], [["Hoàn tất hồ sơ."]], [last], "vi"))
 
     def test_nothing_is_inserted_into_an_html_that_already_lists_the_items(self) -> None:
         promise = build_promise(["4 bước"], [[f"Bước {n}: việc {n}" for n in range(1, 5)]])

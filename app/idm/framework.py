@@ -141,32 +141,43 @@ def _stems(texts: Iterable[str]) -> dict[str, dict[int, tuple[str, str]]]:
     return stems
 
 
-def _numbered(fact_groups: Iterable[Sequence[str]], count: int, noun: str) -> list[tuple[str, str, str]]:
+def _run_of(numbers: Iterable[int], count: int, *, from_one: bool) -> bool:
+    """Exactly ``count`` consecutive numbers (1..N when ``from_one``; "Bốn bước hoàn tất" may be steps 9-12)."""
+
+    values = sorted(set(numbers))
+    return (len(values) == count and values[-1] - values[0] == count - 1
+            and (not from_one or values[0] == 1))
+
+
+def _numbered(fact_groups: Iterable[Sequence[str]], count: int, noun: str, *,
+              from_one: bool = False) -> list[tuple[str, str, str]]:
     """(folded label, folded name, display label) of the promised items, by number; empty when unsure.
 
-    ``fact_groups`` are the facts of one source block (or one support item) each. The items are numbered exactly
-    1..N under a stem that names ``noun``, either inside ONE group (a table or a list) or one item per group (a
-    framework taught block by block: "SHIFT 1" heads one block, "SHIFT 2" the next). Never items gathered from
-    several tables (QC run ab8d67e1, R1: rows 1-6 of the 5-axes table and row 8 of the Ladder were taken for
-    "4 lực đẩy"), never more or fewer than promised, never a stem that names something else.
+    ``fact_groups`` are the facts of one source block (or one support item) each. The items are exactly N
+    consecutive numbers under a stem that names ``noun``: inside ONE group (a table or a list), or as one sequence
+    continued over consecutive groups (a procedure whose steps 1-4 and 5-8 are two blocks; a framework taught block
+    by block, "SHIFT 1" heading one block and "SHIFT 2" the next) where every group goes on from the number the
+    previous one stopped at and no number repeats. Never more or fewer items than promised, never a stem that names
+    something else (QC run ab8d67e1, R1: rows 1-6 of the 5-axes table and row 8 of the Ladder were taken for "4 lực
+    đẩy"). ``from_one``: the whole framework (1..N), as an orientation unit lists it from other blocks.
     """
 
-    wanted = set(range(1, count + 1))
-    # stem -> number -> item, kept only while every group contributes a single item of that stem.
-    headings: dict[str, dict[int, tuple[str, str]]] = {}
-    split: set[str] = set()
+    # stem -> the items of its sequence so far; a stem whose numbers repeat or go back is out of the running.
+    sequences: dict[str, dict[int, tuple[str, str]]] = {}
+    broken: set[str] = set()
     for texts in fact_groups:
         for stem, numbers in _stems(texts).items():
             if not stem_names_noun(stem, noun):
                 continue
-            if set(numbers) == wanted:
+            if _run_of(numbers, count, from_one=from_one):
                 return [(f"{stem} {number}", name, display) for number, (name, display) in sorted(numbers.items())]
-            if len(numbers) > 1 or set(numbers) & set(headings.get(stem, {})):
-                split.add(stem)
-            headings.setdefault(stem, {}).update(numbers)
-    for stem, numbers in headings.items():
-        if stem not in split and set(numbers) == wanted:
-            return [(f"{stem} {number}", name, display) for number, (name, display) in sorted(numbers.items())]
+            sequence = sequences.setdefault(stem, {})
+            if sequence and min(numbers) <= max(sequence):
+                broken.add(stem)
+            sequence.update(numbers)
+    for stem, sequence in sequences.items():
+        if stem not in broken and _run_of(sequence, count, from_one=from_one):
+            return [(f"{stem} {number}", name, display) for number, (name, display) in sorted(sequence.items())]
     return []
 
 
@@ -231,8 +242,9 @@ def framework_support_lines(briefs: Iterable[str]) -> list[str]:
 def unit_framework_brief(titles: Sequence[str], unit_fact_groups: Sequence[Sequence[str]],
                          shard_fact_groups: Sequence[Sequence[str]], locale: str) -> str | None:
     """The framework support brief a unit needs: its titles promise "N <items>", its own facts do not number
-    them, and exactly N items under a stem that names the promised noun are numbered in one block of its shard.
-    ``None`` whenever that is not certain: the writer then lists the items from the unit's own facts."""
+    them, and the shard numbers exactly the items 1..N under a stem that names the promised noun, in one block or
+    one sequence over consecutive blocks. ``None`` whenever that is not certain: the writer then lists the items from
+    the unit's own facts."""
 
     found = framework_promise(titles)
     if found is None:
@@ -240,7 +252,7 @@ def unit_framework_brief(titles: Sequence[str], unit_fact_groups: Sequence[Seque
     count, noun, phrase = found
     if _numbered(unit_fact_groups, count, noun):
         return None
-    items = _numbered(shard_fact_groups, count, noun)
+    items = _numbered(shard_fact_groups, count, noun, from_one=True)
     if len(items) != count:
         return None
     return framework_support_brief(phrase, [display for _label, _name, display in items][:_MAX_ITEMS], locale)
