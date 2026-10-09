@@ -136,7 +136,10 @@ IDM_NOTES_COURSE_MAX_CHARS: Final = 7_000
 IDM_NOTES_MODULE_MAX_CHARS: Final = 3_000
 IDM_NOTES_LESSON_MAX_CHARS: Final = 2_000
 IDM_NOTES_MAX_HOLD_ITEMS: Final = 15
-IDM_NOTES_MAX_SME_QUESTIONS: Final = 10
+# The "other questions for the SME" have no count cap of their own (QC run 8de1c76b: 10 shown, "và 12 mục khác"):
+# they fill what the 7,000-character course note has left. The complete list is in the course_skeleton artifact
+# (``payload.idm.blocks[].sme_questions`` of the non-Hold blocks; Hold questions on ``payload.idm.hold_items``),
+# which Apply copies to the course-root author notes (``idm_guidance.sme_questions``).
 # Nice to Know blocks stay out of the lessons (methodology W2); the author gets their names and a
 # one-line summary to add one back by hand (QC course 234653, R4). The full list is in the UI panel.
 IDM_NOTES_MAX_NICE_TO_KNOW: Final = 12

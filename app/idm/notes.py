@@ -16,7 +16,6 @@ from app.idm.policy import (
     IDM_NOTES_MAX_HOLD_ITEMS,
     IDM_NOTES_MAX_NICE_TO_KNOW,
     IDM_NOTES_MAX_REMOVED,
-    IDM_NOTES_MAX_SME_QUESTIONS,
     IDM_NOTES_MODULE_MAX_CHARS,
     IDM_NOTES_SUMMARY_CHARS,
     IDM_PIPELINE_VERSION,
@@ -117,6 +116,11 @@ class _Budget:
             shown.append(item)
             cost += len(item) + 1
         if not shown:
+            # Nothing fits: the section still says how many items wait elsewhere, when even that fits.
+            pointer = [title, more(len(items))] if items else []
+            if pointer and len("\n".join(pointer)) + 1 <= self.left:
+                self.body.extend(pointer)
+                self.left -= len("\n".join(pointer)) + 1
             return
         lines = [title, *shown]
         if len(shown) < len(items):
@@ -152,7 +156,9 @@ def build_course_notes(
     for the SME, the definition blocks kept against the W2 proposal, the Nice to Know blocks and the
     removed blocks with their reason reach the author (QC course 234653 R3/R4, 364564 N4). Sections
     are filled in that order within the 7,000-character limit; whatever does not fit is counted
-    ("và N mục khác") and stays complete in the workspace panels.
+    ("và N mục khác") and stays complete in the workspace panels. The SME questions come last and take
+    all the room that is left (no count cap, QC run 8de1c76b); the few that may not fit are counted with
+    a pointer to the complete list in the course's AI ID notes.
     """
 
     vi = locale == "vi"
@@ -213,8 +219,13 @@ def build_course_notes(
         [f"  - {item.name}: {single_line(item.summary, IDM_NOTES_SUMMARY_CHARS)}" for item in dropped], more,
         IDM_NOTES_MAX_REMOVED)
     questions = [question for question in dict.fromkeys(sme_questions) if question]
+
+    def more_questions(count: int) -> str:
+        return (f"  và {count} câu hỏi khác (danh sách đầy đủ trong ghi chú AI ID của khoá học)" if vi
+                else f"  and {count} more questions (full list in the course's AI ID notes)")
+
     budget.section("• Câu hỏi khác cho SME:" if vi else "• Other questions for the SME:",
-                   [f"  - {question}" for question in questions], more, IDM_NOTES_MAX_SME_QUESTIONS)
+                   [f"  - {question}" for question in questions], more_questions, len(questions))
     return clean_note(budget.text(), IDM_NOTES_COURSE_MAX_CHARS, known_ids)
 
 

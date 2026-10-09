@@ -512,7 +512,8 @@ class NotesTests(unittest.TestCase):
         self.assertIn("Needs SME input (Hold) — awaiting SME confirmation (20)", text)
         self.assertIn("and 5 more", text)
         self.assertNotIn("proposed by AI", text)
-        self.assertEqual(text.count("Question number"), 10)
+        # QC run 8de1c76b: no count cap on the SME questions, only the 7,000-character limit.
+        self.assertEqual(text.count("Question number"), 14)
 
     def test_course_notes_fit_the_limit_and_count_what_does_not_fit(self) -> None:
         holds = [("Khối " + "a" * 170, "b" * 300, "c" * 400)] * 15

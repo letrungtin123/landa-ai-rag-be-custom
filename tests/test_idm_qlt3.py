@@ -8,6 +8,7 @@
   list the five shifts, and its repair timed out against the 120 s unit deadline.
 * Q2: the Canvas worksheet exceeded the 400-word budget twice and became raw PDF text.
 * Q4: keys at D in 6 of 9 questions, the key the longest option in 8 of 9, three reworded leaks missed.
+* Notes: the course note listed 10 SME questions and "và 12 mục khác" with room left.
 * Q5: two Must Dos had no practice: the fallback kept the provider practice only for kind "do", and
   "Ký cam kết …" was marked "decide"; ``learning_activities`` promised the held practice anyway.
 
@@ -57,7 +58,13 @@ from app.idm.module_autofix import (
 )
 from app.idm.module_design import attach_framework_items, validate_lesson
 from app.idm.module_layout import ModuleScope, fallback_lesson, must_do_unit_position, project_lesson
-from app.idm.policy import AI_DRAFTED_MARKER_EN, AI_DRAFTED_MARKER_VI, IDM_PRACTICE_MAX_CRITERIA_FACTS
+from app.idm.notes import HoldNote, SkippedBlockNote, build_course_notes
+from app.idm.policy import (
+    AI_DRAFTED_MARKER_EN,
+    AI_DRAFTED_MARKER_VI,
+    IDM_NOTES_COURSE_MAX_CHARS,
+    IDM_PRACTICE_MAX_CRITERIA_FACTS,
+)
 from app.idm.prompts import module_prompt
 from app.idm.qa import reworded_key
 from app.idm.validation import errors
@@ -810,6 +817,38 @@ class SingleChoiceTests(StoryboardEndpointTestCase):
         self.assertEqual(data["unit"]["components"][0]["explanation"],
                          served(body, writer, 0)["explanation"])
         self.assertIn("Cần xem (IDM_W5_ANSWER_LENGTH_CUE", quality.author_note)
+
+
+class CourseNoteTests(unittest.TestCase):
+    """The course note cut the SME questions at 10 ("và 12 mục khác") with room left in its 7,000 characters."""
+
+    @staticmethod
+    def note(locale: str, *, crowded: bool = False) -> str:
+        holds = [HoldNote(f"Khối giữ lại {n}", "Cần SME xác nhận số liệu." * (8 if crowded else 1),
+                          "Con số nào đúng cho doanh nghiệp vừa và nhỏ?" * (4 if crowded else 1)) for n in range(6)]
+        skipped = [SkippedBlockNote(f"Khối tham khảo {n}", "Tóm tắt ngắn của khối." * (6 if crowded else 1))
+                   for n in range(12)]
+        return build_course_notes(
+            locale="vi" if locale == "vi" else "en", ai_proposed=True, total_minutes=120, lesson_count=13,
+            module_count=4, reference_block_count=3, excluded_block_count=60, holds=holds,
+            sme_questions=[f"Câu hỏi số {n} cho chuyên gia về quy trình này là gì?" for n in range(22)],
+            fallback_stages=[], nice_to_know=skipped, removed=skipped)
+
+    def test_every_question_that_fits_is_listed(self) -> None:
+        text = self.note("vi")
+        self.assertLessEqual(len(text), IDM_NOTES_COURSE_MAX_CHARS)
+        self.assertEqual(text.count("Câu hỏi số"), 22)
+        self.assertNotIn("mục khác", text.split("Câu hỏi khác cho SME")[1])
+
+    def test_questions_that_do_not_fit_point_to_the_complete_list(self) -> None:
+        for locale, pointer in (("vi", "câu hỏi khác (danh sách đầy đủ trong ghi chú AI ID của khoá học)"),
+                                ("en", "more questions (full list in the course's AI ID notes)")):
+            text = self.note(locale, crowded=True)
+            self.assertLessEqual(len(text), IDM_NOTES_COURSE_MAX_CHARS)
+            shown = text.count("Câu hỏi số")
+            self.assertLess(shown, 22)
+            # Even when no question fits, the note says how many wait in the complete list.
+            self.assertIn(f"{22 - shown} {pointer}", text)
 
 
 class PracticeTaskBoundTests(unittest.TestCase):
