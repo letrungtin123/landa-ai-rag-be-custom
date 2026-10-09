@@ -4,6 +4,8 @@
   (33 Canvas criteria facts, bound 24; an 8-point media brief, bound 6) rejected whole W4 answers, a schema
   rejection used up one of the two attempts, single-block lessons were split into units sharing the block,
   and the failing paths of each attempt were never logged.
+* Q5: two Must Dos had no practice: the fallback kept the provider practice only for kind "do", and
+  "Ký cam kết …" was marked "decide"; ``learning_activities`` promised the held practice anyway.
 
 The provider is the local fake; nothing reaches the network.
 """
@@ -12,6 +14,7 @@ from __future__ import annotations
 
 import json
 import unittest
+from dataclasses import replace
 from typing import Any
 
 from app.idm.contracts import (
@@ -35,8 +38,8 @@ from app.idm.module_autofix import (
     trim_module_answer,
 )
 from app.idm.module_design import validate_lesson
-from app.idm.module_layout import ModuleScope
-from app.idm.policy import IDM_PRACTICE_MAX_CRITERIA_FACTS
+from app.idm.module_layout import ModuleScope, fallback_lesson, must_do_unit_position, project_lesson
+from app.idm.policy import AI_DRAFTED_MARKER_EN, AI_DRAFTED_MARKER_VI, IDM_PRACTICE_MAX_CRITERIA_FACTS
 from app.idm.prompts import module_prompt
 from app.idm.validation import errors
 from tests import idm_golden_module as gm
@@ -310,6 +313,74 @@ class LayoutAutofixTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(runtime.adjustments[UNITS_MERGED_CODE], 1)
         self.assertEqual(len(result["shard"]["lessons"][1]["units"]), 1)
         self.assertEqual(provider.calls[0]["schema"], STAGE)
+
+
+class FallbackPracticeTests(unittest.IsolatedAsyncioTestCase):
+    """Q5: md_2 ("Đối chiếu … 4 trục", decide) and md_11 ("Ký cam kết …", marked decide) had no practice at all."""
+
+    @staticmethod
+    def provider_practices(chapter_index: int, position: int = 0) -> list[IdmPracticeTaskV1]:
+        payload = gm.MODULE_RESPONSES[("mod_01", "mod_02", "mod_03")[chapter_index]]
+        return IdmLessonDesignV1.model_validate(payload["lessons"][position]).practice_tasks
+
+    def test_deciding_must_do_keeps_its_practice_as_a_scenario_question(self) -> None:
+        scope = scope_of(1)  # lsn_003, md_3 "Quyết định tự xử lý hay escalate" (decide), units cb_0009 / cb_0011
+        plan = scope.lesson_plans[0]
+        for locale, note in (("vi", "được giữ thành câu hỏi tình huống"), ("en", "kept as a scenario question")):
+            lesson = fallback_lesson(plan, replace(scope, locale=locale),
+                                     provider_practices=self.provider_practices(1))
+            practice = lesson.practice_tasks[0]
+            self.assertEqual((practice.hold, practice.hold_question), (False, None))
+            # The unit that owns the Must Do block (cb_0009, must_do) at or after the criteria units.
+            owner = lesson.units[must_do_unit_position(lesson.units, scope, plan.primary_must_do_id,
+                                                       practice.criteria_fact_keys)]
+            self.assertEqual([(c.type, c.role, c.practice_id) for c in owner.components],
+                             [("html", "explain", None), ("problem", "practice", "pt_1")])
+            self.assertEqual(owner.segment, "practice_feedback")
+            self.assertTrue(str(owner.components[1].author_review.example_scenario).startswith(
+                AI_DRAFTED_MARKER_VI if locale == "vi" else AI_DRAFTED_MARKER_EN))
+            self.assertIn(note, lesson.notes)
+            projected = project_lesson(lesson, plan, scope)
+            self.assertEqual(projected["learning_activities"], [practice.sentence])
+            self.assertEqual(errors(validate_lesson(lesson, plan, scope, ALLOWED, "lessons[0]")), [])
+
+    def test_signing_a_commitment_is_practised_with_a_worksheet_even_when_marked_decide(self) -> None:
+        scope = scope_of(1)
+        plan = scope.lesson_plans[0]
+        signing = replace(scope, must_do_statement={**scope.must_do_statement, "md_3": (
+            "Ký cam kết bản Action Commitment chỉ định rõ 01 năng lực Best-in-Class, chỉ số KPI/OKR và người "
+            "chịu trách nhiệm")})
+        lesson = fallback_lesson(plan, signing, provider_practices=self.provider_practices(1))
+        self.assertFalse(lesson.practice_tasks[0].hold)
+        owner = lesson.units[must_do_unit_position(lesson.units, signing, plan.primary_must_do_id,
+                                                   lesson.practice_tasks[0].criteria_fact_keys)]
+        self.assertEqual([(c.type, c.role) for c in owner.components],
+                         [("html", "practice"), ("problem", "practice")])
+        self.assertIn("phiếu thực hành (worksheet)", lesson.notes)
+
+    def test_learning_activities_never_promise_a_held_practice(self) -> None:
+        scope = scope_of(1)
+        plan = scope.lesson_plans[0]
+        held = [practice.model_copy(update={"hold": True}) for practice in self.provider_practices(1)]
+        lesson = fallback_lesson(plan, scope, provider_practices=held)
+        self.assertTrue(all(practice.hold for practice in lesson.practice_tasks))
+        activities = project_lesson(lesson, plan, scope)["learning_activities"]
+        self.assertEqual(len(activities), 1)
+        self.assertIn("Chưa có bài luyện tập", activities[0])
+        self.assertNotIn(held[0].sentence, activities[0])
+
+    async def test_fallback_of_a_deciding_must_do_opens_no_obligation(self) -> None:
+        def foreign(payload: dict[str, Any]) -> None:
+            payload["lessons"][0]["practice_tasks"][0]["criteria_fact_keys"].append(key(2, 2))
+
+        bad = edited("mod_02", foreign)
+        result, _, _ = await design_module(1, [bad, bad])
+        shard = result["shard"]
+        self.assertEqual(shard["idm_design"]["stage_origin"], "deterministic_fallback")
+        self.assertEqual(shard["assessment_obligations"], [])
+        lesson = shard["idm_design"]["lessons"][0]
+        self.assertIn("problem", [c["type"] for u in lesson["units"] for c in u["components"]])
+        self.assertEqual(shard["lessons"][0]["learning_activities"], [lesson["practice_tasks"][0]["sentence"]])
 
 
 class PracticeTaskBoundTests(unittest.TestCase):

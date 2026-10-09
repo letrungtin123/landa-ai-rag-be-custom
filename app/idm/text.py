@@ -24,6 +24,8 @@ from app.idm.policy import (
     IDM_FAQ_SENTENCE_MIN_PAIR_SUPPORT,
     IDM_FAQ_SENTENCE_MIN_WORD_SUPPORT,
     IDM_FAQ_SENTENCE_MIN_WORDS,
+    OUTPUT_VERBS_EN,
+    OUTPUT_VERBS_VI,
     UNMEASURABLE_VERBS,
 )
 
@@ -208,16 +210,21 @@ def must_do_title(statement: str) -> str:
 
 
 def produces_output(statement: str, kind: str) -> bool:
-    """A Must Do of kind "do" whose action yields a work product (fill in, draft, map, sign ...).
+    """A Must Do whose action yields a work product (fill in, draft, map, sign ...).
 
     Classifying, identifying or choosing is applying a rule to a case even when W1 marked it "do"
-    (spec §10.1): a scenario question practises it, a worksheet is not expected.
+    (spec §10.1): a scenario question practises it, a worksheet is not expected. A Must Do marked
+    "decide" still produces an output when its leading verb does ("Ký cam kết …", QC run 8de1c76b, Q5).
     """
 
-    if kind != "do":
-        return False
-    folded = idm_fold(first_main_verb(statement))
-    return not any(folded == verb or folded.startswith(verb + " ") for verb in CASE_DECISION_VERBS)
+    remainder = first_main_verb(statement)
+    folded = idm_fold(remainder)
+    if kind == "do":
+        return not any(folded == verb or folded.startswith(verb + " ") for verb in CASE_DECISION_VERBS)
+    if kind == "decide":
+        return (any(remainder == verb or remainder.startswith(verb + " ") for verb in OUTPUT_VERBS_VI)
+                or any(folded == verb or folded.startswith(verb + " ") for verb in OUTPUT_VERBS_EN))
+    return False
 
 
 def is_unmeasurable_objective(statement: str) -> bool:

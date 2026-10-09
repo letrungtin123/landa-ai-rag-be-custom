@@ -341,7 +341,8 @@ For each lesson:
    kind of action as the Must Do (classify, sequence, decide, apply a rule, choose a message ...). Do not turn
    everything into recall questions.
    Must Do of kind "do" that produces an output (fill in a form or canvas, draft a plan, write a commitment, map
-   resources, redesign a step; not classify, identify or choose): the main practice lets the learner DO it. Use
+   resources, redesign a step; not classify, identify or choose), and a Must Do marked "decide" whose verb
+   produces one (sign a commitment, draw up a list): the main practice lets the learner DO it. Use
    la_sortable when the action is a procedure whose order the source states; otherwise use a WORKSHEET, because no
    allowed component records a free-text answer: in the practice unit put an html component with role "practice"
    and the practice_id (the learner completes the task on their own copy: task and input, the template to fill in,

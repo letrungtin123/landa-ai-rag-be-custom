@@ -157,8 +157,10 @@ class ModuleRobustnessTests(unittest.TestCase):
             sentence="Cho <b>khách</b>, người học chọn nhóm để chuyển đúng"))
         provider_practices = IdmLessonDesignV1.model_validate(payload["lessons"][0]).practice_tasks
         lesson = fallback_lesson(scope.lesson_plans[0], scope, provider_practices=provider_practices)
-        self.assertTrue(all(practice.hold for practice in lesson.practice_tasks))
+        # QC run 8de1c76b (Q5): the practice is kept as the scenario question of the Must Do unit, not held.
+        self.assertFalse(lesson.practice_tasks[0].hold)
         projected = project_lesson(lesson, scope.lesson_plans[0], scope)
+        self.assertEqual(projected["learning_activities"], ["Cho ‹b›khách‹/b›, người học chọn nhóm để chuyển đúng"])
         text = str(lesson.model_dump()) + str(projected)
         self.assertNotIn("<", text)
         self.assertNotIn(">", text)

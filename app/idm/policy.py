@@ -230,6 +230,12 @@ CASE_DECISION_VERBS: Final = (
     "phan loai", "xac dinh", "nhan dien", "nhan biet", "lua chon", "chon", "quyet dinh", "danh gia",
     "classify", "identify", "recognise", "recognize", "select", "choose", "decide", "evaluate", "assess",
 )
+# A Must Do of kind "decide" whose leading verb produces a work product is practised like a "do" Must Do (QC run
+# 8de1c76b, Q5: W1 marked "Ký cam kết bản Action Commitment …" as a decision, so it got no worksheet). Vietnamese
+# verbs keep their diacritics ("lập" to draw up, not "lặp" to repeat); English ones are folded.
+OUTPUT_VERBS_VI: Final = ("ký", "lập", "điền", "soạn", "viết", "xây dựng", "thiết kế", "tái thiết kế", "vẽ")
+OUTPUT_VERBS_EN: Final = ("sign", "draft", "write", "fill in", "fill out", "build", "design", "redesign", "map",
+                          "draw up", "prepare")
 MAX_COMPONENTS_PER_UNIT: Final = 4
 # Assessment obligations exist only for slots 1..3 (SQL CHECK, spec §4.3 / IDM-0.5).
 MAX_OBLIGATION_COMPONENT_INDEX: Final = 3

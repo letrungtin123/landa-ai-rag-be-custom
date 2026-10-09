@@ -403,8 +403,14 @@ class GroundingHelperTests(unittest.TestCase):
                           "Người học có thể soạn bản cam kết hành động", "Draft a 90-day plan"):
             self.assertTrue(produces_output(statement, "do"), statement)
         for statement, kind in (("Phân loại khiếu nại theo nhóm", "do"), ("Xác định vị trí hiện tại", "do"),
-                                ("Choose the next step", "do"), ("Điền hoàn chỉnh 9 ô", "decide")):
+                                ("Choose the next step", "do"), ("Đối chiếu và chỉ ra các thói quen cần bỏ", "decide"),
+                                ("Lặp lại quy trình kiểm tra", "decide"), ("Decide whether to escalate", "decide"),
+                                ("Ký cam kết", "know")):
             self.assertFalse(produces_output(statement, kind), statement)
+        # QC run 8de1c76b (Q5): W1 marked "Ký cam kết bản Action Commitment" as a decision; its verb produces an output.
+        for statement in ("Ký cam kết bản Action Commitment chỉ định rõ 01 năng lực Best-in-Class",
+                          "Điền hoàn chỉnh 9 ô", "Người học có thể lập kế hoạch 90 ngày", "Sign the action commitment"):
+            self.assertTrue(produces_output(statement, "decide"), statement)
 
 
 class TitleHelperTests(unittest.TestCase):
