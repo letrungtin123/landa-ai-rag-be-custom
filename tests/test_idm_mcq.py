@@ -17,6 +17,7 @@ from app.idm.mcq import (
     RELABELLED_CODE,
     SHUFFLED_CODE,
     answer_length_cue,
+    balanced_order,
     normalize_single_choice,
     option_order,
     relabel_explanation,
@@ -30,6 +31,7 @@ from tests.test_idm_storyboard import (
     FakeGenerate,
     StoryboardEndpointTestCase,
     judge,
+    served_ordinal,
     severity_body,
     severity_writer,
 )
@@ -175,8 +177,11 @@ class NodeAcceptanceOfShuffledUnitsTests(StoryboardEndpointTestCase):
         problem = data["unit"]["components"][1]
         provider_choices = writer["components"]["c1"]["choices"]
         self.assertNotEqual(problem["choices"], provider_choices)
+        # QC run 8de1c76b (Q4): the key goes to the letter of the question's place in the course, the distractors
+        # keep their seeded order.
+        order = balanced_order(problem["component_plan_id"], 1, 3, served_ordinal(body, 1) % 3)
         self.assertEqual([choice["text"] for choice in problem["choices"]],
-                         [provider_choices[old]["text"] for old in option_order(problem["component_plan_id"], 3)])
+                         [provider_choices[old]["text"] for old in order])
         correct = next(index for index, choice in enumerate(problem["choices"]) if choice["correct"])
         self.assertIn(f"{OPTION_LETTERS[correct]} — đúng vì khớp dấu hiệu cấp 2", problem["explanation"])
         contract = UnitGenerationContractV2.model_validate(body["unit_contract"])

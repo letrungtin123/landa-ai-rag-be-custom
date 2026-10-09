@@ -442,7 +442,10 @@ Writing rules (learner-facing, {locale_name(locale)}):
 - Context building stays under 20% of the unit text.
 - Practice slots of type problem, la_sortable or la_crossword contain context, task, the input the learner works
   with, exactly one correct answer, and feedback that teaches. Single-choice: 3-4 options, plausible distractors
-  that are wrong by the stated criterion, no "all/none of the above", correct option not always first; the
+  that are wrong by the stated criterion, no "all/none of the above", correct option not always first, every
+  option of comparable length and detail (the correct one never clearly the longest), and the correct option never
+  reuses the wording of the example, quotation or template shown before the question (it applies the criterion to
+  the question's own case); the
   explanation states the criterion and why EACH option is right or wrong ("A - ...; B - ...; C - ...", every
   option named by its letter); each reason must agree with that option's own text and with the answer key
   (never call a distractor that meets the criterion wrong, or the reverse). Never reveal the answer before the
@@ -652,6 +655,10 @@ UNIT_RULE_TEXT: Final[dict[str, str]] = {
                                   "agreement with that option's text and the answer key",
     "IDM_W5_FEEDBACK_NOT_TEACHING": "feedback of at least 60 characters that names the criterion; never only "
                                     "Correct/Incorrect",
+    "IDM_W5_ANSWER_LENGTH_CUE": "the correct option is much longer than every other option, so learners can pick "
+                                "it by length: give the distractors the same level of detail (each still wrong by "
+                                "the criterion) or shorten the correct option, keep the answer key, and keep the "
+                                "explanation's reason for every option",
     "IDM_W5_ANSWER_LEAK": "an option of this question copies the example or text shown before it: rewrite THAT "
                           "option (and its part of the explanation) in new words or about a different case so the "
                           "learner must apply the criterion; keep the earlier html as it is",

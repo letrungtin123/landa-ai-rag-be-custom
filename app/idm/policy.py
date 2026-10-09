@@ -181,6 +181,17 @@ IDM_MCQ_LENGTH_CUE_RATIO: Final = 1.25
 IDM_ANSWER_LEAK_NGRAM: Final = 4
 IDM_ANSWER_LEAK_MIN_NGRAMS: Final = 4
 IDM_ANSWER_LEAK_MIN_SHARE: Final = 0.75
+# A reworded leak (QC run 8de1c76b, Q4) keeps few 4-grams (0.28, 0.51, 0.12) but the key's distinctive wording
+# still comes from the html before the question: its content word pairs ("cam hung nhat thoi", "dong goi phang")
+# that no distractor and not the question use. Measured on the 9 questions of the run (pairs of two content
+# words): the 3 leaks found 4/4, 19/27 and 11/22 of them in the html (0.50-1.00), the distractors at most 0.67,
+# 0.00 and 0.25 (margin >= 0.25); a fourth hit (the worksheet check c3.l1.u1, 12/20 vs 0.20) copies the
+# template's confirmation sentence and is a leak too. The non-leaks scored <= 0.47 or a negative margin; the
+# taught rule restated in the key of the golden fixture ("Cấp 2 vì khách hàng phàn nàn lần thứ hai") has only 3
+# such pairs after the question's own wording, under the minimum, so applying a rule to a case is not a leak.
+IDM_ANSWER_LEAK_PAIR_MIN_HITS: Final = 4
+IDM_ANSWER_LEAK_PAIR_MIN_SHARE: Final = 0.5
+IDM_ANSWER_LEAK_PAIR_MIN_MARGIN: Final = 0.2
 
 # --- FAQ value and callout grounding (QC course 364564, N9/N11) --------------------------------
 # 3 of 5 FAQs only repeated the table taught just above them. An FAQ answer restates the html before

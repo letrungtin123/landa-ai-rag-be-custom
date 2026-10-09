@@ -312,6 +312,14 @@ def content_words(text: str) -> list[str]:
     return [word for word in _WORD_RE.findall(idm_fold(text)) if _content(word)]
 
 
+def content_pairs(text: str) -> set[tuple[str, str]]:
+    """Adjacent folded word pairs of ``text`` whose two words both carry meaning: a Vietnamese compound
+    ("phong trao", "ton kem") or a content phrase, never a connective ("chi la")."""
+
+    tokens = _WORD_RE.findall(idm_fold(text))
+    return {pair for pair in pairwise(tokens) if _content(pair[0]) and _content(pair[1])}
+
+
 @dataclass(frozen=True)
 class EvidenceIndex:
     """Folded words, adjacent word pairs and numbers of the facts a writer was given."""

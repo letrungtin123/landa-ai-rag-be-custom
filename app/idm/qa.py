@@ -26,6 +26,9 @@ from app.idm.policy import (
     IDM_ANSWER_LEAK_MIN_NGRAMS,
     IDM_ANSWER_LEAK_MIN_SHARE,
     IDM_ANSWER_LEAK_NGRAM,
+    IDM_ANSWER_LEAK_PAIR_MIN_HITS,
+    IDM_ANSWER_LEAK_PAIR_MIN_MARGIN,
+    IDM_ANSWER_LEAK_PAIR_MIN_SHARE,
     IDM_FAQ_RESTATE_MIN_NGRAMS,
     IDM_FAQ_RESTATE_MIN_SHARE,
     IDM_FAQ_RESTATE_NGRAM,
@@ -43,6 +46,7 @@ from app.idm.prompts import judge_prompt
 from app.idm.runtime import IdmBudgetError, IdmProviderError, IdmResponseInvalidError, IdmRuntime, idm_call
 from app.idm.text import (
     EvidenceIndex,
+    content_pairs,
     content_words,
     grounding_verdict,
     idm_fold,
@@ -61,6 +65,8 @@ _OPTION_TEXT_PREFIX: Final = 40
 VERBATIM_MIN_CHARS: Final = 300
 VERBATIM_MAX_OVERLAP: Final = 0.7
 ANSWER_LEAK_MIN_CHARS: Final = 12
+# A key and at least one distractor to compare it with.
+_MIN_LEAK_OPTIONS: Final = 2
 CRITERIA: Final[tuple[JudgeCriterion, ...]] = (
     "Q1_support_sufficient", "Q2_not_copied", "Q3_practice_complete", "Q4_feedback_teaches",
     "Q5_grounded_criteria", "Q6_alignment", "Q7_cognitive_load", "Q8_language", "Q9_traceability",
@@ -325,7 +331,7 @@ def deterministic_slot_findings(
                 answer = idm_fold(str(correct[0].get("text") or ""))
                 html = idm_fold(preceding_html)
                 if ((len(answer) >= ANSWER_LEAK_MIN_CHARS and answer in html and ("dap an" in html or "answer" in html))
-                        or copied_options(component, preceding_html)):
+                        or copied_options(component, preceding_html) or reworded_key(component, preceding_html)):
                     findings.append(SlotFinding(ANSWER_LEAK_CODE, index))
     # The overview is taught, not practised: a worksheet html slot neither promises nor lists it.
     html_slots = [index for index, component in enumerate(components) if component.get("type") == "html"
@@ -353,6 +359,41 @@ def copied_options(component: dict[str, Any], preceding_text: str) -> list[int]:
               and ngram_overlap(str(choice.get("text") or ""), preceding_text,
                                 IDM_ANSWER_LEAK_NGRAM) >= IDM_ANSWER_LEAK_MIN_SHARE]
     return copied if len(copied) < len(choices) else []
+
+
+def _distinctive_share(pairs: set[tuple[str, str]], others: Sequence[set[tuple[str, str]]],
+                       question: set[tuple[str, str]], preceding: set[tuple[str, str]]) -> tuple[float, int]:
+    distinctive = pairs - question - set().union(*others)
+    hits = len(distinctive & preceding)
+    return (hits / len(distinctive) if distinctive else 0.0), hits
+
+
+def reworded_key(component: dict[str, Any], preceding_text: str) -> bool:
+    """The correct option rewords the html shown before the question (QC run 8de1c76b, Q4).
+
+    The 4-gram check misses a key that restates the example or quotation in other words ("Nếu không có hành
+    động thì thay đổi tư duy chỉ là cảm hứng nhất thời …" after the blockquote it paraphrases). Here the key's
+    distinctive content-word pairs (not in any distractor nor in the question) are looked up in the html before
+    it: a leak when enough of them are there and clearly more than for any distractor
+    (``IDM_ANSWER_LEAK_PAIR_*``, calibrated on the run's 9 questions).
+    """
+
+    choices = [choice for choice in component.get("choices") or [] if isinstance(choice, dict)]
+    correct = [index for index, choice in enumerate(choices) if choice.get("correct") is True]
+    if len(correct) != 1 or len(choices) < _MIN_LEAK_OPTIONS or not preceding_text.strip():
+        return False
+    preceding = content_pairs(preceding_text)
+    question = content_pairs(str(component.get("question") or ""))
+    pairs = [content_pairs(str(choice.get("text") or "")) for choice in choices]
+
+    def share(index: int) -> tuple[float, int]:
+        return _distinctive_share(pairs[index], [item for position, item in enumerate(pairs) if position != index],
+                                  question, preceding)
+
+    key_share, hits = share(correct[0])
+    others = [share(index)[0] for index in range(len(choices)) if index != correct[0]]
+    return (hits >= IDM_ANSWER_LEAK_PAIR_MIN_HITS and key_share >= IDM_ANSWER_LEAK_PAIR_MIN_SHARE
+            and key_share - max(others) >= IDM_ANSWER_LEAK_PAIR_MIN_MARGIN)
 
 
 def advisory_slot_findings(unit: dict[str, Any], exempt: Collection[int] = ()) -> list[SlotFinding]:
@@ -707,7 +748,8 @@ __all__ = [
     "advisory_slot_findings", "blocking_count",
     "build_unit_author_note", "build_unit_quality", "callouts_as_paragraphs", "copied_options",
     "deterministic_slot_findings", "faq_item_verdicts", "faq_title_mismatch", "final_unit_findings",
-    "has_practice_slot", "html_before", "learner_view", "repair_targets", "restated_faq_items", "run_judge",
+    "has_practice_slot", "html_before", "learner_view", "repair_targets", "restated_faq_items", "reworded_key",
+    "run_judge",
     "settle_applicability", "settled_codes", "unexplained_options", "ungrounded_callouts", "ungrounded_faq_items",
     "worksheet_complete",
 ]

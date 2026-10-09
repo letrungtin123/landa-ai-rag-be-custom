@@ -1,5 +1,5 @@
 {
- "description": "IDM storyboard unit (writer + judge).",
+ "description": "IDM storyboard unit (writer, targeted length-cue repair, judge).",
  "request": {
   "method": "POST",
   "path": "/v1/lesson-author/orchestration-v2/unit",
@@ -266,6 +266,14 @@
    ]
   },
   {
+   "usage": [
+    100,
+    50,
+    150
+   ],
+   "text": "{\"components\": {\"c0\": {\"title\": \"Khách VIP phàn nàn về hoá đơn sai\", \"selection_rationale\": \"Tình huống quyết định escalate theo tiêu chí bắt buộc.\", \"problem_type\": \"multiple_choice\", \"question\": \"Một khách hàng VIP gọi đến, cho biết sản phẩm vừa giao gây chập điện và có nguy cơ cháy. Khách yêu cầu được hoàn tiền ngay. Bạn nên làm gì trước tiên?\", \"choices\": [{\"text\": \"Hứa hoàn tiền ngay để giữ chân vị khách VIP đang bức xúc\", \"correct\": false}, {\"text\": \"Escalate ngay cho quản lý vì khiếu nại liên quan đến an toàn\", \"correct\": true}, {\"text\": \"Chỉ thông báo trưởng nhóm vì đây là khách VIP của công ty\", \"correct\": false}], \"explanation\": \"Tiêu chí: khiếu nại liên quan an toàn bắt buộc phải escalate. A — sai vì không được hứa bồi thường trước khi phân loại mức độ; B — đúng vì yếu tố an toàn là tiêu chí bắt buộc; C — sai vì quy định VIP chỉ áp dụng khi không có yếu tố bắt buộc escalate.\"}}}"
+  },
+  {
    "schema": "IdmJudgeResponseV1",
    "text": "{\"verdict\": \"pass\", \"findings\": [{\"criterion\": \"Q1_support_sufficient\", \"severity\": \"pass\", \"component_index\": null, \"witness\": \"w\"}, {\"criterion\": \"Q2_not_copied\", \"severity\": \"pass\", \"component_index\": null, \"witness\": \"w\"}, {\"criterion\": \"Q3_practice_complete\", \"severity\": \"pass\", \"component_index\": null, \"witness\": \"w\"}, {\"criterion\": \"Q4_feedback_teaches\", \"severity\": \"pass\", \"component_index\": null, \"witness\": \"w\"}, {\"criterion\": \"Q5_grounded_criteria\", \"severity\": \"pass\", \"component_index\": null, \"witness\": \"w\"}, {\"criterion\": \"Q6_alignment\", \"severity\": \"pass\", \"component_index\": null, \"witness\": \"w\"}, {\"criterion\": \"Q7_cognitive_load\", \"severity\": \"pass\", \"component_index\": null, \"witness\": \"w\"}, {\"criterion\": \"Q8_language\", \"severity\": \"pass\", \"component_index\": null, \"witness\": \"w\"}, {\"criterion\": \"Q9_traceability\", \"severity\": \"pass\", \"component_index\": null, \"witness\": \"w\"}]}",
    "usage": [
@@ -307,19 +315,19 @@
       "question": "Một khách hàng VIP gọi đến, cho biết sản phẩm vừa giao gây chập điện và có nguy cơ cháy. Khách yêu cầu được hoàn tiền ngay. Bạn nên làm gì trước tiên?",
       "choices": [
        {
-        "text": "Chỉ thông báo trưởng nhóm vì đây là khách VIP",
+        "text": "Hứa hoàn tiền ngay để giữ chân vị khách VIP đang bức xúc",
+        "correct": false
+       },
+       {
+        "text": "Chỉ thông báo trưởng nhóm vì đây là khách VIP của công ty",
         "correct": false
        },
        {
         "text": "Escalate ngay cho quản lý vì khiếu nại liên quan đến an toàn",
         "correct": true
-       },
-       {
-        "text": "Hứa hoàn tiền ngay để giữ chân khách VIP",
-        "correct": false
        }
       ],
-      "explanation": "Tiêu chí: khiếu nại liên quan an toàn bắt buộc phải escalate. A — sai vì quy định VIP chỉ áp dụng khi không có yếu tố bắt buộc escalate; B — đúng vì yếu tố an toàn là tiêu chí bắt buộc; C — sai vì không được hứa bồi thường trước khi phân loại mức độ.",
+      "explanation": "Tiêu chí: khiếu nại liên quan an toàn bắt buộc phải escalate. A — sai vì không được hứa bồi thường trước khi phân loại mức độ; B — sai vì quy định VIP chỉ áp dụng khi không có yếu tố bắt buộc escalate; C — đúng vì yếu tố an toàn là tiêu chí bắt buộc.",
       "type": "problem",
       "component_plan_id": "cp2_75c8e3413519ce7a35cb143f6e4092b7",
       "source_fact_ids": [
@@ -418,18 +426,18 @@
       "Q8_language": "pass",
       "Q9_traceability": "pass"
      },
-     "repair_applied": false,
+     "repair_applied": true,
      "deterministic_codes": [
       "IDM_W5_ANSWER_LENGTH_CUE"
      ],
-     "author_note": "QA tự động: không phát hiện vấn đề lớn. Cần xem (IDM_W5_ANSWER_LENGTH_CUE, khối 1 (Quiz)): đáp án đúng dài hơn hẳn các phương án khác — người học có thể đoán theo độ dài. Tình huống minh hoạ do AI soạn, cần SME xác nhận tính thực tế."
+     "author_note": "QA tự động: không phát hiện vấn đề lớn. Đã tự sửa: IDM_W5_ANSWER_LENGTH_CUE. Tình huống minh hoạ do AI soạn, cần SME xác nhận tính thực tế."
     }
    },
    "usage": {
-    "inputTokens": 200,
-    "outputTokens": 100,
+    "inputTokens": 300,
+    "outputTokens": 150,
     "embeddingTokens": 0,
-    "totalTokens": 300
+    "totalTokens": 450
    },
    "usage_complete": true,
    "usage_source": "provider",
@@ -459,6 +467,27 @@
     },
     {
      "sequence": 2,
+     "invocation_kind": "repair",
+     "invocation_index": 1,
+     "provider_attempt": 1,
+     "phase": "idm_w5_repair",
+     "outcome": "succeeded",
+     "event_code": "provider_response_received",
+     "failure_stage": null,
+     "failure_code": null,
+     "failure_path": null,
+     "provider_dispatched": true,
+     "usage_source": "provider_reported",
+     "observed_usage": {
+      "provider_input_tokens": 100,
+      "provider_output_tokens": 50,
+      "provider_total_tokens": 150
+     },
+     "duration_ms": "<volatile>",
+     "diagnostics": {}
+    },
+    {
+     "sequence": 3,
      "invocation_kind": "evaluator",
      "invocation_index": 1,
      "provider_attempt": 1,
@@ -486,8 +515,8 @@
     "op": "generate",
     "model": "gemini-3.8-flash",
     "schema": "StagedInstancePayloadUnit",
-    "prompt_sha256": "b0004a59e74f473a0105b95a1a746b51739515638af67d520d297a61d694eca3",
-    "prompt_chars": 9729,
+    "prompt_sha256": "cf1f9f026198f50144902ff0891f4234b42db79dd2b5b03dd68a14a8a590a74d",
+    "prompt_chars": 9992,
     "config": {
      "max_output_tokens": 16000,
      "response_mime_type": "application/json",
@@ -503,9 +532,27 @@
    {
     "op": "generate",
     "model": "gemini-3.8-flash",
+    "schema": "StagedMultiRepair",
+    "prompt_sha256": "e5151123dbec3983878c692f4cca4aaaafb114f9fe0d488e4ab2aa42cee95261",
+    "prompt_chars": 10744,
+    "config": {
+     "max_output_tokens": 16000,
+     "response_mime_type": "application/json",
+     "response_schema": {
+      "sha256": "ab2cf9c19c9d3e4f460758036b2f08709b13ea417669675abd6d72e57afcdbc2",
+      "chars": 1554
+     },
+     "thinking_config": {
+      "thinking_level": "low"
+     }
+    }
+   },
+   {
+    "op": "generate",
+    "model": "gemini-3.8-flash",
     "schema": "IdmJudgeResponseV1",
-    "prompt_sha256": "d9fd8a8939f9449835d722f9f3e7acfb4789b1d52444d1d666d2131fc69b22e8",
-    "prompt_chars": 7320,
+    "prompt_sha256": "224347044b2e63fab86465de2444ff23a016ef187b6ed5a3a509cc1ce924d967",
+    "prompt_chars": 7348,
     "config": {
      "max_output_tokens": 3000,
      "response_mime_type": "application/json",

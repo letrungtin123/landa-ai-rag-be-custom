@@ -136,16 +136,23 @@ class AnswerLeakTests(StoryboardEndpointTestCase):
 
 
 class LengthCueTests(StoryboardEndpointTestCase):
-    async def test_far_longer_correct_option_is_a_review_note_without_repair(self) -> None:
+    async def test_length_cue_the_repair_leaves_is_a_review_note(self) -> None:
+        # QC run 8de1c76b (Q4): the cue gets one targeted repair; when the options stay as they were, it is the
+        # review note of QLT-2 (N2), never a fallback.
         body = escalate_body()
         writer = escalate_writer(body)
         writer["components"]["c0"]["choices"][0]["text"] = "Hứa hoàn tiền ngay để giữ chân khách VIP"
         writer["components"]["c0"]["choices"][2]["text"] = "Chỉ thông báo trưởng nhóm vì đây là khách VIP"
-        provider = FakeGenerate(**{WRITER: [writer], JUDGE: [judge()]})
+        provider = FakeGenerate(**{WRITER: [writer], REPAIR: [slot_repair(writer, 0)], JUDGE: [judge()]})
         status, data, _ = await self.post(body, provider)
         self.assertEqual(status, 200)
         quality = self.assert_envelope(data, "provider_validated", "validated", "provider")
-        self.assertEqual(provider.names, [WRITER, JUDGE])
+        self.assertEqual(provider.names, [WRITER, REPAIR, JUDGE])
+        self.assertEqual(provider.calls[1]["thinking_level"], "low")
+        self.assertIn("c0 IDM_W5_ANSWER_LENGTH_CUE at c0.choices: the correct option is much longer than every other "
+                      "option", provider.calls[1]["prompt"])
+        self.assertIn("(the correct option has 60 characters, the longest other option 45)",
+                      provider.calls[1]["prompt"])
         self.assertEqual(quality.deterministic_codes, ["IDM_W5_ANSWER_LENGTH_CUE"])
         self.assertIn("Cần xem (IDM_W5_ANSWER_LENGTH_CUE, khối 1 (Quiz)): đáp án đúng dài hơn hẳn",
                       quality.author_note)

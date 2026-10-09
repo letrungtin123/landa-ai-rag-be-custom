@@ -19,7 +19,7 @@ from fastapi import HTTPException
 from app import main
 from app.api import deps as api_deps
 from app.idm.contracts import IdmTreatmentRefV1, IdmUnitBriefV1, IdmUnitQualityV1, brief_hash_of
-from app.idm.mcq import normalize_single_choice
+from app.idm.mcq import normalize_single_choice, practice_key_shift, question_ordinal
 from app.idm.runtime import IdmStageError
 from app.idm.storyboard import build_idm_expected, output_budget, parse_brief, run_idm_unit
 from app.lesson_author_orchestration_v2_provider import UnitGenerationContractV2
@@ -137,7 +137,16 @@ def served(body: dict[str, Any], writer: dict[str, Any], index: int) -> dict[str
     """A writer problem slot as the server keeps it: options in the plan's seeded order (QC 364564, N2)."""
 
     plan_id = body["unit_contract"]["component_plan"][index]["component_plan_id"]
-    return normalize_single_choice(writer["components"][f"c{index}"], plan_id)[0]
+    return normalize_single_choice(writer["components"][f"c{index}"], plan_id, served_ordinal(body, index))[0]
+
+
+def served_ordinal(body: dict[str, Any], index: int) -> int:
+    """The key letter ordinal of a problem slot: its place in the course plus the W4 shift of its practice (Q4)."""
+
+    ordinal = question_ordinal(body["unit_contract"]["unit_path"])
+    assert ordinal is not None
+    practice = body["unit_contract"]["idm_unit_brief"]["components"][index]["practice"]
+    return ordinal + (practice_key_shift(practice["practice_id"]) if practice else 0)
 
 
 def slot_repair(writer: dict[str, Any], index: int, **changes: Any) -> dict[str, Any]:

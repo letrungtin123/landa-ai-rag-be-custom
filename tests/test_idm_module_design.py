@@ -601,7 +601,8 @@ class RunModuleDesignTests(unittest.IsolatedAsyncioTestCase):
                 self.assertEqual(bool(problems), expected, plan.lesson_key)
                 grounded_lessons += [plan.lesson_key] if problems else []
                 for unit, item in problems:
-                    self.assertEqual(item["practice_id"], "pt_1")
+                    # The id is the lesson's practice (W4 numbers it for the key letter, QC run 8de1c76b Q4).
+                    self.assertEqual(item["practice_id"], lesson["practice_tasks"][0]["practice_id"])
                     criteria = set(lesson["practice_tasks"][0]["criteria_fact_keys"])
                     self.assertTrue(criteria <= {k for b in unit["block_ids"] for k in scope.blocks[b].fact_keys})
             ChapterBlueprintShardV2.model_validate({k: v for k, v in result["shard"].items() if k != "idm_design"})
@@ -724,7 +725,7 @@ class RunModuleDesignTests(unittest.IsolatedAsyncioTestCase):
                 self.assertIn("Chưa có bài luyện tập", shard["lessons"][1]["learning_activities"][0])
             else:
                 self.assertIsNone(practice["hold_question"])
-                self.assertEqual(types, [("html", None), ("problem", "pt_1")])
+                self.assertEqual(types, [("html", None), ("problem", practice["practice_id"])])
                 self.assertEqual(shard["assessment_obligations"], [])
                 self.assertEqual(shard["lessons"][1]["learning_activities"], [practice["sentence"]])
             ChapterBlueprintShardV2.model_validate({k: v for k, v in shard.items() if k != "idm_design"})

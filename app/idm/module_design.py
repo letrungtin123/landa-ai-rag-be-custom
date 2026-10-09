@@ -29,6 +29,7 @@ from app.idm.contracts import (
 )
 from app.idm.framework import framework_promise, unit_framework_brief
 from app.idm.limits import answer_limits
+from app.idm.mcq import encode_key_letters
 from app.idm.module_autofix import autofix_lesson, format_has_evidence, trim_module_answer
 from app.idm.module_layout import (
     ModuleScope,
@@ -673,6 +674,12 @@ async def run_idm_module_design(
     final, attached = attach_framework_items(final, scope)
     if attached:
         runtime.adjustments["IDM_W4_FRAMEWORK_ITEMS_ATTACHED"] += attached
+    if plan.shard_index == 0:
+        # The chapter's practice questions get their key letters in turn (QC run 8de1c76b, Q4); a later shard does
+        # not know its lessons' place in the chapter and keeps the plain per-unit letters.
+        final, renumbered = encode_key_letters(final, plan.order, context.lesson_index_offset)
+        if renumbered:
+            runtime.adjustments["IDM_W4_KEY_LETTERS_ENCODED"] += renumbered
     gaps = framework_orientation_gaps(final, scope)
     if gaps:
         codes["IDM_W4_FRAMEWORK_ORIENTATION_MISSING"] += sum(len(phrases) for phrases in gaps.values())

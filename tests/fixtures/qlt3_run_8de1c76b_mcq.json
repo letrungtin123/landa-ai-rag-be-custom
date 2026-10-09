@@ -1,0 +1,226 @@
+{
+ "source": "QC run 8de1c76b (course-v1:LAndA2+235245+2026), the 9 single-choice questions as applied, with the visible text of the html slots before each",
+ "leaks_per_qc_report": [
+  "c2.l2.u1",
+  "c4.l1.u1",
+  "c4.l1.u2"
+ ],
+ "questions": [
+  {
+   "unit": "c1.l1.u2",
+   "unit_path": "chapter_1.lesson_1.unit_2",
+   "question": "Công ty May mặc An Phát hoạt động theo mô hình: đối tác nước ngoài gửi toàn bộ bản vẽ thiết kế kỹ thuật, đồng thời chỉ định nhà cung ứng nguyên phụ liệu để giao trực tiếp đến xưởng. An Phát thực hiện cắt may, hoàn thiện sản phẩm theo đúng rập mẫu và đạt biên lợi nhuận thuần từ 3% đến 5% mỗi đơn hàng. Đối chiếu với khung The Made-in-World Ladder, doanh nghiệp này đang ở bậc thang nào?",
+   "choices": [
+    {
+     "text": "Bậc 03: Vietnam Value",
+     "correct": false
+    },
+    {
+     "text": "Bậc 02: Vietnam Quality",
+     "correct": false
+    },
+    {
+     "text": "Bậc 04: Vietnam Know-how",
+     "correct": false
+    },
+    {
+     "text": "Bậc 01: Vietnam Manufacturing",
+     "correct": true
+    }
+   ],
+   "preceding_html_text": "Hành trình The Made-in-World Ladder gồm những nấc thang nào? Hành trình vươn ra biển lớn là quá trình tích lũy năng lực vận hành được chứng minh qua 6 nấc thang khắt khe: Bậc 01: Vietnam Manufacturing Gia công thuần túy, phụ thuộc khách hàng cung cấp nguyên phụ liệu và thiết kế. Biên lợi nhuận mỏng manh (3–5%). Bậc 02: Vietnam Quality Đạt chuẩn kỹ thuật, có các chứng nhận quốc tế (ISO, CE, FDA). Sản phẩm ổn định, tỷ lệ lỗi dưới ngưỡng cho phép. Bậc 03: Vietnam Value Tối ưu hóa chi phí ẩn, làm chủ chuỗi cung ứng vật tư trong nước. Nâng tỷ suất lợi nhuận và giá trị giữ lại cho doanh nghiệp. Bậc 04: Vietnam Know-how Làm chủ bí quyết công nghệ, sở hữu quy trình sản xuất độc quyền hoặc công thức thiết kế riêng biệt khó sao chép. Bậc 05: Vietnam Innovation Tiên phong tạo ra sản phẩm mới giải quyết nỗi đau của thị trường; ứng dụng vật liệu xanh, công nghệ số và mô hình mới. Bậc 06: Vietnam Brand Xây dựng thành công thương hiệu có uy tín, khách hàng quốc tế chủ động tìm mua với mức giá cao nhờ niềm tin. Đâu là đích đến đỉnh cao của thang giá trị? Đỉnh cao của lộ trình là Made-in-World: Năng lực vận hành chuẩn mực toàn cầu. Doanh nghiệp Việt Nam tham gia định hình luật chơi và dẫn dắt phân khúc ngành."
+  },
+  {
+   "unit": "c2.l1.u2",
+   "unit_path": "chapter_2.lesson_1.unit_2",
+   "question": "Một công ty cơ khí chính xác quy mô vừa đang chỉ nhận các đơn hàng gia công thô giá rẻ để duy trì dòng tiền trả nợ và trả lương. Theo nguyên tắc chuyển dịch tư duy Think Big (BiC Ambition), quyết định nào sau đây của CEO thể hiện đúng chuẩn hành động chiến lược?",
+   "choices": [
+    {
+     "text": "Tuyên bố trở thành tập đoàn sản xuất công nghiệp đa ngành số 1 khu vực trong 3 năm và triển khai ngay 10 dự án cải tiến cùng lúc.",
+     "correct": false
+    },
+    {
+     "text": "Xác lập mục tiêu 3 năm trở thành đơn vị gia công cơ khí đạt dung sai chuẩn quốc tế Best-in-Class, đồng thời dồn lực 90 ngày tới để nâng cấp năng lực kiểm chuẩn chất lượng.",
+     "correct": true
+    },
+    {
+     "text": "Duy trì nhận mọi đơn hàng gia công nhỏ lẻ có sẵn và đặt mục tiêu 3 năm tới tăng trưởng doanh thu 10% để đủ trả nợ ngân hàng.",
+     "correct": false
+    },
+    {
+     "text": "Chờ khi doanh nghiệp tích lũy đủ nguồn lực tài chính từ các đơn hàng thô rồi mới xác định mục tiêu vươn lên chuẩn ngành.",
+     "correct": false
+    }
+   ],
+   "preceding_html_text": "Vì sao doanh nghiệp cần chuyển dịch từ tư duy tồn tại sang khát vọng lớn? Nhiều lãnh đạo doanh nghiệp vừa và nhỏ thường mắc kẹt trong bẫy an phận với suy nghĩ chỉ cần làm đủ sống, đủ trả nợ ngân hàng và chi trả lương cho nhân sự. Lối suy nghĩ này khiến doanh nghiệp luôn ở thế bị động, liên tục chạy theo các đơn hàng vụn vặt và không bao giờ tích lũy được nguồn lực để phát triển. Quy mô mình nhỏ, chỉ cần làm đủ sống, đủ trả nợ ngân hàng và lo lương cho anh em là tốt rồi. Hậu quả: Doanh nghiệp luôn bị động, chạy theo đơn hàng vụn vặt, không bao giờ tích lũy nguồn lực. Lãnh đạo cần làm gì để thiết lập tư duy Best-in-Class Ambition? Để thay đổi tình trạng bị động, người đứng đầu doanh nghiệp cần tái cấu trúc tư duy thông qua việc trả lời một câu hỏi chiến lược cốt lõi: Doanh nghiệp chúng ta sẽ trở thành Best-in-Class ở năng lực cụ thể nào trong ngành? Khát vọng lớn đóng vai trò như một ngọn hải đăng định hướng và dẫn dắt mọi lựa chọn đầu tư. Lãnh đạo thực hiện chuyển dịch thông qua quy trình hành động 2 bước sau: Xác định 01 tham vọng vượt chuẩn ngành trong 3 năm tới. Chọn ngay 01 năng lực lõi cần nâng cấp trong 90 ngày."
+  },
+  {
+   "unit": "c2.l2.u1",
+   "unit_path": "chapter_2.lesson_2.unit_1",
+   "question": "Một CEO doanh nghiệp sản xuất nội thất tại Việt Nam phân tích mô hình vận hành để tìm hướng đột phá. Phương án nào dưới đây thể hiện đúng tinh thần chuyển dịch Think Different từ benchmark nội địa sang chuẩn Best-in-Class?",
+   "choices": [
+    {
+     "text": "Khảo sát giá bán và quy trình của các xưởng mộc lớn trong nước để cắt giảm chi phí nhân công, qua đó hạ giá bán thấp hơn đối thủ.",
+     "correct": false
+    },
+    {
+     "text": "Giữ nguyên mô hình sản xuất truyền thống và chỉ so sánh giá thu mua nguyên liệu gỗ với các cơ sở địa phương để tối ưu chi phí.",
+     "correct": false
+    },
+    {
+     "text": "Sao chép nguyên bản toàn bộ quy trình vận hành và hệ thống nhà xưởng tự động hóa đắt đỏ của tập đoàn đa quốc gia mà không điều chỉnh theo thị trường.",
+     "correct": false
+    },
+    {
+     "text": "Mổ xẻ case study hãng dẫn đầu thế giới về thiết kế đóng gói phẳng giảm phí kho vận, kết hợp giải pháp giao hàng linh hoạt nội địa để tạo khác biệt độc bản.",
+     "correct": true
+    }
+   ],
+   "preceding_html_text": "Nhiệm vụ mổ xẻ mô hình Best-in-Class yêu cầu thực hiện những gì? Dựa trên dữ liệu mô hình vận hành của một doanh nghiệp dẫn đầu thế giới trong ngành sản xuất nội thất lắp ghép, hãy phân tích cấu trúc chi phí và mô hình phục vụ để xác định giải pháp tạo sự khác biệt độc bản cho doanh nghiệp Việt Nam. Khung phiếu phân tích cấu trúc chi phí và mô hình phục vụ gồm các mục nào? Cấu trúc chi phí Best-in-Class Mô tả cách doanh nghiệp dẫn đầu thế giới tối ưu hóa cấu trúc chi phí vận hành cốt lõi so với cách làm truyền thống. Mô hình phục vụ chuẩn quốc tế Xác định phương thức phục vụ và các điểm chạm đặc trưng tạo ra trải nghiệm giá trị cho khách hàng. Khác biệt độc bản cho doanh nghiệp Việt Nam Đề xuất giải pháp bản địa linh hoạt kết hợp chuẩn quốc tế để tạo lợi thế độc bản, tránh cạnh tranh hạ giá tự sát. Ví dụ minh họa áp dụng khung phân tích vào case study nội thất lắp ghép như thế nào? Cấu trúc chi phí Best-in-Class Áp dụng thiết kế đóng gói phẳng giúp tối ưu thể tích lưu kho và cắt giảm chi phí vận chuyển đường dài. Mô hình phục vụ chuẩn quốc tế Trưng bày trải nghiệm tự chọn tại showroom và chuyển giao khâu vận chuyển, tự lắp ráp cho khách hàng. Khác biệt độc bản cho doanh nghiệp Việt Nam Ứng dụng đóng gói phẳng chuẩn quốc tế nhưng bổ sung gói hỗ trợ lắp đặt linh hoạt theo nhu cầu nội địa. Các tiêu chí tự kiểm tra chất lượng phân tích gồm những gì? Phân tích dựa trên chuẩn mực vận hành tốt nhất thế giới trong ngành thay vì nhìn đối thủ trong nước để hạ giá. Bóc tách rõ ràng cấu trúc chi phí cốt lõi và mô hình phục vụ đặc trưng của case study dẫn đầu thế giới. Xác lập sự khác biệt độc bản kết hợp giữa học hỏi chuẩn quốc tế và giải pháp bản địa linh hoạt. Loại bỏ tư duy cạnh tranh hạ giá tự sát và không tự thỏa mãn với tiêu chuẩn thấp."
+  },
+  {
+   "unit": "c2.l3.u1",
+   "unit_path": "chapter_2.lesson_3.unit_1",
+   "question": "Một công ty phân phối dịch vụ nhận được khiếu nại của khách hàng về việc đơn hàng bị giao sai chủng loại, làm chậm tiến độ bán lẻ. Giám đốc Vận hành đang xem xét 4 phương án xử lý điểm chạm này. Phương án nào thể hiện đúng tư duy gắn kết trọn đời và tạo cảm xúc Wow & Delight theo chuẩn Think Customer?",
+   "choices": [
+    {
+     "text": "Thu hồi sản phẩm sai, tiến hành gửi bù đúng loại trong vòng 24 giờ hành chính và yêu cầu khách hàng ký nhận vào biên bản nghiệm thu để hoàn tất trách nhiệm pháp lý.",
+     "correct": false
+    },
+    {
+     "text": "Kiểm tra camera kho bãi, lập biên bản trừ lương nhân viên đóng gói và thông báo với khách rằng tỷ lệ đơn hàng chính xác tháng này của công ty vẫn đạt 96% theo cam kết hợp đồng.",
+     "correct": false
+    },
+    {
+     "text": "Đăng tải bài đính chính trên cổng thông tin nội bộ, cập nhật quy trình đóng gói vào sổ tay nghiệp vụ và gửi email thông báo tự động mời khách đánh giá mức độ hài lòng từ 1 đến 5 sao.",
+     "correct": false
+    },
+    {
+     "text": "Giao ngay sản phẩm chuẩn bằng chuyến xe hỏa tốc trong 2 giờ kèm quà tặng cá nhân hóa từ CEO, đồng thời kích hoạt chính sách ưu đãi đặc biệt cho đơn tiếp theo để xây dựng sự tin cậy tuyệt đối.",
+     "correct": true
+    }
+   ],
+   "preceding_html_text": "Nhiệm vụ thực hành cần hoàn thành là gì? Rà soát điểm chạm tiếp nhận khiếu nại dịch vụ hiện tại và tái thiết kế quy trình xử lý nhằm chuyển từ tư duy kiểm soát lỗi sang tư duy gắn kết trọn đời, tạo cảm xúc Wow & Delight. Biểu mẫu tái thiết kế điểm chạm gồm những tiêu chí nào? Điểm chạm lựa chọn Tên điểm chạm trọng yếu trong hành trình khách hàng cần tái thiết kế. Hiện trạng theo tư duy kiểm soát lỗi Cách thức xử lý hiện tại chỉ nhằm ít lỗi kỹ thuật và đáp ứng đúng hợp đồng. Phương án tái thiết kế theo tư duy gắn kết trọn đời Giải pháp tạo cảm xúc vượt mong đợi để khách hàng tin tưởng tuyệt đối và quay lại. Thước đo kết quả mới Đo lường bằng sự tin tưởng, tỷ lệ quay lại, tự nguyện giới thiệu và sẵn sàng trả giá cao hơn. Điểm chạm xử lý giao hàng trễ được tái thiết kế mẫu như thế nào? Điểm chạm lựa chọn Xử lý sự cố giao hàng chậm trễ cho khách hàng doanh nghiệp. Hiện trạng theo tư duy kiểm soát lỗi Phạt tiền tài xế vận chuyển và gửi công văn xin lỗi hành chính theo đúng thỏa thuận hợp đồng. Phương án tái thiết kế theo tư duy gắn kết trọn đời Tặng ngay phiếu mua hàng bù đắp tổn thất và Tổng Giám đốc gửi thư tay tri ân chân thành. Thước đo kết quả mới Khách hàng duy trì hợp đồng năm tới, giới thiệu đối tác mới và không yêu cầu hạ giá bán. Tiêu chí tự kiểm tra phương án gồm những gì? Chuyển đổi hoàn toàn từ tư duy kiểm soát lỗi kỹ thuật sang tư duy gắn kết trọn đời. Không dừng lại ở việc đáp ứng điều khoản hợp đồng hay đạt mức thỏa mãn kỹ thuật 95%. Tạo dựng cảm xúc Wow & Delight tại điểm chạm trọng yếu đã chọn. Thiết lập kết quả đo lường bằng sự tin tưởng tuyệt đối, sẵn sàng quay lại nhiều lần, tự nguyện giới thiệu và vui vẻ trả giá cao hơn."
+  },
+  {
+   "unit": "c2.l4.u1",
+   "unit_path": "chapter_2.lesson_4.unit_1",
+   "question": "Mô tả nào phù hợp nhất với thuật ngữ SHIFT 4?",
+   "choices": [
+    {
+     "text": "Đầu tư 1 đồng cho phòng ngừa lỗi từ đầu sẽ tiết kiệm được 10 đồng chi phí kiểm tra và 100 đồng chi phí đền bù tổn thất khi lỗi lọt ra thị trường.",
+     "correct": false
+    },
+    {
+     "text": "Doanh nghiệp tiếc tiền đầu tư ban đầu vào thiết kế R&D, tiêu chuẩn hóa quy trình, thiết lập hệ thống dữ liệu và đào tạo con người.",
+     "correct": false
+    },
+    {
+     "text": "Chọn 01 quy trình hay xảy ra sự cố nhất trong tháng qua, áp dụng 5Why để tìm nguyên nhân gốc và ban hành cơ chế phòng ngừa.",
+     "correct": false
+    },
+    {
+     "text": "THINK SYSTEM — Thoát Bẫy \"Chữa Cháy\" Sang Vận Hành Xuất Sắc",
+     "correct": true
+    }
+   ],
+   "preceding_html_text": "Vì sao cần chuyển từ chữa cháy sang phòng ngừa sự cố? Trong nhiều doanh nghiệp, ban giám đốc và kỹ sư giỏi mất 70% đến 80% thời gian mỗi ngày để xử lý sự cố như giao trễ hạn, linh kiện hỏng hay khiếu nại từ khách hàng. Tình trạng này khiến tổ chức bận rộn nhưng nội lực không tăng tiến. Đầu tư 1 đồng cho phòng ngừa lỗi từ đầu sẽ tiết kiệm được 10 đồng chi phí kiểm tra và 100 đồng chi phí đền bù tổn thất khi lỗi lọt ra thị trường. Nhiệm vụ thực hành bóc tách sự cố là gì? Chọn 01 quy trình hay xảy ra sự cố nhất trong tháng qua, áp dụng kỹ thuật 5Why để bóc tách đến nguyên nhân hệ thống và ban hành cơ chế phòng ngừa cụ thể. Khung phân tích 5Why và lập cơ chế phòng ngừa gồm những nội dung nào? Hoàn thiện các trường thông tin dưới đây để truy vết nguồn gốc sự cố: Quy trình lựa chọn Quy trình hay phát sinh sự cố nhất trong tháng qua. Hiện tượng sự cố Mô tả cụ thể sự việc lặp lại dẫn đến trễ hạn hoặc tổn thất. Tại sao 1 đến 3 Các tầng nguyên nhân trực tiếp và sự vụ bề mặt. Tại sao 4 đến 5 Nguyên nhân gốc rễ thuộc về tiêu chuẩn hóa, dữ liệu hoặc đào tạo. Cơ chế phòng ngừa Giải pháp triệt tiêu nguyên nhân gốc từ đầu để ngăn ngừa tái diễn. Ví dụ minh họa phân tích sự cố thiết bị như thế nào? Dưới đây là một ví dụ bóc tách sự cố máy móc dừng đột ngột: Quy trình lựa chọn Quy trình bảo trì và vận hành thiết bị xưởng. Hiện tượng sự cố Máy cắt chính dừng đột ngột làm chậm tiến độ giao hàng. Tại sao 1 đến 3 Máy cháy vòng bi do cạn dầu bôi trơn, công nhân quên tra dầu vì không có lịch nhắc. Tại sao 4 đến 5 Thiếu lịch bảo trì dự phòng trong phần mềm và chưa phân quyền kiểm tra định kỳ. Cơ chế phòng ngừa Số hóa lịch bảo trì tự động và chuẩn hóa bảng kiểm kiểm tra trước ca. Tiêu chí tự kiểm tra phân tích nguyên nhân gốc rễ là gì? Chọn đúng quy trình phát sinh sự cố thường xuyên nhất trong tháng. Truy vết nguyên nhân sâu xa chạm đến tiêu chuẩn hóa quy trình, hệ thống dữ liệu hoặc đào tạo con người thay vì dừng lại ở việc khiển trách cá nhân. Thiết lập cơ chế phòng ngừa chặn lỗi từ đầu để tiết kiệm chi phí theo quy luật 1-10-100."
+  },
+  {
+   "unit": "c2.l5.u2",
+   "unit_path": "chapter_2.lesson_5.unit_2",
+   "question": "Một doanh nghiệp chế biến nông sản xuất khẩu đang thiếu hụt hệ thống kiểm soát chất lượng bằng AI và kênh bán lẻ tại châu Âu. Trước kế hoạch 90 ngày tới, phương án phân bổ nguồn lực nào thể hiện đúng tư duy Think Ecosystem (Connect Everything)?",
+   "choices": [
+    {
+     "text": "Dừng mở rộng thị trường để dồn toàn bộ nguồn lực tài chính mua sắm máy móc đắt tiền và tự mở chuỗi cửa hàng bán lẻ độc quyền tại nước ngoài.",
+     "correct": false
+    },
+    {
+     "text": "Tuyển dụng thêm đội ngũ kỹ sư phần mềm vào biên chế để tự viết phần mềm riêng và đầu tư mua toàn bộ hệ thống máy chủ đắt tiền.",
+     "correct": false
+    },
+    {
+     "text": "Giữ lại bí quyết chế biến và tiêu chuẩn chất lượng sản phẩm cốt lõi, đồng thời kết nối chuyên gia cố vấn quốc tế, nền tảng AI có sẵn và đối tác phân phối bản địa.",
+     "correct": true
+    },
+    {
+     "text": "Chuyển giao toàn bộ công thức chế biến độc quyền cho đối tác ngoại nắm giữ, chỉ tập trung tự xây dựng hệ thống phân phối từ đầu.",
+     "correct": false
+    }
+   ],
+   "preceding_html_text": "Nhiệm vụ thực hành lập bản đồ liên minh Dựa trên hiện trạng thiếu hụt năng lực công nghệ và kênh bán lẻ quốc tế của doanh nghiệp chế biến nông sản, bạn hãy lập bản đồ xác định 03 nguồn lực bên ngoài cần thiết lập liên minh chiến lược trong 90 ngày tới. Biểu mẫu bản đồ liên minh nguồn lực 90 ngày Điền thông tin vào biểu mẫu sau để chuyển đổi từ tư duy tự sở hữu sang siêu kết nối: Năng lực lõi giữ lại Xác định rõ bí quyết cốt lõi và linh hồn sản phẩm doanh nghiệp tự nắm giữ Nguồn lực liên minh 1: Chuyên gia cố vấn Mạng lưới chuyên gia bên ngoài cần hợp tác thay vì tuyển dụng biên chế Nguồn lực liên minh 2: Nền tảng công nghệ Hệ thống AI hoặc nền tảng đám mây có sẵn cần thuê hoặc kết nối Nguồn lực liên minh 3: Kênh phân phối Mạng lưới đối tác phân phối bán lẻ quốc tế cần thiết lập liên minh Ví dụ tham khảo từ doanh nghiệp gia dụng Minh họa phương án phân bổ nguồn lực của một công ty sản xuất đồ gia dụng: Năng lực lõi giữ lại Thiết kế mẫu mã và hoạt động nghiên cứu phát triển R&D sản phẩm Nguồn lực liên minh 1: Chuyên gia Mạng lưới chuyên gia lean Nhật Bản tư vấn chuẩn hóa vận hành Nguồn lực liên minh 2: Công nghệ Nền tảng đám mây quản trị đơn hàng tự động tích hợp sẵn Nguồn lực liên minh 3: Kênh phân phối Mạng lưới đối tác phân phối và bán lẻ xuất khẩu trong khu vực Tiêu chí tự kiểm tra bản đồ liên minh Doanh nghiệp chỉ tập trung giữ lại năng lực lõi và linh hồn sản phẩm bên trong nội bộ. Tránh tư duy tự sở hữu: không tự tuyển biên chế cồng kềnh, không tự mua sắm tốn kém và không tự viết phần mềm riêng. Xác định đủ 03 nguồn lực bên ngoài cần kết nối: chuyên gia cố vấn, nền tảng AI/Cloud có sẵn và đối tác phân phối. Mục tiêu liên minh được thiết lập khả thi và hành động dứt khoát trong vòng 90 ngày tới."
+  },
+  {
+   "unit": "c3.l1.u1",
+   "unit_path": "chapter_3.lesson_1.unit_1",
+   "question": "Một CEO ghi lại bản thảo gồm 4 nội dung trên biểu mẫu CEO Change Mindset Canvas như sau: Mindset cần bỏ: Nỗ lực làm việc chăm chỉ hơn; Việc cần dừng: Cắt giảm chi phí tiếp khách chung chung; Việc cần bắt đầu: Nâng cao tinh thần trách nhiệm nhân viên; Lời xác nhận: Bản kế hoạch này để nộp cho ban tổ chức khóa học xem xét. Phương án nào dưới đây chỉnh sửa các nội dung trên đáp ứng đúng nhất các tiêu chí của biểu mẫu?",
+   "choices": [
+    {
+     "text": "Mindset cần bỏ: Tư duy an phận; Việc cần dừng: Dừng chi tiêu lãng phí; Việc cần bắt đầu: Bắt đầu ứng dụng công nghệ thông tin trong năm sau; Lời xác nhận: Cam kết học tập nghiêm túc trong suốt thời gian tham gia chương trình.",
+     "correct": false
+    },
+    {
+     "text": "Mindset cần bỏ: Bỏ thói quen làm việc muộn; Việc cần dừng: Dừng các dự án không quan trọng; Việc cần bắt đầu: Khởi động lại phong trào văn hóa doanh nghiệp trong quý tới; Lời xác nhận: Kế hoạch này bàn giao cho cấp quản lý cấp trung thực hiện.",
+     "correct": false
+    },
+    {
+     "text": "Mindset cần bỏ: Cần thay đổi phong cách lãnh đạo; Việc cần dừng: Hạn chế đi muộn; Việc cần bắt đầu: Nhắc nhở nhân viên kiểm tra báo cáo định kỳ; Lời xác nhận: Cố gắng thực hiện tối đa các nội dung trên.",
+     "correct": false
+    },
+    {
+     "text": "Mindset cần bỏ: Từ bỏ tư duy điều hành cảm tính không dựa trên dữ liệu; Việc cần dừng: Dừng ngay cuộc họp giao ban 3 tiếng không có biên bản nghị sự; Việc cần bắt đầu: Áp dụng họp đứng 15 phút đo lường dữ liệu vào sáng thứ Hai tuần tới; Lời xác nhận: Cam kết đây là định hướng hành động thật của CEO và Ban điều hành, không phải lý thuyết đối phó.",
+     "correct": true
+    }
+   ],
+   "preceding_html_text": "Phiếu thực hành: Điền đủ 9 ô nội dung trên biểu mẫu CEO Change Mindset Canvas để xác định rõ việc cần dừng, việc cần bắt đầu và năng lực BiC trọng tâm CÔNG CỤ THỰC CHIẾN CEO CHANGE MINDSET CANVAS • 9 Ô TỰ ĐÁNH GIÁ Biểu Mẫu CEO Change Mindset Canvas Đây là công cụ bắt buộc mỗi học viên phải hoàn thành trước khi rời khỏi Modun 1. Hãy trả lời trung thực, ngắn gọn và dứt khoát vào 9 ô dưới đây để thiết lập bản đồ chuyển đổi cho chính mình MINDSET CẦN BỎ KHÁT VỌNG MỚI GIÁ TRỊ KHÁCH HÀNG Niềm tin hay thói quen quản trị kinh nghiệm cũ nào đang kìm hãm doanh nghiệp mà anh/chị cam kết từ bỏ ngay? Mục tiêu tăng trưởng vượt chuẩn ngành lớn nhất trong 3 năm tới của doanh nghiệp là gì? Khách hàng mục tiêu đang mong muốn giá trị vượt trội nào mà thị trường hiện tại chưa phục vụ tốt? [ Ghi rõ 01 tư duy cũ cần đoạn tuyệt... ] [ Xác định mục tiêu định lượng cụ thể... ] [ 01 giá trị mang lại Customer Delight... ] NĂNG LỰC BIC VIỆC CẦN DỪNG VIỆC CẦN BẮT ĐẦU Doanh nghiệp bắt buộc phải xây dựng năng lực lõi nào để dẫn đầu phân khúc ngành đã chọn? Những hoạt động kinh doanh, dòng sản phẩm hoặc cuộc họp kém hiệu quả nào cần dừng lại ngay? Hành động hoặc kỷ luật quản trị hệ thống mới nào cần phải được áp dụng ngay vào sáng thứ Hai tuần tới? [ Năng lực vận hành / R&D / Sản xuất... ] [ Cắt bỏ lãng phí để giải phóng nguồn lực... ] [ Kỷ luật phòng ngừa / Đo lường dữ liệu... ] ỨNG DỤNG AI KẾT NỐI HỆ SINH THÁI LỜI HỨA TOÀN CẦU Quy trình hay điểm nghẽn nào trong doanh nghiệp sẽ được giải quyết hoặc tăng gấp đôi năng suất bằng AI? Nguồn lực chiến lược bên ngoài nào (Chuyên gia, Vốn, Công nghệ) cần kết nối qua ERA5.0? Chuẩn mực chất lượng hoặc chứng chỉ toàn cầu cao nhất mà doanh nghiệp cam kết đạt được là gì? [ Xác định đối tác chiến lược bên ngoài... ] [ 01 use case ứng dụng AI cụ thể... ] [ Cam kết chuẩn mực chất lượng... ] XÁC NHẬN CỦA NGƯỜI ĐỨNG ĐẦU DOANH NGHIỆP \"Tôi cam kết rằng 9 nội dung trên đây là định hướng hành động thật của tôi và Ban điều hành, không phải lý thuyết đối phó trên lớp học.\""
+  },
+  {
+   "unit": "c4.l1.u1",
+   "unit_path": "chapter_4.lesson_1.unit_1",
+   "question": "Theo chuỗi giá trị chuyển hóa năng lực lãnh đạo, phát biểu nào sau đây phản ánh đúng nhất về vai trò của Action và Business Value?",
+   "choices": [
+    {
+     "text": "Giá trị kinh doanh chỉ phụ thuộc vào khát vọng của người lãnh đạo, không liên quan đến kết quả trên báo cáo tài chính.",
+     "correct": false
+    },
+    {
+     "text": "Thay đổi tư duy luôn tự động đem lại giá trị kinh doanh mà không nhất thiết phải triển khai các hành động cụ thể.",
+     "correct": false
+    },
+    {
+     "text": "Mọi hành động thực thi đều tạo ra giá trị kinh doanh đo lường được, bất kể tổ chức có xác lập tư duy mới hay không.",
+     "correct": false
+    },
+    {
+     "text": "Nếu không có hành động thì thay đổi tư duy chỉ là cảm hứng nhất thời; nếu không có giá trị kinh doanh đo lường được thì hành động chỉ là phong trào tốn kém.",
+     "correct": true
+    }
+   ],
+   "preceding_html_text": "Dòng chảy chuyển hóa năng lực lãnh đạo gồm những mắt xích nào? Một chương trình thay đổi tư duy chỉ thực sự thành công khi dẫn đến thay đổi hành vi và tạo ra kết quả kinh doanh đo lường được trên báo cáo tài chính. Quá trình này vận hành tuần tự qua 6 mắt xích trong chuỗi giá trị chuyển hóa: MINDSET: Nhận thức và hệ điều hành tư duy mới của người lãnh đạo. AMBITION: Khát vọng và mục tiêu chuyển hóa được xác lập rõ ràng. STRATEGY: Chiến lược và định hướng lựa chọn trọng tâm đột phá. CAPABILITY: Năng lực tổ chức và năng lực lõi cần phát triển tương ứng. ACTION: Hành động cụ thể, kỷ luật thực thi trên thực tế vận hành. BUSINESS VALUE: Giá trị kinh doanh thực chất, đo lường được bằng số liệu tài chính. Đâu là nguyên lý then chốt để tránh lãng phí nguồn lực khi chuyển hóa? Không có Action, Change Mindset chỉ dừng lại ở cảm hứng nhất thời. Không có Business Value đo lường được, Action chỉ là phong trào tốn kém! Mỗi nỗ lực thay đổi nhận thức bắt buộc phải được chuyển dịch thành kế hoạch hành động cụ thể, đồng thời mọi hành động triển khai đều phải quy về kết quả tài chính rõ ràng để khẳng định giá trị chuyển hóa."
+  },
+  {
+   "unit": "c4.l1.u2",
+   "unit_path": "chapter_4.lesson_1.unit_2",
+   "question": "Một CEO doanh nghiệp sản xuất xây dựng kế hoạch hành động 90 ngày để giải quyết điểm nghẽn giao hàng trễ hạn. Phương án nào dưới đây phân bổ hành động và mục tiêu đúng chuẩn phương pháp luận CEO 90-Day Challenge?",
+   "choices": [
+    {
+     "text": "Chặng 1 (30 ngày): Đóng gói quy trình SOP giao vận chuẩn và áp dụng cho toàn công ty; Chặng 2 (30 ngày): Thiết kế Quick-Win rút ngắn thời gian xử lý; Chặng 3 (30 ngày): Audit lại hệ điều hành tư duy và tìm điểm nghẽn.",
+     "correct": false
+    },
+    {
+     "text": "Chặng 1 (30 ngày): Audit hệ điều hành tư duy, nhận diện điểm nghẽn vận hành và thống kê quy trình hay phát sinh sự cố; Chặng 2 (30 ngày): Thiết lập tham vọng mới, chọn 01 năng lực lõi Best-in-Class giao hàng, kết nối nguồn lực ngoài và thiết kế Quick-Win; Chặng 3 (30 ngày): Triển khai thí điểm, đo lường hàng tuần bằng dữ liệu thực tế, đóng gói SOP và nhân rộng.",
+     "correct": true
+    },
+    {
+     "text": "Chặng 1 (30 ngày): Tổ chức đào tạo tạo động lực cho nhân viên; Chặng 2 (30 ngày): Ban hành quy định xử phạt vi phạm giao hàng trễ; Chặng 3 (30 ngày): Đánh giá cảm xúc và mức độ hài lòng của đội ngũ sau chiến dịch.",
+     "correct": false
+    },
+    {
+     "text": "Chặng 1 (30 ngày): Chọn cùng lúc 5 năng lực lõi để nâng cấp toàn diện và đầu tư phần mềm mới; Chặng 2 (30 ngày): Triển khai thí điểm toàn bộ dây chuyền sản xuất; Chặng 3 (30 ngày): Rà soát lại xem điểm nghẽn ban đầu nằm ở bộ phận nào.",
+     "correct": false
+    }
+   ],
+   "preceding_html_text": "Nhiệm vụ thực hành là gì? Dựa trên hiện trạng vận hành và điểm nghẽn của doanh nghiệp sản xuất, hãy lập danh mục hành động và chỉ số đo lường cho 3 giai đoạn CEO 90-Day Challenge nhằm tạo ra kết quả kinh doanh cụ thể. Khung kế hoạch 90 ngày gồm những nội dung nào? Điền nội dung hành động và chỉ số đo lường tương ứng vào từng chặng: 30 Ngày See Different Audit hệ điều hành tư duy; nhận diện điểm nghẽn vận hành và quy trình hay cháy. Chỉ số: Danh mục điểm nghẽn. 30 Ngày Think Different Thiết lập tham vọng mới; chọn 01 năng lực Best-in-Class; siêu kết nối nguồn lực ngoài; thiết kế Quick-Win. Chỉ số: Kế hoạch Quick-Win. 30 Ngày Act Different Triển khai thí điểm; đo lường hàng tuần bằng dữ liệu thực; đóng gói SOP và nhân rộng. Chỉ số: Kết quả tài chính và số SOP. Ví dụ tham khảo kế hoạch mẫu được thiết kế thế nào? Kế hoạch mẫu cho doanh nghiệp sản xuất tối ưu giao hàng: 30 Ngày See Different Audit tư duy; xác định điểm nghẽn giao hàng chậm và quy trình đóng gói hay cháy. Đo lường: Báo cáo 3 điểm nghẽn. 30 Ngày Think Different Chọn năng lực Best-in-Class giao hàng 24h; liên kết đối tác ngoài; thiết kế Quick-Win giao hàng. Đo lường: 01 Quick-Win sẵn sàng. 30 Ngày Act Different Thí điểm giao hàng 24h; đo lường tỷ lệ đúng hạn hàng tuần; đóng gói SOP nhân rộng. Đo lường: Tỷ lệ đúng hạn 98%, hoàn thành SOP. Tiêu chí tự kiểm tra kế hoạch gồm những gì? Đối chiếu kế hoạch hành động với các tiêu chí chuẩn sau: Chặng See Different: Kiểm toán tư duy, nhận diện điểm nghẽn vận hành nghiêm trọng và quy trình hay cháy. Chặng Think Different: Thiết lập tham vọng, chọn 01 năng lực Best-in-Class, siêu kết nối nguồn lực ngoài và thiết kế Quick-Win. Chặng Act Different: Triển khai thí điểm, đo lường hàng tuần bằng dữ liệu thực, đóng gói SOP và nhân rộng. Chuyển hóa: Hành động phải tạo ra kết quả kinh doanh đo lường được trên báo cáo tài chính."
+  }
+ ]
+}

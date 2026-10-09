@@ -31,7 +31,13 @@ from app.idm.html_rules import (
     minimum_visible_chars,
     normalize_html_semantic,
 )
-from app.idm.mcq import normalize_single_choice
+from app.idm.mcq import (
+    ANSWER_LENGTH_CUE_CODE,
+    normalize_single_choice,
+    option_lengths,
+    practice_key_shift,
+    question_ordinal,
+)
 from app.idm.node_acceptance import (
     AcceptanceContext,
     AcceptanceFinding,
@@ -74,6 +80,7 @@ from app.idm.qa import (
     WORKSHEET_INCOMPLETE_CODE,
     JudgeMode,
     JudgeOutcome,
+    advisory_slot_findings,
     blocking_count,
     build_unit_author_note,
     build_unit_quality,
@@ -130,7 +137,7 @@ _REVIEW_FIRST_CODES: Final = frozenset({WORKSHEET_INCOMPLETE_CODE, ANSWER_LEAK_C
                                         FAQ_RESTATES_HTML_CODE, FAQ_TITLE_MISMATCH_CODE,
                                         FRAMEWORK_INCOMPLETE_CODE})
 # Findings a deterministic step settles when the repair does not: their repair alone is a targeted one.
-_TARGETED_REPAIR_CODES: Final = frozenset({FRAMEWORK_INCOMPLETE_CODE})
+_TARGETED_REPAIR_CODES: Final = frozenset({FRAMEWORK_INCOMPLETE_CODE, ANSWER_LENGTH_CUE_CODE})
 # FAQ findings settled by dropping the items concerned while the slot keeps two items.
 _FAQ_PRUNE_CODES: Final = frozenset({FAQ_UNGROUNDED_CODE, FAQ_RESTATES_HTML_CODE})
 _MAX_HINT_FACT_KEYS: Final = 24
@@ -426,6 +433,11 @@ class IdmUnitWriter:
                         lines.append(self.callout_rule_line(slot, index, component))
                     elif code == FRAMEWORK_INCOMPLETE_CODE:
                         lines.append(self.framework_rule_line(slot, unit))
+                    elif code == ANSWER_LENGTH_CUE_CODE and isinstance(component, dict):
+                        measured = option_lengths(component)
+                        lines.append(rule_line(slot, code, f"{slot}.choices") + (
+                            f" (the correct option has {measured[0]} characters, the longest other option "
+                            f"{measured[1]})" if measured else ""))
                     else:
                         field = _FIELD_OF_PATH_RE.sub("", locations.get((code, index), ""))
                         lines.append(rule_line(slot, code, f"{slot}.{field}" if field else slot))
@@ -477,7 +489,13 @@ class IdmUnitWriter:
 
         plan_type = self.plans[index]["type"] if 0 <= index < len(self.plans) else None
         if plan_type == "problem" and isinstance(component, dict):
-            normalized, codes = normalize_single_choice(component, str(self.plans[index]["component_plan_id"]))
+            # The key's letter follows the question's place in the course, so keys spread over A-D (Q4).
+            ordinal = question_ordinal(self.contract.unit_path)
+            slot = self.brief.components[index] if index < len(self.brief.components) else None
+            if ordinal is not None and slot is not None and slot.practice is not None:
+                ordinal += practice_key_shift(slot.practice.practice_id)
+            normalized, codes = normalize_single_choice(component, str(self.plans[index]["component_plan_id"]),
+                                                        ordinal)
             self.runtime.adjustments.update(codes)
             return normalized
         if plan_type != "html" or not isinstance(component, dict) or not isinstance(
@@ -797,9 +815,13 @@ class IdmUnitWriter:
         """
 
         finding, idm = self.problems(draft)
-        if finding is None and not idm:
+        # A correct option far longer than the others gets one repair too (QC run 8de1c76b, Q4); left by it, it is
+        # a review note as before.
+        cues = [(item.code, item.component_index) for item in advisory_slot_findings(
+            draft.unit, {*draft.fallback_slots, *draft.review_slots})]
+        if finding is None and not idm and not cues:
             return draft
-        self.log_findings("writer", draft, finding, idm)
+        self.log_findings("writer", draft, finding, [*idm, *cues])
         # An over-budget worksheet is compacted before any repair call (QC run 8de1c76b, Q2: 550 then 452 words
         # against 400, then the raw source fallback); the repair handles what compaction cannot.
         if finding is not None and finding.code == DENSITY_CODE and (slot := _slot_of(finding)) is not None:
@@ -808,11 +830,14 @@ class IdmUnitWriter:
                 self.codes.append(finding.code)
                 draft = compacted
                 finding, idm = self.problems(draft)
-                if finding is None and not idm:
+                if finding is None and not idm and not cues:
                     return draft
         self.codes.extend([finding.code] if finding is not None else [])
-        self.codes.extend(code for code, _index in idm)
-        issues = list(idm)
+        self.codes.extend(code for code, _index in [*idm, *cues])
+        issues = [*idm, *cues]
+        original = draft
+        # Only notes to settle: a repair that breaks anything else is dropped (the unit was acceptable before).
+        notes_only = finding is None and not idm
         slot = _slot_of(finding)
         if finding is not None and slot is None:
             return None
@@ -837,6 +862,9 @@ class IdmUnitWriter:
                 draft = await self.repair_slots(draft, issues, locations,
                                                 thinking=THINKING_TARGETED_REPAIR if targeted else THINKING_W5)
                 repaired = True
+                if notes_only and any(self.problems(draft)):
+                    self.runtime.adjustments["w5_note_repair_reverted"] += 1
+                    draft = original
             except (IdmBudgetError, IdmResponseInvalidError) as error:
                 self.failure_codes.append(error.code)  # falls through to the per-slot fallback below
             except IdmProviderError as error:

@@ -7,6 +7,7 @@
 * Q3: the orientation unit "Bản đồ 5 chuyển dịch" owned only the introduction block, so the writer could not
   list the five shifts, and its repair timed out against the 120 s unit deadline.
 * Q2: the Canvas worksheet exceeded the 400-word budget twice and became raw PDF text.
+* Q4: keys at D in 6 of 9 questions, the key the longest option in 8 of 9, three reworded leaks missed.
 * Q5: two Must Dos had no practice: the fallback kept the provider practice only for kind "do", and
   "Ký cam kết …" was marked "decide"; ``learning_activities`` promised the held practice anyway.
 
@@ -15,11 +16,13 @@ The provider is the local fake; nothing reaches the network.
 
 from __future__ import annotations
 
+import itertools
 import json
 import re
 import unittest
 from dataclasses import replace
-from typing import Any
+from pathlib import Path
+from typing import Any, cast
 
 from app.idm.contracts import (
     IdmBlueprintRowV1,
@@ -33,6 +36,14 @@ from app.idm.contracts import (
 )
 from app.idm.framework import framework_support_brief, framework_support_lines
 from app.idm.limits import answer_limits
+from app.idm.mcq import (
+    OPTION_LETTERS,
+    encode_key_letters,
+    normalize_single_choice,
+    option_order,
+    practice_key_shift,
+    question_ordinal,
+)
 from app.idm.module_autofix import (
     BLOCK_ATTACHED_CODE,
     BLOCK_COVERED_CODE,
@@ -48,6 +59,7 @@ from app.idm.module_design import attach_framework_items, validate_lesson
 from app.idm.module_layout import ModuleScope, fallback_lesson, must_do_unit_position, project_lesson
 from app.idm.policy import AI_DRAFTED_MARKER_EN, AI_DRAFTED_MARKER_VI, IDM_PRACTICE_MAX_CRITERIA_FACTS
 from app.idm.prompts import module_prompt
+from app.idm.qa import reworded_key
 from app.idm.validation import errors
 from app.idm.worksheet import worksheet_fallback_html
 from tests import idm_golden_module as gm
@@ -60,7 +72,10 @@ from tests.test_idm_storyboard import (
     WRITER,
     FakeGenerate,
     StoryboardEndpointTestCase,
+    escalate_body,
+    escalate_writer,
     judge,
+    served,
     severity_body,
     severity_writer,
     slot_repair,
@@ -620,6 +635,181 @@ class WorksheetBudgetTests(StoryboardEndpointTestCase):
         self.assertTrue(component["source_locked_fallback"])
         self.assertEqual(re.findall(r"<tr><td>([^<]*)</td>", component["html"]), ["Mindset cần bỏ", "Khát vọng mới"])
         self.assertIn("<h3>Tự kiểm tra</h3>", component["html"])
+
+
+RUN_MCQ = json.loads((Path(__file__).parent / "fixtures" / "qlt3_run_8de1c76b_mcq.json").read_text("utf-8"))
+
+
+class SingleChoiceTests(StoryboardEndpointTestCase):
+    """Q4: keys at D in 6 of 9 questions (independent shuffles), the key the longest option in 8 of 9 (a note
+    only), three reworded leaks the 4-gram check missed."""
+
+    @staticmethod
+    def chapter(practice_units: list[int]) -> list[IdmLessonDesignV1]:
+        """One lesson per entry, its practice question in the given unit (the others teach)."""
+
+        lessons = []
+        for number, practice_unit in enumerate(practice_units, start=1):
+            units = []
+            for unit_number in range(1, practice_unit + 1):
+                components = [gm._component(1, "html", "explain", "Nội dung", ["cb_0005"])]
+                if unit_number == practice_unit:
+                    components.append(gm._component(2, "problem", "practice", "Câu hỏi", ["cb_0005"],
+                                                    practice_id="pt_1"))
+                units.append(gm._unit(unit_number, "practice_feedback", f"Unit {unit_number}", ["cb_0005"],
+                                      components))
+            lessons.append(IdmLessonDesignV1.model_validate(gm._lesson(
+                f"lsn_{number:03d}", f"Bài {number}", "Mục tiêu bài", [practice([key(4, 2)])], units)))
+        return lessons
+
+    @staticmethod
+    def served_letters(lessons: list[IdmLessonDesignV1], chapter_number: int) -> list[str]:
+        """The key letter each question gets in W5: its place in the course plus its practice's shift."""
+
+        letters = []
+        for lesson_number, lesson in enumerate(lessons, start=1):
+            for unit_number, unit in enumerate(lesson.units, start=1):
+                for item in unit.components:
+                    if item.type == "problem":
+                        ordinal = cast("int", question_ordinal(
+                            f"chapter_{chapter_number}.lesson_{lesson_number}.unit_{unit_number}"))
+                        letters.append(OPTION_LETTERS[(ordinal + practice_key_shift(item.practice_id)) % 4])
+        return letters
+
+    def test_w4_cycles_the_keys_of_a_chapter(self) -> None:
+        # Q4: the practice questions of chapter 2 of the run sat in units 2, 1, 1, 1, 2 of its lessons. With the
+        # place in the course alone two of them shared a letter; W4 numbers each practice so the keys cycle.
+        lessons = self.chapter([2, 1, 1, 1, 2])
+        plain = self.served_letters(lessons, 2)
+        self.assertEqual(plain, ["D", "C", "D", "A", "D"])
+        encoded, renumbered = encode_key_letters(lessons, chapter_order=1, first_letter=3)
+        self.assertEqual(self.served_letters(encoded, 2), ["D", "A", "B", "C", "D"])
+        self.assertEqual(renumbered, 3)
+        self.assertEqual([lesson.practice_tasks[0].practice_id for lesson in encoded],
+                         ["pt_1", "pt_3", "pt_3", "pt_3", "pt_1"])
+        # Every component follows the renumbered practice; nothing else changes.
+        for lesson in encoded:
+            referenced = {c.practice_id for unit in lesson.units for c in unit.components if c.practice_id}
+            self.assertEqual(referenced, {lesson.practice_tasks[0].practice_id})
+        self.assertEqual([lesson.model_dump(exclude={"practice_tasks", "units"}) for lesson in encoded],
+                         [lesson.model_dump(exclude={"practice_tasks", "units"}) for lesson in lessons])
+        # A design written before the encoding (pt_1 everywhere) keeps the plain letters of its place.
+        self.assertEqual(practice_key_shift("pt_1"), 0)
+        self.assertEqual(practice_key_shift(None), 0)
+
+    async def test_the_run_design_gets_balanced_keys(self) -> None:
+        # The golden chapters through the real W4 path: the keys of a chapter's practice questions cycle.
+        result, _, runtime = await design_module(1, [gm.MODULE_RESPONSES["mod_02"]])
+        lessons = [IdmLessonDesignV1.model_validate(item) for item in result["shard"]["idm_design"]["lessons"]]
+        self.assertEqual(len(self.served_letters(lessons, 2)), 1)
+        self.assertLessEqual(runtime.adjustments["IDM_W4_KEY_LETTERS_ENCODED"], 1)
+
+    def test_the_place_in_the_course_alone_never_repeats_a_letter_three_times(self) -> None:
+        # Knowledge checks (no practice) and later shards use the place in the course only. The lessons of a
+        # chapter cycle the letters; two consecutive lessons never share one.
+        self.assertEqual([OPTION_LETTERS[cast("int", question_ordinal(f"chapter_2.lesson_{n}.unit_1")) % 4]
+                          for n in range(1, 6)], ["B", "C", "D", "A", "B"])
+        for first, second in itertools.product(range(1, 4), repeat=2):
+            for lesson in range(1, 6):
+                self.assertNotEqual(
+                    cast("int", question_ordinal(f"chapter_1.lesson_{lesson}.unit_{first}")) % 4,
+                    cast("int", question_ordinal(f"chapter_1.lesson_{lesson + 1}.unit_{second}")) % 4)
+        # Never three in a row for any chapter of four lessons of 1-3 units with a question in every, the first or
+        # the last unit.
+        for counts in itertools.product((1, 2, 3), repeat=4):
+            for pick in (lambda n: range(1, n + 1), lambda n: [1], lambda n: [n]):
+                sequence = [cast("int", question_ordinal(f"chapter_{chapter}.lesson_{lesson}.unit_{unit}")) % 4
+                            for chapter in (1, 2, 3) for lesson, count in enumerate(counts, start=1)
+                            for unit in pick(count)]
+                self.assertFalse(any(a == b == c for a, b, c in zip(sequence, sequence[1:], sequence[2:],
+                                                                     strict=False)), counts)
+        self.assertIsNone(question_ordinal("lesson_1"))
+
+    def test_the_key_goes_to_its_letter_and_the_explanation_follows(self) -> None:
+        component = {"problem_type": "multiple_choice", "question": "Khiếu nại này thuộc cấp nào?", "choices": [
+            {"text": "Cấp 1 vì chưa có thiệt hại", "correct": False},
+            {"text": "Cấp 2 vì khách phàn nàn lần thứ hai", "correct": True},
+            {"text": "Cấp 3 vì cần escalate ngay", "correct": False},
+            {"text": "Không thuộc cấp nào vì chỉ là góp ý", "correct": False}],
+            "explanation": "A - sai vì chưa đủ; B - đúng vì phàn nàn lần thứ hai; C - sai vì không có yếu tố an toàn; "
+                           "D - sai vì khách có yêu cầu xử lý."}
+        for ordinal in range(8):
+            served, codes = normalize_single_choice(component, "cp2_" + "c" * 32, ordinal)
+            key_ = next(index for index, choice in enumerate(served["choices"]) if choice["correct"])
+            self.assertEqual(key_, ordinal % 4)
+            self.assertEqual(served["choices"][key_]["text"], "Cấp 2 vì khách phàn nàn lần thứ hai")
+            self.assertIn(f"{OPTION_LETTERS[key_]} - đúng vì phàn nàn lần thứ hai", served["explanation"])
+            self.assertEqual(codes["w5_problem_key_position_balanced"], 1)
+        # Without a single key (or an ordinal) the seeded shuffle of QLT-2 applies unchanged.
+        two_keys = {**component, "choices": [{**choice, "correct": True} for choice in component["choices"]]}
+        self.assertEqual(normalize_single_choice(two_keys, "cp2_" + "c" * 32, 3)[0]["choices"],
+                         [two_keys["choices"][old] for old in option_order("cp2_" + "c" * 32, 4)])
+
+    def test_reworded_leaks_of_the_run_are_found_and_the_others_are_not(self) -> None:
+        found = {question["unit"] for question in RUN_MCQ["questions"]
+                 if reworded_key({"question": question["question"], "choices": question["choices"]},
+                                 question["preceding_html_text"])}
+        # The three leaks of the QC report, plus the worksheet check whose key copies the template's confirmation
+        # sentence ("định hướng hành động thật … không phải lý thuyết đối phó").
+        self.assertEqual(found, {*RUN_MCQ["leaks_per_qc_report"], "c3.l1.u1"})
+        # A taught rule applied to the question's case is not a leak (the golden fixture of QLT-2, N3).
+        rule = ("Khiếu nại thuộc cấp 2 khi khách hàng phàn nàn lần thứ hai.")
+        golden = {"question": "Khách hàng gọi lần thứ hai vì giao trễ. Khiếu nại này thuộc cấp độ nào?", "choices": [
+            {"text": "Cấp 1 vì chưa có thiệt hại tài chính", "correct": False},
+            {"text": "Cấp 2 vì khách hàng phàn nàn lần thứ hai", "correct": True},
+            {"text": "Cấp 3 vì cần escalate ngay cho quản lý", "correct": False}]}
+        self.assertFalse(reworded_key(golden, rule))
+        self.assertFalse(reworded_key(golden, ""))
+
+    async def test_a_reworded_key_is_repaired_like_a_copied_one(self) -> None:
+        body = worksheet_body()
+        writer = worksheet_writer(body)
+        # The worked example is restated in the key in another order (few 4-grams survive) while the distractors
+        # are new: only the reworded-key check finds it.
+        writer["components"]["c0"]["semantic_content"]["sections"][2]["blocks"][0]["text"] = (
+            "Ví dụ mẫu: khách quen gọi lại lần hai vì hàng giao muộn; nhân viên ghi nhận cấp hai rồi báo trưởng "
+            "nhóm.")
+        choices = writer["components"]["c1"]["choices"]
+        choices[1]["text"] = "Báo trưởng nhóm, ghi nhận cấp hai: khách quen gọi lại lần hai vì hàng giao muộn"
+        choices[2]["text"] = "Cấp 3 vì khách dọa đăng lên mạng xã hội"
+        fixed = slot_repair(writer, 1, choices=[
+            {"text": "Cấp 1 vì chưa có thiệt hại tài chính", "correct": False},
+            {"text": "Cấp 2, vì cùng một người đã gọi lại để khiếu nại", "correct": True},
+            {"text": "Cấp 3 vì khách dọa đăng lên mạng xã hội", "correct": False}])
+        provider = FakeGenerate(**{WRITER: [writer], REPAIR: [fixed], JUDGE: [judge()]})
+        status, data, _ = await self.post(body, provider)
+        self.assertEqual(status, 200)
+        self.assertIn('{"code":"IDM_W5_ANSWER_LEAK","path":"components[1]"}', provider.calls[1]["prompt"])
+        quality = IdmUnitQualityV1.model_validate(data["unit"]["idm_quality"])
+        self.assertIn("IDM_W5_ANSWER_LEAK", quality.author_note.split("Đã tự sửa: ")[1])
+
+    async def test_a_length_cue_the_repair_fixes_is_settled(self) -> None:
+        body = escalate_body()
+        writer = escalate_writer(body)
+        writer["components"]["c0"]["choices"][0]["text"] = "Hứa hoàn tiền ngay để giữ chân khách VIP"
+        writer["components"]["c0"]["choices"][2]["text"] = "Chỉ thông báo trưởng nhóm vì đây là khách VIP"
+        fixed = slot_repair(escalate_writer(body), 0)
+        provider = FakeGenerate(**{WRITER: [writer], REPAIR: [fixed], JUDGE: [judge()]})
+        status, data, _ = await self.post(body, provider)
+        self.assertEqual(status, 200)
+        self.assertEqual(provider.names, [WRITER, REPAIR, JUDGE])
+        quality = self.assert_envelope(data, "provider_validated", "validated", "provider")
+        self.assertIn("Đã tự sửa: IDM_W5_ANSWER_LENGTH_CUE.", quality.author_note)
+        self.assertNotIn("Cần xem (IDM_W5_ANSWER_LENGTH_CUE", quality.author_note)
+
+    async def test_a_note_repair_that_breaks_the_question_is_dropped(self) -> None:
+        body = escalate_body()
+        writer = escalate_writer(body)
+        writer["components"]["c0"]["choices"][0]["text"] = "Hứa hoàn tiền ngay để giữ chân khách VIP"
+        writer["components"]["c0"]["choices"][2]["text"] = "Chỉ thông báo trưởng nhóm vì đây là khách VIP"
+        broken = slot_repair(writer, 0, explanation="Đúng!")
+        provider = FakeGenerate(**{WRITER: [writer], REPAIR: [broken], JUDGE: [judge()]})
+        status, data, _ = await self.post(body, provider)
+        self.assertEqual(status, 200)
+        quality = self.assert_envelope(data, "provider_validated", "validated", "provider")
+        self.assertEqual(data["unit"]["components"][0]["explanation"],
+                         served(body, writer, 0)["explanation"])
+        self.assertIn("Cần xem (IDM_W5_ANSWER_LENGTH_CUE", quality.author_note)
 
 
 class PracticeTaskBoundTests(unittest.TestCase):
