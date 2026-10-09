@@ -343,9 +343,12 @@ class IdmUnitWriter:
         # from the server-written support item W4 attached with the names of every item (QC run 8de1c76b, Q3).
         teaching = [slot for slot in brief.components if slot.type == "html" and slot.role != "practice"]
         self.framework_support = framework_support_lines(item.brief for slot in teaching for item in slot.support_items)
-        self.framework = build_promise(
-            [contract.unit_title, *(slot.title for slot in teaching)],
-            [*self.framework_support, *(fact.fact_text for fact in contract.source_facts)])
+        # The items come from one group: the support item, or the facts of one source block (QC run ab8d67e1, R1).
+        blocks: dict[str, list[str]] = {}
+        for fact in contract.source_facts:
+            blocks.setdefault(fact.scope_key, []).append(fact.fact_text)
+        self.framework = build_promise([contract.unit_title, *(slot.title for slot in teaching)],
+                                       [self.framework_support, *blocks.values()])
         self.framework_inserted = 0
         # The worksheet left out its worked example to fit the budget (Q2).
         self.worksheet_compacted = False
@@ -762,7 +765,7 @@ class IdmUnitWriter:
         """The teaching html with one more section listing every promised item by name (QC run 8de1c76b, Q3), when
         the names are known (unit facts or the W4 support item) and the slot stays within every html rule."""
 
-        if self.framework is None or len(self.framework.labels) < self.framework.count:
+        if self.framework is None or len(self.framework.labels) != self.framework.count:
             return None
         components = list(draft.unit.get("components", []))
         component = components[index] if 0 <= index < len(components) else None

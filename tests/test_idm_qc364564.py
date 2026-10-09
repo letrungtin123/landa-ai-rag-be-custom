@@ -546,7 +546,7 @@ class FrameworkTests(unittest.TestCase):
             self.assertIsNone(framework_promise([text]), text)
 
     def test_numbered_items_and_listing(self) -> None:
-        promise = build_promise(["Tổng quan 5 chuyển dịch"], SHIFT_FACTS)
+        promise = build_promise(["Tổng quan 5 chuyển dịch"], [SHIFT_FACTS])
         assert promise is not None
         self.assertEqual([label for label, _name in promise.items], [f"shift {n}" for n in range(1, 6)])
         listed = "Shift 1 làm chủ; Think Customer; Shift 3 hệ thống; Think Big; Think Partner."
@@ -556,7 +556,7 @@ class FrameworkTests(unittest.TestCase):
         self.assertEqual(framework_coverage(promise, [axes], "Trục 0 Trục 1 Trục 2 Trục 3 Trục 4"), 0)
         self.assertFalse(framework_listed(promise, [axes], "Trục 0 Trục 1 Trục 2 Trục 3 Trục 4"))
         # Facts that number no items: one list or table with every item is enough.
-        bare = build_promise(["Tổng quan 5 chuyển dịch"], ["Doanh nghiệp cần chuyển dịch tư duy."])
+        bare = build_promise(["Tổng quan 5 chuyển dịch"], [["Doanh nghiệp cần chuyển dịch tư duy."]])
         assert bare is not None and bare.items == ()
         self.assertTrue(framework_listed(bare, [axes], ""))
         self.assertFalse(framework_listed(bare, [html_component({"kind": "bullets", "items": ["a", "b"]})], ""))
@@ -565,7 +565,7 @@ class FrameworkTests(unittest.TestCase):
         body = severity_body()
         brief = IdmUnitBriefV1.model_validate(body["unit_contract"]["idm_unit_brief"])
         facts = [fact["fact_text"] for fact in body["unit_contract"]["source_facts"]]
-        promise = build_promise([body["unit_contract"]["unit_title"]], facts)
+        promise = build_promise([body["unit_contract"]["unit_title"]], [facts])
         assert promise is not None
         self.assertEqual(promise.count, 3)
         prose = severity_writer(body)["components"]["c0"]

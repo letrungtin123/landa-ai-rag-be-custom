@@ -1,0 +1,314 @@
+{
+ "source": "QC run ab8d67e1 (course-v1:nesso+4645+2026, 2026-10-09): the facts of every block of chapters 1, 2 and 5 by block, as W4 and W5 received them",
+ "chapters": {
+  "chapter-1": {
+   "cb_0004": {
+    "name": "Bốn lực đẩy tái cấu trúc bối cảnh kinh doanh mới là gì?",
+    "facts": {
+     "d1-c3-f1": "CHƯƠNG 01",
+     "d1-c3-f2": "WHY CHANGE? • BỐI CẢNH MỚI & KHOẢNH KHẮC CEO",
+     "d1-c3-f3": "1. Thế Giới Mới: Biến Động Là Trạng Thái Mặc Định",
+     "d1-c3-f4": "Môi trường kinh tế toàn cầu đã chấm dứt kỷ nguyên ổn định tương đối. Đối với người đứng đầu doanh nghiệp, biến động không còn là một cuộc khủng hoảng tạm thời cần vượt qua, mà đã trở thành trạng thái hoạt động bình thường mới. Bốn lực đẩy đồng thời tái cấu trúc sân chơi",
+     "d1-c3-f5": "Bước Nhảy Vọt AI & Digital",
+     "d1-c3-f6": "VUCA & BANI",
+     "d1-c3-f7": "Môi trường siêu biến động, khó đoán định, phi tuyến tính và dễ sụp đổ. Các kịch bản dự báo dựa trên quán tính quá khứ hoàn toàn bị vô hiệu hóa.",
+     "d1-c3-f8": "Công nghệ không còn là phần mềm hỗ trợ văn phòng hay bộ phận IT; trí tuệ nhân tạo đang trực tiếp định hình lại cấu trúc chi phí và mô hình ra quyết định.",
+     "d1-c3-f9": "Hành Vi Khách Hàng Mới",
+     "d1-c3-f10": "Cạnh Tranh Phi Truyền Thống",
+     "d1-c3-f11": "Khách hàng không còn trung thành vì sản phẩm \"đạt thông số kỹ thuật\". Họ yêu cầu tốc độ phản hồi tức thì, cá nhân hóa sâu sắc và trải nghiệm liền mạch.",
+     "d1-c3-f12": "Đối thủ đáng sợ nhất không nằm ở công ty đối diện, mà xuất hiện từ các nền tảng xuyên biên giới, các hệ sinh thái dữ liệu khổng lồ."
+    }
+   },
+   "cb_0006": {
+    "name": "Chuyển dịch mô hình vận hành từ kinh nghiệm sang năng lực hệ thống như thế nào?",
+    "facts": {
+     "d1-c3-f15": "THÔNG ĐIỆP CỐT LÕI • BIC CEO MOMENT",
+     "d1-c3-f16": "2. Chuyển Dịch Mô Hình Vận Hành (Operating Model Shift)",
+     "d1-c3-f17": "Doanh nghiệp SME muốn bứt phá bắt buộc phải thực hiện cuộc chuyển đổi căn bản từ việc vận hành dựa vào kinh nghiệm cá nhân sang vận hành bằng năng lực hệ thống chuẩn mực",
+     "d1-c3-f18": "Row 1: TRỤC VẬN HÀNH | MÔ HÌNH CŨ (KINH NGHIỆM) | MÔ HÌNH MỚI (NĂNG LỰC BIC 5.0)",
+     "d1-c3-f19": "Row 2: Tư thế quản trị | Chữa cháy sự vụ, đối phó khủng hoảng phát sinh | Phòng ngừa từ gốc, chủ động đón đầu rủi ro",
+     "d1-c3-f20": "Row 3: Ra quyết định | Dựa vào cảm tính, thói quen và kinh nghiệm cá nhân | Dựa trên dữ liệu thực chứng và sự thật khách quan",
+     "d1-c3-f21": "Row 4: Mục tiêu tối ưu | Tối ưu hóa cục bộ theo từng phòng ban rời rạc | Tối ưu hóa toàn diện dòng chảy giá trị toàn công ty",
+     "d1-c3-f22": "Row 5: Ứng dụng công nghệ | Mua sắm phần mềm đơn lẻ, số hóa hình thức | Chuyển đổi mô hình kinh doanh và trải nghiệm số",
+     "d1-c3-f23": "Row 6: Chiến lược nguồn lực | Cố gắng tự sở hữu mọi nhân sự, máy móc, nhà xưởng | Siêu kết nối hệ sinh thái mở (ERA5.0)",
+     "d1-c3-f24": "CÂU HỎI THEN CHỐT THỨC TỈNH LÃNH ĐẠO SME",
+     "d1-c3-f25": "Doanh nghiệp của anh/chị đang thực sự bị giới hạn bởi sự thiếu thốn nguồn lực (thiếu vốn, thiếu người tài, thiếu công nghệ), hay đang bị giới hạn bởi chính CÁCH TƯ DUY của lãnh đạo về việc khai thác nguồn lực?"
+    }
+   },
+   "cb_0008": {
+    "name": "Công thức nền tảng định nghĩa bản chất BiC là gì?",
+    "facts": {
+     "d1-c4-f5": "CÔNG THỨC NỀN TẢNG ĐỊNH NGHĨA BẢN CHẤT BIC",
+     "d1-c4-f6": "BiC = Lean System + Efficiency → Preventive & Proactive",
+     "d1-c4-f7": "Hệ thống tinh gọn (Lean) triệt tiêu lãng phí kết hợp với Hiệu quả đo lường được (Efficiency) tạo ra năng lực quản trị Phòng ngừa từ gốc (Preventive) và Chủ động đón đầu (Proactive). Rời khỏi tư duy chữa cháy."
+    }
+   },
+   "cb_0013": {
+    "name": "Mô hình ngôi nhà BiC và vai trò nền móng của Change Mindset là gì?",
+    "facts": {
+     "d1-c5-f1": "CHƯƠNG 03",
+     "d1-c5-f2": "THE BEST-IN-CLASS HOUSE • KIẾN TRÚC NĂNG LỰC",
+     "d1-c5-f3": "Ngôi Nhà Năng Lực Best-in-Class",
+     "d1-c5-f4": "Mọi hoạt động quản trị của doanh nghiệp phải được tích hợp thành một cấu trúc vững chãi. Không thể áp dụng các công cụ quản lý một cách chắp vá, ngẫu hứng",
+     "d1-c5-f5": "MỤC TIÊU TỐI THƯỢNG: BUSINESS EXCELLENCE & MADE-IN-WORLD",
+     "d1-c5-f6": "CHIẾN LƯỢC",
+     "d1-c5-f7": "BMQ / Canvas / Balanced",
+     "d1-c5-f8": "R&D SÁNG TẠO",
+     "d1-c5-f9": "PMP / NQC Chuẩn Hóa Phát",
+     "d1-c5-f10": "KIỂM SOÁT",
+     "d1-c5-f11": "Hệ Thống ROSS & DQI Kiểm Tra",
+     "d1-c5-f12": "KHÁCH HÀNG",
+     "d1-c5-f13": "Customer Delight & QA Hành",
+     "d1-c5-f14": "Triển",
+     "d1-c5-f15": "Động",
+     "d1-c5-f16": "Scorecard",
+     "d1-c5-f17": "Trình",
+     "d1-c5-f18": "TRIỆT TIÊU LỖI",
+     "d1-c5-f19": "G8D / 5Why Giải Quyết Tận Gốc",
+     "d1-c5-f20": "NHÂN SỰ & VĂN HÓA",
+     "d1-c5-f21": "RACI / JD / Phát Triển Đội Ngũ",
+     "d1-c5-f22": "TINH GỌN LEAN",
+     "d1-c5-f23": "TPS / Dòng Chảy / Six Sigma",
+     "d1-c5-f24": "CHUYỂN ĐỔI SỐ",
+     "d1-c5-f25": "Digital & AI Operating Model",
+     "d1-c5-f26": "N-1",
+     "d1-c5-f27": "MÓNG NHÀ NỀN TẢNG: MODUN 1 — CHANGE MINDSET (TƯ DUY LÃNH ĐẠO)",
+     "d1-c5-f28": "Vì Sao \"Change Mindset\" Phải Là Nền Móng?",
+     "d1-c5-f29": "Trong xây dựng, móng chịu toàn bộ tải trọng của ngôi nhà. Nếu móng nứt gãy hoặc yếu ớt, ngôi nhà càng xây cao thì nguy cơ đổ sập càng lớn. Tương tự như vậy trong doanh nghiệp"
+    }
+   },
+   "cb_0014": {
+    "name": "Hệ quả khi thay đổi tư duy đúng so với khi tư duy không đổi là gì?",
+    "facts": {
+     "d1-c5-f30": "Khi Móng Tư Duy Được Cài Đặt Đúng",
+     "d1-c5-f31": "Khi Móng Tư Duy Không Đổi",
+     "d1-c5-f32": "Chiến lược chỉ là những khẩu hiệu sáo rỗng đóng khung treo tường.",
+     "d1-c5-f33": "Chỉ số KPI trở thành gánh nặng, sinh ra tâm lý đối phó số liệu.",
+     "d1-c5-f34": "Công nghệ số & AI biến thành khoản chi phí lãng phí không ROI.",
+     "d1-c5-f35": "Các công cụ Lean trở thành các cuộc họp hành chính rườm rà.",
+     "d1-c5-f36": "8 modun còn lại chỉ là công cụ rời rạc, không cộng hưởng.",
+     "d1-c5-f37": "Chiến lược có lựa chọn rõ ràng: việc gì cần làm và việc gì từ bỏ.",
+     "d1-c5-f38": "Hệ thống vận hành dựa trên tự giác và kỷ luật phòng ngừa tự động.",
+     "d1-c5-f39": "Con người thấu hiểu vai trò (RACI), chủ động chịu trách nhiệm.",
+     "d1-c5-f40": "Công nghệ & Dữ liệu trở thành vũ khí trực tiếp tạo ra lợi nhuận.",
+     "d1-c5-f41": "Toàn bộ tổ chức cùng nhìn về một hướng: phụng sự khách hàng."
+    }
+   },
+   "cb_0015": {
+    "name": "Nguyên nhân gốc rễ dẫn đến thất bại của các dự án chuyển đổi là gì?",
+    "facts": {
+     "d1-c5-f42": "KHẮC SÂU CHÂN LÝ",
+     "d1-c5-f43": "Công cụ quản trị không có lỗi. Công nghệ số không có lỗi. Sự thất bại của các dự án chuyển đổi trong doanh nghiệp 90% bắt nguồn từ việc lãnh đạo cố gắng áp dụng các công cụ hiện đại trên nền một hệ điều hành tư duy cũ kỹ!"
+    }
+   },
+   "cb_0016": {
+    "name": "Định vị Made-in-Vietnam = Made-in-World là gì?",
+    "facts": {
+     "d1-c6-f1": "CHƯƠNG 04",
+     "d1-c6-f2": "THE VIETNAM DREAM • TẦM NHÌN MADE-IN-WORLD",
+     "d1-c6-f3": "1. Tuyên Ngôn: Made-in-Vietnam = Made-in-World",
+     "d1-c6-f4": "Khát vọng lớn nhất của chương trình Best-in-Class thế hệ mới là nâng tầm định vị thương hiệu quốc gia. Khái niệm",
+     "d1-c6-f5": "Made-in-Vietnam không thể mãi gắn liền với hình ảnh nhân công giá rẻ, gia công thô ráp (*Labor-intensive*) hay sản phẩm chất lượng loại hai.",
+     "d1-c6-f6": "PHƯƠNG TRÌNH ĐẲNG CẤP TOÀN CẦU",
+     "d1-c6-f7": "MADE-IN-VIETNAM ≡ MADE-IN-WORLD",
+     "d1-c6-f8": "Sản phẩm làm ra tại Việt Nam phải đồng nghĩa với: Chất lượng đỉnh cao • Uy tín tuyệt đối • Giá trị gia tăng lớn • Đổi mới liên tục • Chuẩn mực toàn cầu."
+    }
+   },
+   "cb_0017": {
+    "name": "6 nấc thang năng lực vận hành The Made-in-World Ladder gồm những bậc nào?",
+    "facts": {
+     "d1-c6-f9": "2. Nấc Thang Giá Trị (The Made-in-World Ladder)",
+     "d1-c6-f10": "Hành trình vươn ra biển lớn không phải là câu chuyện truyền thông hoa mỹ, mà là một quá trình tích lũy năng lực vận hành được chứng minh qua 6 nấc thang khắt khe",
+     "d1-c6-f11": "Row 1: NẤC THANG | TÊN GỌI NĂNG LỰC | ĐẶC TRƯNG VẬN HÀNH & THƯỚC ĐO ĐẠT CHUẨN",
+     "d1-c6-f12": "Row 2: Bậc 01 | Vietnam Manufacturing | Gia công thuần túy, phụ thuộc khách hàng cung cấp nguyên phụ liệu và thiết kế. Biên lợi nhuận mỏng manh (3–5%).",
+     "d1-c6-f13": "Row 3: Bậc 02 | Vietnam Quality | Đạt chuẩn kỹ thuật, có các chứng nhận quốc tế (ISO, CE, FDA). Sản phẩm ổn định, tỷ lệ lỗi dưới ngưỡng cho phép.",
+     "d1-c6-f14": "Row 4: Bậc 03 | Vietnam Value | Tối ưu hóa chi phí ẩn, làm chủ chuỗi cung ứng vật tư trong nước.",
+     "d1-c6-f15": "Nâng tỷ suất lợi nhuận và giá trị giữ lại cho doanh nghiệp.",
+     "d1-c6-f16": "Row 5: Bậc 04 | Vietnam Know-how | Làm chủ bí quyết công nghệ, sở hữu quy trình sản xuất độc quyền hoặc công thức thiết kế riêng biệt khó sao chép.",
+     "d1-c6-f17": "Row 6: Bậc 05 | Vietnam Innovation | Tiên phong tạo ra sản phẩm mới giải quyết nỗi đau của thị trường",
+     "d1-c6-f18": "ứng dụng vật liệu xanh, công nghệ số và mô hình mới.",
+     "d1-c6-f19": "Row 7: Bậc 06 | Vietnam Brand | Xây dựng thành công thương hiệu có uy tín, khách hàng quốc tế chủ động tìm mua với mức giá cao nhờ niềm tin.",
+     "d1-c6-f20": "Row 8: ĐỈNH CAO | MADE-IN-WORLD | Năng lực vận hành chuẩn mực toàn cầu. Doanh nghiệp Việt Nam tham gia định hình luật chơi và dẫn dắt phân khúc ngành."
+    }
+   },
+   "cb_0010": {
+    "name": "Chu trình PDCA và 9 cấu phần công cụ BiC tích hợp như thế nào?",
+    "facts": {
+     "d1-c4-f19": "2. Chu Trình PDCA & 9 Cấu Phần Công Cụ Di Sản",
+     "d1-c4-f20": "BiC kế thừa cấu trúc vận hành khoa học của Deming (PDCA) nhưng tích hợp thành một bộ công cụ hoàn chỉnh chuẩn mực",
+     "d1-c4-f21": "Row 1: CHU TRÌNH | CẤU PHẦN CÔNG CỤ BIC | Ý NGHĨA VẬN HÀNH THỰC CHIẾN",
+     "d1-c4-f22": "Row 2: PLAN | Change Mindset + BQS/BMQ | Cài đặt tư duy chất lượng lãnh đạo & thiết lập hệ thống chỉ số đo lường báo cáo chất lượng theo dữ liệu thực.",
+     "d1-c4-f23": "Row 3: DO | SPD (Standard Product Dev) | Chuẩn hóa quy trình nghiên cứu và phát triển sản phẩm ngay từ đầu; tránh việc làm sai rồi mới đi sửa.",
+     "d1-c4-f24": "Row 4: CHECK | PQA & DQI (Dynamic Quality Insp.) | Đảm bảo chất lượng toàn diện kết hợp kiểm tra động thích ứng nhanh với biến thiên vật tư và sản xuất.",
+     "d1-c4-f25": "Row 5: ACTION | G8D & Kill CRR (Customer Return) | Quy trình 8 bước triệt tiêu lỗi gốc rễ; mục tiêu tối thượng là xóa bỏ hoàn toàn tỷ lệ khách hàng trả hàng.",
+     "d1-c4-f26": "Row 6: ADVANCED | Lean / TPS & Six Sigma | Tinh gọn dòng chảy sản xuất, loại bỏ triệt để các lãng phí",
+     "d1-c4-f27": "(Muda) và kiểm soát độ biến thiên sản phẩm tiệm cận 0."
+    }
+   }
+  },
+  "chapter-2": {
+   "cb_0019": {
+    "name": "5 chuyển dịch tư duy sống còn của lãnh đạo 5.0 là gì?",
+    "facts": {
+     "d1-c7-f1": "CHƯƠNG 05",
+     "d1-c7-f2": "BIC 5 MINDSET SHIFTS • 5 BƯỚC CHUYỂN DỊCH TƯ DUY (1)",
+     "d1-c7-f3": "5 Chuyển Dịch Tư Duy Sống Còn Của Lãnh Đạo 5.0",
+     "d1-c7-f4": "Để bước qua cánh cổng chuyển đổi, CEO không thể chỉ dừng lại ở sự đồng cảm chung chung. Năm chuyển dịch sau đây là những yêu cầu tái cấu trúc nhận thức mang tính bắt buộc"
+    }
+   },
+   "cb_0020": {
+    "name": "Chuyển dịch 1: Think Big - Từ tư duy tồn tại sang khát vọng lớn như thế nào?",
+    "facts": {
+     "d1-c7-f5": "SHIFT 1: THINK BIG — Từ Tư Duy \"Tồn Tại\" Sang \"Khát Vọng Lớn\"",
+     "d1-c7-f6": "Tư duy cũ (Bẫy an phận)",
+     "d1-c7-f7": "\"Quy mô mình nhỏ, chỉ cần làm đủ sống, đủ trả nợ ngân hàng và lo lương cho anh em là tốt rồi.\" Hậu quả: Doanh nghiệp luôn bị động, chạy theo đơn hàng vụn vặt, không bao giờ tích lũy nguồn lực.",
+     "d1-c7-f8": "Tư duy mới (BiC Ambition)",
+     "d1-c7-f9": "Đặt câu hỏi chiến lược: \"Doanh nghiệp chúng ta sẽ trở thành",
+     "d1-c7-f10": "Best-in-Class ở năng lực cụ thể nào trong ngành?\" Khát vọng lớn là ngọn hải đăng (North Star) để dẫn dắt mọi lựa chọn đầu tư.",
+     "d1-c7-f11": "• HÀNH ĐỘNG CEO: Xác định 01 tham vọng vượt chuẩn ngành trong 3 năm tới và chọn ngay 01 năng lực lõi cần nâng cấp trong",
+     "d1-c7-f12": "90 ngày."
+    }
+   },
+   "cb_0021": {
+    "name": "Chuyển dịch 2: Think Different - Từ benchmark nội địa sang chuẩn Best-in-Class như thế nào?",
+    "facts": {
+     "d1-c7-f13": "SHIFT 2: THINK DIFFERENT — Từ Benchmark Nội Địa Sang Chuẩn Best-in-Class",
+     "d1-c7-f14": "Câu hỏi đúng đắn",
+     "d1-c7-f15": "\"Chuẩn mực vận hành tốt nhất thế giới trong ngành này là gì, và doanh nghiệp Việt Nam có thể tạo ra sự khác biệt độc bản bằng cách nào?\" Học hỏi chuẩn quốc tế + Giải pháp bản địa linh hoạt.",
+     "d1-c7-f16": "Câu hỏi sai lầm",
+     "d1-c7-f17": "\"Các đối thủ cạnh tranh trong nước đang bán giá bao nhiêu và làm như thế nào?\" Cách nhìn này giam hãm doanh nghiệp trong một cuộc chiến hạ giá tự sát (*Race to the bottom*) và tự thỏa mãn với tiêu chuẩn thấp.",
+     "d1-c7-f18": "• HÀNH ĐỘNG CEO: Chọn 01 case study dẫn đầu thế giới trong ngành để mổ xẻ cấu trúc chi phí và mô hình phục vụ của họ."
+    }
+   },
+   "cb_0022": {
+    "name": "Chuyển dịch 3: Think Customer - Từ tiêu chuẩn kỹ thuật sang Customer Delight như thế nào?",
+    "facts": {
+     "d1-c7-f19": "SHIFT 3: THINK CUSTOMER — Từ Tiêu Chuẩn Kỹ Thuật Sang \"Customer Delight\"",
+     "d1-c7-f20": "Tư duy cũ (Kiểm soát lỗi)",
+     "d1-c7-f21": "Xem chất lượng là việc sản phẩm sản xuất ra ít lỗi kỹ thuật, đáp ứng đúng hợp đồng đã ký. Đạt 95% là thở phào nhẹ nhõm.",
+     "d1-c7-f22": "Tư duy mới (Gắn kết trọn đời)",
+     "d1-c7-f23": "Chất lượng thực sự được đo bằng: Khách hàng tuyệt đối tin tưởng, sẵn sàng quay lại mua nhiều lần, tự nguyện giới thiệu cho người khác và vui vẻ trả giá cao hơn.",
+     "d1-c7-f24": "• HÀNH ĐỘNG CEO: Tái thiết kế toàn bộ 01 điểm chạm trọng yếu trong hành trình khách hàng để tạo ra cảm xúc \"Wow & Delight\"."
+    }
+   },
+   "cb_0023": {
+    "name": "Chuyển dịch 4: Think System - Thoát bẫy chữa cháy sang vận hành xuất sắc như thế nào?",
+    "facts": {
+     "d1-c8-f3": "SHIFT 4: THINK SYSTEM — Thoát Bẫy \"Chữa Cháy\" Sang Vận Hành Xuất Sắc",
+     "d1-c8-f4": "Căn Bệnh Trầm Kha Của SME (Bẫy Fire Fighting): Trong hầu hết doanh nghiệp Việt Nam, ban giám đốc và các kỹ sư giỏi nhất dành tới 70% – 80% thời gian mỗi ngày chỉ để chạy đi giải quyết sự cố phát sinh: hàng giao trễ, linh kiện lỗi, khách hàng khiếu nại. Cả công ty quay cuồng bận rộn nhưng nội lực không tăng tiến.",
+     "d1-c8-f5": "Quy luật chi phí: Đầu tư 1 đồng cho phòng ngừa lỗi từ đầu sẽ tiết kiệm được 10 đồng chi phí kiểm tra và 100 đồng chi phí đền bù tổn thất khi lỗi lọt ra thị trường.",
+     "d1-c8-f6": "Nguyên nhân sâu xa: Doanh nghiệp tiếc tiền đầu tư ban đầu vào thiết kế R&D, tiêu chuẩn hóa quy trình, thiết lập hệ thống dữ liệu và đào tạo con người.",
+     "d1-c8-f7": "• HÀNH ĐỘNG CEO: Chọn 01 quy trình hay xảy ra sự cố nhất trong tháng qua, áp dụng 5Why để tìm nguyên nhân gốc và ban hành cơ chế phòng ngừa."
+    }
+   },
+   "cb_0024": {
+    "name": "Chuyển dịch 5: Think Ecosystem - Từ tự sở hữu hữu hạn sang siêu kết nối ERA5.0 như thế nào?",
+    "facts": {
+     "d1-c8-f8": "SHIFT 5: THINK ECOSYSTEM — Từ \"Tự Sở Hữu Hữu Hạn\" Sang \"Siêu Kết Nối ERA5.0\"",
+     "d1-c8-f9": "Tư duy \"Own Everything\" (Cũ)",
+     "d1-c8-f10": "Cố gắng tự tuyển đủ chuyên gia vào biên chế, tự mua mọi máy móc đắt tiền, tự viết phần mềm riêng. Kết quả: Chi phí vận hành cố định quá cao, bộ máy cồng kềnh và tốc độ cực kỳ chậm chạp.",
+     "d1-c8-f11": "Tư duy \"Connect Everything\" (Mới)",
+     "d1-c8-f12": "SME tập trung giữ lại năng lực lõi và linh hồn sản phẩm, còn lại kết nối với mạng lưới nguồn lực tinh hoa toàn cầu: chuyên gia cố vấn, nền tảng AI/Cloud có sẵn và đối tác phân phối.",
+     "d1-c8-f13": "• HÀNH ĐỘNG CEO: Lập bản đồ 03 nguồn lực bên ngoài doanh nghiệp cần thiết lập liên minh chiến lược trong vòng 90 ngày tới."
+    }
+   },
+   "cb_0027": {
+    "name": "ERA5.0 là gì và gồm những trụ cột nguồn lực nào?",
+    "facts": {
+     "d1-c10-f1": "CHƯƠNG 06",
+     "d1-c10-f2": "ERA5.0 • MÔ THỨC SIÊU KẾT NỐI NGUỒN LỰC",
+     "d1-c10-f3": "1. ERA5.0 Dưới Lăng Kính Doanh Nghiệp SME",
+     "d1-c10-f4": "ERA5.0 không phải là một danh bạ hay một câu lạc bộ giao lưu đơn thuần; ERA5.0 được định vị là Hệ sinh thái chuyển đổi doanh nghiệp toàn diện (*Business Transformation Ecosystem*) dành riêng cho SME Việt Nam.",
+     "d1-c10-f5": "SME ↔ Expert ↔ Technology ↔ AI/Data ↔ Capital ↔ Market ↔ University ↔ Global Network",
+     "d1-c10-f6": "Mục tiêu cốt lõi: Biến các nguồn lực tinh hoa khổng lồ bên ngoài xã hội thành năng lực tăng trưởng nội tại bên trong doanh nghiệp với chi phí và thời gian tối ưu nhất.",
+     "d1-c10-f7": "6 Trụ Cột Nguồn Lực Kết Nối Của ERA5.0",
+     "d1-c10-f8": "Expert (Chuyên Gia)",
+     "d1-c10-f9": "Capital (Nguồn Vốn)",
+     "d1-c10-f10": "Technology & AI",
+     "d1-c10-f11": "Mạng lưới Thinktank, chuyên gia đầu ngành về quản trị hệ thống, chuyên gia Nhật Bản, Big 4 và các nhà khoa học.",
+     "d1-c10-f12": "Nền tảng công nghệ sẵn có, giải pháp tự động hóa, điện toán đám mây và các công cụ AI phân tích dữ liệu chuyên sâu.",
+     "d1-c10-f13": "Tiếp cận các quỹ đầu tư mạo hiểm, quỹ tài trợ đổi mới công nghệ, mô hình vốn hợp tác và giải pháp tài chính chuỗi.",
+     "d1-c10-f14": "Market (Thị Trường)",
+     "d1-c10-f15": "Know-how (Tri Thức)",
+     "d1-c10-f16": "Global Network",
+     "d1-c10-f17": "Mở rộng mạng lưới đối tác thương mại, kết nối vào chuỗi cung ứng của các tập đoàn FDI và sàn thương mại quốc tế.",
+     "d1-c10-f18": "Hệ thống giáo trình, cẩm nang quy trình chuẩn, các case study thành công và thất bại được đúc kết thành phương pháp.",
+     "d1-c10-f19": "Mạng lưới liên kết với các hiệp hội quốc tế, các cơ quan kiểm định chất lượng toàn cầu giúp đưa sản phẩm ra thế giới."
+    }
+   },
+   "cb_0025": {
+    "name": "Ma trận chuyển đổi hệ điều hành tư duy lãnh đạo BiC 5.0 gồm những trục nào?",
+    "facts": {
+     "d1-c8-f14": "Ma Trận Chuyển Đổi Hệ Điều Hành Tư Duy Lãnh Đạo",
+     "d1-c8-f15": "Row 1: TRỤC QUẢN TRỊ | HỆ ĐIỀU HÀNH CŨ (CẦN ĐOẠN TUYỆT) | HỆ ĐIỀU HÀNH MỚI (BIC 5.0 CẦN CÀI ĐẶT)",
+     "d1-c8-f16": "Row 2: Thái độ trước lỗi | Tìm người để quy trách nhiệm, phạt tiền | Tìm lỗi của hệ thống và quy trình để vá lại",
+     "d1-c8-f17": "Row 3: Kỷ luật chuyển đổi số | Chỉ đạo mệnh lệnh một chiều từ trên xuống",
+     "d1-c8-f18": "(Top-down) | Thực thi từ dưới lên kết hợp thẩm định (Maker",
+     "d1-c8-f19": "Checker – Validate)",
+     "d1-c8-f20": "Row 4: Ứng dụng Trí tuệ",
+     "d1-c8-f21": "AI | Xem AI là đồ chơi công nghệ, chỉ dùng viết content | Tái cấu trúc luồng công việc (Operating Model with AI)",
+     "d1-c8-f22": "Row 5: Đội ngũ nhân sự | Chia ranh giới phòng ban biệt lập (Silo) | Mô hình đội ngũ liên chức năng (Fusion Teams)"
+    }
+   }
+  },
+  "chapter-5": {
+   "cb_0029": {
+    "name": "Dòng chảy chuyển hóa năng lực lãnh đạo tạo ra giá trị kinh doanh như thế nào?",
+    "facts": {
+     "d1-c11-f1": "CHƯƠNG 07",
+     "d1-c11-f2": "ACTION ROADMAP • TỪ MINDSET SANG 90-DAY CHALLENGE",
+     "d1-c11-f3": "Chuỗi Giá Trị Chuyển Hóa: Không Hành Động → Vô Nghĩa",
+     "d1-c11-f4": "Một chương trình đào tạo thay đổi tư duy chỉ thực sự thành công khi nó dẫn đến sự thay đổi hành vi và tạo ra kết quả kinh doanh đo lường được trên báo cáo tài chính theo dòng chảy",
+     "d1-c11-f5": "DÒNG CHẢY CHUYỂN HÓA NĂNG LỰC LÃNH ĐẠO",
+     "d1-c11-f6": "MINDSET →AMBITION →STRATEGY →CAPABILITY →ACTION →BUSINESS VALUE",
+     "d1-c11-f7": "\"Không có Action, Change Mindset chỉ dừng lại ở cảm hứng nhất thời. Không có Business Value đo lường được, Action chỉ là phong trào tốn kém!\""
+    }
+   },
+   "cb_0030": {
+    "name": "Cách triển khai lộ trình CEO 90-Day Challenge qua 3 giai đoạn?",
+    "facts": {
+     "d1-c11-f8": "CEO 90-Day Challenge: Lộ Trình 3 Giai Đoạn",
+     "d1-c11-f9": "30 Ngày: SEE DIFFERENT",
+     "d1-c11-f10": "30 Ngày: THINK DIFFERENT",
+     "d1-c11-f11": "30 Ngày: ACT DIFFERENT",
+     "d1-c11-f12": "Kiểm toán thực trạng: Audit lại hệ điều hành tư duy; nhận diện các điểm nghẽn nghiêm trọng nhất trong vận hành; thống kê các quy trình hay",
+     "d1-c11-f13": "\"cháy\".",
+     "d1-c11-f14": "Lựa chọn chiến lược: Thiết lập tham vọng mới; chọn 01 năng lực lõi cần vươn lên Best-in-Class; lập bản đồ siêu kết nối nguồn lực ngoài và thiết kế Quick-Win.",
+     "d1-c11-f15": "Thực thi & Chuẩn hóa: Triển khai thí điểm; đo lường kết quả hàng tuần bằng dữ liệu thực; đóng gói thành quy trình chuẩn (SOP) và nhân rộng."
+    }
+   },
+   "cb_0032": {
+    "name": "Bản cam kết hành động của lãnh đạo gồm những nội dung gì?",
+    "facts": {
+     "d1-c12-f1": "PHẦN KẾT",
+     "d1-c12-f2": "BẢN CAM KẾT THỰC THI & KHÉP LẠI CHƯƠNG TRÌNH",
+     "d1-c12-f3": "BẢN CAM KẾT HÀNH ĐỘNG CỦA LÃNH ĐẠO",
+     "d1-c12-f4": "THAY ĐỔI CEO → THAY ĐỔI DOANH NGHIỆP → NĂNG LỰC MADE-IN-WORLD",
+     "d1-c12-f5": "Tôi, người đứng đầu doanh nghiệp, thấu hiểu sâu sắc rằng: Sự phát triển của doanh nghiệp không bao giờ có thể vượt qua tầm nhìn và hệ điều hành tư duy của người lãnh đạo. Bằng tài liệu này, tôi cam kết sẽ dẫn dắt doanh nghiệp thực hiện cuộc chuyển đổi thực chất, không hình thức, lấy kỷ luật phòng ngừa và giá trị thực của khách hàng làm thước đo cao nhất.",
+     "d1-c12-f6": "Row 1: 01 Năng Lực Sẽ Trở Thành Best-in",
+     "d1-c12-f7": "Row 2: 01 Hành Động Đo Được Trong 90 Ngày; ...............................................................................................................................",
+     "d1-c12-f8": "Row 3: Chỉ Số Đo Lường Thành Công (KPI /",
+     "d1-c12-f9": "Row 4: Người Phụ Trách Triển Khai (Owner); ...............................................................................................................................",
+     "d1-c12-f19": "ĐẠI DIỆN HỘI ĐỒNG CHUYÊN GIA / COACH",
+     "d1-c12-f20": "NGƯỜI LÃNH ĐẠO CAM KẾT (CEO / FOUNDER)",
+     "d1-c12-f21": "Ký, ghi rõ họ tên & Đơn vị xác nhận",
+     "d1-c12-f22": "Ký, ghi rõ họ tên & Đóng dấu doanh nghiệp"
+    }
+   },
+   "cb_0031": {
+    "name": "8 cam kết Quick-Win cần đạt được trong 90 ngày gồm những gì?",
+    "facts": {
+     "d1-c11-f16": "Checklist 8 Cam Kết Quick-Win Cần Đạt Được Trong 90 Ngày",
+     "d1-c11-f17": "01 Tư duy quản trị lỗi thời đã được người lãnh đạo chính thức tuyên bố từ bỏ trước toàn thể đội ngũ.",
+     "d1-c11-f18": "01 Tham vọng chiến lược (Ambition) 3 năm mới được định lượng rõ ràng và truyền thông thống nhất tới cấp N-1.",
+     "d1-c11-f19": "01 Điểm chạm khách hàng trọng yếu được tái thiết kế hoàn chỉnh để mang lại trải nghiệm vượt trội (Customer Delight).",
+     "d1-c11-f20": "01 Năng lực vận hành cốt lõi được ban hành lộ trình nâng cấp bài bản lên chuẩn Best-in-Class của ngành.",
+     "d1-c11-f21": "01 Quy trình hay xảy ra sai sót nhất được tìm tận gốc rễ (5Why) và áp dụng cơ chế kiểm soát phòng ngừa triệt để.",
+     "d1-c11-f22": "01 Ứng dụng AI hoặc số hóa cụ thể được đưa vào vận hành thực tế giúp nâng cao tối thiểu 30% năng suất phòng ban.",
+     "d1-c11-f23": "01 Nguồn lực chiến lược bên ngoài (chuyên gia hoặc đối tác giải pháp) được kết nối thành công qua mô hình ERA5.0.",
+     "d1-c11-f24": "01 Kết quả cải tiến kinh doanh (Quick-Win) cụ thể, đo lường được bằng tiền hoặc thời gian hoàn tất trong 90 ngày."
+    }
+   }
+  }
+ }
+}

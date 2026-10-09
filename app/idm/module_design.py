@@ -365,8 +365,8 @@ def attach_framework_items(lessons: Sequence[IdmLessonDesignV1], scope: ModuleSc
     and to the W5 check, without changing which facts the unit owns.
     """
 
-    shard_texts = [scope.fact_text[key] for plan in scope.lesson_plans for block_id in plan.block_ids
-                   for key in scope.blocks[block_id].fact_keys if key in scope.fact_text]
+    # One group per block: the items must all come from one block (QC run ab8d67e1, R1).
+    shard_groups = [scope.block_texts([block_id]) for plan in scope.lesson_plans for block_id in plan.block_ids]
     attached = 0
     result: list[IdmLessonDesignV1] = []
     for lesson in lessons:
@@ -375,8 +375,8 @@ def attach_framework_items(lessons: Sequence[IdmLessonDesignV1], scope: ModuleSc
             target = next((index for index, component in enumerate(unit.components)
                            if component.type == "html" and component.role != "practice"), None)
             brief = None if target is None else unit_framework_brief(
-                [unit.title, unit.components[target].title], scope.block_texts(unit.block_ids), shard_texts,
-                scope.locale)
+                [unit.title, unit.components[target].title],
+                [scope.block_texts([block_id]) for block_id in unit.block_ids], shard_groups, scope.locale)
             if target is None or brief is None:
                 units.append(unit)
                 continue
