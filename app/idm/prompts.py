@@ -12,6 +12,7 @@ import json
 from collections.abc import Iterable, Sequence
 from typing import Any, Final, Literal
 
+from app.idm.artifacts import ROW_LABEL_ANY_RE
 from app.idm.html_rules import (
     DENSITY_CODE,
     GROUP_LIMITS,
@@ -80,6 +81,13 @@ def fact_lines(facts: Iterable[tuple[str, str, Sequence[str] | None]]) -> str:
         else:
             lines.append(f"[{fact_key}] {','.join(flags) or '-'} {one_line}")
     return "\n".join(lines)
+
+
+def learner_fact_lines(facts: Iterable[tuple[str, str, Sequence[str] | None]]) -> str:
+    """``fact_lines`` without the "Row N:" labels the PDF reader puts before table rows (QC run ab8d67e1, R5): the
+    W5 writer and the judge read the cells, never the label the writer used to copy into learner text."""
+
+    return fact_lines((key, ROW_LABEL_ANY_RE.sub("", text), flags) for key, text, flags in facts)
 
 
 def repair_suffix(issues: Sequence[dict[str, str]]) -> str:
@@ -478,6 +486,9 @@ Writing rules (learner-facing, {locale_name(locale)}):
   or rule as a warning; such text is a plain paragraph, or is left out.
 - Never invent rules, thresholds, criteria, labels or consequences the facts do not state, not even as the
   labels of a template or the edges of a diagram.
+- The facts keep marks of the PDF page: never copy them. No "Row N:" labels, no word cut at a line end
+  ("Best-in" is "Best-in-Class"; drop a cut "(KPI /"), no Title Case Copied From A Slide (write headings and labels
+  in sentence case, keep acronyms and names), no word written twice in a row.
 - Every slot title and section heading names what that slot or section actually teaches. When UNIT_BRIEF or a
   slot title names an enumerated framework ("5 chuyển dịch", "6 trụ cột", "3 giai đoạn"), the html lists every
   item of it, by the name the facts use, in one bullets, steps or table block. A support item that starts with
@@ -505,8 +516,8 @@ Writing rules (learner-facing, {locale_name(locale)}):
     "NEXT=" + _json(next_title),
     "UNIT_BRIEF=" + _json(unit_brief),
 ]))}
-{untrusted_block("SOURCE_FACTS", fact_lines(facts))}
-{untrusted_block("LESSON_CONTEXT_FACTS", fact_lines(context_facts))}
+{untrusted_block("SOURCE_FACTS", learner_fact_lines(facts))}
+{untrusted_block("LESSON_CONTEXT_FACTS", learner_fact_lines(context_facts))}
 """
 
 
@@ -676,6 +687,9 @@ UNIT_RULE_TEXT: Final[dict[str, str]] = {
                                "case (or the key) so it meets the criteria of exactly one option and contradicts no "
                                "FAQ answer of this unit; keep the explanation's reason for every option",
     "IDM_W5_VERBATIM_COPY": "rewrite for the learner instead of copying the source text",
+    "IDM_W5_SOURCE_ARTIFACT": "a list item, row label or table cell ends cut as the PDF line did (an open \"(\", a "
+                              "trailing \"/\" or a word such as \"Best-in\"): write it out in full from the facts "
+                              "or drop the cut part",
     "IDM_W5_FAQ_UNGROUNDED": "answer only from these facts: rewrite each listed answer so it restates what "
                              "SOURCE_FACTS or LESSON_CONTEXT_FACTS say, with no number, example, reason or advice "
                              "they do not state; replace a question the facts cannot answer with one they do",
@@ -794,6 +808,6 @@ Return one finding per criterion (Q1-Q10). verdict = pass (no major/critical) | 
 reject (any critical); not_applicable never counts.
 
 {untrusted_block("PLAN_CONTEXT", "PLAN=" + _json(plan_summary))}
-{untrusted_block("SOURCE_FACTS", fact_lines(facts))}
+{untrusted_block("SOURCE_FACTS", learner_fact_lines(facts))}
 {untrusted_block("UNIT_CONTENT", _json(unit_content))}
 """

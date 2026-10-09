@@ -33,6 +33,9 @@ _WHITESPACE_RE: Final = re.compile(r"\s+")
 _GENERIC_TITLE_RE: Final = re.compile(GENERIC_TITLE_PATTERN)
 _WORD_RE: Final = re.compile(r"\w+", re.UNICODE)
 _ELLIPSIS: Final = "…"
+# A boundary cut keeps at least this share of the bound; an earlier boundary would drop too much text.
+_MIN_BOUNDARY_SHARE: Final = 0.5
+_TRAILING_JOINERS: Final = " ,;:-–—"  # noqa: RUF001 - dashes a clause may end with before the cut
 # Vietnamese verbs are matched with diacritics: folding would make "hiệu" (as in
 # "hiệu chỉnh", to calibrate) collide with the unmeasurable verb "hiểu".
 _UNMEASURABLE_VI: Final = ("hiểu rõ", "hiểu", "biết", "nắm được", "nắm rõ", "làm quen")
@@ -51,9 +54,18 @@ def idm_fold(value: str) -> str:
 
 
 def _cut(value: str, max_length: int) -> str:
+    """``value`` within ``max_length`` characters, ending in an ellipsis after the last whole word.
+
+    QC run ab8d67e1 (R5): a cut in the middle of a word ("Best-in") reads as a typo. The cut falls on the last space
+    that keeps at least half of the bound; only a text without such a space is cut inside a word.
+    """
+
     if len(value) <= max_length:
         return value
-    return value[: max(0, max_length - 1)].rstrip() + _ELLIPSIS
+    room = max(0, max_length - len(_ELLIPSIS))
+    space = value.rfind(" ", 0, room + 1)
+    head = value[:space] if space >= int(max_length * _MIN_BOUNDARY_SHARE) else value[:room]
+    return head.rstrip(_TRAILING_JOINERS) + _ELLIPSIS
 
 
 def sanitize_author_text(value: str, max_length: int) -> str:
@@ -81,9 +93,6 @@ def single_line(value: str, max_length: int) -> str:
 
 _MAX_INDENT: Final = 4
 _SENTENCE_STOP_RE: Final = re.compile(r"[.!?…](?=\s)")
-# A boundary cut keeps at least this share of the bound; an earlier boundary would drop too much text.
-_MIN_BOUNDARY_SHARE: Final = 0.5
-_TRAILING_JOINERS: Final = " ,;:-–—"  # noqa: RUF001 - dashes a clause may end with before the cut
 
 
 def trim_at_boundary(value: str, max_length: int) -> str:

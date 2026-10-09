@@ -13,10 +13,12 @@ from __future__ import annotations
 import dataclasses
 import json
 import unittest
+from collections import Counter
 from pathlib import Path
 from typing import Any
 
 from app.idm.answer_checks import UnitTeaching, contested_option, quoted_key, unit_teaching
+from app.idm.artifacts import clean_semantic, clean_text, cut_fragments, sentence_case_vi
 from app.idm.budget import judge_repair_fits, repair_thinking_for, writer_thinking
 from app.idm.contracts import IdmLessonDesignV1, IdmLessonPlanV1, IdmUnitQualityV1
 from app.idm.framework import (
@@ -36,12 +38,13 @@ from app.idm.module_autofix import (
     autofix_lesson,
     teach_before_questions,
 )
-from app.idm.module_design import attach_framework_items, validate_lesson
+from app.idm.module_design import _brief_text, attach_framework_items, validate_lesson
 from app.idm.module_layout import ModuleScope
-from app.idm.prompts import judge_prompt
+from app.idm.prompts import fact_lines, judge_prompt, learner_fact_lines
 from app.idm.qa import copied_options, reworded_key
 from app.idm.runtime import IdmRuntime
 from app.idm.storyboard import run_idm_unit
+from app.idm.text import sanitize_author_text
 from app.idm.validation import errors
 from app.schemas.orchestration_v2 import RagLessonAuthorUnitV2Request
 from app.services.orchestration_v2 import unit as unit_service
@@ -501,3 +504,84 @@ class AnswerCheckTests(StoryboardEndpointTestCase):
     def test_the_judge_checks_one_answer_against_the_unit(self) -> None:
         prompt = judge_prompt("vi", plan_summary={}, facts=[], unit_content=[])
         self.assertIn("whose key contradicts an FAQ answer of this unit, is major", prompt)
+
+
+# --- R5: PDF marks in learner text ------------------------------------------------------------------------------------
+def with_artefacts(body: dict[str, Any]) -> dict[str, Any]:
+    """The severity unit written with the marks of the run: a "Row N:" label, Title Case labels copied from the slide
+    and a word written twice (c5.l2.u1, c1.l1.u1, c2.l2.u1)."""
+
+    writer = severity_writer(body)
+    blocks = writer["components"]["c0"]["semantic_content"]["sections"][0]["blocks"]
+    blocks[0]["text"] = "Cách nhìn nhìn vào cấp độ giúp chọn người xử lý. Mỗi khiếu nại thuộc một trong ba cấp độ."
+    rows = blocks[1]["rows"]
+    rows[0]["label"] = "Row 2: Cấp 1"
+    blocks.append({"kind": "bullets", "text": None, "rows": [], "items": [
+        "Người Phụ Trách Xử Lý: nhân viên, trưởng nhóm hoặc quản lý tùy cấp độ.",
+        "Thiệt Hại Tài Chính Dưới Ngưỡng: dấu hiệu của cấp 1 hoặc cấp 2."]})
+    return writer
+
+
+class SourceArtefactTests(StoryboardEndpointTestCase):
+    def test_row_labels_repeats_and_title_case_are_cleaned(self) -> None:
+        fixes: Counter[str] = Counter()
+        self.assertEqual(clean_text("Row 1: 01 Năng lực. Cách nhìn nhìn vào đối thủ, luôn luôn đúng; Tự Sở Hữu Hữu Hạn",
+                                    {("huu", "huu")}, fixes),
+                         "01 Năng lực. Cách nhìn vào đối thủ, luôn luôn đúng; Tự Sở Hữu Hữu Hạn")
+        self.assertEqual(fixes, {"row_label_removed": 1, "repeated_word_removed": 1})
+        for title, expected in (("Hành Vi Khách Hàng Mới", "Hành vi khách hàng mới"),
+                                ("Cạnh Tranh Phi Truyền Thống", "Cạnh tranh phi truyền thống"),
+                                ("Bước Nhảy Vọt AI & Digital", "Bước nhảy vọt AI & Digital"),
+                                ("Người Phụ Trách Triển Khai", "Người phụ trách triển khai"),
+                                ("Năng Lực Sẽ Trở Thành Best", "Năng lực sẽ trở thành Best"),
+                                # Names, English titles and mixed labels keep their capitals.
+                                ("Nguyễn Văn An", "Nguyễn Văn An"), ("Thành Phố Hồ Chí Minh", "Thành Phố Hồ Chí Minh"),
+                                ("Think Big Và Think Different", "Think Big Và Think Different"),
+                                ("Customer Delight & QA Hành Trình", "Customer Delight & QA Hành Trình")):
+            self.assertEqual(sentence_case_vi(title), expected)
+        semantic = {"sections": [{"heading": "Bốn Lực Đẩy Mới", "blocks": [
+            {"kind": "bullets", "items": ["01 Năng lực sẽ trở thành Best-in", "Chỉ số đo lường thành công (KPI /",
+                                          "Quy trình check-in tại quầy", "Đủ ý."]}]}]}
+        self.assertEqual(cut_fragments(semantic), 2)
+        cleaned = clean_semantic(semantic, set(), "vi", Counter())
+        self.assertEqual(cleaned["sections"][0]["heading"], "Bốn lực đẩy mới")
+
+    def test_cuts_fall_between_words_and_writers_never_see_row_labels(self) -> None:
+        text = "Mỗi cam kết cần năng lực sẽ trở thành Best-in-Class của ngành trong chín mươi ngày"
+        cut = sanitize_author_text(text, 40)
+        self.assertTrue(cut.endswith("…") and len(cut) <= 40)
+        self.assertTrue(text.startswith(cut[:-1]) and text[len(cut) - 1] == " ")
+        self.assertEqual(_brief_text("Row 1: 01 Năng lực sẽ trở thành Best-in-Class"),
+                         "01 Năng lực sẽ trở thành Best-in-Class")
+        facts = [("d1-c12-f6", "Row 1: 01 Năng Lực Sẽ Trở Thành Best-in", None)]
+        self.assertEqual(learner_fact_lines(facts), "[d1-c12-f6] 01 Năng Lực Sẽ Trở Thành Best-in")
+        self.assertEqual(fact_lines(facts), "[d1-c12-f6] Row 1: 01 Năng Lực Sẽ Trở Thành Best-in")
+
+    async def test_the_served_unit_is_clean_without_a_repair(self) -> None:
+        body = severity_body()
+        provider = FakeGenerate(**{WRITER: [with_artefacts(body)], JUDGE: [judge()]})
+        status, data, _ = await self.post(body, provider)
+        self.assertEqual(status, 200)
+        self.assertEqual(provider.names, [WRITER, JUDGE])
+        self.assertNotIn("Row 1:", provider.calls[0]["prompt"].split("<SOURCE_FACTS>")[1])
+        self.assert_envelope(data, "provider_validated", "validated", "provider")
+        blocks = data["unit"]["components"][0]["semantic_content"]["sections"][0]["blocks"]
+        self.assertEqual(blocks[0]["text"].split(".")[0], "Cách nhìn vào cấp độ giúp chọn người xử lý")
+        self.assertEqual(blocks[1]["rows"][0]["label"], "Cấp 1")
+        self.assertEqual([item.split(":")[0] for item in blocks[2]["items"]],
+                         ["Người phụ trách xử lý", "Thiệt hại tài chính dưới ngưỡng"])
+
+    async def test_a_cut_word_gets_a_targeted_repair_then_a_review_note(self) -> None:
+        body = severity_body()
+        writer = severity_writer(body)
+        writer["components"]["c0"]["semantic_content"]["sections"][0]["blocks"].append(
+            {"kind": "bullets", "text": None, "rows": [], "items": [
+                "Ghi nhận cấp độ vào phiếu.", "Báo người phụ trách theo bảng (KPI /"]})
+        provider = FakeGenerate(**{WRITER: [writer], REPAIR: [slot_repair(writer, 0)], JUDGE: [judge()]})
+        status, data, _ = await self.post(body, provider)
+        self.assertEqual(status, 200)
+        self.assertEqual(provider.calls[1]["thinking_level"], "low")
+        self.assertIn("c0 IDM_W5_SOURCE_ARTIFACT at c0: a list item, row label or table cell ends cut",
+                      provider.calls[1]["prompt"])
+        quality = IdmUnitQualityV1.model_validate(data["unit"]["idm_quality"])
+        self.assertIn("Cần xem (IDM_W5_SOURCE_ARTIFACT, khối 1 (Lý thuyết))", quality.author_note)

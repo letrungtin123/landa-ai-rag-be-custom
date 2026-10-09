@@ -22,6 +22,7 @@ from typing import Any, Final, Protocol
 from pydantic import BaseModel, ValidationError
 
 from app.idm.answer_checks import contested_option, unit_teaching
+from app.idm.artifacts import clean_question, clean_semantic
 from app.idm.budget import judge_repair_fits, repair_thinking_for, writer_thinking
 from app.idm.contracts import IdmUnitBriefV1, brief_hash_of
 from app.idm.diagram import idm_diagram_relationships
@@ -79,6 +80,7 @@ from app.idm.qa import (
     FAQ_UNGROUNDED_CODE,
     FRAMEWORK_INCOMPLETE_CODE,
     FRAMEWORK_LIST_INSERTED_CODE,
+    SOURCE_ARTIFACT_CODE,
     WORKSHEET_INCOMPLETE_CODE,
     JudgeMode,
     JudgeOutcome,
@@ -137,13 +139,13 @@ _FIELD_OF_PATH_RE: Final = re.compile(r"^components\[\d+\]\.?")
 # the author fixes in a minute.
 _REVIEW_FIRST_CODES: Final = frozenset({WORKSHEET_INCOMPLETE_CODE, ANSWER_LEAK_CODE, ANSWER_CONTESTED_CODE,
                                         CALLOUT_UNGROUNDED_CODE, FAQ_RESTATES_HTML_CODE, FAQ_TITLE_MISMATCH_CODE,
-                                        FRAMEWORK_INCOMPLETE_CODE})
+                                        FRAMEWORK_INCOMPLETE_CODE, SOURCE_ARTIFACT_CODE})
 # Findings a deterministic step settles when the repair does not (a list inserted, an FAQ item dropped, a callout
 # turned into prose, a review note): their repair alone is a targeted one, a scoped rewrite at low thinking. QC run
 # ab8d67e1 (R3): two leak repairs at medium thinking were cut by the unit deadline.
 _TARGETED_REPAIR_CODES: Final = frozenset({FRAMEWORK_INCOMPLETE_CODE, ANSWER_LENGTH_CUE_CODE, ANSWER_LEAK_CODE,
                                            ANSWER_CONTESTED_CODE, FAQ_UNGROUNDED_CODE, FAQ_RESTATES_HTML_CODE,
-                                           FAQ_TITLE_MISMATCH_CODE, CALLOUT_UNGROUNDED_CODE})
+                                           FAQ_TITLE_MISMATCH_CODE, CALLOUT_UNGROUNDED_CODE, SOURCE_ARTIFACT_CODE})
 # A non-targeted repair that would not finish before the unit deadline is not started (R3).
 REPAIR_SKIPPED_CODE: Final = "IDM_W5_REPAIR_SKIPPED_BUDGET"
 # FAQ findings settled by dropping the items concerned while the slot keeps two items.
@@ -513,6 +515,11 @@ class IdmUnitWriter:
         seeded option order of a single-choice question (``app.idm.mcq``, QC course 364564 N2)."""
 
         plan_type = self.plans[index]["type"] if 0 <= index < len(self.plans) else None
+        # PDF marks in learner text (QC run ab8d67e1, R5): "Row N:" labels and a repeated word go first.
+        artefacts: Counter[str] = Counter()
+        if plan_type in {"problem", "la_faq"} and isinstance(component, dict):
+            component = clean_question(component, self.evidence.pairs, artefacts)
+            self.count_artefacts(artefacts)
         if plan_type == "problem" and isinstance(component, dict):
             # The key's letter follows the question's place in the course, so keys spread over A-D (Q4).
             ordinal = question_ordinal(self.contract.unit_path)
@@ -527,11 +534,17 @@ class IdmUnitWriter:
                 component.get("semantic_content"), dict):
             return component
         semantic, fixes = normalize_html_semantic(component["semantic_content"])
+        if isinstance(semantic, dict):
+            semantic = clean_semantic(semantic, self.evidence.pairs, self.runtime.locale, artefacts)
+        fixes.update(artefacts)
         if not fixes:
             return component
         self.html_fixes.update(fixes)
         self.runtime.adjustments.update({f"w5_html_{key}": count for key, count in fixes.items()})
         return {**component, "semantic_content": semantic}
+
+    def count_artefacts(self, artefacts: Counter[str]) -> None:
+        self.runtime.adjustments.update({f"w5_text_{key}": count for key, count in artefacts.items()})
 
     def bind(self, text: str) -> dict[str, Any]:
         try:

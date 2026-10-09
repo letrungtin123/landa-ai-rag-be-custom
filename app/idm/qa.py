@@ -9,6 +9,7 @@ from dataclasses import dataclass, field
 from typing import Any, Final, Literal
 
 from app.idm.answer_checks import contested_option, quoted_key, unit_teaching
+from app.idm.artifacts import cut_fragments
 from app.idm.contracts import (
     IdmFindingCountsV1,
     IdmJudgeFindingV1,
@@ -117,6 +118,8 @@ WORKSHEET_INCOMPLETE_CODE: Final = "IDM_W5_WORKSHEET_INCOMPLETE"
 ANSWER_LEAK_CODE: Final = "IDM_W5_ANSWER_LEAK"
 # QC run ab8d67e1 (R2): the question's case meets another option's taught criteria as well as the key's.
 ANSWER_CONTESTED_CODE: Final = "IDM_W5_ANSWER_CONTESTED"
+# QC run ab8d67e1 (R5): a list item, row label or cell of the html ends cut as the PDF line did ("Best-in", "(KPI /").
+SOURCE_ARTIFACT_CODE: Final = "IDM_W5_SOURCE_ARTIFACT"
 # QC course 364564: N9 (a callout that reads as a quotation states what the facts do not), N11 (FAQ items
 # that repeat the html above; an FAQ title that does not match its questions).
 CALLOUT_UNGROUNDED_CODE: Final = "IDM_W5_CALLOUT_UNGROUNDED"
@@ -318,6 +321,8 @@ def deterministic_slot_findings(
                 findings.append(SlotFinding(WORKSHEET_INCOMPLETE_CODE, index))
             if evidence is not None and ungrounded_callouts(component, evidence):
                 findings.append(SlotFinding(CALLOUT_UNGROUNDED_CODE, index))
+            if cut_fragments(component.get("semantic_content")):
+                findings.append(SlotFinding(SOURCE_ARTIFACT_CODE, index))
         elif kind == "la_faq":
             if evidence is not None and ungrounded_faq_items(component, evidence):
                 findings.append(SlotFinding(FAQ_UNGROUNDED_CODE, index))
@@ -666,6 +671,8 @@ _REVIEW_HINT_VI: Final = {
     FAQ_RESTATES_HTML_CODE: "câu hỏi đáp chỉ nhắc lại nội dung vừa học — nên thay bằng ngộ nhận, trường hợp đặc biệt "
                             "hoặc tình huống nếu… thì",
     FAQ_TITLE_MISMATCH_CODE: "tiêu đề phần hỏi đáp không khớp các câu hỏi bên trong",
+    SOURCE_ARTIFACT_CODE: "có dòng hoặc ô bảng bị cắt dở như trong tài liệu PDF (ví dụ \"Best-in\", \"(KPI /\") — "
+                          "cần viết lại cho trọn ý",
     FRAMEWORK_INCOMPLETE_CODE: "tiêu đề nêu một khung gồm nhiều thành phần nhưng nội dung chưa liệt kê đủ các thành "
                                "phần đó — bổ sung bản đồ tổng quan hoặc đổi tiêu đề theo nội dung",
 }
@@ -680,6 +687,8 @@ _REVIEW_HINT_EN: Final = {
     FAQ_RESTATES_HTML_CODE: "FAQ items only repeat what was just taught — replace them with a misconception, an edge "
                             "case or a what-if",
     FAQ_TITLE_MISMATCH_CODE: "the FAQ title does not match its questions",
+    SOURCE_ARTIFACT_CODE: "a list item or table cell ends cut as the PDF line did (\"Best-in\", \"(KPI /\") — "
+                          "complete it",
     FRAMEWORK_INCOMPLETE_CODE: "the title names a framework of several items but the content does not list all of "
                                "them — add the overview or retitle it to what it teaches",
 }
@@ -758,8 +767,8 @@ __all__ = [
     "ANSWER_CONTESTED_CODE", "ANSWER_LEAK_CODE", "CALLOUT_KIND", "CALLOUT_TO_PROSE_CODE", "CALLOUT_UNGROUNDED_CODE",
     "CRITERIA", "FAQ_ITEMS_DROPPED_CODE", "FAQ_RESTATES_HTML_CODE", "FAQ_TITLE_MISMATCH_CODE", "FAQ_UNGROUNDED_CODE",
     "FRAMEWORK_INCOMPLETE_CODE", "FRAMEWORK_LIST_INSERTED_CODE", "JUDGE_CRITERIA", "NOT_APPLICABLE",
-    "PRACTICE_CRITERIA", "TITLE_CRITERION", "WORKSHEET_INCOMPLETE_CODE", "JudgeOutcome", "SlotFinding",
-    "advisory_slot_findings", "blocking_count",
+    "PRACTICE_CRITERIA", "SOURCE_ARTIFACT_CODE", "TITLE_CRITERION", "WORKSHEET_INCOMPLETE_CODE", "JudgeOutcome",
+    "SlotFinding", "advisory_slot_findings", "blocking_count",
     "build_unit_author_note", "build_unit_quality", "callouts_as_paragraphs", "copied_options",
     "deterministic_slot_findings", "faq_item_verdicts", "faq_title_mismatch", "final_unit_findings",
     "has_practice_slot", "html_before", "learner_view", "repair_targets", "restated_faq_items", "reworded_key",

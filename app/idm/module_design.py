@@ -17,6 +17,7 @@ from typing import Any, Final
 
 from pydantic import ValidationError
 
+from app.idm.artifacts import ROW_LABEL_ANY_RE
 from app.idm.contracts import (
     IdmLessonDesignV1,
     IdmLessonPlanV1,
@@ -90,6 +91,8 @@ _MS: Final = 1000
 # Failing codes/paths logged per W4 attempt (QC run 8de1c76b, Q1d); paths are server-built, never content.
 _MAX_LOGGED_ISSUES: Final = 24
 _UNIT_PATH_RE: Final = re.compile(r"\.units\[(\d+)\]")
+# Lower bound of IdmSupportItemV1.brief (characters).
+_MIN_BRIEF_CHARS: Final = 3
 _MAX_ACTIVITIES: Final = 3
 _MAX_UNITS_PER_LESSON: Final = 12
 
@@ -230,6 +233,14 @@ def _clean_review(
     )
 
 
+def _brief_text(brief: str) -> str:
+    """A support-item brief on one line, without the "Row N:" labels the PDF reader puts before table rows (QC run
+    ab8d67e1, R5: the writer copied "Row 1: 01 Năng Lực …" from the brief into the learner's table)."""
+
+    cleaned = single_line(ROW_LABEL_ANY_RE.sub("", brief), 300)
+    return cleaned if len(cleaned) >= _MIN_BRIEF_CHARS else single_line(brief, 300)
+
+
 def normalize_lesson(
     lesson: IdmLessonDesignV1, plan: IdmLessonPlanV1, locale: str, warnings: Sequence[str]
 ) -> IdmLessonDesignV1:
@@ -249,7 +260,7 @@ def normalize_lesson(
                         "title": single_line(component.title, 180),
                         "rationale": single_line(component.rationale, 500),
                         "support_items": [
-                            item.model_copy(update={"brief": single_line(item.brief, 300)})
+                            item.model_copy(update={"brief": _brief_text(item.brief)})
                             for item in component.support_items
                         ],
                         "author_review": _clean_review(
