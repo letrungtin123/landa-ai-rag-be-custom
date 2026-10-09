@@ -106,11 +106,16 @@ class IdmProviderError(IdmError):
 
 
 class IdmResponseInvalidError(IdmError):
-    """The provider answered but the answer is not valid JSON for the server model."""
+    """The provider answered but the answer is not valid JSON for the server model.
 
-    def __init__(self, code: str, errors: list[dict[str, Any]]) -> None:
+    ``value`` is the parsed (and bound-adjusted) JSON when the answer was JSON that only failed strict
+    validation; a caller may salvage its valid parts. It never reaches a log line or a prompt.
+    """
+
+    def __init__(self, code: str, errors: list[dict[str, Any]], value: Any = None) -> None:
         super().__init__(code)
         self.errors = errors
+        self.value = value
 
 
 @dataclass(frozen=True)
@@ -392,7 +397,7 @@ async def idm_generate[ResultT](
         code = TRUNCATED_CODE if truncated else error.code
         reject(code, error.errors)
         if code != error.code:
-            raise IdmResponseInvalidError(code, error.errors) from error
+            raise IdmResponseInvalidError(code, error.errors, error.value) from error
         raise
     except (ValidationError, ValueError) as error:
         code = TRUNCATED_CODE if truncated else SCHEMA_INVALID_CODE
@@ -413,12 +418,16 @@ async def idm_call[ModelT: BaseModel](
     thinking_level: ThinkingLevel,
     invocation_kind: InvocationKind = "writer",
     reserve_after_tokens: int = 0,
+    prepare: Callable[[Any], tuple[Any, Counter[str]]] | None = None,
 ) -> ModelT:
     """``idm_generate`` that validates the answer strictly with ``response_model``.
 
     Over-long author text and over-full annotation lists are first brought within their
     bounds (``coerce.py``, counted in ``runtime.adjustments``); identifiers, enums and
-    structure are validated unchanged.
+    structure are validated unchanged. ``prepare`` is a stage's own context-aware bound
+    adjustment applied before that (QLT-3: the W4 criteria facts ranked by the lesson's
+    Must Do). An answer that is JSON but fails strict validation carries the adjusted value
+    on the raised ``IdmResponseInvalidError`` so the stage can salvage its valid parts.
     """
 
     def parse(text: str) -> ModelT:
@@ -426,8 +435,15 @@ async def idm_call[ModelT: BaseModel](
             value = json.loads(text)
         except ValueError:
             return response_model.model_validate_json(text)  # pydantic reports json_invalid@ with its location
-        adjusted, codes = coerce_provider_answer(response_model, value)
-        result = response_model.model_validate_json(json.dumps(adjusted, ensure_ascii=False))
+        codes: Counter[str] = Counter()
+        if prepare is not None:
+            value, codes = prepare(value)
+        adjusted, coerced = coerce_provider_answer(response_model, value)
+        codes.update(coerced)
+        try:
+            result = response_model.model_validate_json(json.dumps(adjusted, ensure_ascii=False))
+        except ValidationError as error:
+            raise IdmResponseInvalidError(SCHEMA_INVALID_CODE, _safe_validation_errors(error), adjusted) from error
         runtime.adjustments.update(codes)
         return result
 

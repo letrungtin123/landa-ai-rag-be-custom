@@ -7,15 +7,16 @@ salvage), so a single bad lesson never discards the shard.
 
 from __future__ import annotations
 
+import json
 import time
 from collections import Counter
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
+from dataclasses import dataclass, field
 from typing import Any, Final
 
 from pydantic import ValidationError
 
 from app.idm.contracts import (
-    IdmComponentDesignV1,
     IdmLessonDesignV1,
     IdmLessonPlanV1,
     IdmModuleContextV1,
@@ -26,6 +27,8 @@ from app.idm.contracts import (
     design_hash_of,
 )
 from app.idm.framework import framework_promise
+from app.idm.limits import answer_limits
+from app.idm.module_autofix import autofix_lesson, format_has_evidence, trim_module_answer
 from app.idm.module_layout import (
     ModuleScope,
     build_module_scope,
@@ -40,24 +43,27 @@ from app.idm.policy import (
     AI_DRAFTED_MARKER_VI,
     DOING_PRACTICE_TYPES,
     GRADED_PRACTICE_TYPES,
+    IDM_MODULE_CONTENT_ATTEMPTS,
     IDM_MODULE_MAX_OUTPUT_TOKENS,
+    IDM_MODULE_SCHEMA_REPAIRS,
     IDM_THEORY_RUN_MAX_COMPONENTS,
     THINKING_MODULE,
     WORKSHEET_COMPONENT_TYPE,
 )
 from app.idm.prompts import COMPACT_MODULE, answer_repair, module_prompt, repair_suffix
 from app.idm.runtime import (
+    SCHEMA_INVALID_CODE,
     IdmBudgetError,
     IdmProviderError,
     IdmResponseInvalidError,
     IdmRuntime,
+    InvocationKind,
     ThinkingLevel,
     idm_call,
     log_stage,
     record_deterministic_fallback,
     repair_thinking,
 )
-from app.idm.signals import idm_has_ordered_steps, idm_relationship_pairs, idm_term_definitions
 from app.idm.text import idm_fold, produces_output, sanitize_author_text, single_line
 from app.idm.validation import IdmIssue, errors
 from app.lesson_author_orchestration_v2 import (
@@ -69,8 +75,9 @@ from app.lesson_author_orchestration_v2_provider import ChapterShardPlanV2, Sour
 
 # Graded practice types plus the worksheet html of a "do" Must Do (spec §10.1, QC 234653 R5).
 PRACTICE_COMPONENT_TYPES: Final = GRADED_PRACTICE_TYPES | {WORKSHEET_COMPONENT_TYPE}
-_MIN_TERM_DEFINITIONS: Final = 3
 _MS: Final = 1000
+# Failing codes/paths logged per W4 attempt (QC run 8de1c76b, Q1d); paths are server-built, never content.
+_MAX_LOGGED_ISSUES: Final = 24
 _MAX_ACTIVITIES: Final = 3
 _MAX_UNITS_PER_LESSON: Final = 12
 
@@ -150,7 +157,7 @@ def validate_lesson(
                 issues.append(IdmIssue("IDM_W4_COMPONENT_TYPE_NOT_ALLOWED", f"{component_path}.type"))
             if component.author_review.purpose is None:
                 issues.append(IdmIssue("IDM_W4_AUTHOR_REVIEW_PURPOSE_MISSING", f"{component_path}.author_review"))
-            if not _format_has_evidence(component, scope):
+            if not format_has_evidence(component, scope):
                 issues.append(IdmIssue("IDM_W4_FORMAT_EVIDENCE", f"{component_path}.type"))
             if component.role == "practice":
                 theory_run = 0
@@ -189,17 +196,6 @@ def validate_lesson(
         ):
             issues.append(IdmIssue("IDM_W4_PRACTICE_BEFORE_SUPPORT", f"{path}.practice_tasks[{index}]"))
     return list(dict.fromkeys(issues))
-
-
-def _format_has_evidence(component: IdmComponentDesignV1, scope: ModuleScope) -> bool:
-    texts = scope.block_texts([block_id for block_id in component.block_ids if block_id in scope.blocks])
-    if component.type == "la_sortable":
-        return idm_has_ordered_steps(texts, locale=scope.locale)
-    if component.type == "la_crossword":
-        return len(idm_term_definitions(texts)) >= _MIN_TERM_DEFINITIONS
-    if component.type == "la_diagram":
-        return bool(idm_relationship_pairs(texts))
-    return True
 
 
 # --- normalisation, fallback and holds -----------------------------------------------------
@@ -388,25 +384,49 @@ def _course_blocks_payload(scope: ModuleScope) -> list[dict[str, Any]]:
     return payload
 
 
+@dataclass
+class _Salvage:
+    accepted: dict[str, IdmLessonDesignV1] = field(default_factory=dict)
+    failures: dict[str, list[IdmIssue]] = field(default_factory=dict)
+    # Deterministic layout fixes applied to otherwise failing lessons (``module_autofix``), counted.
+    fixes: Counter[str] = field(default_factory=Counter)
+    practices: dict[str, list[IdmPracticeTaskV1]] = field(default_factory=dict)
+
+
 def _salvage(
-    response: IdmW3W4ModuleResponseV1,
+    lessons: Sequence[IdmLessonDesignV1],
     scope: ModuleScope,
     allowed: set[str],
-) -> tuple[dict[str, IdmLessonDesignV1], dict[str, list[IdmIssue]]]:
-    """Validate each lesson independently; return accepted lessons and per-lesson errors."""
+    *,
+    invalid: Mapping[str, list[IdmIssue]] | None = None,
+) -> _Salvage:
+    """Validate each lesson independently; return accepted lessons and per-lesson errors.
 
-    accepted: dict[str, IdmLessonDesignV1] = {}
-    failures: dict[str, list[IdmIssue]] = {}
-    by_key = {lesson.lesson_key: lesson for lesson in response.lessons}
+    A failing lesson first gets the deterministic layout fixes (QC run 8de1c76b, Q1c: two units sharing the
+    only block of a lesson, components out of order, an uncovered block ...); it is accepted when they make it
+    valid. ``invalid`` are lessons of a rejected answer that did not even parse (their schema paths).
+    """
+
+    result = _Salvage()
+    by_key = {lesson.lesson_key: lesson for lesson in lessons}
     for position, plan in enumerate(scope.lesson_plans):
         lesson = by_key.get(plan.lesson_key)
         path = f"lessons[{position}]"
         if lesson is None:
-            failures[plan.lesson_key] = [IdmIssue("IDM_W3_LESSON_SET_MISMATCH", path)]
+            result.failures[plan.lesson_key] = (invalid or {}).get(plan.lesson_key) or [
+                IdmIssue("IDM_W3_LESSON_SET_MISMATCH", path)]
             continue
+        if lesson.practice_tasks:
+            result.practices[plan.lesson_key] = list(lesson.practice_tasks)
         found = validate_lesson(lesson, plan, scope, allowed, path)
         if errors(found):
-            failures[plan.lesson_key] = errors(found)
+            fixed, fixes = autofix_lesson(lesson, plan, scope, allowed)
+            refound = validate_lesson(fixed, plan, scope, allowed, path) if fixes else found
+            if fixes and not errors(refound):
+                lesson, found = fixed, refound
+                result.fixes.update(fixes)
+        if errors(found):
+            result.failures[plan.lesson_key] = errors(found)
         else:
             normalized = normalize_lesson(
                 lesson, plan, scope.locale, [issue.code for issue in found if issue.severity == "warning"]
@@ -416,12 +436,78 @@ def _salvage(
                 IdmLessonDesignV1.model_validate(normalized.model_dump(mode="json"))
                 LessonArchitectureV2.model_validate(project_lesson(normalized, plan, scope))
             except ValidationError:
-                failures[plan.lesson_key] = [IdmIssue("IDM_W4_PROJECTION_INVALID", path)]
+                result.failures[plan.lesson_key] = [IdmIssue("IDM_W4_PROJECTION_INVALID", path)]
             else:
-                accepted[plan.lesson_key] = normalized
-    if [lesson.lesson_key for lesson in response.lessons] != [plan.lesson_key for plan in scope.lesson_plans]:
-        failures.setdefault("__set__", []).append(IdmIssue("IDM_W3_LESSON_SET_MISMATCH", "lessons"))
-    return accepted, failures
+                result.accepted[plan.lesson_key] = normalized
+    if invalid is None and [lesson.lesson_key for lesson in lessons] != [plan.lesson_key
+                                                                         for plan in scope.lesson_plans]:
+        result.failures.setdefault("__set__", []).append(IdmIssue("IDM_W3_LESSON_SET_MISMATCH", "lessons"))
+    return result
+
+
+def _parse_rejected_lessons(value: Any, scope: ModuleScope) -> tuple[list[IdmLessonDesignV1], dict[str, list[IdmIssue]],
+                                                                     dict[str, list[IdmPracticeTaskV1]]]:
+    """The lessons of a schema-rejected W4 answer that are valid on their own (QC run 8de1c76b, Q1b).
+
+    One over-long list in lesson 3 used to discard lessons 1 and 2 too; they are now checked like the lessons
+    of an accepted answer. Lessons that do not parse are reported with their position; their valid practice
+    tasks still reach the fallback layout.
+    """
+
+    raw = value.get("lessons") if isinstance(value, dict) else None
+    known = {plan.lesson_key for plan in scope.lesson_plans}
+    parsed: list[IdmLessonDesignV1] = []
+    invalid: dict[str, list[IdmIssue]] = {}
+    practices: dict[str, list[IdmPracticeTaskV1]] = {}
+    for position, item in enumerate(raw if isinstance(raw, list) else []):
+        key = item.get("lesson_key") if isinstance(item, dict) else None
+        try:
+            parsed.append(IdmLessonDesignV1.model_validate_json(json.dumps(item, ensure_ascii=False)))
+            continue
+        except ValidationError:
+            if not isinstance(key, str) or key not in known:
+                continue
+        invalid[key] = [IdmIssue(SCHEMA_INVALID_CODE, f"lessons[{position}]")]
+        tasks = item.get("practice_tasks") if isinstance(item, dict) else None
+        valid_tasks = []
+        for task in tasks if isinstance(tasks, list) else []:
+            try:
+                valid_tasks.append(IdmPracticeTaskV1.model_validate_json(json.dumps(task, ensure_ascii=False)))
+            except ValidationError:
+                continue
+        if valid_tasks:
+            practices[key] = valid_tasks
+    return parsed, invalid, practices
+
+
+def _issue_log(failures: Mapping[str, Sequence[IdmIssue]]) -> dict[str, list[str]]:
+    """``CODE@path`` per failing lesson (server-built paths, never content), bounded."""
+
+    logged: dict[str, list[str]] = {}
+    budget = _MAX_LOGGED_ISSUES
+    for lesson_key, issues in failures.items():
+        items = [f"{issue.code}@{issue.path}" for issue in issues][:budget]
+        if items:
+            logged[lesson_key] = items
+            budget -= len(items)
+        if budget <= 0:
+            break
+    return logged
+
+
+def _log_attempt(runtime: IdmRuntime, plan: ChapterShardPlanV2, *, call: int, kind: str, outcome: str,
+                 salvage: _Salvage | None = None, schema_errors: Sequence[dict[str, Any]] = ()) -> None:
+    """One line per W4 call (QC run 8de1c76b, Q1d: ch1.l2 failed twice and only the merged codes were logged)."""
+
+    log_stage("idm_module_attempt", {
+        "correlation_id": runtime.correlation_id, "stage": "idm_module", "chapter_key": plan.chapter_key,
+        "shard_index": plan.shard_index, "call": call, "invocation_kind": kind, "outcome": outcome,
+        "schema_errors": [f"{item.get('type')}@{'.'.join(str(part) for part in item.get('loc', []))}"
+                          for item in schema_errors][:_MAX_LOGGED_ISSUES],
+        "accepted_lessons": sorted(salvage.accepted) if salvage else [],
+        "lesson_failures": _issue_log(salvage.failures) if salvage else {},
+        "autofix": dict(sorted(salvage.fixes.items())) if salvage else {},
+    })
 
 
 async def run_idm_module_design(
@@ -460,13 +546,22 @@ async def run_idm_module_design(
         course_blocks=_course_blocks_payload(scope),
         facts=[(fact.fact_key, fact.fact_text, None) for fact in facts],
         allowed_components=list(context.allowed_component_types),
+        limits=answer_limits(IdmW3W4ModuleResponseV1),
     )
     accepted: dict[str, IdmLessonDesignV1] = {}
     seen_practices: dict[str, list[IdmPracticeTaskV1]] = {}
     codes: Counter[str] = Counter()
     repair = ""
     thinking: ThinkingLevel = THINKING_MODULE
-    for attempt in (1, 2):
+    # Two content attempts (writer + repair) as before, plus at most ONE schema-only repair that does not use
+    # one of them (QC run 8de1c76b, Q1b: a list bound rejected the writer answer, so the repair answer was the
+    # only semantic check). Worst case three calls, each inside the task deadline (``admitted_output_tokens``).
+    content_attempts = 0
+    schema_repairs = IDM_MODULE_SCHEMA_REPAIRS
+    call = 0
+    while content_attempts < IDM_MODULE_CONTENT_ATTEMPTS:
+        call += 1
+        kind: InvocationKind = "writer" if call == 1 else "repair"
         try:
             response = await idm_call(
                 runtime,
@@ -475,30 +570,56 @@ async def run_idm_module_design(
                 response_model=IdmW3W4ModuleResponseV1,
                 max_output_tokens=IDM_MODULE_MAX_OUTPUT_TOKENS,
                 thinking_level=thinking,
-                invocation_kind="writer" if attempt == 1 else "repair",
+                invocation_kind=kind,
+                prepare=lambda value: trim_module_answer(value, scope),
             )
         except (IdmBudgetError, IdmResponseInvalidError) as error:
             codes[error.code] += 1
             if isinstance(error, IdmBudgetError):
                 break
-            repair = answer_repair(error.code, error.errors, COMPACT_MODULE)
+            salvage: _Salvage | None = None
+            invalid: dict[str, list[IdmIssue]] = {}
+            if error.value is not None:
+                parsed, invalid, practices = _parse_rejected_lessons(error.value, scope)
+                salvage = _salvage(parsed, scope, allowed, invalid=invalid)
+                seen_practices.update({**practices, **salvage.practices})
+                accepted.update(salvage.accepted)
+                runtime.adjustments.update(salvage.fixes)
+                codes.update(issue.code for key, items in salvage.failures.items() if key not in invalid
+                             for issue in items)
+            _log_attempt(runtime, plan, call=call, kind=kind, outcome=error.code.lower(), salvage=salvage,
+                         schema_errors=error.errors)
+            if salvage is not None and all(item.lesson_key in accepted for item in scope.lesson_plans):
+                break
+            content = [] if salvage is None else [issue.as_repair_item() for lesson_key, items
+                                                  in salvage.failures.items() if lesson_key not in invalid
+                                                  for issue in items]
+            repair = (answer_repair(error.code, error.errors, COMPACT_MODULE) if not content
+                      else repair_suffix([*({"code": str(item["type"]),
+                                             "path": ".".join(str(part) for part in item["loc"])}
+                                            for item in error.errors), *content]))
             thinking = repair_thinking(error.code, thinking)
+            if error.code == SCHEMA_INVALID_CODE and schema_repairs > 0:
+                schema_repairs -= 1
+            else:
+                content_attempts += 1
             continue
         except IdmProviderError as error:
             if error.terminal:
                 raise
             codes[error.code] += 1
             break
-        lessons, failures = _salvage(response, scope, allowed)
-        for lesson in response.lessons:
-            if lesson.practice_tasks:
-                seen_practices[lesson.lesson_key] = list(lesson.practice_tasks)
-        accepted.update(lessons)
-        codes.update(issue.code for items in failures.values() for issue in items)
+        content_attempts += 1
+        salvage = _salvage(response.lessons, scope, allowed)
+        seen_practices.update(salvage.practices)
+        accepted.update(salvage.accepted)
+        runtime.adjustments.update(salvage.fixes)
+        codes.update(issue.code for items in salvage.failures.values() for issue in items)
+        _log_attempt(runtime, plan, call=call, kind=kind, outcome="validated", salvage=salvage)
         missing = [lesson for lesson in scope.lesson_plans if lesson.lesson_key not in accepted]
         if not missing:
             break
-        repair = repair_suffix([issue.as_repair_item() for items in failures.values() for issue in items])
+        repair = repair_suffix([issue.as_repair_item() for items in salvage.failures.values() for issue in items])
     final: list[IdmLessonDesignV1] = []
     fallback_count = 0
     for lesson_plan in scope.lesson_plans:

@@ -45,6 +45,12 @@ IDM_MODULE_MAX_OUTPUT_TOKENS: Final = 48_000
 IDM_UNIT_WRITER_MAX_OUTPUT_TOKENS: Final = 16_000
 IDM_JUDGE_MAX_OUTPUT_TOKENS: Final = 3_000
 
+# The W4 module stage makes two content attempts (writer + one repair) and, after an answer that only failed
+# the strict schema (a bound, a type), at most one schema repair that does not use a content attempt (QC run
+# 8de1c76b, Q1b). Worst case 3 calls instead of 2; each is admitted only inside the task deadline.
+IDM_MODULE_CONTENT_ATTEMPTS: Final = 2
+IDM_MODULE_SCHEMA_REPAIRS: Final = 1
+
 # --- Course-shape limits -----------------------------------------------------------------
 IDM_MAX_BLOCKS: Final = 400
 IDM_MAX_LESSONS: Final = 120
@@ -52,6 +58,16 @@ IDM_MAX_MODULES: Final = 24
 IDM_MAX_LESSONS_PER_MODULE: Final = 30
 # Upper bound of blocks in one lesson (IdmLessonPlanV1.block_ids).
 IDM_MAX_LESSON_BLOCKS: Final = 40
+# Bounds of IdmPracticeTaskV1.criteria_fact_keys and IdmComponentDesignV1/IdmUnitDesignV1.block_ids; the Node
+# contract (``lesson-author-idm.contract.ts``) reads the same bounds, so they cannot be raised on one side. QC run
+# 8de1c76b (Q1): one practice of the 33-fact Canvas block listed all 33 facts and the whole W4 answer was rejected;
+# an over-long list is now cut to the facts that matter most (``module_autofix.trim_module_answer``).
+IDM_PRACTICE_MAX_CRITERIA_FACTS: Final = 24
+IDM_COMPONENT_MAX_BLOCKS: Final = 12
+IDM_UNIT_MAX_BLOCKS: Final = 24
+# A criteria fact this short (words) is a label or heading ("MINDSET CẦN BỎ"): it ranks after the statements of
+# the same block when a list must be cut.
+IDM_CRITERIA_LABEL_MAX_WORDS: Final = 4
 IDM_SHARD_MAX_SOURCE_CHARS: Final = 90_000
 # W2 is split per learning objective above this many blocks to bound one prompt.
 IDM_W2_SINGLE_CALL_MAX_BLOCKS: Final = 200

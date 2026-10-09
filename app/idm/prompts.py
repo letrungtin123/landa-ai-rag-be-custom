@@ -322,10 +322,14 @@ def module_prompt(
     facts: Iterable[tuple[str, str, Sequence[str] | None]],
     allowed_components: Sequence[str],
     scenario_chat: bool = False,
+    limits: str = "",
 ) -> str:
     scenario_clause = (
         "; a multi-turn conversation where each reply changes the outcome -> la_scenario_chat" if scenario_chat else ""
     )
+    # QC run 8de1c76b (Q1): the provider schema carries no bounds, so they are stated here.
+    limits_block = (f"10. LIMITS of the answer (characters of text, items of lists); never exceed them:\n{limits}\n"
+                    if limits else "")
     return preamble(locale) + f"""
 TASK: For ONE module, design each listed lesson (Week 3 Instructional Treatment + Week 4 lesson layout).
 Return the lessons in exactly the order and with exactly the lesson_key values of LESSONS.
@@ -345,9 +349,10 @@ For each lesson:
    problem with role "practice" and the same practice_id in which the learner judges a sample answer against those
    criteria (single choice). Must Do of kind "decide" and recognition of Must Know keep problem (scenario or
    knowledge check).
-2. criteria_fact_keys: the source facts that decide what a correct answer is; non-empty; only facts of this
-   lesson's blocks. If they do not exist, set hold = true and write hold_question for the SME, and do not create
-   a practice component for it. Contexts, characters and example situations may be drafted by you
+2. criteria_fact_keys: the source facts that decide what a correct answer is; non-empty; at most 24 (when more
+   apply, keep the statements of the Must Do block that decide right and wrong, not its labels or headings); only
+   facts of this lesson's blocks. If they do not exist, set hold = true and write hold_question for the SME, and do
+   not create a practice component for it. Contexts, characters and example situations may be drafted by you
    (scenario_origin "ai_drafted") but must not introduce new rules, numbers or exceptions.
 3. SUPPORTING INFO - the minimum needed for the practice: explain_concept, explain_principle (criteria/rules),
    example, non_example, worked_example, demonstration. Ask "if this were removed, could the learner still do the
@@ -365,8 +370,10 @@ For each lesson:
    unit; html first; la_faq last): context (short, under 20% of the lesson) -> Must Know explain/show -> example ->
    practice -> feedback -> apply/next step. Typical units: "context_explain" (+ knowledge check), "example",
    "practice_feedback" (the main practice), "summary_apply" (optional). Merge units when the lesson is short.
-   Every block of the lesson belongs to exactly one unit; every component lists the blocks it uses (from its
-   unit) and every block of a unit is used by at least one of its components. The main practice sits in a unit
+   Units split a lesson by WHOLE blocks: every block of the lesson belongs to exactly one unit, so a lesson with
+   ONE block has exactly ONE unit that both teaches and practises (html first, then the practice components,
+   la_faq last); never repeat a block in a second unit to practise it. Every component lists the blocks it uses
+   (from its unit) and every block of a unit is used by at least one of its components. The main practice sits in a unit
    that contains at least one block of its Must Do. Facts that decide a practice must be taught in the same or an
    earlier unit. Never more than 5 explanation components in a row without a question or practice.
    A practice component has role "practice" and practice_id set; other components have practice_id null. Only
@@ -386,10 +393,11 @@ For each lesson:
 8. Lesson fields: objective = the main Must Do as an observable action; learning_objectives = the objective
    statements this lesson serves; assessment = feedback criterion + where the practice sits (after Must Know /
    end of lesson / end of module); notes = Bloom level, estimated blocks and minutes, ordering rationale, SME flags.
-   media_brief: null unless a short video or static infographic clearly helps; then a concrete brief.
+   media_brief: null unless a short video or static infographic clearly helps; then a concrete brief with at most
+   6 content_points.
 9. Lessons of kind job_aid: 1-3 units of segment "job_aid" with an html checklist / lookup table / decision tree
    (and optionally la_faq); no practice tasks. Contact lists: names and extensions only, no emails or URLs.
-
+{limits_block}
 {untrusted_block("PLAN_CONTEXT", chr(10).join([
     "MODULE=" + _json(module_plan),
     "LESSONS=" + _json(lesson_plans),

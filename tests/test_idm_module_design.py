@@ -574,11 +574,14 @@ class RunModuleDesignTests(unittest.IsolatedAsyncioTestCase):
     async def test_invalid_answers_fall_back_for_every_lesson_with_grounded_checks(self) -> None:
         grounded_lessons = []
         for chapter_index in range(3):
-            result, provider, runtime = await design_module(chapter_index, ["{}", "not json"])
+            # QC run 8de1c76b (Q1b): the schema-only rejection ("{}") gets one repair of its own; the two content
+            # attempts follow, so three calls at most.
+            result, provider, runtime = await design_module(chapter_index, ["{}", "not json", "not json"])
             design = result["shard"]["idm_design"]
             self.assertEqual(design["stage_origin"], "deterministic_fallback")
             self.assertEqual(result["content_origin"], "structured_fallback")
             self.assertEqual(result["usage_source"], "provider")
+            self.assertEqual(len(provider.calls), 3)
             self.assertIn('"code":"missing"', provider.calls[1]["prompt"])
             scope = scope_of(chapter_index)
             for lesson, plan in zip(design["lessons"], scope.lesson_plans, strict=True):
@@ -712,10 +715,12 @@ class RunModuleDesignTests(unittest.IsolatedAsyncioTestCase):
                   "kèm ghi chú về các điểm còn nghi ngờ để trưởng nhóm xem lại trước khi đóng hồ sơ trên hệ thống "
                   "CRM của công ty và báo lại cho khách hàng thời hạn phản hồi đã cam kết")
         self.assertGreater(len(action), 320)
-        wrong_order = edited("mod_01", lambda p: p["lessons"][0]["units"][0]["components"].reverse())
+        # A foreign criteria fact needs the provider repair (a component order slip is now fixed by the server).
+        foreign = edited("mod_01", lambda p: p["lessons"][0]["practice_tasks"][0]["criteria_fact_keys"].append(
+            key(4, 2)))
         repaired = edited("mod_01", lambda p: p["lessons"][0]["practice_tasks"][0].update(learner_action=action))
-        result, provider, runtime = await design_module(0, [wrong_order, repaired])
-        self.assertIn('"IDM_W4_COMPONENT_ORDER"', provider.calls[1]["prompt"])
+        result, provider, runtime = await design_module(0, [foreign, repaired])
+        self.assertIn('"IDM_W3_PRACTICE_CRITERIA_FOREIGN"', provider.calls[1]["prompt"])
         design = result["shard"]["idm_design"]
         self.assertEqual((design["stage_origin"], result["content_origin"]), ("provider", "provider_validated"))
         practice = design["lessons"][0]["practice_tasks"][0]

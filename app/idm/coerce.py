@@ -12,8 +12,9 @@ schema and, for author-facing text only:
   a cut within a small margin counts as ``IDM_RESPONSE_FIELD_TRIMMED``, a longer one as
   ``IDM_RESPONSE_FIELD_TRIMMED_LONG`` so the prompts can be tuned;
 * drops list items beyond ``maxItems`` for annotation lists (SME questions, issues,
-  gaps, prerequisites, merges/conflicts, support items, judge findings) whose shorter
-  form is still a correct answer;
+  gaps, prerequisites, merges/conflicts, support items, judge findings, the content points
+  of a media brief) whose first items are a correct answer on their own (QC run 8de1c76b,
+  Q1: an 8-point media brief of the 8 Quick-Win job aid rejected a whole W4 answer);
 * clamps estimate numbers (screens, minutes) into their range.
 
 Identifiers, enums, patterns, structural lists and every other field stay strict: they
@@ -40,6 +41,7 @@ _MARGIN_SHARE: Final = 0.5
 _MIN_MARGIN_CHARS: Final = 50
 _SAFE_LIST_FIELDS: Final = frozenset({
     "sme_questions", "issues", "gaps", "prerequisites", "merges", "conflicts", "support_items", "findings",
+    "content_points",
 })
 # Lists of plain strings under these names are statements the lesson serves, not references.
 _SAFE_STRING_LIST_FIELDS: Final = frozenset({"learning_objectives"})
