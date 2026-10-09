@@ -16,8 +16,9 @@ import unittest
 from pathlib import Path
 from typing import Any
 
+from app.idm.answer_checks import UnitTeaching, contested_option, quoted_key, unit_teaching
 from app.idm.budget import judge_repair_fits, repair_thinking_for, writer_thinking
-from app.idm.contracts import IdmLessonDesignV1, IdmLessonPlanV1
+from app.idm.contracts import IdmLessonDesignV1, IdmLessonPlanV1, IdmUnitQualityV1
 from app.idm.framework import (
     build_promise,
     framework_listed,
@@ -27,6 +28,7 @@ from app.idm.framework import (
     with_framework_list,
     without_row_label,
 )
+from app.idm.html_rules import visible_text
 from app.idm.module_autofix import (
     COMPONENT_ORDER_CODE,
     QUESTION_ONLY_BLOCK_CODE,
@@ -36,6 +38,8 @@ from app.idm.module_autofix import (
 )
 from app.idm.module_design import attach_framework_items, validate_lesson
 from app.idm.module_layout import ModuleScope
+from app.idm.prompts import judge_prompt
+from app.idm.qa import copied_options, reworded_key
 from app.idm.runtime import IdmRuntime
 from app.idm.storyboard import run_idm_unit
 from app.idm.validation import errors
@@ -49,6 +53,7 @@ from tests.test_idm_storyboard import (
     REPAIR,
     WRITER,
     FakeGenerate,
+    StoryboardEndpointTestCase,
     judge,
     severity_body,
     severity_writer,
@@ -384,3 +389,115 @@ class UnitBudgetTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result["unit"]["idm_quality"]["judge_status"], "review_required")
         self.assertEqual(budget_lines(logs.output)[-1], {**budget_lines(logs.output)[-1], "step": "judge_repair",
                                                         "thinking": "skipped"})
+
+
+# --- R2: leaks the pair check missed and keys the unit itself contradicts ---------------------------------------------
+RUN_MCQ = json.loads((Path(__file__).parent / "fixtures" / "qlt4_run_ab8d67e1_mcq.json").read_text("utf-8"))
+QLT3_MCQ = json.loads((Path(__file__).parent / "fixtures" / "qlt3_run_8de1c76b_mcq.json").read_text("utf-8"))
+
+
+def teaching_of(question: dict[str, Any]) -> UnitTeaching:
+    return unit_teaching([{"type": "html", "semantic_content": semantic} for semantic in question["preceding_html"]],
+                         question["faq"])
+
+
+def as_problem(question: dict[str, Any]) -> dict[str, Any]:
+    return {"question": question["question"], "choices": question["choices"]}
+
+
+def html_slot(*blocks: dict[str, Any]) -> dict[str, Any]:
+    return {"type": "html", "semantic_content": {"sections": [{"heading": "Nội dung", "blocks": list(blocks)}]}}
+
+
+CONTESTED_CASE = ("Một khách hàng phàn nàn rằng sản phẩm gây mất an toàn, liên quan pháp lý và truyền thông đã đưa "
+                  "tin. Khiếu nại này thuộc cấp độ nào?")
+
+
+class AnswerCheckTests(StoryboardEndpointTestCase):
+    def test_the_leaks_and_the_contested_key_of_the_run_are_found_and_nothing_else(self) -> None:
+        leaks = set()
+        contested = {}
+        for question in RUN_MCQ["questions"]:
+            text = " ".join(visible_text(semantic) for semantic in question["preceding_html"])
+            problem = as_problem(question)
+            if copied_options(problem, text) or reworded_key(problem, text) or quoted_key(problem,
+                                                                                          teaching_of(question)):
+                leaks.add(question["unit"])
+            rival = contested_option(problem, teaching_of(question))
+            if rival is not None:
+                contested[question["unit"]] = question["choices"][rival]["text"].split(",")[0]
+        # c4.l1.u1 (the key restates the blockquote) was missed by the pair check; the other two were found already.
+        self.assertEqual(leaks, {"c2.l5.u2", "c4.l1.u1", "c5.l1.u2"})
+        quote = next(question for question in RUN_MCQ["questions"] if question["unit"] == "c4.l1.u1")
+        self.assertTrue(quoted_key(as_problem(quote), teaching_of(quote)))
+        # c1.l2.u2: "Bậc 01" for a case with ISO 9001 and CE, which the unit's row and FAQ give to "Bậc 02".
+        self.assertEqual(contested, {"c1.l2.u2": "Bậc 02 - Vietnam Quality"})
+        # The 9 questions of run 8de1c76b (as one block of text) raise nothing new.
+        for question in QLT3_MCQ["questions"]:
+            teaching = unit_teaching([html_slot({"kind": "paragraph", "text": question["preceding_html_text"]})], [])
+            self.assertFalse(quoted_key(as_problem(question), teaching), question["unit"])
+            self.assertIsNone(contested_option(as_problem(question), teaching), question["unit"])
+
+    def test_short_keys_and_copied_cases(self) -> None:
+        teaching = unit_teaching([html_slot(
+            {"kind": "bullets", "items": ["Hiện đại hóa: áp dụng chuẩn quản trị quốc tế.",
+                                          "Việt Nam hóa: chuyển hóa chuẩn toàn cầu cho phù hợp SME Việt."]},
+            {"kind": "table", "rows": [{"label": "Nhóm gia công", "value": "Làm theo bản vẽ của đối tác."},
+                                       {"label": "Nhóm làm chủ công nghệ", "value": "Sở hữu quy trình riêng."},
+                                       {"label": "Nhóm thương hiệu", "value": "Khách tìm mua nhờ uy tín."}]},
+            {"kind": "paragraph", "text": "Ví dụ: Công ty May An Phát nhận bản vẽ và nguyên phụ liệu từ đối tác, chỉ "
+                                          "cắt may và hưởng biên lợi nhuận 4% nên thuộc nhóm gia công."})], [])
+        # The only option the html shows, word for word: a cue, not a test of the criterion.
+        only_one = {"question": "Trụ cột nào đòi hỏi áp dụng chuẩn quản trị quốc tế?", "choices": [
+            {"text": "Hiện đại hóa", "correct": True}, {"text": "Số hóa", "correct": False},
+            {"text": "Tự động hóa", "correct": False}]}
+        self.assertTrue(quoted_key(only_one, teaching))
+        # Every option taught: no cue, unless the question copies the one line that holds the key (a lookup).
+        both = {**only_one, "choices": [{"text": "Hiện đại hóa", "correct": True},
+                                        {"text": "Việt Nam hóa", "correct": False}]}
+        self.assertTrue(quoted_key(both, teaching))
+        reworded = {**both, "question": "Trụ cột nào giúp doanh nghiệp làm theo cách quản lý tốt nhất của thế giới?"}
+        self.assertFalse(quoted_key(reworded, teaching))
+        # The case copies the example that names the answer.
+        copied_case = {"question": "Công ty May An Phát nhận bản vẽ và nguyên phụ liệu từ đối tác, chỉ cắt may và "
+                                   "hưởng biên lợi nhuận 4%. Công ty thuộc nhóm nào?", "choices": [
+            {"text": "Nhóm gia công", "correct": True}, {"text": "Nhóm làm chủ công nghệ", "correct": False},
+            {"text": "Nhóm thương hiệu", "correct": False}]}
+        self.assertTrue(quoted_key(copied_case, teaching))
+        new_case = {**copied_case, "question": "Xưởng Minh Long tự thiết kế mẫu, mua vật tư trong nước và bán dưới "
+                                               "thương hiệu riêng. Xưởng thuộc nhóm nào?"}
+        self.assertFalse(quoted_key(new_case, teaching))
+
+    async def test_a_contested_key_gets_a_targeted_repair_naming_the_rival(self) -> None:
+        body = severity_body()
+        writer = severity_writer(body)
+        writer["components"]["c1"]["question"] = CONTESTED_CASE
+        writer["components"]["c1"]["choices"][1]["text"] = "Cấp 2 vì khách hàng phàn nàn"
+        provider = FakeGenerate(**{WRITER: [writer], REPAIR: [slot_repair(severity_writer(body), 1)],
+                                   JUDGE: [judge()]})
+        status, data, _ = await self.post(body, provider)
+        self.assertEqual(status, 200)
+        self.assertEqual(provider.names, [WRITER, REPAIR, JUDGE])
+        repair = provider.calls[1]
+        self.assertEqual(repair["thinking_level"], "low")
+        self.assertIn("c1 IDM_W5_ANSWER_CONTESTED at c1.question", repair["prompt"])
+        self.assertIn("(the case also meets the criteria the unit gives for option ", repair["prompt"])
+        quality = self.assert_envelope(data, "provider_validated", "validated", "provider")
+        self.assertIn("Đã tự sửa: IDM_W5_ANSWER_CONTESTED.", quality.author_note)
+
+    async def test_a_contested_key_the_repair_keeps_is_left_for_the_author(self) -> None:
+        body = severity_body()
+        writer = severity_writer(body)
+        writer["components"]["c1"]["question"] = CONTESTED_CASE
+        writer["components"]["c1"]["choices"][1]["text"] = "Cấp 2 vì khách hàng phàn nàn"
+        provider = FakeGenerate(**{WRITER: [writer], REPAIR: [slot_repair(writer, 1)], JUDGE: [judge()]})
+        status, data, _ = await self.post(body, provider)
+        self.assertEqual(status, 200)
+        quality = IdmUnitQualityV1.model_validate(data["unit"]["idm_quality"])
+        self.assertEqual(data["quality_state"], "review_required")
+        self.assertIn("Cần xem (IDM_W5_ANSWER_CONTESTED, khối 2 (Quiz)): tình huống của câu hỏi cũng khớp tiêu chí",
+                      quality.author_note)
+
+    def test_the_judge_checks_one_answer_against_the_unit(self) -> None:
+        prompt = judge_prompt("vi", plan_summary={}, facts=[], unit_content=[])
+        self.assertIn("whose key contradicts an FAQ answer of this unit, is major", prompt)

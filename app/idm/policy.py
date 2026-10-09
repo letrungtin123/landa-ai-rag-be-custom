@@ -204,6 +204,31 @@ IDM_ANSWER_LEAK_MIN_SHARE: Final = 0.75
 IDM_ANSWER_LEAK_PAIR_MIN_HITS: Final = 4
 IDM_ANSWER_LEAK_PAIR_MIN_SHARE: Final = 0.5
 IDM_ANSWER_LEAK_PAIR_MIN_MARGIN: Final = 0.2
+# A key that paraphrases ONE passage shown before it (a quotation sentence, a list item, a table row) keeps that
+# passage's words in order even when few of its word pairs are distinctive (QC run ab8d67e1, R2: c4.l1.u1's key
+# "Doanh nghiệp tất yếu sẽ bị thị trường đào thải và áp đặt sự thay đổi theo cách khắc nghiệt nhất" restates the
+# blockquote "… doanh nghiệp sẽ bị thị trường áp đặt thay đổi theo cách tàn nhẫn nhất": 13 of its 21 words in order,
+# 0.62, the distractors at most 0.24). Measured on the 16 questions of that run and the 9 of run 8de1c76b: the other
+# keys reached at most 0.52 with a margin of at most 0.15 (options that each restate a table row score alike).
+# Keys that name a taught label ("Cấp 2 vì …", "Bậc 01 - …") restate their rule by design and are not measured.
+IDM_ANSWER_QUOTE_MIN_KEY_WORDS: Final = 8
+IDM_ANSWER_QUOTE_MIN_SHARE: Final = 0.5
+IDM_ANSWER_QUOTE_MIN_MARGIN: Final = 0.25
+# A short key (at most this many words) that the html shows word for word while no distractor appears there
+# (at most half of its words in order) is the only familiar option: a cue, not a test of the criterion.
+IDM_ANSWER_SHORT_KEY_MAX_WORDS: Final = 4
+IDM_ANSWER_SHORT_DISTRACTOR_MAX_SHARE: Final = 0.5
+# The question's case copies an example passage that holds the key (and no distractor): >= this share of the
+# passage's words in order. Highest share in the two runs: 0.16.
+IDM_ANSWER_STEM_COPY_MIN_SHARE: Final = 0.6
+IDM_ANSWER_STEM_PASSAGE_MIN_WORDS: Final = 6
+# Contested key (QC run ab8d67e1, R2: c1.l2.u2's key "Bậc 01" while the case "đạt ISO 9001 và CE, tỷ lệ lỗi dưới
+# ngưỡng" is the unit's own row for Bậc 02 and its FAQ says "ISO, CE, FDA chỉ giúp đạt Bậc 02"): when the options
+# name labels the unit teaches (table rows, "label: …" list items), the case must meet the key's criteria (row value,
+# FAQ sentences naming only that label) better than any distractor's. In the run the case shared 8 content words
+# with the key's criteria and 15 with Bậc 02's; the case of a well-formed ladder question of run 8de1c76b (An
+# Phát, Bậc 01) shares 9 with its key's row and at most 4 with another.
+IDM_ANSWER_CONTESTED_MIN_WORDS: Final = 4
 
 # --- FAQ value and callout grounding (QC course 364564, N9/N11) --------------------------------
 # 3 of 5 FAQs only repeated the table taught just above them. An FAQ answer restates the html before

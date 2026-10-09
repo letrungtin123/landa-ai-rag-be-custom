@@ -1,0 +1,1749 @@
+{
+ "source": "QC run ab8d67e1 (course-v1:nesso+4645+2026, 2026-10-09): the 16 single-choice questions as applied, with the html slots before each (rebuilt as semantic content from the rendered html) and the FAQ items of the unit; qc = the QC report's verdict",
+ "questions": [
+  {
+   "unit": "c1.l1.u2",
+   "unit_path": "chapter_1.lesson_1.unit_2",
+   "qc": null,
+   "question": "Theo nguyên lý kiến trúc năng lực Best-in-Class, nguyên nhân gốc rễ dẫn đến 90% sự thất bại của các dự án chuyển đổi trong doanh nghiệp là gì?",
+   "choices": [
+    {
+     "text": "Do lãnh đạo cố gắng áp dụng các công cụ hiện đại trên nền một hệ điều hành tư duy cũ kỹ mà không đổi móng tư duy.",
+     "correct": true
+    },
+    {
+     "text": "Do doanh nghiệp lựa chọn sai công cụ quản trị tinh gọn và đầu tư vào nền tảng công nghệ số chưa đủ hiện đại.",
+     "correct": false
+    },
+    {
+     "text": "Do ngân sách đầu tư cho việc đào tạo phát triển đội ngũ N-1 và ứng dụng trí tuệ nhân tạo chưa đạt mức kỳ vọng.",
+     "correct": false
+    },
+    {
+     "text": "Do nhân sự cấp dưới thiếu kỹ năng thực thi chỉ số KPI và không tuân thủ các quy trình họp hành chính của tổ chức.",
+     "correct": false
+    }
+   ],
+   "explanation": "Nguyên lý cốt lõi khẳng định: Công cụ quản trị không có lỗi. Công nghệ số không có lỗi. Sự thất bại của các dự án chuyển đổi trong doanh nghiệp 90% bắt nguồn từ việc lãnh đạo cố gắng áp dụng các công cụ hiện đại trên nền một hệ điều hành tư duy cũ kỹ. A - Đúng vì khi móng tư duy không đổi, mọi công cụ tiên tiến áp dụng vào đều trở nên rời rạc, biến KPI thành đối phó và gây lãng phí chi phí công nghệ. B - Sai vì công cụ và công nghệ không có lỗi, sự thất bại không xuất phát từ việc công cụ chưa đủ hiện đại. C - Sai vì nguồn lực ngân sách hay quy mô đầu tư không giải quyết được gốc rễ nếu hệ điều hành tư duy của lãnh đạo vẫn theo lối mòn cũ. D - Sai vì tình trạng KPI đối phó hay họp hành rườm rà là hệ quả của việc móng tư duy không đổi, không phải nguyên nhân gốc rễ.",
+   "preceding_html": [
+    {
+     "version": 2,
+     "sections": [
+      {
+       "heading": "Ngôi nhà Năng lực Best-in-Class có cấu trúc tổng thể như thế nào?",
+       "learning_block_ids": [],
+       "blocks": [
+        {
+         "kind": "paragraph",
+         "text": "Mọi hoạt động quản trị của doanh nghiệp phải được tích hợp thành một cấu trúc vững chãi. Doanh nghiệp không thể áp dụng các công cụ quản lý một cách chắp vá hay ngẫu hứng.",
+         "items": [],
+         "rows": []
+        },
+        {
+         "kind": "paragraph",
+         "text": "Mô hình Ngôi nhà Năng lực Best-in-Class hướng tới mục tiêu tối thượng là Business Excellence và Made-in-World, được cấu thành bởi các khối năng lực trụ cột:",
+         "items": [],
+         "rows": []
+        },
+        {
+         "kind": "bullets",
+         "text": null,
+         "items": [
+          "Chiến lược: Hoạch định và triển khai nhất quán qua BMQ, Canvas và Balanced Scorecard.",
+          "R&D Sáng tạo: Chuẩn hóa quy trình phát triển sản phẩm với PMP và NQC.",
+          "Kiểm soát: Vận hành hệ thống ROSS và DQI kiểm tra chất lượng.",
+          "Khách hàng: Thấu hiểu hành trình khách hàng để mang lại Customer Delight cùng hệ thống QA hành trình.",
+          "Triệt tiêu lỗi: Giải quyết vấn đề tận gốc rễ thông qua G8D và 5Why.",
+          "Nhân sự và Văn hóa: Thiết lập ma trận trách nhiệm RACI, chuẩn hóa bản mô tả công việc (JD) và phát triển đội ngũ N-1.",
+          "Tinh gọn Lean: Tối ưu dòng chảy giá trị, loại bỏ lãng phí với TPS và Six Sigma.",
+          "Chuyển đổi số: Tích hợp công nghệ hiện đại thông qua Digital và AI Operating Model."
+         ],
+         "rows": []
+        }
+       ]
+      },
+      {
+       "heading": "Vì sao Change Mindset là nền móng quyết định sự vững chắc của doanh nghiệp?",
+       "learning_block_ids": [],
+       "blocks": [
+        {
+         "kind": "paragraph",
+         "text": "Toàn bộ các khối năng lực và công cụ quản trị nêu trên đều được nâng đỡ bởi nền móng: Change Mindset (Tư duy lãnh đạo).",
+         "items": [],
+         "rows": []
+        },
+        {
+         "kind": "warning",
+         "text": "Trong xây dựng, móng chịu toàn bộ tải trọng của ngôi nhà. Nếu móng nứt gãy hoặc yếu ớt, ngôi nhà càng xây cao thì nguy cơ đổ sập càng lớn. Tương tự như vậy trong doanh nghiệp.",
+         "items": [],
+         "rows": []
+        },
+        {
+         "kind": "paragraph",
+         "text": "Nếu móng tư duy của ban lãnh đạo chưa được chuyển dịch sang chuẩn mực chuyên nghiệp, việc đưa thêm nhiều công cụ hay công nghệ mới vào vận hành sẽ chỉ làm tăng tải trọng và đẩy doanh nghiệp đến nguy cơ đổ vỡ khi quy mô mở rộng.",
+         "items": [],
+         "rows": []
+        }
+       ]
+      }
+     ]
+    }
+   ],
+   "faq": []
+  },
+  {
+   "unit": "c1.l1.u3",
+   "unit_path": "chapter_1.lesson_1.unit_3",
+   "qc": null,
+   "question": "Một doanh nghiệp sản xuất gặp tình trạng tắc nghẽn đơn hàng nghiêm trọng tại khâu đóng gói cuối kỳ. Đâu là đề xuất thể hiện đúng tư duy chuyển dịch sang năng lực hệ thống Best-in-Class?",
+   "choices": [
+    {
+     "text": "Đồng bộ quy trình liên phòng ban từ sản xuất đến kho, thiết lập kiểm soát dòng chảy theo dữ liệu thực tế để ngừa nghẽn từ đầu.",
+     "correct": true
+    },
+    {
+     "text": "Mua sắm ngay một phần mềm quản lý kho riêng biệt để nhân viên nhập liệu tiến độ đóng gói hàng ngày.",
+     "correct": false
+    },
+    {
+     "text": "Bổ sung thêm nhân sự kiểm tra tại khâu đóng gói và yêu cầu tăng ca để kịp tiến độ giao hàng phát sinh.",
+     "correct": false
+    },
+    {
+     "text": "Giao quyền xử lý linh hoạt cho quản đốc khâu đóng gói dựa trên kinh nghiệm điều phối lâu năm của cá nhân.",
+     "correct": false
+    }
+   ],
+   "explanation": "A - Đúng vì giải pháp này thực hiện phòng ngừa từ gốc, dựa trên dữ liệu thực chứng và hướng tới tối ưu hóa toàn diện dòng chảy giá trị thay vì xử lý cục bộ; B - Sai vì chỉ là hành động mua sắm phần mềm đơn lẻ, số hóa hình thức chứ chưa gắn với chuyển đổi vận hành; C - Sai vì đây là tư duy chữa cháy sự vụ và đối phó khủng hoảng phát sinh, không giải quyết nguyên nhân gốc rễ; D - Sai vì tiếp tục lệ thuộc vào thói quen và kinh nghiệm cá nhân thay vì vận hành bằng hệ thống chuẩn mực.",
+   "preceding_html": [
+    {
+     "version": 2,
+     "sections": [
+      {
+       "heading": "Cần hoàn thành nội dung gì từ bảng thực trạng?",
+       "learning_block_ids": [],
+       "blocks": [
+        {
+         "kind": "paragraph",
+         "text": "Từ bảng mô tả thực trạng vận hành của doanh nghiệp, hãy chỉ ra các điểm nghẽn theo thói quen kinh nghiệm và đề xuất phương án chuyển dịch sang năng lực hệ thống trên 5 trục BiC.",
+         "items": [],
+         "rows": []
+        }
+       ]
+      },
+      {
+       "heading": "Các tiêu chí phân tích trên 5 trục vận hành gồm những gì?",
+       "learning_block_ids": [],
+       "blocks": [
+        {
+         "kind": "table",
+         "text": null,
+         "items": [],
+         "rows": [
+          {
+           "label": "Tư thế quản trị",
+           "value": "Chỉ ra biểu hiện chữa cháy sự vụ và giải pháp phòng ngừa rủi ro từ gốc."
+          },
+          {
+           "label": "Ra quyết định",
+           "value": "Chỉ ra thói quen cảm tính và căn cứ dữ liệu thực chứng cần áp dụng."
+          },
+          {
+           "label": "Mục tiêu tối ưu",
+           "value": "Chỉ ra tối ưu cục bộ phòng ban và phương án thông suốt dòng chảy giá trị."
+          },
+          {
+           "label": "Ứng dụng công nghệ",
+           "value": "Chỉ ra việc mua sắm đơn lẻ và định hướng đổi mới mô hình kinh doanh."
+          },
+          {
+           "label": "Chiến lược nguồn lực",
+           "value": "Chỉ ra nỗ lực tự sở hữu và phương án kết nối mở hệ sinh thái."
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "heading": "Mẫu phân tích một trục vận hành được thực hiện thế nào?",
+       "learning_block_ids": [],
+       "blocks": [
+        {
+         "kind": "table",
+         "text": null,
+         "items": [],
+         "rows": [
+          {
+           "label": "Trục: Ra quyết định",
+           "value": "Điểm nghẽn cũ: Phê duyệt nhập vật tư dựa vào cảm tính cá nhân. Chuyển dịch mới: Thiết lập hạn mức mua hàng căn cứ trên dữ liệu tồn kho thực chứng."
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "heading": "Tự kiểm tra kết quả phân tích theo các tiêu chí nào?",
+       "learning_block_ids": [],
+       "blocks": [
+        {
+         "kind": "bullets",
+         "text": null,
+         "items": [
+          "Tư thế quản trị: Chuyển từ chữa cháy sự vụ sang phòng ngừa từ gốc, chủ động đón đầu rủi ro.",
+          "Ra quyết định: Chuyển từ cảm tính, thói quen sang dữ liệu thực chứng và sự thật khách quan.",
+          "Mục tiêu tối ưu: Chuyển từ tối ưu hóa cục bộ phòng ban sang dòng chảy giá trị toàn công ty.",
+          "Ứng dụng công nghệ: Chuyển từ phần mềm đơn lẻ sang chuyển đổi mô hình kinh doanh và trải nghiệm số.",
+          "Chiến lược nguồn lực: Chuyển từ cố gắng tự sở hữu sang siêu kết nối hệ sinh thái mở."
+         ],
+         "rows": []
+        }
+       ]
+      },
+      {
+       "heading": "Nguyên tắc cốt lõi cần ghi nhớ trong chuyển dịch là gì?",
+       "learning_block_ids": [],
+       "blocks": [
+        {
+         "kind": "warning",
+         "text": "Doanh nghiệp SME muốn bứt phá bắt buộc phải thực hiện cuộc chuyển đổi căn bản từ việc vận hành dựa vào kinh nghiệm cá nhân sang vận hành bằng năng lực hệ thống chuẩn mực.",
+         "items": [],
+         "rows": []
+        }
+       ]
+      }
+     ]
+    }
+   ],
+   "faq": [
+    {
+     "question": "Có phải doanh nghiệp SME chưa thể chuyển dịch sang chuẩn BiC vì thiếu vốn, thiếu nhân tài và thiếu công nghệ?",
+     "answer": "Không. Vấn đề cốt lõi không nằm ở sự thiếu thốn nguồn lực bên ngoài mà bị giới hạn bởi chính cách tư duy của người lãnh đạo về việc khai thác nguồn lực và phương thức tổ chức vận hành."
+    },
+    {
+     "question": "Tại sao việc đầu tư nhiều phần mềm công nghệ thông tin chưa mang lại hiệu quả chuyển dịch vận hành?",
+     "answer": "Việc mua sắm phần mềm đơn lẻ chỉ là số hóa hình thức. Chuyển dịch công nghệ BiC đòi hỏi gắn liền với chuyển đổi mô hình kinh doanh và trải nghiệm số, vận hành trên nền tảng dữ liệu thực chứng."
+    },
+    {
+     "question": "Doanh nghiệp có cần tự mua sắm toàn bộ máy móc thiết bị và tuyển đủ nhân sự để xây dựng hệ thống chuẩn?",
+     "answer": "Không. Mô hình kinh nghiệm cũ thường cố gắng tự sở hữu mọi thứ, trong khi mô hình mới hướng tới siêu kết nối hệ sinh thái mở để tối ưu hóa nguồn lực và năng lực bên ngoài."
+    }
+   ]
+  },
+  {
+   "unit": "c1.l2.u1",
+   "unit_path": "chapter_1.lesson_2.unit_1",
+   "qc": "partial_leak",
+   "question": "Doanh nghiệp sản xuất An Phát đang lập chiến lược thoát khỏi bẫy gia công để vươn tới chuẩn mực Made-in-World. Định hướng hành động nào sau đây phản ánh đúng nhất tinh thần của phương trình Made-in-Vietnam đồng nghĩa Made-in-World?",
+   "choices": [
+    {
+     "text": "Nhập khẩu nguyên liệu thứ cấp nhằm hạ giá thành chào bán, chỉ hướng đến phân khúc thị trường dễ tính trong khu vực.",
+     "correct": false
+    },
+    {
+     "text": "Đầu tư mạnh vào quảng bá thương hiệu bề nổi nhưng giữ nguyên dây chuyền sản xuất thủ công và phương thức vận hành cũ.",
+     "correct": false
+    },
+    {
+     "text": "Mở rộng quy mô xưởng may theo mẫu có sẵn của đối tác, tiếp tục dựa vào lợi thế chi phí nhân công rẻ để nhận đơn hàng.",
+     "correct": false
+    },
+    {
+     "text": "Thiết lập quy trình chuẩn quốc tế, bảo đảm độ tin cậy trọn vẹn, tối ưu giá trị gia tăng và liên tục cải tiến sản phẩm.",
+     "correct": true
+    }
+   ],
+   "explanation": "Tiêu chí: Doanh nghiệp đạt đẳng cấp toàn cầu cần thoát khỏi bẫy nhân công giá rẻ và gia công thô để làm chủ quy trình chuẩn mực, độ tin cậy cao, tạo thặng dư giá trị lớn và không ngừng đổi mới. A - Sai vì sử dụng nguyên liệu thứ cấp và nhắm vào thị trường dễ tính đi ngược lại chuẩn mực chất lượng cao; B - Sai vì chỉ đầu tư truyền thông bề nổi mà không chuyển đổi năng lực vận hành thực chất; C - Sai vì tiếp tục phụ thuộc vào mô hình gia công thuần túy và nhân công giá thấp; D - Đúng vì phản ánh toàn diện các thuộc tính chuẩn hóa quốc tế, độ tin cậy, thặng dư giá trị và cải tiến liên tục.",
+   "preceding_html": [
+    {
+     "version": 2,
+     "sections": [
+      {
+       "heading": "Định vị mới thay thế tư duy gia công cũ như thế nào?",
+       "learning_block_ids": [],
+       "blocks": [
+        {
+         "kind": "paragraph",
+         "text": "Khát vọng lớn nhất của việc chuyển dịch tư duy quản trị Best-in-Class là nâng tầm định vị thương hiệu doanh nghiệp. Định vị sản phẩm quốc gia cần dứt khoát thoát khỏi sự phụ thuộc vào lợi thế nhân công giá rẻ để hướng đến giá trị bền vững.",
+         "items": [],
+         "rows": []
+        },
+        {
+         "kind": "warning",
+         "text": "Made-in-Vietnam không thể mãi gắn liền với hình ảnh nhân công giá rẻ, gia công thô ráp hay sản phẩm chất lượng loại hai.",
+         "items": [],
+         "rows": []
+        }
+       ]
+      },
+      {
+       "heading": "Năm đặc trưng cấu thành đẳng cấp toàn cầu gồm những gì?",
+       "learning_block_ids": [],
+       "blocks": [
+        {
+         "kind": "paragraph",
+         "text": "Phương trình đẳng cấp toàn cầu xác lập chuẩn mực mới: Made-in-Vietnam đồng nghĩa với Made-in-World. Sản phẩm sản xuất tại Việt Nam phải hội tụ đủ 5 đặc trưng cốt lõi sau:",
+         "items": [],
+         "rows": []
+        },
+        {
+         "kind": "bullets",
+         "text": null,
+         "items": [
+          "Chất lượng đỉnh cao",
+          "Uy tín tuyệt đối",
+          "Giá trị gia tăng lớn",
+          "Đổi mới liên tục",
+          "Chuẩn mực toàn cầu"
+         ],
+         "rows": []
+        },
+        {
+         "kind": "paragraph",
+         "text": "Bộ 5 thuộc tính này là kim chỉ nam giúp các nhà lãnh đạo SME tái cấu trúc hệ thống vận hành, chuyển dịch từ tư duy làm thuê gia công sang làm chủ giá trị.",
+         "items": [],
+         "rows": []
+        }
+       ]
+      }
+     ]
+    }
+   ],
+   "faq": []
+  },
+  {
+   "unit": "c1.l2.u2",
+   "unit_path": "chapter_1.lesson_2.unit_2",
+   "qc": "key_contradicts_faq",
+   "question": "Doanh nghiệp X chuyên sản xuất linh kiện phụ trợ. Doanh nghiệp đã đạt chứng nhận ISO 9001 và CE, tỷ lệ sản phẩm lỗi luôn dưới ngưỡng cho phép. Tuy nhiên, toàn bộ nguyên vật liệu chính vẫn do đối tác chỉ định nguồn cung ứng từ nước ngoài, doanh nghiệp chưa chủ động tìm kiếm nhà cung cấp thay thế và biên lợi nhuận ròng hiện đạt 4%. Căn cứ vào Made-in-World Ladder, doanh nghiệp X đang dừng lại ở nấc thang nào?",
+   "choices": [
+    {
+     "text": "Bậc 04 - Vietnam Know-how, vì doanh nghiệp nắm giữ kỹ thuật sản xuất linh kiện đạt chuẩn xuất khẩu sang thị trường khó tính",
+     "correct": false
+    },
+    {
+     "text": "Bậc 01 - Vietnam Manufacturing, vì biên lợi nhuận chỉ đạt 4% và hoàn toàn phụ thuộc nguồn nguyên phụ liệu từ đối tác",
+     "correct": true
+    },
+    {
+     "text": "Bậc 02 - Vietnam Quality, vì doanh nghiệp đã có đầy đủ chứng nhận ISO, CE và kiểm soát tốt tỷ lệ lỗi sản phẩm",
+     "correct": false
+    },
+    {
+     "text": "Bậc 03 - Vietnam Value, vì doanh nghiệp đã tham gia vào chuỗi cung ứng sản xuất linh kiện quốc tế và duy trì chất lượng ổn định",
+     "correct": false
+    }
+   ],
+   "explanation": "A - Sai vì doanh nghiệp chưa sở hữu quy trình độc quyền hay công thức thiết kế riêng biệt khó sao chép theo tiêu chí của Bậc 04; B - Đúng vì doanh nghiệp X hoàn toàn phụ thuộc vào nguồn nguyên phụ liệu chỉ định và có biên lợi nhuận 4% (nằm trong khung 3-5%), khớp chính xác với đặc trưng của Bậc 01 Vietnam Manufacturing; C - Sai vì dù đã đạt chứng chỉ ISO và CE nhưng việc phụ thuộc hoàn toàn vật tư và biên lãi 4% cho thấy doanh nghiệp chưa thoát khỏi mô hình gia công thuần túy để thực sự vận hành ổn định độc lập ở Bậc 02; D - Sai vì Bậc 03 đòi hỏi tối ưu chi phí ẩn và làm chủ chuỗi cung ứng vật tư trong nước để nâng giá trị giữ lại, điều mà X chưa thực hiện được.",
+   "preceding_html": [
+    {
+     "version": 2,
+     "sections": [
+      {
+       "heading": "Bản chất của Made-in-World Ladder là gì?",
+       "learning_block_ids": [],
+       "blocks": [
+        {
+         "kind": "paragraph",
+         "text": "Hành trình vươn ra biển lớn là quá trình tích lũy năng lực vận hành được chứng minh qua 6 nấc thang khắt khe, thay vì chỉ dừng lại ở truyền thông hoa mỹ.",
+         "items": [],
+         "rows": []
+        }
+       ]
+      },
+      {
+       "heading": "Các nấc thang năng lực vận hành được quy định như thế nào?",
+       "learning_block_ids": [],
+       "blocks": [
+        {
+         "kind": "table",
+         "text": null,
+         "items": [],
+         "rows": [
+          {
+           "label": "Bậc 01 - Vietnam Manufacturing",
+           "value": "Gia công thuần túy, phụ thuộc khách hàng cung cấp nguyên phụ liệu và thiết kế. Biên lợi nhuận mỏng manh ở mức 3-5%."
+          },
+          {
+           "label": "Bậc 02 - Vietnam Quality",
+           "value": "Đạt chuẩn kỹ thuật, có các chứng nhận quốc tế như ISO, CE, FDA. Sản phẩm ổn định, tỷ lệ lỗi dưới ngưỡng cho phép."
+          },
+          {
+           "label": "Bậc 03 - Vietnam Value",
+           "value": "Tối ưu hóa chi phí ẩn, làm chủ chuỗi cung ứng vật tư trong nước. Nâng tỷ suất lợi nhuận và giá trị giữ lại cho doanh nghiệp."
+          },
+          {
+           "label": "Bậc 04 - Vietnam Know-how",
+           "value": "Làm chủ bí quyết công nghệ, sở hữu quy trình sản xuất độc quyền hoặc công thức thiết kế riêng biệt khó sao chép."
+          },
+          {
+           "label": "Bậc 05 - Vietnam Innovation",
+           "value": "Tiên phong tạo ra sản phẩm mới giải quyết nỗi đau của thị trường, ứng dụng vật liệu xanh, công nghệ số và mô hình mới."
+          },
+          {
+           "label": "Bậc 06 - Vietnam Brand",
+           "value": "Xây dựng thành công thương hiệu có uy tín, khách hàng quốc tế chủ động tìm mua với mức giá cao nhờ niềm tin."
+          },
+          {
+           "label": "Đỉnh cao - Made-in-World",
+           "value": "Năng lực vận hành chuẩn mực toàn cầu. Doanh nghiệp Việt Nam tham gia định hình luật chơi và dẫn dắt phân khúc ngành."
+          }
+         ]
+        }
+       ]
+      }
+     ]
+    }
+   ],
+   "faq": [
+    {
+     "question": "Doanh nghiệp đạt các chứng nhận quốc tế như ISO, CE, FDA có đồng nghĩa với việc đã tối ưu giá trị giữ lại không?",
+     "answer": "Không. Đạt chứng nhận quốc tế như ISO, CE, FDA chỉ giúp doanh nghiệp đạt Bậc 02 (Vietnam Quality) với chất lượng sản phẩm ổn định và tỷ lệ lỗi dưới ngưỡng cho phép. Để tối ưu hóa chi phí ẩn, nâng tỷ suất lợi nhuận và gia tăng giá trị giữ lại, doanh nghiệp phải tiến lên Bậc 03 (Vietnam Value) bằng cách làm chủ chuỗi cung ứng vật tư trong nước."
+    },
+    {
+     "question": "Yếu tố nào phân biệt giữa Bậc 06 Vietnam Brand và đỉnh cao Made-in-World?",
+     "answer": "Bậc 06 (Vietnam Brand) là khi doanh nghiệp xây dựng thành công thương hiệu uy tín, được khách hàng quốc tế chủ động tìm mua với mức giá cao nhờ niềm tin. Trong khi đó, nấc thang đỉnh cao Made-in-World đòi hỏi doanh nghiệp phải tích lũy năng lực vận hành đạt chuẩn mực toàn cầu, từ đó tham gia định hình luật chơi và dẫn dắt phân khúc ngành."
+    }
+   ]
+  },
+  {
+   "unit": "c2.l1.u2",
+   "unit_path": "chapter_2.lesson_1.unit_2",
+   "qc": null,
+   "question": "Doanh nghiệp phụ tùng cơ khí An Phát đang kẹt trong vòng xoáy nhận các đơn gia công nhỏ lẻ để đủ tiền trang trải chi phí và trả lãi vay. Ban giám đốc muốn áp dụng nguyên lý Think Big để bứt phá. Phương án nào sau đây xác lập đúng mục tiêu tham vọng và hành động trọng tâm theo chuẩn Best-in-Class?",
+   "choices": [
+    {
+     "text": "Đặt mục tiêu 10 năm tới trở thành tập đoàn đa ngành dẫn đầu khu vực và đồng loạt đầu tư làm mới tất cả các dây chuyền trong 90 ngày.",
+     "correct": false
+    },
+    {
+     "text": "Duy trì các đơn gia công nhỏ để bảo đảm dòng tiền trả nợ ngân hàng và đặt mục tiêu 3 năm tới tuyển thêm 20 nhân công.",
+     "correct": false
+    },
+    {
+     "text": "Tập trung toàn lực trong 3 năm tới vào việc trả hết nợ ngân hàng và cử đội ngũ kinh doanh đi học kỹ năng tìm kiếm khách hàng trong 90 ngày.",
+     "correct": false
+    },
+    {
+     "text": "Xác lập tham vọng 3 năm đạt chuẩn Best-in-Class về độ chính xác chi tiết khuôn mẫu trong ngành và chọn nâng cấp năng lực đo lường tự động trong 90 ngày.",
+     "correct": true
+    }
+   ],
+   "explanation": "A - Sai vì đặt khung thời gian 10 năm không đúng định hướng 3 năm và dàn trải nguồn lực thay vì tập trung vào 01 năng lực lõi trong 90 ngày; B - Sai vì phương án này vẫn rơi vào bẫy an phận khi chỉ tập trung đủ sống, trả nợ và chạy theo việc vụn vặt; C - Sai vì chỉ giới hạn ở mục tiêu tồn tại trả nợ, không đưa ra được tham vọng Best-in-Class nào làm ngọn hải đăng; D - Đúng vì xác định rõ 01 tham vọng vượt chuẩn ngành trong 3 năm gắn với năng lực cụ thể và chọn đúng 01 năng lực lõi tập trung nâng cấp trong 90 ngày để dẫn dắt đầu tư.",
+   "preceding_html": [
+    {
+     "version": 2,
+     "sections": [
+      {
+       "heading": "Bẫy an phận kìm hãm doanh nghiệp như thế nào?",
+       "learning_block_ids": [],
+       "blocks": [
+        {
+         "kind": "paragraph",
+         "text": "Nhiều lãnh đạo doanh nghiệp vừa và nhỏ thường mắc kẹt trong bẫy an phận với suy nghĩ rằng quy mô mình nhỏ, chỉ cần làm đủ sống, đủ trả nợ ngân hàng và lo lương cho nhân sự là tốt rồi.",
+         "items": [],
+         "rows": []
+        },
+        {
+         "kind": "warning",
+         "text": "Hậu quả của bẫy an phận: Doanh nghiệp luôn bị động, chạy theo đơn hàng vụn vặt và không bao giờ tích lũy nguồn lực.",
+         "items": [],
+         "rows": []
+        }
+       ]
+      },
+      {
+       "heading": "Tư duy Think Big chuyển dịch định hướng lãnh đạo ra sao?",
+       "learning_block_ids": [],
+       "blocks": [
+        {
+         "kind": "paragraph",
+         "text": "Chuyển dịch sang tư duy Best-in-Class đòi hỏi doanh nghiệp phải chuyển từ tư duy tồn tại sang khát vọng lớn. Khát vọng lớn đóng vai trò là ngọn hải đăng để dẫn dắt mọi lựa chọn đầu tư.",
+         "items": [],
+         "rows": []
+        },
+        {
+         "kind": "paragraph",
+         "text": "Người đứng đầu tổ chức cần đặt ra câu hỏi chiến lược: Doanh nghiệp chúng ta sẽ trở thành Best-in-Class ở năng lực cụ thể nào trong ngành?",
+         "items": [],
+         "rows": []
+        }
+       ]
+      },
+      {
+       "heading": "Lãnh đạo cần thực hiện hành động cụ thể nào để bứt phá?",
+       "learning_block_ids": [],
+       "blocks": [
+        {
+         "kind": "paragraph",
+         "text": "Để đưa tư duy vào thực thi, người điều hành cần triển khai ngay hai hành động trọng tâm:",
+         "items": [],
+         "rows": []
+        },
+        {
+         "kind": "steps",
+         "text": null,
+         "items": [
+          "Xác định 01 tham vọng vượt chuẩn ngành trong 3 năm tới.",
+          "Chọn ngay 01 năng lực lõi cần nâng cấp trong 90 ngày."
+         ],
+         "rows": []
+        }
+       ]
+      }
+     ]
+    }
+   ],
+   "faq": [
+    {
+     "question": "Doanh nghiệp quy mô nhỏ có nên duy trì mục tiêu làm đủ sống và trả nợ ngân hàng trước khi nghĩ đến việc lớn?",
+     "answer": "Đây là ngộ nhận của bẫy an phận. Lối suy nghĩ này khiến doanh nghiệp luôn ở thế bị động, chạy theo đơn hàng vụn vặt và không bao giờ tích lũy được nguồn lực."
+    },
+    {
+     "question": "Nếu lãnh đạo chỉ dừng lại ở sự đồng cảm với nhu cầu đổi mới thì có giúp doanh nghiệp bước qua cánh cổng chuyển đổi?",
+     "answer": "Không thể. Để bước qua cánh cổng chuyển đổi, CEO không thể chỉ dừng lại ở sự đồng cảm chung chung mà bắt buộc phải thực hiện các yêu cầu tái cấu trúc nhận thức sống còn."
+    },
+    {
+     "question": "Tư duy Best-in-Class có đòi hỏi doanh nghiệp phải trở thành đơn vị dẫn đầu ở mọi mặt trong ngành hay không?",
+     "answer": "Không. Tư duy Best-in-Class yêu cầu doanh nghiệp trả lời câu hỏi chiến lược là sẽ trở thành đơn vị dẫn đầu ở năng lực cụ thể nào trong ngành để định hướng đầu tư."
+    }
+   ]
+  },
+  {
+   "unit": "c2.l2.u1",
+   "unit_path": "chapter_2.lesson_2.unit_1",
+   "qc": null,
+   "question": "Một doanh nghiệp bán lẻ nông sản nội địa muốn bứt phá trên thị trường. Ban điều hành đang cân nhắc các phương án tái cấu trúc vận hành. Đề xuất nào sau đây thể hiện đúng tư duy Think Different?",
+   "choices": [
+    {
+     "text": "Nghiên cứu mô hình chuỗi cung ứng của tập đoàn bán lẻ dẫn đầu thế giới, kết hợp giải pháp vận chuyển xe máy linh hoạt tại địa phương để tạo lợi thế tươi ngon độc bản.",
+     "correct": true
+    },
+    {
+     "text": "Sao chép toàn bộ hệ thống kho tự động hóa từ doanh nghiệp dẫn đầu toàn cầu vào vận hành nội địa mà không điều chỉnh theo điều kiện hạ tầng và thói quen thực tế.",
+     "correct": false
+    },
+    {
+     "text": "Thống kê quy trình phục vụ của các cửa hàng bán lẻ trong nước cùng quy mô, lấy đó làm thước đo tối đa để tối ưu chi phí và duy trì mức giá bán cạnh tranh.",
+     "correct": false
+    },
+    {
+     "text": "Khảo sát biểu phí và mức chiết khấu của các chuỗi siêu thị nội địa trong khu vực, sau đó áp dụng mức giá thấp hơn nhằm chiếm lĩnh thị phần nhanh chóng.",
+     "correct": false
+    }
+   ],
+   "explanation": "Tiêu chí đánh giá là học hỏi chuẩn quốc tế kết hợp giải pháp bản địa linh hoạt để tạo ra sự khác biệt độc bản, tránh bẫy so sánh giá với đối thủ nội địa. A - Đúng vì kết hợp học hỏi chuỗi cung ứng dẫn đầu thế giới với giải pháp giao vận bản địa linh hoạt để tạo sự khác biệt độc bản; B - Sai vì sao chép máy móc mà thiếu đi sự linh hoạt phù hợp với thực tế bản địa; C - Sai vì tự giới hạn theo chuẩn mực của đối thủ nội địa, dẫn đến tự thỏa mãn với tiêu chuẩn thấp; D - Sai vì chỉ so sánh giá với đối thủ trong nước, khiến doanh nghiệp rơi vào cuộc chiến hạ giá tự sát.",
+   "preceding_html": [
+    {
+     "version": 2,
+     "sections": [
+      {
+       "heading": "Nhiệm vụ phân tích case study Best-in-Class là gì?",
+       "learning_block_ids": [],
+       "blocks": [
+        {
+         "kind": "paragraph",
+         "text": "Chọn 01 case study dẫn đầu thế giới trong ngành của bạn, tiến hành mổ xẻ cấu trúc chi phí và mô hình phục vụ của họ để tìm ra công thức tạo khác biệt độc bản cho doanh nghiệp mình.",
+         "items": [],
+         "rows": []
+        },
+        {
+         "kind": "paragraph",
+         "text": "Nguyên tắc chuyển dịch tư duy khi phân tích:",
+         "items": [],
+         "rows": []
+        },
+        {
+         "kind": "bullets",
+         "text": null,
+         "items": [
+          "Tránh câu hỏi sai lầm: Các đối thủ cạnh tranh trong nước đang bán giá bao nhiêu và làm như thế nào?",
+          "Tập trung vào câu hỏi đúng đắn: Chuẩn mực vận hành tốt nhất thế giới trong ngành này là gì, và doanh nghiệp Việt Nam có thể tạo ra sự khác biệt độc bản bằng cách nào?",
+          "Công thức cốt lõi: Học hỏi chuẩn quốc tế kết hợp giải pháp bản địa linh hoạt."
+         ],
+         "rows": []
+        },
+        {
+         "kind": "warning",
+         "text": "Cách nhìn nhìn vào đối thủ cạnh tranh trong nước đang bán giá bao nhiêu và làm như thế nào giam hãm doanh nghiệp trong một cuộc chiến hạ giá tự sát (Race to the bottom) và tự thỏa mãn với tiêu chuẩn thấp.",
+         "items": [],
+         "rows": []
+        }
+       ]
+      },
+      {
+       "heading": "Biểu mẫu phân tích gồm những nội dung nào?",
+       "learning_block_ids": [],
+       "blocks": [
+        {
+         "kind": "paragraph",
+         "text": "Hoàn thành các trường thông tin theo cấu trúc sau:",
+         "items": [],
+         "rows": []
+        },
+        {
+         "kind": "table",
+         "text": null,
+         "items": [],
+         "rows": [
+          {
+           "label": "Case study lựa chọn",
+           "value": "Doanh nghiệp dẫn đầu thế giới nào trong ngành được chọn?"
+          },
+          {
+           "label": "Mô hình phục vụ Best-in-Class",
+           "value": "Họ thiết kế trải nghiệm và mô hình phục vụ khách hàng ra sao?"
+          },
+          {
+           "label": "Cấu trúc chi phí Best-in-Class",
+           "value": "Cấu trúc chi phí của họ được tối ưu và phân bổ thế nào?"
+          },
+          {
+           "label": "Sự khác biệt độc bản ứng dụng",
+           "value": "Doanh nghiệp kết hợp chuẩn quốc tế với giải pháp bản địa linh hoạt ra sao?"
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "heading": "Tự kiểm tra kết quả phân tích theo tiêu chí nào?",
+       "learning_block_ids": [],
+       "blocks": [
+        {
+         "kind": "paragraph",
+         "text": "Đối chiếu bản phân tích của bạn với các tiêu chí chuẩn sau:",
+         "items": [],
+         "rows": []
+        },
+        {
+         "kind": "bullets",
+         "text": null,
+         "items": [
+          "Đã chọn đúng 01 case study dẫn đầu thế giới trong ngành thay vì đối thủ nội địa.",
+          "Đã làm rõ chuẩn mực vận hành tốt nhất thế giới về mô hình phục vụ và cấu trúc chi phí.",
+          "Không đặt trọng tâm vào việc so sánh giá bán của các đối thủ trong nước.",
+          "Đã đề xuất được giải pháp bản địa linh hoạt kết hợp với chuẩn quốc tế để tạo khác biệt độc bản."
+         ],
+         "rows": []
+        }
+       ]
+      }
+     ]
+    }
+   ],
+   "faq": [
+    {
+     "question": "Có phải nắm bắt giá bán của đối thủ trong nước là ưu tiên hàng đầu để định giá cạnh tranh?",
+     "answer": "Không. Tập trung vào việc đối thủ trong nước bán giá bao nhiêu và làm thế nào sẽ giam hãm doanh nghiệp vào cuộc chiến hạ giá tự sát và tự thỏa mãn với tiêu chuẩn thấp."
+    },
+    {
+     "question": "Doanh nghiệp quy mô Việt Nam có nên áp dụng nguyên vẹn mô hình của các tập đoàn dẫn đầu thế giới?",
+     "answer": "Không. Nguyên tắc đúng đắn là học hỏi chuẩn quốc tế kết hợp giải pháp bản địa linh hoạt để tạo ra sự khác biệt độc bản thay vì sao chép rập khuôn."
+    },
+    {
+     "question": "Nếu chỉ mổ xẻ sản phẩm của doanh nghiệp dẫn đầu thế giới thì đã đủ để học hỏi chưa?",
+     "answer": "Chưa đủ. Hành động của lãnh đạo là chọn case study dẫn đầu thế giới để mổ xẻ sâu vào cấu trúc chi phí và mô hình phục vụ của họ."
+    }
+   ]
+  },
+  {
+   "unit": "c2.l3.u1",
+   "unit_path": "chapter_2.lesson_3.unit_1",
+   "qc": "partial_leak",
+   "question": "Một doanh nghiệp đang rà soát khâu giao hàng và lắp đặt thiết bị. Phương án nào dưới đây thể hiện đúng tinh thần tái thiết kế điểm chạm theo tư duy Think Customer để tạo cảm xúc Wow & Delight?",
+   "choices": [
+    {
+     "text": "Kỹ thuật viên giao hàng đúng hẹn, lắp đặt chuẩn xác quy trình kỹ thuật và hoàn tất ký biên bản bàn giao không xảy ra lỗi để đạt chỉ tiêu 95% hợp đồng đã ký.",
+     "correct": false
+    },
+    {
+     "text": "Kỹ thuật viên lắp đặt chuẩn xác, hướng dẫn mẹo dùng tối ưu theo nhu cầu riêng và tận tình hỗ trợ bố trí thiết bị, khiến khách hàng hoàn toàn tin tưởng và hào hứng giới thiệu.",
+     "correct": true
+    },
+    {
+     "text": "Kỹ thuật viên tuân thủ nghiêm ngặt bảng kiểm an toàn, giao thiết bị nguyên đai nguyên kiện và hướng dẫn khách hàng ký nhận để đảm bảo giảm thiểu tối đa tỷ lệ phát sinh lỗi sản phẩm.",
+     "correct": false
+    },
+    {
+     "text": "Kỹ thuật viên bàn giao đúng danh mục sản phẩm, gửi kèm sổ bảo hành cam kết khắc phục nhanh các lỗi kỹ thuật và đạt tiêu chuẩn đánh giá không khiếu nại của công ty.",
+     "correct": false
+    }
+   ],
+   "explanation": "Tiêu chí đánh giá: Chất lượng thực sự theo tư duy Think Customer không chỉ là ít lỗi kỹ thuật hay hoàn thành 95% hợp đồng, mà phải tạo ra sự gắn kết trọn đời: khách hàng tuyệt đối tin tưởng, sẵn sàng quay lại, tự nguyện giới thiệu và vui vẻ trả giá cao hơn. Giải thích các phương án: A - Sai, vì chỉ dừng ở mức kiểm soát lỗi kỹ thuật và phấn đấu đạt 95% hợp đồng đã ký theo tư duy cũ. B - Đúng, vì hành động chăm sóc cá nhân hóa vượt kỳ vọng đã tạo ra cảm xúc vượt trội, giúp khách hàng tuyệt đối tin tưởng và tự nguyện giới thiệu. C - Sai, vì phương án này chỉ nhằm mục tiêu giảm thiểu tỷ lệ lỗi kỹ thuật theo chuẩn kiểm soát cũ. D - Sai, vì phương án này vẫn tập trung vào việc tuân thủ biên bản và xử lý lỗi kỹ thuật phát sinh thông thường.",
+   "preceding_html": [
+    {
+     "version": 2,
+     "sections": [
+      {
+       "heading": "Người học cần thực hiện nhiệm vụ gì?",
+       "learning_block_ids": [],
+       "blocks": [
+        {
+         "kind": "paragraph",
+         "text": "Dựa trên một điểm chạm dịch vụ then chốt hiện tại của doanh nghiệp, hãy rà soát và tái thiết kế điểm chạm này nhằm chuyển dịch từ kiểm soát lỗi kỹ thuật sang tạo dựng cảm xúc Wow và Delight cho khách hàng.",
+         "items": [],
+         "rows": []
+        }
+       ]
+      },
+      {
+       "heading": "Cần điền những thông tin gì vào phiếu tái thiết kế?",
+       "learning_block_ids": [],
+       "blocks": [
+        {
+         "kind": "table",
+         "text": null,
+         "items": [],
+         "rows": [
+          {
+           "label": "Điểm chạm hiện tại",
+           "value": "Điểm chạm nào đang chỉ dừng ở mức đáp ứng đúng hợp đồng đã ký?"
+          },
+          {
+           "label": "Mục tiêu cảm xúc mới",
+           "value": "Hành động nào giúp tạo dựng sự gắn kết trọn đời cho khách hàng?"
+          },
+          {
+           "label": "Thước đo thành công",
+           "value": "Khách hàng có tuyệt đối tin tưởng và sẵn sàng giới thiệu hay không?"
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "heading": "Một phương án tái thiết kế mẫu được trình bày như thế nào?",
+       "learning_block_ids": [],
+       "blocks": [
+        {
+         "kind": "table",
+         "text": null,
+         "items": [],
+         "rows": [
+          {
+           "label": "Điểm chạm hiện tại",
+           "value": "Bàn giao sản phẩm đúng quy cách kỹ thuật theo biên bản nghiệm thu."
+          },
+          {
+           "label": "Mục tiêu cảm xúc mới",
+           "value": "Bàn giao kèm hướng dẫn ứng dụng cá nhân hóa để tạo bất ngờ và tin cậy."
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "heading": "Làm thế nào để tự kiểm tra kết quả bài tập?",
+       "learning_block_ids": [],
+       "blocks": [
+        {
+         "kind": "bullets",
+         "text": null,
+         "items": [
+          "Không dừng lại ở việc sản phẩm ít lỗi kỹ thuật hay hoàn thành 95% hợp đồng đã ký.",
+          "Điểm chạm tạo được sự tin tưởng tuyệt đối từ phía khách hàng.",
+          "Thúc đẩy khách hàng sẵn sàng quay lại mua nhiều lần.",
+          "Tạo động lực để khách hàng tự nguyện giới thiệu cho người khác.",
+          "Mang lại giá trị khiến khách hàng vui vẻ trả giá cao hơn."
+         ],
+         "rows": []
+        }
+       ]
+      }
+     ]
+    }
+   ],
+   "faq": [
+    {
+     "question": "Doanh nghiệp sản xuất ra sản phẩm ít lỗi kỹ thuật và đạt 95% hợp đồng đã ký thì đã đạt chuẩn chất lượng thực sự chưa?",
+     "answer": "Chưa đạt chuẩn chất lượng thực sự. Theo tư duy cũ, chất lượng được xem là sản phẩm sản xuất ra ít lỗi kỹ thuật và đáp ứng đúng hợp đồng đã ký, đạt 95% là thở phào nhẹ nhõm. Tuy nhiên, theo tư duy mới, chất lượng thực sự phải được đo bằng sự gắn kết trọn đời: khách hàng tuyệt đối tin tưởng, sẵn sàng quay lại mua nhiều lần, tự nguyện giới thiệu cho người khác và vui vẻ trả giá cao hơn."
+    },
+    {
+     "question": "Hành động then chốt của CEO để chuyển dịch từ tiêu chuẩn kỹ thuật sang Customer Delight là gì?",
+     "answer": "Hành động của CEO là tái thiết kế toàn bộ 01 điểm chạm trọng yếu trong hành trình khách hàng để tạo ra cảm xúc Wow & Delight."
+    }
+   ]
+  },
+  {
+   "unit": "c2.l4.u1",
+   "unit_path": "chapter_2.lesson_4.unit_1",
+   "qc": null,
+   "question": "Một xưởng sản xuất ghi nhận lỗi giao hàng sai mẫu lặp lại 15 lần trong tháng. Đội ngũ đề xuất 4 phương án xử lý dưới đây. Dựa trên tư duy Think System và quy luật chi phí phòng ngừa, phương án nào thể hiện đúng bản chất của 5Why và cơ chế phòng ngừa?",
+   "choices": [
+    {
+     "text": "Truy vết nguyên nhân đến việc công nhân thiếu tập trung và đưa ra chế tài phạt tiền mỗi lần làm sai mẫu.",
+     "correct": false
+    },
+    {
+     "text": "Tăng cường thêm 03 nhân viên kiểm phẩm túc trực ở khâu đóng gói để loại bỏ toàn bộ sản phẩm sai trước khi xuất xưởng.",
+     "correct": false
+    },
+    {
+     "text": "Xác định nguyên nhân do thiếu bước đối soát mẫu chuẩn trong quy trình và thiết lập bước duyệt số hóa bắt buộc trước khi đóng gói.",
+     "correct": true
+    },
+    {
+     "text": "Yêu cầu quản đốc trực tiếp có mặt tại xưởng suốt ca làm việc để kịp thời xử lý ngay khi xảy ra khiếu nại của khách hàng.",
+     "correct": false
+    }
+   ],
+   "explanation": "A - Sai vì truy nguyên nhân về cá nhân và dùng biện pháp xử phạt không giải quyết khiếm khuyết hệ thống; B - Sai vì chỉ tăng chi phí kiểm tra (tiêu tốn 10 đồng) thay vì phòng ngừa từ đầu; C - Đúng vì tìm ra nguyên nhân gốc do thiếu quy trình chuẩn và thiết lập cơ chế phòng ngừa chặn lỗi từ đầu theo quy luật 1 đồng phòng ngừa; D - Sai vì rơi vào bẫy chữa cháy khiến lãnh đạo mất 70% đến 80% thời gian xử lý sự cố mà nội lực không tăng.",
+   "preceding_html": [
+    {
+     "version": 2,
+     "sections": [
+      {
+       "heading": "Nhiệm vụ thực hành cần hoàn thành là gì?",
+       "learning_block_ids": [],
+       "blocks": [
+        {
+         "kind": "paragraph",
+         "text": "Chọn 01 quy trình thường xuyên phát sinh sự cố trong tháng vừa qua, thực hiện truy vấn 5Why để tìm nguyên nhân gốc rễ ở tầng hệ thống và đề xuất cơ chế phòng ngừa triệt để lỗi từ đầu.",
+         "items": [],
+         "rows": []
+        }
+       ]
+      },
+      {
+       "heading": "Cấu trúc biểu mẫu phân tích gồm những mục nào?",
+       "learning_block_ids": [],
+       "blocks": [
+        {
+         "kind": "paragraph",
+         "text": "Sử dụng các trường thông tin tiêu chuẩn dưới đây để bóc tách quy trình và truy vấn nguyên nhân cốt lõi.",
+         "items": [],
+         "rows": []
+        },
+        {
+         "kind": "table",
+         "text": null,
+         "items": [],
+         "rows": [
+          {
+           "label": "Quy trình và sự cố mục tiêu",
+           "value": "Quy trình nào xảy ra lỗi lặp lại nhiều nhất trong tháng qua?"
+          },
+          {
+           "label": "Chuỗi truy vấn 5Why",
+           "value": "Vì sao sự cố xảy ra liên tục qua các tầng quy trình?"
+          },
+          {
+           "label": "Nguyên nhân gốc rễ hệ thống",
+           "value": "Điểm khiếm khuyết nằm ở chuẩn hóa, dữ liệu hay đào tạo?"
+          },
+          {
+           "label": "Cơ chế phòng ngừa chủ động",
+           "value": "Giải pháp ngăn lỗi tái phát từ đầu thay vì chỉ chữa cháy?"
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "heading": "Ví dụ minh họa được thực hiện như thế nào?",
+       "learning_block_ids": [],
+       "blocks": [
+        {
+         "kind": "paragraph",
+         "text": "Tham khảo cách bóc tách sự cố giao hàng chậm trong ví dụ sau.",
+         "items": [],
+         "rows": []
+        },
+        {
+         "kind": "table",
+         "text": null,
+         "items": [],
+         "rows": [
+          {
+           "label": "Quy trình và sự cố mục tiêu",
+           "value": "Quy trình xuất kho: Đơn hàng giao trễ 30% trong tháng."
+          },
+          {
+           "label": "Chuỗi truy vấn 5Why",
+           "value": "Chậm do thiếu xe, vì điều xe đột xuất, do kế hoạch kho trễ, do thiếu dữ liệu tồn kho đồng bộ."
+          },
+          {
+           "label": "Nguyên nhân gốc rễ hệ thống",
+           "value": "Chưa thiết lập hệ thống dữ liệu kết nối giữa kinh doanh và kho vận."
+          },
+          {
+           "label": "Cơ chế phòng ngừa chủ động",
+           "value": "Thiết lập hệ thống dữ liệu tồn kho tự động và chuẩn hóa quy trình tiếp nhận đơn."
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "heading": "Tiêu chí tự kiểm tra gồm những gì?",
+       "learning_block_ids": [],
+       "blocks": [
+        {
+         "kind": "bullets",
+         "text": null,
+         "items": [
+          "Đã chọn đúng 01 quy trình hay xảy ra sự cố nhất trong tháng qua.",
+          "Phát hiện nguyên nhân gốc rễ nằm ở chuẩn hóa quy trình, hệ thống dữ liệu hoặc đào tạo con người thay vì đổ lỗi cá nhân.",
+          "Cơ chế phòng ngừa tập trung chặn lỗi từ đầu để tiết kiệm chi phí theo quy luật 1 đồng phòng ngừa bằng 10 đồng kiểm tra và 100 đồng đền bù.",
+          "Giải pháp giúp thoát bẫy chữa cháy để lãnh đạo không phải dành 70% đến 80% thời gian xử lý sự cố sự vụ."
+         ],
+         "rows": []
+        }
+       ]
+      }
+     ]
+    }
+   ],
+   "faq": [
+    {
+     "question": "Bẫy chữa cháy gây tổn hại như thế nào đến sự phát triển của doanh nghiệp?",
+     "answer": "Lãnh đạo và các kỹ sư giỏi nhất phải dành 70% đến 80% thời gian mỗi ngày chỉ để giải quyết các sự cố phát sinh như giao hàng trễ, lỗi linh kiện hay khiếu nại. Tình trạng này khiến doanh nghiệp quay cuồng bận rộn nhưng nội lực hoàn toàn không tăng tiến."
+    },
+    {
+     "question": "Tại sao doanh nghiệp cần đầu tư ngân sách cho việc phòng ngừa ngay từ đầu?",
+     "answer": "Theo quy luật chi phí, đầu tư 1 đồng cho phòng ngừa lỗi từ đầu sẽ tiết kiệm được 10 đồng chi phí kiểm tra và 100 đồng chi phí đền bù tổn thất khi lỗi lọt ra thị trường."
+    },
+    {
+     "question": "Nguyên nhân sâu xa khiến các doanh nghiệp thường xuyên rơi vào bẫy sự cố là gì?",
+     "answer": "Doanh nghiệp thường tiếc tiền đầu tư ban đầu vào khâu thiết kế R&D, tiêu chuẩn hóa quy trình, thiết lập hệ thống dữ liệu và đào tạo con người, dẫn đến việc phải liên tục chịu tổn thất lớn khi vận hành."
+    }
+   ]
+  },
+  {
+   "unit": "c2.l5.u1",
+   "unit_path": "chapter_2.lesson_5.unit_1",
+   "qc": null,
+   "question": "Doanh nghiệp may mặc An Phát đang xây dựng lộ trình chuẩn hóa vận hành sản xuất nhưng thiếu kinh nghiệm thực tế. Ban giám đốc chủ trương tìm kiếm các bộ tài liệu quy trình mẫu, các tiêu chuẩn thao tác thực tế và bài học kinh nghiệm xử lý lỗi đã đúc kết thành công từ các doanh nghiệp đi trước để áp dụng cho xưởng may của mình. Nhu cầu này của An Phát cần được ghép nối vào trụ cột nguồn lực nào trong hệ sinh thái ERA5.0?",
+   "choices": [
+    {
+     "text": "Trụ cột Technology & AI – Đầu tư phần mềm tự động hóa và các giải pháp điện toán đám mây để quản lý dữ liệu.",
+     "correct": false
+    },
+    {
+     "text": "Trụ cột Expert – Mời chuyên gia cố vấn quản trị hoặc thinktank độc lập về hỗ trợ tại hiện trường sản xuất.",
+     "correct": false
+    },
+    {
+     "text": "Trụ cột Market – Tham gia chuỗi cung ứng của các tập đoàn đa quốc gia để học hỏi quy cách làm việc thực tế.",
+     "correct": false
+    },
+    {
+     "text": "Trụ cột Know-how – Tiếp nhận hệ thống cẩm nang hướng dẫn chuẩn và các bài học tình huống đã được đúc kết.",
+     "correct": true
+    }
+   ],
+   "explanation": "Tiêu chuẩn đánh giá: Trụ cột Know-how cung cấp hệ thống cẩm nang quy trình chuẩn và các bài học tình huống thực tế đã được đúc kết thành phương pháp, giúp doanh nghiệp áp dụng ngay mà không phải tự nghiên cứu từ đầu. A - Sai vì trụ cột Technology & AI tập trung cung cấp giải pháp công nghệ số, điện toán đám mây và công cụ AI, không trực tiếp giải quyết nhu cầu về tài liệu quy trình và cẩm nang vận hành. B - Sai vì trụ cột Expert là mạng lưới chuyên gia cố vấn trực tiếp và nhà khoa học hỗ trợ giải quyết vấn đề, không phải là việc tiếp nhận tài liệu đúc kết sẵn có. C - Sai vì trụ cột Market tập trung vào mở rộng mạng lưới thương mại và kết nối chuỗi cung ứng khách hàng, không nhằm mục tiêu tiếp nhận tài liệu quy trình nội bộ. D - Đúng vì nhu cầu tìm kiếm tài liệu quy trình mẫu và bài học kinh nghiệm đã đúc kết phù hợp chính xác với định nghĩa của trụ cột Know-how trong ERA5.0.",
+   "preceding_html": [
+    {
+     "version": 2,
+     "sections": [
+      {
+       "heading": "Hệ sinh thái ERA5.0 là gì và giải quyết bài toán nào cho doanh nghiệp SME?",
+       "learning_block_ids": [],
+       "blocks": [
+        {
+         "kind": "paragraph",
+         "text": "ERA5.0 là Hệ sinh thái chuyển đổi doanh nghiệp toàn diện (Business Transformation Ecosystem) dành riêng cho SME Việt Nam, không phải là một danh bạ hay câu lạc bộ giao lưu đơn thuần.",
+         "items": [],
+         "rows": []
+        },
+        {
+         "kind": "paragraph",
+         "text": "Mục tiêu cốt lõi của hệ sinh thái là biến các nguồn lực tinh hoa khổng lồ bên ngoài xã hội thành năng lực tăng trưởng nội tại bên trong doanh nghiệp với chi phí và thời gian tối ưu nhất.",
+         "items": [],
+         "rows": []
+        }
+       ]
+      },
+      {
+       "heading": "Hệ sinh thái ERA5.0 bao gồm 6 trụ cột nguồn lực kết nối nào?",
+       "learning_block_ids": [],
+       "blocks": [
+        {
+         "kind": "paragraph",
+         "text": "Doanh nghiệp khai thác và hợp tác thông qua 6 trụ cột nguồn lực tinh hoa sau đây:",
+         "items": [],
+         "rows": []
+        },
+        {
+         "kind": "table",
+         "text": null,
+         "items": [],
+         "rows": [
+          {
+           "label": "Expert (Chuyên gia)",
+           "value": "Mạng lưới Thinktank, chuyên gia đầu ngành về quản trị hệ thống, chuyên gia Nhật Bản, Big 4 và các nhà khoa học."
+          },
+          {
+           "label": "Technology & AI",
+           "value": "Nền tảng công nghệ sẵn có, giải pháp tự động hóa, điện toán đám mây và các công cụ AI phân tích dữ liệu chuyên sâu."
+          },
+          {
+           "label": "Capital (Nguồn vốn)",
+           "value": "Tiếp cận các quỹ đầu tư mạo hiểm, quỹ tài trợ đổi mới công nghệ, mô hình vốn hợp tác và giải pháp tài chính chuỗi."
+          },
+          {
+           "label": "Market (Thị trường)",
+           "value": "Mở rộng mạng lưới đối tác thương mại, kết nối vào chuỗi cung ứng của các tập đoàn FDI và sàn thương mại quốc tế."
+          },
+          {
+           "label": "Know-how (Tri thức)",
+           "value": "Hệ thống giáo trình, cẩm nang quy trình chuẩn, các case study thành công và thất bại được đúc kết thành phương pháp."
+          },
+          {
+           "label": "Global Network",
+           "value": "Mạng lưới liên kết với các hiệp hội quốc tế và cơ quan kiểm định chất lượng toàn cầu giúp đưa sản phẩm ra thế giới."
+          }
+         ]
+        }
+       ]
+      }
+     ]
+    }
+   ],
+   "faq": []
+  },
+  {
+   "unit": "c2.l5.u2",
+   "unit_path": "chapter_2.lesson_5.unit_2",
+   "qc": "leak",
+   "question": "Doanh nghiệp sản xuất thực phẩm A đang chịu áp lực lớn do bộ máy cồng kềnh và chi phí cố định cao. Ban điều hành đề xuất 4 phương án hành động trong 90 ngày tới. Phương án nào áp dụng đúng tư duy Think Ecosystem của ERA5.0?",
+   "choices": [
+    {
+     "text": "Giữ lại công thức chế biến độc quyền, kết nối chuyên gia R&D bên ngoài, thuê nền tảng Cloud AI có sẵn và liên minh đối tác phân phối.",
+     "correct": true
+    },
+    {
+     "text": "Chuyển giao toàn bộ bí quyết công thức sản phẩm cho đối tác gia công để tập trung nguồn vốn tự mua sắm đội xe vận chuyển và kho bãi.",
+     "correct": false
+    },
+    {
+     "text": "Tuyển thêm 10 chuyên gia đầu ngành vào biên chế cố định và tự xây dựng chuỗi cửa hàng bán lẻ độc quyền trên toàn quốc.",
+     "correct": false
+    },
+    {
+     "text": "Tuyển dụng đội ngũ kỹ sư phần mềm vào biên chế để tự lập trình hệ thống quản trị riêng và tự đầu tư toàn bộ hệ thống máy chủ.",
+     "correct": false
+    }
+   ],
+   "explanation": "Tiêu chuẩn đánh giá: Doanh nghiệp chỉ giữ lại năng lực lõi và linh hồn sản phẩm, kết nối mạng lưới chuyên gia cố vấn, nền tảng AI/Cloud có sẵn và đối tác phân phối trong 90 ngày thay vì tự sở hữu làm phình to chi phí cố định. A - Đúng vì giữ lại công thức lõi và kết nối đủ 3 nguồn lực bên ngoài gồm chuyên gia, công nghệ sẵn có và đối tác phân phối trong 90 ngày. B - Sai vì đánh mất năng lực lõi và linh hồn sản phẩm, đồng thời lại sa vào tự sở hữu kho bãi và đội xe tốn kém. C - Sai vì cố tự tuyển đủ chuyên gia vào biên chế và tự mở mạng lưới bán lẻ khiến bộ máy cồng kềnh và tốc độ thích ứng chậm chạp. D - Sai vì tự tuyển lập trình viên vào biên chế và tự viết phần mềm riêng làm tăng gánh nặng chi phí cố định.",
+   "preceding_html": [
+    {
+     "version": 2,
+     "sections": [
+      {
+       "heading": "Bạn cần thực hiện nhiệm vụ gì?",
+       "learning_block_ids": [],
+       "blocks": [
+        {
+         "kind": "paragraph",
+         "text": "Từ hiện trạng bộ máy cồng kềnh và chi phí cố định cao của doanh nghiệp, hãy lập bản đồ xác định 03 nguồn lực bên ngoài cần thiết lập liên minh chiến lược trong vòng 90 ngày.",
+         "items": [],
+         "rows": []
+        },
+        {
+         "kind": "paragraph",
+         "text": "Nguyên tắc cốt lõi: Tập trung giữ lại năng lực lõi và linh hồn sản phẩm, chuyển dịch các nhu cầu còn lại sang kết nối mạng lưới nguồn lực tinh hoa bên ngoài.",
+         "items": [],
+         "rows": []
+        }
+       ]
+      },
+      {
+       "heading": "Mẫu bản đồ nguồn lực liên minh chiến lược gồm những nội dung nào?",
+       "learning_block_ids": [],
+       "blocks": [
+        {
+         "kind": "table",
+         "text": null,
+         "items": [],
+         "rows": [
+          {
+           "label": "Năng lực lõi và linh hồn sản phẩm giữ lại",
+           "value": "Doanh nghiệp giữ lại năng lực cốt lõi nào trong nội bộ?"
+          },
+          {
+           "label": "Nguồn lực liên minh 1: Chuyên gia cố vấn",
+           "value": "Cần kết nối chuyên gia ngoài biên chế nào trong 90 ngày?"
+          },
+          {
+           "label": "Nguồn lực liên minh 2: Nền tảng công nghệ",
+           "value": "Cần hợp tác nền tảng AI hoặc Cloud có sẵn nào?"
+          },
+          {
+           "label": "Nguồn lực liên minh 3: Đối tác phân phối",
+           "value": "Cần liên minh đối tác nào để đưa sản phẩm ra thị trường?"
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "heading": "Bản đồ liên minh chiến lược mẫu được hoàn thiện như thế nào?",
+       "learning_block_ids": [],
+       "blocks": [
+        {
+         "kind": "table",
+         "text": null,
+         "items": [],
+         "rows": [
+          {
+           "label": "Năng lực lõi và linh hồn sản phẩm giữ lại",
+           "value": "Công thức chế biến độc quyền và tiêu chuẩn chất lượng sản phẩm."
+          },
+          {
+           "label": "Nguồn lực liên minh 1: Chuyên gia cố vấn",
+           "value": "Cố vấn trưởng về tối ưu chuỗi cung ứng theo hợp đồng dự án."
+          },
+          {
+           "label": "Nguồn lực liên minh 2: Nền tảng công nghệ",
+           "value": "Thuê nền tảng Cloud AI có sẵn để dự báo lượng tồn kho."
+          },
+          {
+           "label": "Nguồn lực liên minh 3: Đối tác phân phối",
+           "value": "Hợp tác hệ thống chuỗi siêu thị bán lẻ mở rộng đầu ra."
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "heading": "Bản đồ nguồn lực cần đáp ứng những tiêu chí nào?",
+       "learning_block_ids": [],
+       "blocks": [
+        {
+         "kind": "bullets",
+         "text": null,
+         "items": [
+          "Doanh nghiệp chỉ tập trung giữ lại năng lực lõi và linh hồn sản phẩm trong nội bộ.",
+          "Xác định đủ 03 nguồn lực bên ngoài gồm chuyên gia cố vấn, nền tảng AI hoặc Cloud có sẵn và đối tác phân phối.",
+          "Kế hoạch thiết lập liên minh chiến lược được ấn định rõ mốc thời gian hoàn thành trong vòng 90 ngày tới.",
+          "Không tự tuyển thêm nhân sự biên chế đắt đỏ, tự mua máy móc hoặc tự viết phần mềm riêng làm phình to bộ máy."
+         ],
+         "rows": []
+        }
+       ]
+      }
+     ]
+    }
+   ],
+   "faq": [
+    {
+     "question": "Hệ sinh thái ERA5.0 khác biệt gì so với một danh bạ hay câu lạc bộ giao lưu kết nối thông thường?",
+     "answer": "ERA5.0 không phải là danh bạ hay câu lạc bộ giao lưu đơn thuần, mà là Hệ sinh thái chuyển đổi doanh nghiệp toàn diện dành riêng cho SME Việt Nam nhằm biến các nguồn lực tinh hoa khổng lồ bên ngoài thành năng lực tăng trưởng nội tại với chi phí và thời gian tối ưu nhất."
+    },
+    {
+     "question": "Doanh nghiệp có thể kết nối với những nhóm nguồn lực nào trong 6 trụ cột của ERA5.0?",
+     "answer": "Mô thức ERA5.0 kết nối doanh nghiệp với 6 trụ cột nguồn lực tinh hoa gồm: Chuyên gia (Expert), Nguồn vốn (Capital), Công nghệ và AI (Technology & AI), Thị trường (Market), Tri thức (Know-how) và Mạng lưới toàn cầu (Global Network)."
+    },
+    {
+     "question": "Tại sao việc cố gắng tự mua mọi máy móc đắt tiền và tự viết phần mềm riêng lại gây rủi ro cho SME?",
+     "answer": "Cố gắng tự sở hữu mọi thứ khiến chi phí vận hành cố định bị đẩy lên quá cao, bộ máy doanh nghiệp cồng kềnh và tốc độ phản ứng thích ứng trở nên cực kỳ chậm chạp."
+    }
+   ]
+  },
+  {
+   "unit": "c3.l1.u1",
+   "unit_path": "chapter_3.lesson_1.unit_1",
+   "qc": null,
+   "question": "Giám đốc Công nghệ trình Ban điều hành đề xuất mua nguyên bản hệ thống CRM tiêu chuẩn quốc tế và yêu cầu đội ngũ kinh doanh chuyển toàn bộ quy trình lên phần mềm trong 2 tuần, đồng thời đề xuất ẩn bớt các khoản phí ẩn trong hợp đồng để dễ chốt số liệu doanh thu ban đầu. Theo bộ lọc Tam Hóa, phương án thẩm định và điều chỉnh nào sau đây là chuẩn xác nhất?",
+   "choices": [
+    {
+     "text": "Bác bỏ phần mềm quốc tế vì chi phí cao, giữ nguyên quy trình ghi chép bán hàng hiện tại để tránh xung đột nội bộ.",
+     "correct": false
+    },
+    {
+     "text": "Duy trì công nghệ chuẩn quốc tế, nhưng yêu cầu điều chỉnh lộ trình thích ứng với nguồn lực nhân sự và bảo đảm hợp đồng minh bạch.",
+     "correct": true
+    },
+    {
+     "text": "Đồng ý ẩn các điều khoản phụ phí để tăng doanh thu nhanh, nhưng tinh chỉnh giao diện phần mềm bằng tiếng Việt.",
+     "correct": false
+    },
+    {
+     "text": "Phê duyệt triển khai nguyên bản ngay lập tức nhằm hiện đại hóa thần tốc, vì phần mềm chuẩn quốc tế luôn mang lại hiệu quả.",
+     "correct": false
+    }
+   ],
+   "explanation": "A - Sai vì lựa chọn này rơi vào cực đoan bảo thủ trì trệ với thói quen cũ, tiếp tục dựa vào kinh nghiệm cảm tính thay vì hiện đại hóa quy trình số; B - Đúng vì phương án vừa giữ được Hiện đại hóa (áp dụng chuẩn quản trị quốc tế, ra quyết định bằng dữ liệu), vừa đạt Việt Nam hóa (chuyển hóa phù hợp đặc thù con người và nguồn lực thực tế), vừa bảo đảm Lành mạnh hóa (minh bạch, kinh doanh chuẩn mực và lấy giá trị thật làm gốc); C - Sai vì vi phạm trực tiếp trụ cột Lành mạnh hóa do chấp nhận tư duy chụp giật, thiếu minh bạch để trục lợi ngắn hạn; D - Sai vì phương án sao chép rập khuôn máy móc của phương Tây, bỏ qua yếu tố Việt Nam hóa (năng lực thích ứng của nhân sự) và bỏ qua rủi ro thiếu lành mạnh trong hợp đồng.",
+   "preceding_html": [
+    {
+     "version": 2,
+     "sections": [
+      {
+       "heading": "Tại sao doanh nghiệp cần bộ lọc Tam Hóa khi du nhập mô hình mới?",
+       "learning_block_ids": [],
+       "blocks": [
+        {
+         "kind": "paragraph",
+         "text": "Mọi quyết định du nhập công nghệ hay mô hình quản trị mới từ bên ngoài đều phải đi qua bộ lọc Tam Hóa nhằm bảo đảm tính hiệu quả và bền vững cho tổ chức.",
+         "items": [],
+         "rows": []
+        },
+        {
+         "kind": "warning",
+         "text": "Bộ lọc giúp doanh nghiệp tránh hai cực đoan nguy hiểm: Sao chép máy móc giáo điều của phương Tây hoặc Bảo thủ trì trệ với thói quen cũ.",
+         "items": [],
+         "rows": []
+        }
+       ]
+      },
+      {
+       "heading": "3 trụ cột của bộ lọc Tam Hóa bao gồm những nội dung nào?",
+       "learning_block_ids": [],
+       "blocks": [
+        {
+         "kind": "paragraph",
+         "text": "Để thẩm định một dự án đổi mới, lãnh đạo cần đối chiếu dự án qua 3 tiêu chuẩn cốt lõi sau:",
+         "items": [],
+         "rows": []
+        },
+        {
+         "kind": "table",
+         "text": null,
+         "items": [],
+         "rows": [
+          {
+           "label": "Hiện đại hóa",
+           "value": "Áp dụng triệt để các chuẩn quản trị quốc tế, quy trình số, tự động hóa và năng lực ra quyết định bằng dữ liệu thời gian thực. Ngăn chặn nguy cơ lạc hậu, dùng kinh nghiệm cảm tính để điều hành bộ máy lớn."
+          },
+          {
+           "label": "Việt Nam hóa",
+           "value": "Chuyển hóa các chuẩn mực toàn cầu sao cho tương thích với văn hóa ứng xử, đặc thù con người và nguồn lực thực tế của SME Việt. Ngăn chặn nguy cơ sao chép rập khuôn, áp dụng giáo điều gây xung đột văn hóa nội bộ."
+          },
+          {
+           "label": "Lành mạnh hóa",
+           "value": "Tăng trưởng có kỷ luật, tài chính minh bạch, kinh doanh chuẩn mực, phát triển bền vững và lấy giá trị thật cho khách hàng làm gốc. Ngăn chặn nguy cơ tư duy ăn xổi, chụp giật, bán phá giá hoặc bất chấp pháp luật để kiếm lời."
+          }
+         ]
+        }
+       ]
+      }
+     ]
+    }
+   ],
+   "faq": [
+    {
+     "question": "Việt Nam hóa có đồng nghĩa với việc chấp nhận hạ thấp tiêu chuẩn quản trị quốc tế cho dễ làm không?",
+     "answer": "Không. Việt Nam hóa là chuyển hóa các chuẩn mực toàn cầu để tương thích với văn hóa ứng xử, đặc thù con người và nguồn lực thực tế của SME Việt, chứ không phải quay về lối mòn dùng kinh nghiệm cảm tính hay dung túng cho sự lạc hậu."
+    },
+    {
+     "question": "Nếu một dự án công nghệ mang lại doanh thu tức thì nhưng thiếu minh bạch về dữ liệu và tài chính thì có đạt chuẩn Tam Hóa không?",
+     "answer": "Không đạt chuẩn. Trụ cột Lành mạnh hóa yêu cầu doanh nghiệp phải tăng trưởng có kỷ luật, tài chính minh bạch, kinh doanh chuẩn mực và lấy giá trị thật làm gốc, nhằm ngăn chặn triệt để tư duy ăn xổi, chụp giật."
+    }
+   ]
+  },
+  {
+   "unit": "c4.l1.u1",
+   "unit_path": "chapter_4.lesson_1.unit_1",
+   "qc": "leak",
+   "question": "Một doanh nghiệp vừa đang chịu sức ép cạnh tranh gay gắt nhưng ban lãnh đạo vẫn duy trì cách điều hành kinh nghiệm cũ. Theo nguyên lý chuyển dịch tư duy 5.0, hậu quả tất yếu doanh nghiệp phải đối mặt là gì?",
+   "choices": [
+    {
+     "text": "Tổ chức vẫn giữ vững thị phần nếu tập trung cắt giảm chi phí và duy trì mô hình hiện tại.",
+     "correct": false
+    },
+    {
+     "text": "Tổ chức sẽ tự động thích nghi thành công nhờ vào uy tín thương hiệu đã tích lũy trong quá khứ.",
+     "correct": false
+    },
+    {
+     "text": "Doanh nghiệp chỉ cần đổi mới công nghệ ở cấp thừa hành mà lãnh đạo không cần chuyển dịch tư duy.",
+     "correct": false
+    },
+    {
+     "text": "Doanh nghiệp tất yếu sẽ bị thị trường đào thải và áp đặt sự thay đổi theo cách khắc nghiệt nhất.",
+     "correct": true
+    }
+   ],
+   "explanation": "A - Sai vì quản trị kinh nghiệm cũ không thể giúp doanh nghiệp duy trì vị thế trước biến động mới; B - Sai vì quán tính quá khứ không đảm bảo sự tồn tại trong kỷ nguyên mới; C - Sai vì sự chuyển đổi không thể thành công nếu người đứng đầu vẫn vận hành bằng tư duy cũ; D - Đúng vì nếu người đứng đầu không chủ động thay đổi từ bên trong, doanh nghiệp tất yếu sẽ bị thị trường áp đặt thay đổi.",
+   "preceding_html": [
+    {
+     "version": 2,
+     "sections": [
+      {
+       "heading": "Vì sao người đứng đầu doanh nghiệp phải chủ động chuyển dịch tư duy trong kỷ nguyên 5.0?",
+       "learning_block_ids": [],
+       "blocks": [
+        {
+         "kind": "paragraph",
+         "text": "Môi trường kinh doanh liên tục biến động đòi hỏi người đứng đầu tổ chức phải chuyển đổi năng lực quản trị, từ bỏ lối mòn điều hành dựa trên kinh nghiệm cũ.",
+         "items": [],
+         "rows": []
+        },
+        {
+         "kind": "warning",
+         "text": "Không thể quản trị một doanh nghiệp trong kỷ nguyên 5.0 bằng một hệ điều hành tư duy của thế hệ 2.0. Nếu CEO không chủ động thay đổi từ bên trong, doanh nghiệp sẽ bị thị trường áp đặt thay đổi theo cách tàn nhẫn nhất.",
+         "items": [],
+         "rows": []
+        },
+        {
+         "kind": "paragraph",
+         "text": "Sự đổi mới mang tính sống còn phải bắt đầu từ nhận thức nội tại của người lãnh đạo, thay vì thụ động chờ đợi sức ép đào thải khốc liệt từ thị trường.",
+         "items": [],
+         "rows": []
+        }
+       ]
+      }
+     ]
+    }
+   ],
+   "faq": []
+  },
+  {
+   "unit": "c4.l1.u2",
+   "unit_path": "chapter_4.lesson_1.unit_2",
+   "qc": null,
+   "question": "Một CEO điền vào 3 ô trên biểu mẫu CEO Change Mindset Canvas như sau: Ô 1 (Mindset cần bỏ): 'Cần thay đổi cách làm việc cũ'; Ô 5 (Việc cần dừng): 'Giảm bớt một số việc chưa cần thiết'; Ô 6 (Việc cần bắt đầu): 'Nỗ lực nâng cao kỷ luật toàn công ty'. Nhận định nào dưới đây đánh giá chính xác nhất chất lượng của phương án điền này theo chuẩn mực của công cụ?",
+   "choices": [
+    {
+     "text": "Phương án đạt yêu cầu ở Ô 1 nhưng Ô 6 cần chuyển mục tiêu kỷ luật sang kế hoạch đào tạo dài hạn của năm sau thay vì sáng thứ Hai.",
+     "correct": false
+    },
+    {
+     "text": "Phương án đã đạt chuẩn xuất sắc vì thể hiện tinh thần cầu thị và bao quát được toàn bộ định hướng chuyển đổi văn hóa của tổ chức.",
+     "correct": false
+    },
+    {
+     "text": "Phương án chưa đạt chuẩn vì các nội dung còn chung chung, né tránh cắt bỏ lãng phí cụ thể và thiếu hành động kỷ luật đo lường rõ ràng cho sáng thứ Hai.",
+     "correct": true
+    },
+    {
+     "text": "Phương án chỉ cần bổ sung thêm mục tiêu doanh thu vào Ô 5 là trở thành bản kế hoạch hành động hoàn thiện cho ban điều hành.",
+     "correct": false
+    }
+   ],
+   "explanation": "A - Sai vì Ô 1 viết 'Cần thay đổi cách làm việc cũ' vẫn là khẩu hiệu mơ hồ, chưa chỉ rõ tư duy cũ cần đoạn tuyệt; đồng thời Ô 6 bắt buộc phải là hành động áp dụng ngay sáng thứ Hai tuần tới chứ không phải kế hoạch dài hạn. B - Sai vì biểu mẫu không chấp nhận cách diễn đạt chung chung, thiếu cam kết dứt khoát. C - Đúng vì biểu mẫu yêu cầu: Ô 1 phải ghi rõ 01 tư duy cũ cần đoạn tuyệt; Ô 5 phải chỉ rõ việc kinh doanh, sản phẩm hoặc cuộc họp kém hiệu quả cần dừng ngay để giải phóng nguồn lực; Ô 6 phải là hành động hoặc kỷ luật quản trị, đo lường dữ liệu cụ thể áp dụng ngay sáng thứ Hai tuần tới. Cách viết chung chung biến công cụ thành bài tập lý thuyết đối phó. D - Sai vì Ô 5 là việc cần dừng để cắt bỏ lãng phí chứ không phải ô điền mục tiêu doanh thu (mục tiêu tăng trưởng thuộc Ô 2).",
+   "preceding_html": [
+    {
+     "version": 2,
+     "sections": [
+      {
+       "heading": "Nhiệm vụ hoàn thiện biểu mẫu Canvas",
+       "learning_block_ids": [],
+       "blocks": [
+        {
+         "kind": "paragraph",
+         "text": "Hoàn thiện 9 ô trên biểu mẫu CEO Change Mindset Canvas dựa trên hiện trạng vận hành và thách thức chuyển đổi của doanh nghiệp để xác lập cam kết hành động thực chất.",
+         "items": [],
+         "rows": []
+        }
+       ]
+      },
+      {
+       "heading": "Biểu mẫu 9 ô CEO Change Mindset Canvas",
+       "learning_block_ids": [],
+       "blocks": [
+        {
+         "kind": "table",
+         "text": null,
+         "items": [],
+         "rows": [
+          {
+           "label": "Mindset cần bỏ",
+           "value": "Niềm tin hay thói quen quản trị kinh nghiệm cũ nào cần từ bỏ ngay?"
+          },
+          {
+           "label": "Khát vọng mới",
+           "value": "Mục tiêu tăng trưởng vượt chuẩn ngành trong 3 năm tới là gì?"
+          },
+          {
+           "label": "Giá trị khách hàng",
+           "value": "Khách hàng mong muốn giá trị vượt trội nào thị trường chưa đáp ứng?"
+          },
+          {
+           "label": "Năng lực BIC",
+           "value": "Doanh nghiệp bắt buộc phải xây dựng năng lực lõi nào để dẫn đầu?"
+          },
+          {
+           "label": "Việc cần dừng",
+           "value": "Hoạt động kinh doanh hoặc cuộc họp kém hiệu quả nào cần dừng ngay?"
+          },
+          {
+           "label": "Việc cần bắt đầu",
+           "value": "Hành động hoặc kỷ luật mới nào cần áp dụng vào sáng thứ Hai?"
+          },
+          {
+           "label": "Ứng dụng AI",
+           "value": "Điểm nghẽn nào sẽ được giải quyết hoặc tăng gấp đôi năng suất bằng AI?"
+          },
+          {
+           "label": "Kết nối hệ sinh thái",
+           "value": "Nguồn lực chiến lược bên ngoài nào cần kết nối qua ERA5.0?"
+          },
+          {
+           "label": "Lời hứa toàn cầu",
+           "value": "Chuẩn mực chất lượng hoặc chứng chỉ toàn cầu cao nhất cam kết đạt được?"
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "heading": "Ví dụ điền ô nội dung",
+       "learning_block_ids": [],
+       "blocks": [
+        {
+         "kind": "table",
+         "text": null,
+         "items": [],
+         "rows": [
+          {
+           "label": "Mindset cần bỏ",
+           "value": "Đoạn tuyệt thói quen quản trị theo cảm tính, chuyển sang ra quyết định dựa trên dữ liệu."
+          },
+          {
+           "label": "Việc cần dừng",
+           "value": "Dừng ngay các cuộc họp giao ban kéo dài quá 2 giờ không có mục tiêu rõ ràng."
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "heading": "Tiêu chuẩn tự kiểm tra chất lượng",
+       "learning_block_ids": [],
+       "blocks": [
+        {
+         "kind": "bullets",
+         "text": null,
+         "items": [
+          "Ghi rõ 01 tư duy cũ cần đoạn tuyệt dứt khoát.",
+          "Xác định mục tiêu 3 năm bằng số liệu định lượng cụ thể.",
+          "Nêu rõ 01 giá trị mang lại Customer Delight cho khách hàng.",
+          "Xác định năng lực lõi về vận hành, R&D hoặc sản xuất.",
+          "Chỉ rõ việc dừng lãng phí và kỷ luật áp dụng sáng thứ Hai.",
+          "Xác định use case AI, đối tác ERA5.0 và chuẩn mực toàn cầu."
+         ],
+         "rows": []
+        }
+       ]
+      }
+     ]
+    }
+   ],
+   "faq": [
+    {
+     "question": "Người đứng đầu doanh nghiệp cần cam kết điều gì trên biểu mẫu Canvas?",
+     "answer": "Người đứng đầu doanh nghiệp cam kết rằng 9 nội dung trên biểu mẫu là định hướng hành động thật của bản thân và Ban điều hành, không phải lý thuyết đối phó trên lớp học."
+    },
+    {
+     "question": "Mục đích của việc người đứng đầu cam kết hành động thật trên biểu mẫu là gì?",
+     "answer": "Cam kết này nhằm bảo đảm công cụ giúp thiết lập bản đồ chuyển đổi thực chất cho chính mình, hoàn thành yêu cầu bắt buộc trước khi rời Modun 1 thay vì làm bài tập lý thuyết."
+    }
+   ]
+  },
+  {
+   "unit": "c5.l1.u1",
+   "unit_path": "chapter_5.lesson_1.unit_1",
+   "qc": null,
+   "question": "Sau đợt đào tạo tái cấu trúc, ban lãnh đạo một công ty phân phối đã thống nhất tầm nhìn mới, định hình chiến lược và nâng cao năng lực cho đội ngũ. Tuy nhiên, sau 6 tháng, công ty không đưa ra bất kỳ hành động cải tiến cụ thể nào trong vận hành thực tế. Theo nguyên lý dòng chảy chuyển hóa, hệ quả trực tiếp đối với doanh nghiệp này là gì?",
+   "choices": [
+    {
+     "text": "Tầm nhìn và định hướng chiến lược bị sai lệch hoàn toàn do khâu khảo sát thực trạng ban đầu chưa chỉ ra đúng các điểm nghẽn cốt lõi.",
+     "correct": false
+    },
+    {
+     "text": "Doanh nghiệp chịu tổn thất lớn về chi phí do tiến hành hàng loạt hoạt động dàn trải mà không mang lại kết quả tài chính cụ thể.",
+     "correct": false
+    },
+    {
+     "text": "Sự thay đổi về tư duy và năng lực chỉ dừng lại ở mức độ nhận thức lý thuyết, nhanh chóng nguội lạnh mà không tạo ra chuyển biến thực tế.",
+     "correct": true
+    },
+    {
+     "text": "Năng lực của đội ngũ bị suy giảm nhanh chóng do chiến lược đề ra vượt quá khả năng tiếp thu và thực thi của các phòng ban bộ phận.",
+     "correct": false
+    }
+   ],
+   "explanation": "Tiêu chí đánh giá: Chuỗi chuyển hóa năng lực lãnh đạo yêu cầu sự thay đổi tư duy phải dẫn dắt đến hành động thực chất để tạo ra kết quả đo lường được; nếu thiếu hành động, nhận thức mới chỉ dừng ở mức độ nhất thời và sẽ nhanh chóng nguội lạnh. Phân tích các lựa chọn: A - Sai vì doanh nghiệp đã xác lập xong tầm nhìn và chiến lược, vấn đề không xuất phát từ khâu khảo sát thực trạng; B - Sai vì nguy cơ lãng phí chi phí chỉ xảy ra khi doanh nghiệp đã thực thi các hoạt động rầm rộ nhưng thiếu kết quả tài chính, trong khi ở tình huống này công ty chưa tiến hành hành động nào; C - Đúng vì thiếu mắt xích hành động khiến mọi nhận thức và năng lực mới chỉ dừng trên lý thuyết, không tạo ra chuyển biến thực tế nào trong tổ chức; D - Sai vì tình huống đã xác nhận đội ngũ được đào tạo năng lực thành công, điểm nghẽn nằm ở việc thiếu hành động thực thi chứ không phải năng lực suy giảm.",
+   "preceding_html": [
+    {
+     "version": 2,
+     "sections": [
+      {
+       "heading": "Dòng chảy chuyển hóa năng lực lãnh đạo gồm những bước nào?",
+       "learning_block_ids": [],
+       "blocks": [
+        {
+         "kind": "paragraph",
+         "text": "Một chương trình đào tạo thay đổi tư duy chỉ thực sự thành công khi nó dẫn đến sự thay đổi hành vi và tạo ra kết quả kinh doanh đo lường được trên báo cáo tài chính.",
+         "items": [],
+         "rows": []
+        },
+        {
+         "kind": "paragraph",
+         "text": "Quá trình chuyển hóa năng lực lãnh đạo được vận hành theo chuỗi 6 bước liên tục:",
+         "items": [],
+         "rows": []
+        },
+        {
+         "kind": "steps",
+         "text": null,
+         "items": [
+          "MINDSET (Tư duy)",
+          "AMBITION (Tham vọng)",
+          "STRATEGY (Chiến lược)",
+          "CAPABILITY (Năng lực)",
+          "ACTION (Hành động)",
+          "BUSINESS VALUE (Giá trị kinh doanh)"
+         ],
+         "rows": []
+        }
+       ]
+      },
+      {
+       "heading": "Tại sao hành động và giá trị kinh doanh là điều kiện quyết định sự thành công?",
+       "learning_block_ids": [],
+       "blocks": [
+        {
+         "kind": "warning",
+         "text": "Không có Action, Change Mindset chỉ dừng lại ở cảm hứng nhất thời. Không có Business Value đo lường được, Action chỉ là phong trào tốn kém!",
+         "items": [],
+         "rows": []
+        },
+        {
+         "kind": "paragraph",
+         "text": "Nếu không chuyển dịch thành hành động cụ thể trong thực tế, mọi nhận thức mới đều nhanh chóng phai nhạt. Đồng thời, mọi hoạt động triển khai đều phải hướng thẳng đến giá trị kinh doanh đo lường được để tránh lãng phí nguồn lực của doanh nghiệp.",
+         "items": [],
+         "rows": []
+        }
+       ]
+      }
+     ]
+    }
+   ],
+   "faq": []
+  },
+  {
+   "unit": "c5.l1.u2",
+   "unit_path": "chapter_5.lesson_1.unit_2",
+   "qc": "leak",
+   "question": "Doanh nghiệp phân phối của ông Hoàng đang xây dựng lộ trình CEO 90-Day Challenge để khắc phục tình trạng chậm trễ đơn hàng. Trong các hành động dưới đây, hành động nào thuộc CHÍNH XÁC giai đoạn 30 Ngày Think Different?",
+   "choices": [
+    {
+     "text": "Thực hiện audit lại hệ điều hành tư duy của ban quản lý và thống kê danh mục quy trình kho vận hay bị cháy.",
+     "correct": false
+    },
+    {
+     "text": "Triển khai thí điểm mô hình chia chọn tự động tại một kho trọng điểm và đo lường kết quả hàng tuần bằng dữ liệu thực.",
+     "correct": false
+    },
+    {
+     "text": "Đóng gói toàn bộ các bước kiểm tra hàng tồn kho thành quy trình chuẩn SOP và nhân rộng trên toàn bộ hệ thống chi nhánh.",
+     "correct": false
+    },
+    {
+     "text": "Lập bản đồ siêu kết nối nguồn lực ngoài và thiết kế Quick-Win nhằm chọn 01 năng lực lõi vươn lên Best-in-Class.",
+     "correct": true
+    }
+   ],
+   "explanation": "Tiêu chí phân loại: See Different tập trung kiểm toán tư duy và điểm nghẽn quy trình; Think Different tập trung chọn chiến lược, chọn 01 năng lực lõi Best-in-Class, lập bản đồ siêu kết nối và thiết kế Quick-Win; Act Different tập trung thí điểm, đo lường dữ liệu thực và chuẩn hóa SOP. A - Sai vì audit tư duy và thống kê quy trình hay cháy thuộc giai đoạn See Different. B - Sai vì chạy thử thí điểm và đo lường hàng tuần bằng dữ liệu thực thuộc giai đoạn Act Different. C - Sai vì đóng gói thành SOP và nhân rộng thuộc giai đoạn Act Different. D - Đúng vì lập bản đồ siêu kết nối nguồn lực ngoài, chọn năng lực Best-in-Class và thiết kế Quick-Win là trọng tâm cốt lõi của giai đoạn Think Different.",
+   "preceding_html": [
+    {
+     "version": 2,
+     "sections": [
+      {
+       "heading": "Lộ trình CEO 90-Day Challenge gồm những giai đoạn và cấu phần nào?",
+       "learning_block_ids": [],
+       "blocks": [
+        {
+         "kind": "paragraph",
+         "text": "Lộ trình chuyển dịch năng lực lãnh đạo CEO 90-Day Challenge được chia làm 3 chặng liên tiếp trong 90 ngày:",
+         "items": [],
+         "rows": []
+        },
+        {
+         "kind": "steps",
+         "text": null,
+         "items": [
+          "Giai đoạn 1: 30 Ngày See Different",
+          "Giai đoạn 2: 30 Ngày Think Different",
+          "Giai đoạn 3: 30 Ngày Act Different"
+         ],
+         "rows": []
+        },
+        {
+         "kind": "paragraph",
+         "text": "Mỗi cam kết hành động trong từng giai đoạn cần xác định rõ các yếu tố cấu thành:",
+         "items": [],
+         "rows": []
+        },
+        {
+         "kind": "bullets",
+         "text": null,
+         "items": [
+          "01 Năng Lực Sẽ Trở Thành Best-in",
+          "01 Hành Động Đo Được Trong 90 Ngày",
+          "Chỉ Số Đo Lường Thành Công",
+          "Người Phụ Trách Triển Khai"
+         ],
+         "rows": []
+        }
+       ]
+      },
+      {
+       "heading": "Trọng tâm triển khai của từng giai đoạn 30 ngày là gì?",
+       "learning_block_ids": [],
+       "blocks": [
+        {
+         "kind": "paragraph",
+         "text": "Trọng tâm mục tiêu và hành động tương ứng với từng giai đoạn 30 ngày bao gồm:",
+         "items": [],
+         "rows": []
+        },
+        {
+         "kind": "table",
+         "text": null,
+         "items": [],
+         "rows": [
+          {
+           "label": "30 Ngày: See Different (Kiểm toán thực trạng)",
+           "value": "Audit lại hệ điều hành tư duy; nhận diện các điểm nghẽn nghiêm trọng nhất trong vận hành; thống kê các quy trình hay cháy."
+          },
+          {
+           "label": "30 Ngày: Think Different (Lựa chọn chiến lược)",
+           "value": "Thiết lập tham vọng mới; chọn 01 năng lực lõi cần vươn lên Best-in-Class; lập bản đồ siêu kết nối nguồn lực ngoài và thiết kế Quick-Win."
+          },
+          {
+           "label": "30 Ngày: Act Different (Thực thi và chuẩn hóa)",
+           "value": "Triển khai thí điểm; đo lường kết quả hàng tuần bằng dữ liệu thực; đóng gói thành quy trình chuẩn (SOP) và nhân rộng."
+          }
+         ]
+        }
+       ]
+      }
+     ]
+    }
+   ],
+   "faq": [
+    {
+     "question": "Vì sao doanh nghiệp không nên bỏ qua giai đoạn See Different để triển khai thí điểm ngay ở Act Different?",
+     "answer": "Giai đoạn See Different có nhiệm vụ audit lại hệ điều hành tư duy, nhận diện đúng các điểm nghẽn nghiêm trọng nhất trong vận hành và thống kê quy trình hay cháy. Nếu bỏ qua bước này, việc vội vàng triển khai thí điểm giải pháp sẽ thiếu căn cứ thực tế, dễ đánh sai trọng tâm và gây lãng phí nguồn lực."
+    },
+    {
+     "question": "Tại sao trong giai đoạn Act Different bắt buộc phải đo lường kết quả hàng tuần bằng dữ liệu thực?",
+     "answer": "Đo lường kết quả hàng tuần bằng dữ liệu thực giúp đánh giá chính xác tính hiệu quả của đợt triển khai thí điểm trước khi đóng gói thành SOP và nhân rộng. Điều này đảm bảo hành động mang lại giá trị đo lường được trên thực tế, tránh biến chương trình hành động thành một phong trào tốn kém."
+    }
+   ]
+  },
+  {
+   "unit": "c5.l2.u1",
+   "unit_path": "chapter_5.lesson_2.unit_1",
+   "qc": null,
+   "question": "Ban điều hành đang thẩm định các phương án lập Bản cam kết hành động lãnh đạo cho quý tới. Dựa trên quy chuẩn 4 cấu phần và thủ tục phê duyệt, phương án nào dưới đây đạt chuẩn hoàn chỉnh nhất?",
+   "choices": [
+    {
+     "text": "Năng lực: Quản trị chất lượng theo chuẩn Best-in-Class; Hành động 90 ngày: Thiết lập hệ thống kiểm soát quy trình sản xuất; KPI: Tỷ lệ sản phẩm lỗi giảm còn dưới 0,5%; Owner: Giám đốc Quản lý Chất lượng; Ký duyệt: CEO ký tên đóng dấu và Coach xác nhận.",
+     "correct": true
+    },
+    {
+     "text": "Năng lực: Trải nghiệm khách hàng Best-in-Class; Hành động 90 ngày: Triển khai kênh tiếp nhận và xử lý phản hồi đa kênh; KPI: Tỷ lệ khách hàng hài lòng đạt trên 95%; Owner: Giám đốc Dịch vụ Khách hàng; Ký duyệt: Chỉ có chữ ký của Giám đốc Dịch vụ Khách hàng.",
+     "correct": false
+    },
+    {
+     "text": "Năng lực: Tối ưu hóa chi phí vận hành Best-in-Class; Hành động 90 ngày: Rà soát và cắt giảm các khoản chi phí lãng phí; KPI: Tiết kiệm tối đa ngân sách công ty; Owner: Toàn thể cán bộ nhân viên Khối Vận hành; Ký duyệt: CEO ký tên và đóng dấu doanh nghiệp.",
+     "correct": false
+    },
+    {
+     "text": "Năng lực: Tự động hóa kho vận Best-in-Class; Hành động 90 ngày: Đưa vào vận hành phần mềm quản lý kho thông minh mới; KPI: Hệ thống đi vào hoạt động đúng tiến độ; Owner: Chưa chỉ định người phụ trách cụ thể; Ký duyệt: CEO ký tên và đóng dấu doanh nghiệp.",
+     "correct": false
+    }
+   ],
+   "explanation": "A - Đúng vì đáp ứng đầy đủ 4 cấu phần chuẩn hóa gồm năng lực cụ thể, hành động 90 ngày rõ ràng, chỉ số KPI định lượng dưới 0,5%, chỉ định duy nhất một người phụ trách cùng đầy đủ chữ ký của CEO đóng dấu doanh nghiệp và Coach xác nhận; B - Sai vì thiếu hoàn toàn chữ ký phê duyệt đóng dấu của người đứng đầu doanh nghiệp (CEO/Founder) và đại diện chuyên gia/Coach; C - Sai vì chỉ số KPI Tiết kiệm tối đa mang tính khẩu hiệu chung chung không có con số định lượng, đồng thời người phụ trách ghi chung chung toàn thể nhân viên thay vì chỉ định một cá nhân chịu trách nhiệm chính; D - Sai vì dòng người phụ trách chưa được phân công cụ thể và chỉ số đo lường tiến độ chung chung không thể hiện kết quả thành công.",
+   "preceding_html": [
+    {
+     "version": 2,
+     "sections": [
+      {
+       "heading": "Nhiệm vụ thiết lập bản cam kết hành động lãnh đạo là gì?",
+       "learning_block_ids": [],
+       "blocks": [
+        {
+         "kind": "paragraph",
+         "text": "Dựa trên nhu cầu nâng cấp năng lực vận hành của doanh nghiệp, hãy hoàn thiện Bản cam kết hành động của lãnh đạo theo đúng cấu trúc 4 dòng và hoàn tất thủ tục ký duyệt.",
+         "items": [],
+         "rows": []
+        },
+        {
+         "kind": "warning",
+         "text": "Tôi, người đứng đầu doanh nghiệp, thấu hiểu sâu sắc rằng: Sự phát triển của doanh nghiệp không bao giờ có thể vượt qua tầm nhìn và hệ điều hành tư duy của người lãnh đạo. Bằng tài liệu này, tôi cam kết sẽ dẫn dắt doanh nghiệp thực hiện cuộc chuyển đổi thực chất, không hình thức, lấy kỷ luật phòng ngừa và giá trị thực của khách hàng làm thước đo cao nhất.",
+         "items": [],
+         "rows": []
+        }
+       ]
+      },
+      {
+       "heading": "Biểu mẫu cam kết hành động gồm những trường thông tin nào?",
+       "learning_block_ids": [],
+       "blocks": [
+        {
+         "kind": "paragraph",
+         "text": "Bản cam kết chuẩn hóa gồm 4 dòng thông tin bắt buộc và phần ký duyệt xác nhận:",
+         "items": [],
+         "rows": []
+        },
+        {
+         "kind": "table",
+         "text": null,
+         "items": [],
+         "rows": [
+          {
+           "label": "Row 1: 01 Năng Lực Sẽ Trở Thành Best-in-Class",
+           "value": "Tên năng lực chiến lược cần đạt chuẩn mực xuất sắc là gì?"
+          },
+          {
+           "label": "Row 2: 01 Hành Động Đo Được Trong 90 Ngày",
+           "value": "Hành động đột phá cụ thể triển khai trong 90 ngày là gì?"
+          },
+          {
+           "label": "Row 3: Chỉ Số Đo Lường Thành Công (KPI / Kết quả)",
+           "value": "Chỉ số định lượng cụ thể đo lường kết quả thành công là gì?"
+          },
+          {
+           "label": "Row 4: Người Phụ Trách Triển Khai (Owner)",
+           "value": "Ai là cá nhân duy nhất chịu trách nhiệm triển khai chính?"
+          },
+          {
+           "label": "Phần phê duyệt và xác nhận",
+           "value": "Chữ ký của Người lãnh đạo cam kết và Đại diện Hội đồng chuyên gia."
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "heading": "Tiêu chí tự kiểm tra tính chuẩn mực của bản cam kết là gì?",
+       "learning_block_ids": [],
+       "blocks": [
+        {
+         "kind": "bullets",
+         "text": null,
+         "items": [
+          "Xác định rõ ràng 01 Năng lực sẽ trở thành Best-in-Class.",
+          "Xác lập 01 Hành động đo được trong 90 ngày mang tính đột phá.",
+          "Định lượng rõ ràng Chỉ số đo lường thành công bằng KPI cụ thể.",
+          "Chỉ định duy nhất 01 Người phụ trách triển khai chịu trách nhiệm chính.",
+          "Có chữ ký, ghi rõ họ tên và đóng dấu doanh nghiệp của CEO hoặc Founder.",
+          "Có chữ ký, ghi rõ họ tên và đơn vị xác nhận của Đại diện Hội đồng chuyên gia hoặc Coach."
+         ],
+         "rows": []
+        }
+       ]
+      }
+     ]
+    }
+   ],
+   "faq": [
+    {
+     "question": "Vì sao bản cam kết hành động bắt buộc phải có chữ ký xác nhận của cả Đại diện Hội đồng chuyên gia hoặc Coach bên cạnh CEO?",
+     "answer": "Sự phối hợp ký nhận giữa Người lãnh đạo cam kết và Đại diện Hội đồng chuyên gia hoặc Coach nhằm xác lập cam kết kép, bảo đảm tính minh bạch và tạo cơ chế đồng hành, giám sát độc lập cho doanh nghiệp trong suốt quá trình triển khai."
+    },
+    {
+     "question": "Bản cam kết hành động này hướng đến mục tiêu chuyển đổi dài hạn nào cho doanh nghiệp?",
+     "answer": "Bản cam kết hiện thực hóa nguyên lý sự phát triển của doanh nghiệp không bao giờ vượt qua tầm nhìn và tư duy của người lãnh đạo, tạo chuỗi chuyển dịch từ thay đổi CEO đến thay đổi doanh nghiệp và vươn tới năng lực Made-in-World."
+    }
+   ]
+  }
+ ]
+}

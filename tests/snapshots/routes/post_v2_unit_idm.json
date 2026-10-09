@@ -515,8 +515,8 @@
     "op": "generate",
     "model": "gemini-3.8-flash",
     "schema": "StagedInstancePayloadUnit",
-    "prompt_sha256": "2f808cb1ec649f4150b46edf0b3dfaf65b37ab87009dd22c2352ac1c0b401a33",
-    "prompt_chars": 10196,
+    "prompt_sha256": "90b7ae98256ba651eea0bba27635b9667544cb7dce9f713968f110add3a38b7d",
+    "prompt_chars": 10422,
     "config": {
      "max_output_tokens": 16000,
      "response_mime_type": "application/json",
@@ -533,8 +533,8 @@
     "op": "generate",
     "model": "gemini-3.8-flash",
     "schema": "StagedMultiRepair",
-    "prompt_sha256": "81aaddfd727ae6b917df57a6143426665e6c266315e2e57a35c597ff76916756",
-    "prompt_chars": 10948,
+    "prompt_sha256": "ccf37f95a8d66c30efab24c8e70d4f9c3f4b369709e9afde6bbd91af410fd11a",
+    "prompt_chars": 11174,
     "config": {
      "max_output_tokens": 16000,
      "response_mime_type": "application/json",
@@ -551,8 +551,8 @@
     "op": "generate",
     "model": "gemini-3.8-flash",
     "schema": "IdmJudgeResponseV1",
-    "prompt_sha256": "224347044b2e63fab86465de2444ff23a016ef187b6ed5a3a509cc1ce924d967",
-    "prompt_chars": 7348,
+    "prompt_sha256": "6b84efa0b6d42d70f509a00b5d3b77eeb320d3486b021f8b75aa1e05258b8341",
+    "prompt_chars": 7701,
     "config": {
      "max_output_tokens": 3000,
      "response_mime_type": "application/json",

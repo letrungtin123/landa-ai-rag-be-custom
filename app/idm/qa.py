@@ -8,6 +8,7 @@ from collections.abc import Collection, Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any, Final, Literal
 
+from app.idm.answer_checks import contested_option, quoted_key, unit_teaching
 from app.idm.contracts import (
     IdmFindingCountsV1,
     IdmJudgeFindingV1,
@@ -114,6 +115,8 @@ FAQ_UNGROUNDED_CODE: Final = "IDM_W5_FAQ_UNGROUNDED"
 FAQ_ITEMS_DROPPED_CODE: Final = "IDM_W5_FAQ_ITEMS_DROPPED"
 WORKSHEET_INCOMPLETE_CODE: Final = "IDM_W5_WORKSHEET_INCOMPLETE"
 ANSWER_LEAK_CODE: Final = "IDM_W5_ANSWER_LEAK"
+# QC run ab8d67e1 (R2): the question's case meets another option's taught criteria as well as the key's.
+ANSWER_CONTESTED_CODE: Final = "IDM_W5_ANSWER_CONTESTED"
 # QC course 364564: N9 (a callout that reads as a quotation states what the facts do not), N11 (FAQ items
 # that repeat the html above; an FAQ title that does not match its questions).
 CALLOUT_UNGROUNDED_CODE: Final = "IDM_W5_CALLOUT_UNGROUNDED"
@@ -296,6 +299,9 @@ def deterministic_slot_findings(
     components = [item for item in unit.get("components", []) if isinstance(item, dict)]
     findings: list[SlotFinding] = []
     preceding_html = ""
+    # The FAQ answers of the unit, wherever the FAQ sits: a key must agree with them (QC run ab8d67e1, R2).
+    faq = [item for component in components if component.get("type") == "la_faq"
+           for item in component.get("items") or [] if isinstance(item, dict)]
     for index, component in enumerate(components):
         kind = component.get("type")
         slot = brief.components[index] if index < len(brief.components) else None
@@ -330,9 +336,13 @@ def deterministic_slot_findings(
             if correct:
                 answer = idm_fold(str(correct[0].get("text") or ""))
                 html = idm_fold(preceding_html)
+                teaching = unit_teaching([item for item in components[:index] if item.get("type") == "html"], faq)
                 if ((len(answer) >= ANSWER_LEAK_MIN_CHARS and answer in html and ("dap an" in html or "answer" in html))
-                        or copied_options(component, preceding_html) or reworded_key(component, preceding_html)):
+                        or copied_options(component, preceding_html) or reworded_key(component, preceding_html)
+                        or quoted_key(component, teaching)):
                     findings.append(SlotFinding(ANSWER_LEAK_CODE, index))
+                if contested_option(component, teaching) is not None:
+                    findings.append(SlotFinding(ANSWER_CONTESTED_CODE, index))
     # The overview is taught, not practised: a worksheet html slot neither promises nor lists it.
     html_slots = [index for index, component in enumerate(components) if component.get("type") == "html"
                   and not (index < len(brief.components) and brief.components[index].role == "practice")]
@@ -649,6 +659,8 @@ _REVIEW_HINT_VI: Final = {
     ANSWER_LEAK_CODE: "một phương án gần như chép lại ví dụ hoặc nội dung ngay trước câu hỏi — người học có thể "
                       "chọn theo trí nhớ thay vì áp dụng tiêu chí",
     ANSWER_LENGTH_CUE_CODE: "đáp án đúng dài hơn hẳn các phương án khác — người học có thể đoán theo độ dài",
+    ANSWER_CONTESTED_CODE: "tình huống của câu hỏi cũng khớp tiêu chí mà bài học (bảng, danh sách hoặc phần hỏi đáp) "
+                           "nêu cho một phương án khác — cần sửa tình huống để chỉ một phương án đúng",
     CALLOUT_UNGROUNDED_CODE: "khung trích dẫn/lưu ý nêu điều không tìm thấy trong tài liệu — chỉ giữ khi SME xác "
                              "nhận, hoặc đổi thành đoạn văn thường",
     FAQ_RESTATES_HTML_CODE: "câu hỏi đáp chỉ nhắc lại nội dung vừa học — nên thay bằng ngộ nhận, trường hợp đặc biệt "
@@ -661,6 +673,8 @@ _REVIEW_HINT_EN: Final = {
     ANSWER_LEAK_CODE: "an option nearly copies the example or text shown right before the question — learners can "
                       "match it instead of applying the criterion",
     ANSWER_LENGTH_CUE_CODE: "the correct option is much longer than the others — learners can guess it by length",
+    ANSWER_CONTESTED_CODE: "the question's case also meets the criteria the unit (its table, list or FAQ) gives for "
+                           "another option — change the case so only one option is correct",
     CALLOUT_UNGROUNDED_CODE: "a quotation or callout states something not found in the source — keep it only if the "
                              "SME confirms it, or turn it into a plain paragraph",
     FAQ_RESTATES_HTML_CODE: "FAQ items only repeat what was just taught — replace them with a misconception, an edge "
@@ -741,8 +755,8 @@ def blocking_count(findings: Sequence[IdmJudgeFindingV1]) -> int:
 
 
 __all__ = [
-    "ANSWER_LEAK_CODE", "CALLOUT_KIND", "CALLOUT_TO_PROSE_CODE", "CALLOUT_UNGROUNDED_CODE", "CRITERIA",
-    "FAQ_ITEMS_DROPPED_CODE", "FAQ_RESTATES_HTML_CODE", "FAQ_TITLE_MISMATCH_CODE", "FAQ_UNGROUNDED_CODE",
+    "ANSWER_CONTESTED_CODE", "ANSWER_LEAK_CODE", "CALLOUT_KIND", "CALLOUT_TO_PROSE_CODE", "CALLOUT_UNGROUNDED_CODE",
+    "CRITERIA", "FAQ_ITEMS_DROPPED_CODE", "FAQ_RESTATES_HTML_CODE", "FAQ_TITLE_MISMATCH_CODE", "FAQ_UNGROUNDED_CODE",
     "FRAMEWORK_INCOMPLETE_CODE", "FRAMEWORK_LIST_INSERTED_CODE", "JUDGE_CRITERIA", "NOT_APPLICABLE",
     "PRACTICE_CRITERIA", "TITLE_CRITERION", "WORKSHEET_INCOMPLETE_CODE", "JudgeOutcome", "SlotFinding",
     "advisory_slot_findings", "blocking_count",

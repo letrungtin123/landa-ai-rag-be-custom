@@ -454,7 +454,9 @@ Writing rules (learner-facing, {locale_name(locale)}):
   option named by its letter); each reason must agree with that option's own text and with the answer key
   (never call a distractor that meets the criterion wrong, or the reverse). Never reveal the answer before the
   question. A question tests only what the html slots before it teach: every fact its key or explanation relies
-  on is stated in that html first (the explanation recalls it, it never teaches it for the first time).
+  on is stated in that html first (the explanation recalls it, it never teaches it for the first time). A
+  classification question (options naming taught labels, rows or stages) describes a case that meets the criteria
+  of exactly one option and contradicts no FAQ answer of the unit; no option copies a table row or list item.
 - An html slot whose role is "practice" is a WORKSHEET for its practice (the learner works on their own copy;
   nothing is graded automatically): a section whose heading names the task with a "task" block (what to produce,
   from which input); a section with the template to complete as a "table" block (label = the field or cell to
@@ -664,9 +666,15 @@ UNIT_RULE_TEXT: Final[dict[str, str]] = {
                                 "it by length: give the distractors the same level of detail (each still wrong by "
                                 "the criterion) or shorten the correct option, keep the answer key, and keep the "
                                 "explanation's reason for every option",
-    "IDM_W5_ANSWER_LEAK": "an option of this question copies the example or text shown before it: rewrite THAT "
-                          "option (and its part of the explanation) in new words or about a different case so the "
-                          "learner must apply the criterion; keep the earlier html as it is",
+    "IDM_W5_ANSWER_LEAK": "an option of this question copies or restates the example, quotation, list item, table "
+                          "row or template shown before it (or the question's case copies the example that names "
+                          "the answer): rewrite THAT option (and its part of the explanation) in new words or about "
+                          "a different case so the learner must apply the criterion, and give every distractor the "
+                          "same footing in what was taught; keep the earlier html as it is",
+    "IDM_W5_ANSWER_CONTESTED": "the question's case also meets the criteria this unit's html table, list or FAQ "
+                               "answers give for another option, so more than one option is defensible: change the "
+                               "case (or the key) so it meets the criteria of exactly one option and contradicts no "
+                               "FAQ answer of this unit; keep the explanation's reason for every option",
     "IDM_W5_VERBATIM_COPY": "rewrite for the learner instead of copying the source text",
     "IDM_W5_FAQ_UNGROUNDED": "answer only from these facts: rewrite each listed answer so it restates what "
                              "SOURCE_FACTS or LESSON_CONTEXT_FACTS say, with no number, example, reason or advice "
@@ -769,7 +777,10 @@ another unit of the lesson is never a finding here.
    explanation of EACH option agrees with that option's own text and with the answer key (an explanation that
    calls a correct-by-the-criterion option wrong, or a wrong option right, is major).
  Q5_grounded_criteria: the correct answer follows from SOURCE_FACTS; no invented rule, threshold or exception;
-   a quotation or callout states only what SOURCE_FACTS say.
+   a quotation or callout states only what SOURCE_FACTS say. Exactly one option is correct by the criteria this
+   unit teaches: a question whose case also meets the criteria the unit's tables, lists or FAQ answers give for
+   another option, or whose key contradicts an FAQ answer of this unit, is major; so is a correct option that
+   restates the example, quotation or template shown right before the question.
  Q6_alignment: the practice matches the Must Do action type and Bloom level in the plan.
  Q3, Q4 and Q6 grade this unit's own practice: when PLAN.has_practice_slot is false return not_applicable for
    them. not_applicable is never allowed for any other criterion.

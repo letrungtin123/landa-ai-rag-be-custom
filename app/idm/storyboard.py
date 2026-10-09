@@ -21,6 +21,7 @@ from typing import Any, Final, Protocol
 
 from pydantic import BaseModel, ValidationError
 
+from app.idm.answer_checks import contested_option, unit_teaching
 from app.idm.budget import judge_repair_fits, repair_thinking_for, writer_thinking
 from app.idm.contracts import IdmUnitBriefV1, brief_hash_of
 from app.idm.diagram import idm_diagram_relationships
@@ -34,6 +35,7 @@ from app.idm.html_rules import (
 )
 from app.idm.mcq import (
     ANSWER_LENGTH_CUE_CODE,
+    OPTION_LETTERS,
     normalize_single_choice,
     option_lengths,
     practice_key_shift,
@@ -67,6 +69,7 @@ from app.idm.prompts import (
     unit_writer_prompt,
 )
 from app.idm.qa import (
+    ANSWER_CONTESTED_CODE,
     ANSWER_LEAK_CODE,
     CALLOUT_TO_PROSE_CODE,
     CALLOUT_UNGROUNDED_CODE,
@@ -132,15 +135,15 @@ _FIELD_OF_PATH_RE: Final = re.compile(r"^components\[\d+\]\.?")
 # others remain, an FAQ title that does not match its questions (N11) and a title that promises a framework
 # the html does not list (N5): the source-locked rebuild would replace the whole teaching slot for a problem
 # the author fixes in a minute.
-_REVIEW_FIRST_CODES: Final = frozenset({WORKSHEET_INCOMPLETE_CODE, ANSWER_LEAK_CODE, CALLOUT_UNGROUNDED_CODE,
-                                        FAQ_RESTATES_HTML_CODE, FAQ_TITLE_MISMATCH_CODE,
+_REVIEW_FIRST_CODES: Final = frozenset({WORKSHEET_INCOMPLETE_CODE, ANSWER_LEAK_CODE, ANSWER_CONTESTED_CODE,
+                                        CALLOUT_UNGROUNDED_CODE, FAQ_RESTATES_HTML_CODE, FAQ_TITLE_MISMATCH_CODE,
                                         FRAMEWORK_INCOMPLETE_CODE})
 # Findings a deterministic step settles when the repair does not (a list inserted, an FAQ item dropped, a callout
 # turned into prose, a review note): their repair alone is a targeted one, a scoped rewrite at low thinking. QC run
 # ab8d67e1 (R3): two leak repairs at medium thinking were cut by the unit deadline.
 _TARGETED_REPAIR_CODES: Final = frozenset({FRAMEWORK_INCOMPLETE_CODE, ANSWER_LENGTH_CUE_CODE, ANSWER_LEAK_CODE,
-                                           FAQ_UNGROUNDED_CODE, FAQ_RESTATES_HTML_CODE, FAQ_TITLE_MISMATCH_CODE,
-                                           CALLOUT_UNGROUNDED_CODE})
+                                           ANSWER_CONTESTED_CODE, FAQ_UNGROUNDED_CODE, FAQ_RESTATES_HTML_CODE,
+                                           FAQ_TITLE_MISMATCH_CODE, CALLOUT_UNGROUNDED_CODE})
 # A non-targeted repair that would not finish before the unit deadline is not started (R3).
 REPAIR_SKIPPED_CODE: Final = "IDM_W5_REPAIR_SKIPPED_BUDGET"
 # FAQ findings settled by dropping the items concerned while the slot keeps two items.
@@ -446,6 +449,8 @@ class IdmUnitWriter:
                         lines.append(rule_line(slot, code, f"{slot}.choices") + (
                             f" (the correct option has {measured[0]} characters, the longest other option "
                             f"{measured[1]})" if measured else ""))
+                    elif code == ANSWER_CONTESTED_CODE and isinstance(component, dict):
+                        lines.append(self.contested_rule_line(slot, index, component, unit))
                     else:
                         field = _FIELD_OF_PATH_RE.sub("", locations.get((code, index), ""))
                         lines.append(rule_line(slot, code, f"{slot}.{field}" if field else slot))
@@ -482,6 +487,18 @@ class IdmUnitWriter:
                  else " numbered in SOURCE_FACTS" if self.framework.labels else "")
         return line + (f" (the title promises {self.framework.count} items; the html shows {shown}; list every "
                        f"item{where} in one bullets block)")
+
+    def contested_rule_line(self, slot: str, index: int, component: dict[str, Any], unit: dict[str, Any]) -> str:
+        """Which option's taught criteria the case also meets (its served letter, never content) (R2)."""
+
+        components = [item for item in unit.get("components", []) if isinstance(item, dict)]
+        faq = [entry for item in components if item.get("type") == "la_faq"
+               for entry in item.get("items") or [] if isinstance(entry, dict)]
+        rival = contested_option(component, unit_teaching(
+            [item for item in components[:index] if item.get("type") == "html"], faq))
+        letter = f" option {OPTION_LETTERS[rival]}" if rival is not None and rival < len(OPTION_LETTERS) else ""
+        return rule_line(slot, ANSWER_CONTESTED_CODE, f"{slot}.question") + (
+            f" (the case also meets the criteria the unit gives for{letter or ' another option'})")
 
     def fact_hint(self, index: int) -> str:
         brief_slot = self.brief.components[index] if index < len(self.brief.components) else None
