@@ -25,7 +25,13 @@ from app.idm.framework import (
     with_framework_list,
     without_row_label,
 )
-from app.idm.module_autofix import COMPONENT_ORDER_CODE, autofix_lesson
+from app.idm.module_autofix import (
+    COMPONENT_ORDER_CODE,
+    QUESTION_ONLY_BLOCK_CODE,
+    TAUGHT_BEFORE_QUESTION_CODE,
+    autofix_lesson,
+    teach_before_questions,
+)
 from app.idm.module_design import attach_framework_items, validate_lesson
 from app.idm.module_layout import ModuleScope
 from app.idm.validation import errors
@@ -208,3 +214,48 @@ class ComponentOrderAutofixTests(unittest.IsolatedAsyncioTestCase):
                     if "idm_module_attempt" in line]
         # The failing unit's component types are logged (server enum values only).
         self.assertEqual(attempts[0]["component_orders"], {"lsn_002": ["units[0]=problem,html,problem,la_faq"]})
+
+
+# --- R4: facts a question tests are taught before it -----------------------------------------------------------------
+class TaughtBeforeQuestionTests(unittest.IsolatedAsyncioTestCase):
+    def test_blocks_only_the_question_used_join_the_teaching_html(self) -> None:
+        # c1.l1.u2 of the run: the html taught cb_0013 (the BiC house) and the knowledge check alone listed cb_0014
+        # (12 facts "khi móng tư duy đổi / không đổi") and cb_0015 ("90% thất bại"), so Node gave their facts to the
+        # question and they appeared only in its explanation.
+        scope = chapter_scope("chapter-1")
+        lesson = IdmLessonDesignV1.model_validate(gm._lesson("lsn_001", "Bài 1", "Mục tiêu bài", [], [
+            gm._unit(1, "context_explain", "Kiến trúc Ngôi nhà BiC và nền móng Change Mindset",
+                     ["cb_0013", "cb_0014", "cb_0015"], [
+                         gm._component(1, "html", "explain", "Kiến trúc Ngôi nhà Năng lực Best-in-Class", ["cb_0013"]),
+                         gm._component(2, "problem", "clarify", "Nguyên nhân gốc rễ của thất bại chuyển đổi",
+                                       ["cb_0014", "cb_0015"])])]))
+        fixed, attached, untaught = teach_before_questions(lesson, scope.lesson_plans[0])
+        self.assertEqual((attached, untaught), (2, 0))
+        self.assertEqual([c.block_ids for c in fixed.units[0].components],
+                         [["cb_0013", "cb_0014", "cb_0015"], ["cb_0014", "cb_0015"]])
+        # Nothing to do when the html already teaches every block of the question.
+        self.assertEqual(teach_before_questions(fixed, scope.lesson_plans[0])[1:], (0, 0))
+
+    async def test_w4_teaches_before_testing_and_notes_what_it_cannot(self) -> None:
+        def question_block(payload: dict[str, Any]) -> None:
+            payload["lessons"][0]["units"][0]["components"][0]["block_ids"] = ["cb_0003"]
+
+        result, provider, runtime = await design_module(0, [edited("mod_01", question_block)])
+        self.assertEqual(len(provider.calls), 1)
+        self.assertEqual(runtime.adjustments[TAUGHT_BEFORE_QUESTION_CODE], 1)
+        unit = result["shard"]["idm_design"]["lessons"][0]["units"][0]
+        self.assertEqual(unit["components"][0]["block_ids"], ["cb_0003", "cb_0004"])
+        # Node gives each fact to the first component listing its block: the html (first) now lists both.
+        plans = result["shard"]["lessons"][0]["units"][0]["component_plan"]
+        self.assertEqual(plans[0]["source_scope_ids"], plans[1]["source_scope_ids"])
+
+        def question_alone(payload: dict[str, Any]) -> None:
+            payload["lessons"][0]["units"][1]["components"].pop()  # the FAQ that also presented cb_0011
+
+        with self.assertLogs("app.idm", level="INFO") as logs:
+            result, _, _ = await design_module(1, [edited("mod_02", question_alone)])
+        lesson = result["shard"]["idm_design"]["lessons"][0]
+        self.assertIn("chỉ xuất hiện trong lời giải của câu hỏi", lesson["notes"])
+        completed = next(json.loads(line.split("lesson_author_idm ", 1)[1]) for line in logs.output
+                         if "idm_stage_completed" in line)
+        self.assertEqual(completed["error_codes"].get(QUESTION_ONLY_BLOCK_CODE), 1)

@@ -45,6 +45,10 @@ _MIN_TERM_DEFINITIONS: Final = 3
 _EVIDENCE_TYPES: Final = frozenset({"la_sortable", "la_crossword", "la_diagram"})
 _FIRST_TYPE: Final = "html"
 _LAST_TYPE: Final = "la_faq"
+# A single-choice question shows its facts only in its explanation; sortable items and crossword clues show theirs.
+_QUESTION_TYPE: Final = "problem"
+TAUGHT_BEFORE_QUESTION_CODE: Final = "IDM_W4_AUTOFIX_TAUGHT_BEFORE_QUESTION"
+QUESTION_ONLY_BLOCK_CODE: Final = "IDM_W4_QUESTION_ONLY_BLOCK"
 
 
 # --- list bounds ---------------------------------------------------------------------------------------------
@@ -309,6 +313,43 @@ def _order_components(units: list[dict[str, Any]], order: dict[str, int]) -> int
     return reordered
 
 
+def teach_before_questions(lesson: IdmLessonDesignV1, plan: IdmLessonPlanV1) -> tuple[IdmLessonDesignV1, int, int]:
+    """Every block a question uses is taught by the teaching html of its unit (QC run ab8d67e1, R4).
+
+    Node gives each fact to the first component of the unit that lists its block, so a block only a problem listed
+    (cb_0014: 12 facts "khi móng tư duy đổi / không đổi"; cb_0015: "90% thất bại") was "covered" by that question's
+    explanation and never taught. Such a block joins the unit's teaching html (html first, so it now owns the facts;
+    the question keeps them as supporting evidence). Returns the lesson, the blocks attached and the blocks only a
+    question uses in a unit without a teaching html (left for the author).
+    """
+
+    order = {block_id: index for index, block_id in enumerate(plan.block_ids)}
+    units = []
+    attached = untaught = 0
+    for unit in lesson.units:
+        questions = {block_id for component in unit.components if component.type == _QUESTION_TYPE
+                     for block_id in component.block_ids}
+        taught = {block_id for component in unit.components if component.type != _QUESTION_TYPE
+                  for block_id in component.block_ids}
+        missing = sorted(questions - taught, key=lambda block_id: order.get(block_id, len(order)))
+        teaching = next((index for index, component in enumerate(unit.components)
+                         if component.type == _FIRST_TYPE and component.role != "practice"), None)
+        if not missing:
+            units.append(unit)
+            continue
+        if teaching is None or len(unit.components[teaching].block_ids) + len(missing) > IDM_COMPONENT_MAX_BLOCKS:
+            untaught += len(missing)
+            units.append(unit)
+            continue
+        components = list(unit.components)
+        block_ids = sorted([*components[teaching].block_ids, *missing],
+                           key=lambda block_id: order.get(block_id, len(order)))
+        components[teaching] = components[teaching].model_copy(update={"block_ids": block_ids})
+        units.append(unit.model_copy(update={"components": components}))
+        attached += len(missing)
+    return (lesson.model_copy(update={"units": units}) if attached else lesson), attached, untaught
+
+
 def autofix_lesson(lesson: IdmLessonDesignV1, plan: IdmLessonPlanV1, scope: ModuleScope,
                    allowed: set[str]) -> tuple[IdmLessonDesignV1, Counter[str]]:
     """``lesson`` with the deterministic layout fixes applied, and their counts; unchanged when none applies or
@@ -340,6 +381,7 @@ def autofix_lesson(lesson: IdmLessonDesignV1, plan: IdmLessonPlanV1, scope: Modu
 
 __all__ = [
     "BLOCK_ATTACHED_CODE", "BLOCK_COVERED_CODE", "COMPONENT_ORDER_CODE", "CRITERIA_TRIMMED_CODE",
-    "FOREIGN_BLOCK_DROPPED_CODE", "FORMAT_TO_HTML_CODE", "UNITS_MERGED_CODE", "autofix_lesson",
-    "format_has_evidence", "ranked_criteria", "trim_module_answer",
+    "FOREIGN_BLOCK_DROPPED_CODE", "FORMAT_TO_HTML_CODE", "QUESTION_ONLY_BLOCK_CODE", "TAUGHT_BEFORE_QUESTION_CODE",
+    "UNITS_MERGED_CODE", "autofix_lesson", "format_has_evidence", "ranked_criteria", "teach_before_questions",
+    "trim_module_answer",
 ]

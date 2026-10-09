@@ -378,7 +378,9 @@ For each lesson:
    never a second, teaching html in the same unit. Every component lists the blocks it uses
    (from its unit) and every block of a unit is used by at least one of its components. The main practice sits in a unit
    that contains at least one block of its Must Do. Facts that decide a practice must be taught in the same or an
-   earlier unit. Never more than 5 explanation components in a row without a question or practice.
+   earlier unit: every block a problem uses is also used by the html placed before it in its unit (a question
+   tests what that html teaches and is never the only component that presents a block). Never more than 5
+   explanation components in a row without a question or practice.
    A practice component has role "practice" and practice_id set; other components have practice_id null. Only
    problem, la_sortable, la_crossword and the worksheet html may have role "practice"; a worksheet html always has
    the problem that checks it in the same unit.
@@ -451,7 +453,8 @@ Writing rules (learner-facing, {locale_name(locale)}):
   explanation states the criterion and why EACH option is right or wrong ("A - ...; B - ...; C - ...", every
   option named by its letter); each reason must agree with that option's own text and with the answer key
   (never call a distractor that meets the criterion wrong, or the reverse). Never reveal the answer before the
-  question.
+  question. A question tests only what the html slots before it teach: every fact its key or explanation relies
+  on is stated in that html first (the explanation recalls it, it never teaches it for the first time).
 - An html slot whose role is "practice" is a WORKSHEET for its practice (the learner works on their own copy;
   nothing is graded automatically): a section whose heading names the task with a "task" block (what to produce,
   from which input); a section with the template to complete as a "table" block (label = the field or cell to

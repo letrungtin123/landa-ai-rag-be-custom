@@ -31,7 +31,14 @@ from app.idm.contracts import (
 from app.idm.framework import framework_promise, unit_framework_brief
 from app.idm.limits import answer_limits
 from app.idm.mcq import encode_key_letters
-from app.idm.module_autofix import autofix_lesson, format_has_evidence, trim_module_answer
+from app.idm.module_autofix import (
+    QUESTION_ONLY_BLOCK_CODE,
+    TAUGHT_BEFORE_QUESTION_CODE,
+    autofix_lesson,
+    format_has_evidence,
+    teach_before_questions,
+    trim_module_answer,
+)
 from app.idm.module_layout import (
     ModuleScope,
     build_module_scope,
@@ -393,6 +400,27 @@ def attach_framework_items(lessons: Sequence[IdmLessonDesignV1], scope: ModuleSc
     return result, attached
 
 
+def _taught_before_questions(lessons: Sequence[IdmLessonDesignV1], scope: ModuleScope, runtime: IdmRuntime,
+                             codes: Counter[str]) -> list[IdmLessonDesignV1]:
+    """Blocks only a question used join the unit's teaching html (``module_autofix.teach_before_questions``); a
+    lesson where no teaching html can take them gets an author note (QC run ab8d67e1, R4)."""
+
+    result: list[IdmLessonDesignV1] = []
+    for original, plan in zip(lessons, scope.lesson_plans, strict=True):
+        fixed, attached, untaught = teach_before_questions(original, plan)
+        if attached:
+            runtime.adjustments[TAUGHT_BEFORE_QUESTION_CODE] += attached
+        if untaught:
+            codes[QUESTION_ONLY_BLOCK_CODE] += untaught
+            line = ("Lưu ý: có nội dung chỉ xuất hiện trong lời giải của câu hỏi, chưa được dạy trước câu hỏi — nên "
+                    "thêm phần lý thuyết cho nội dung này trước câu hỏi." if scope.locale == "vi"
+                    else "Note: some content appears only in a question's explanation and is not taught before the "
+                         "question — add a theory part for it before the question.")
+            fixed = fixed.model_copy(update={"notes": sanitize_author_text(fixed.notes + "\n" + line, 2000)})
+        result.append(fixed)
+    return result
+
+
 def with_orientation_note(lesson: IdmLessonDesignV1, phrases: Sequence[str], locale: str) -> IdmLessonDesignV1:
     named = ", ".join(f'"{phrase}"' for phrase in phrases)
     line = (f"Lưu ý: mục tiêu nêu {named} nhưng chưa có unit định hướng liệt kê đủ các thành phần — nên thêm một "
@@ -692,6 +720,7 @@ async def run_idm_module_design(
             )
     if fallback_count:
         record_deterministic_fallback(runtime, stage="idm_module", code="IDM_MODULE_LESSON_FALLBACK")
+    final = _taught_before_questions(final, scope, runtime, codes)
     final, attached = attach_framework_items(final, scope)
     if attached:
         runtime.adjustments["IDM_W4_FRAMEWORK_ITEMS_ATTACHED"] += attached

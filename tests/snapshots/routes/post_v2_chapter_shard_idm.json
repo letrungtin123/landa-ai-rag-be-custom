@@ -704,8 +704,8 @@
     "op": "generate",
     "model": "test-model",
     "schema": "IdmW3W4ModuleResponseV1",
-    "prompt_sha256": "9ec087bd8001563d8ee9258f0e4cb574a81fe49ff8f284762a0fdee77f898005",
-    "prompt_chars": 12532,
+    "prompt_sha256": "db7a814759d0f2ecfd46329e2daead9c30743b3cebec9ab462c4601fefef694a",
+    "prompt_chars": 12716,
     "config": {
      "max_output_tokens": 48000,
      "response_mime_type": "application/json",
