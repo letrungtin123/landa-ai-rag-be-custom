@@ -23,7 +23,7 @@ from pydantic import BaseModel, ValidationError
 
 from app.idm.contracts import IdmUnitBriefV1, brief_hash_of
 from app.idm.diagram import idm_diagram_relationships
-from app.idm.framework import build_promise, framework_coverage
+from app.idm.framework import build_promise, framework_coverage, framework_support_lines, with_framework_list
 from app.idm.html_rules import (
     DENSITY_CODE,
     HtmlRuleViolation,
@@ -41,10 +41,12 @@ from app.idm.node_acceptance import (
 from app.idm.policy import (
     EXTRA_WORDS_PER_MUST_KNOW_BLOCK,
     IDM_FAQ_MIN_ITEMS,
+    IDM_TARGETED_REPAIR_MIN_SECONDS,
     IDM_UNIT_WRITER_MAX_OUTPUT_TOKENS,
     MAX_GENERATED_WORDS,
     MIN_GENERATED_WORDS,
     SEGMENT_WORD_BUDGET,
+    THINKING_TARGETED_REPAIR,
     THINKING_W5,
     VISIBLE_CHARS_PER_WORD,
     WORKSHEET_COMPONENT_TYPE,
@@ -68,6 +70,7 @@ from app.idm.qa import (
     FAQ_TITLE_MISMATCH_CODE,
     FAQ_UNGROUNDED_CODE,
     FRAMEWORK_INCOMPLETE_CODE,
+    FRAMEWORK_LIST_INSERTED_CODE,
     WORKSHEET_INCOMPLETE_CODE,
     JudgeMode,
     JudgeOutcome,
@@ -124,6 +127,8 @@ _FIELD_OF_PATH_RE: Final = re.compile(r"^components\[\d+\]\.?")
 _REVIEW_FIRST_CODES: Final = frozenset({WORKSHEET_INCOMPLETE_CODE, ANSWER_LEAK_CODE, CALLOUT_UNGROUNDED_CODE,
                                         FAQ_RESTATES_HTML_CODE, FAQ_TITLE_MISMATCH_CODE,
                                         FRAMEWORK_INCOMPLETE_CODE})
+# Findings a deterministic step settles when the repair does not: their repair alone is a targeted one.
+_TARGETED_REPAIR_CODES: Final = frozenset({FRAMEWORK_INCOMPLETE_CODE})
 # FAQ findings settled by dropping the items concerned while the slot keeps two items.
 _FAQ_PRUNE_CODES: Final = frozenset({FAQ_UNGROUNDED_CODE, FAQ_RESTATES_HTML_CODE})
 _MAX_HINT_FACT_KEYS: Final = 24
@@ -324,11 +329,15 @@ class IdmUnitWriter:
             [*(fact.fact_text for fact in contract.source_facts),
              *(item.fact_text for item in brief.lesson_context_facts)],
             number_texts=[brief.lesson_objective, brief.unit_purpose, *brief.lesson_practice_sentences])
-        # A unit or html slot title that names "N <items>" promises an overview of all N items (QC 364564, N5).
+        # A unit or html slot title that names "N <items>" promises an overview of all N items (QC 364564, N5). The
+        # items come from the unit's facts or, for an orientation unit whose blocks only introduce the framework,
+        # from the server-written support item W4 attached with the names of every item (QC run 8de1c76b, Q3).
+        teaching = [slot for slot in brief.components if slot.type == "html" and slot.role != "practice"]
+        self.framework_support = framework_support_lines(item.brief for slot in teaching for item in slot.support_items)
         self.framework = build_promise(
-            [contract.unit_title, *(slot.title for slot in brief.components
-                                    if slot.type == "html" and slot.role != "practice")],
-            [fact.fact_text for fact in contract.source_facts])
+            [contract.unit_title, *(slot.title for slot in teaching)],
+            [*self.framework_support, *(fact.fact_text for fact in contract.source_facts)])
+        self.framework_inserted = 0
         self.codes: list[str] = []
         # Provider, time-budget and repair failures behind a fallback (codes only, never provider text).
         self.failure_codes: list[str] = []
@@ -445,7 +454,10 @@ class IdmUnitWriter:
         teaching = [component for index, component in enumerate(components) if component.get("type") == "html"
                     and not (index < len(self.brief.components) and self.brief.components[index].role == "practice")]
         shown = framework_coverage(self.framework, teaching, html_before(unit, len(components)))
-        return line + f" (the title promises {self.framework.count} items; the html shows {shown})"
+        where = (" named in the support item of the teaching html slot in UNIT_BRIEF" if self.framework_support
+                 else " numbered in SOURCE_FACTS" if self.framework.labels else "")
+        return line + (f" (the title promises {self.framework.count} items; the html shows {shown}; list every "
+                       f"item{where} in one bullets block)")
 
     def fact_hint(self, index: int) -> str:
         brief_slot = self.brief.components[index] if index < len(self.brief.components) else None
@@ -599,7 +611,8 @@ class IdmUnitWriter:
         )
 
     async def repair_slots(self, draft: _Draft, issues: Sequence[tuple[str, int]],
-                           locations: Mapping[tuple[str, int], str] | None = None) -> _Draft:
+                           locations: Mapping[tuple[str, int], str] | None = None,
+                           thinking: ThinkingLevel = THINKING_W5) -> _Draft:
         targets = sorted({index for _code, index in issues})
         coverage = sorted({index for code, index in issues if code in _COVERAGE_CODES})
         model = self.deps.build_repair_model(draft.unit, targets, coverage)
@@ -618,7 +631,7 @@ class IdmUnitWriter:
             self.rule_lines(draft.unit, issues, locations or {}))
         unit = await idm_generate(
             self.runtime, stage="idm_w5_repair", prompt=prompt, response_schema=model, parse=parse,
-            max_output_tokens=IDM_UNIT_WRITER_MAX_OUTPUT_TOKENS, thinking_level=THINKING_W5,
+            max_output_tokens=IDM_UNIT_WRITER_MAX_OUTPUT_TOKENS, thinking_level=thinking,
             invocation_kind="repair",
         )
         return _Draft({**unit, "component_plan": list(self.plans)}, list(draft.fallback_slots), True,
@@ -673,6 +686,30 @@ class IdmUnitWriter:
         return _Draft({**draft.unit, "components": components}, list(draft.fallback_slots), draft.repair_applied,
                       list(draft.review_slots), dict(draft.reasons))
 
+    def insert_framework_list(self, draft: _Draft, index: int) -> _Draft | None:
+        """The teaching html with one more section listing every promised item by name (QC run 8de1c76b, Q3), when
+        the names are known (unit facts or the W4 support item) and the slot stays within every html rule."""
+
+        if self.framework is None or len(self.framework.labels) < self.framework.count:
+            return None
+        components = list(draft.unit.get("components", []))
+        component = components[index] if 0 <= index < len(components) else None
+        if not isinstance(component, dict) or component.get("type") != "html":
+            return None
+        listed = with_framework_list(component, self.framework, self.runtime.locale)
+        if listed is None or self.html_violations(listed):
+            return None
+        components[index] = listed
+        candidate = _Draft({**draft.unit, "components": components}, list(draft.fallback_slots),
+                           draft.repair_applied, list(draft.review_slots), dict(draft.reasons))
+        finding, idm = self.problems(candidate)
+        if _slot_of(finding) == index or (FRAMEWORK_INCOMPLETE_CODE, index) in idm:
+            return None
+        self.framework_inserted += len(self.framework.labels)
+        self.codes.append(FRAMEWORK_LIST_INSERTED_CODE)
+        self.runtime.adjustments["w5_framework_list_inserted"] += 1
+        return candidate
+
     def callouts_to_prose(self, draft: _Draft, index: int) -> _Draft | None:
         """Turn the callouts the facts do not support into plain paragraphs (QC course 364564, N9), when the
         slot stays valid that way; the text no longer reads as a quotation and the note asks the SME."""
@@ -723,17 +760,25 @@ class IdmUnitWriter:
         issues.extend(dict.fromkeys((item.code, item.component_index) for item in self.last_acceptance[1:]
                                     if item.component_index is not None
                                     and (item.code, item.component_index) not in issues))
-        # A failed repair (budget, provider, invalid answer) falls through to slot fallback.
+        # A failed repair (budget, provider, invalid answer) falls through to slot fallback. A repair of findings a
+        # deterministic step settles anyway (a missing framework list, a length cue) is a targeted one: low thinking,
+        # and none at all when too little time is left for it (QC run 8de1c76b, Q3: the framework repair of
+        # "Bản đồ 5 chuyển dịch" timed out at 52.6 s against the 120 s unit deadline).
+        targeted = finding is None and {code for code, _index in issues} <= _TARGETED_REPAIR_CODES
         repaired = False
-        try:
-            draft = await self.repair_slots(draft, issues, locations)
-            repaired = True
-        except (IdmBudgetError, IdmResponseInvalidError) as error:
-            self.failure_codes.append(error.code)  # falls through to the per-slot fallback below
-        except IdmProviderError as error:
-            if error.terminal:
-                raise
-            self.failure_codes.append(error.code)
+        if targeted and self.runtime.remaining_seconds() < IDM_TARGETED_REPAIR_MIN_SECONDS:
+            self.runtime.adjustments["w5_targeted_repair_skipped_budget"] += 1
+        else:
+            try:
+                draft = await self.repair_slots(draft, issues, locations,
+                                                thinking=THINKING_TARGETED_REPAIR if targeted else THINKING_W5)
+                repaired = True
+            except (IdmBudgetError, IdmResponseInvalidError) as error:
+                self.failure_codes.append(error.code)  # falls through to the per-slot fallback below
+            except IdmProviderError as error:
+                if error.terminal:
+                    raise
+                self.failure_codes.append(error.code)
         # Each pass settles one step of one slot (Node item pruning, FAQ pruning or callouts to prose, then
         # fallback or review), so the bound never limits.
         for attempt in range(3 * len(self.plans) + 1):
@@ -765,6 +810,11 @@ class IdmUnitWriter:
                 converted = self.callouts_to_prose(draft, bad) if CALLOUT_UNGROUNDED_CODE in reasons else None
                 if converted is not None:
                     draft = converted
+                    continue
+                # A framework the html still does not list gets the item names as a list (Q3).
+                listed = self.insert_framework_list(draft, bad) if FRAMEWORK_INCOMPLETE_CODE in reasons else None
+                if listed is not None:
+                    draft = listed
                     continue
                 if set(reasons) <= _REVIEW_FIRST_CODES:
                     draft = self.keep_for_review(draft, bad, reasons)
@@ -865,6 +915,7 @@ async def run_idm_unit(
     provider_lane = usage_source == "provider" and not whole_fallback and not draft.fallback_slots
     # A callout turned into a paragraph still states what the facts do not (N9): the SME confirms it.
     reviewable = (not provider_lane or bool(draft.review_slots) or writer.callouts_converted > 0
+                  or writer.framework_inserted > 0
                   or deps.evidence_review_required
                   or blocking_count(judge.findings) > 0
                   or (ai_drafted and _q5(judge) != "pass"))
@@ -879,7 +930,8 @@ async def run_idm_unit(
         slot_types=[plan["type"] for plan in writer.plans], failure_codes=writer.failure_codes,
         whole_fallback=whole_fallback, faq_items_dropped=writer.faq_items_dropped,
         faq_items_invalid=writer.faq_items_invalid, remaining=remaining, fixed_codes=fixed,
-        faq_items_restated=writer.faq_items_restated, callouts_to_prose=writer.callouts_converted)
+        faq_items_restated=writer.faq_items_restated, callouts_to_prose=writer.callouts_converted,
+        framework_list_inserted=writer.framework_inserted)
     quality = build_unit_quality(mode=deps.judge_mode, judge=judge, repair_applied=draft.repair_applied,
                                  deterministic_codes=[*writer.codes, *(item.code for item in remaining)],
                                  author_note=note)
@@ -893,7 +945,7 @@ async def run_idm_unit(
         "remaining_codes": sorted({item.code for item in remaining}), "fixed_codes": sorted(set(fixed)),
         "failure_codes": sorted(set(writer.failure_codes)), "faq_items_dropped": writer.faq_items_dropped,
         "faq_items_invalid": writer.faq_items_invalid, "faq_items_restated": writer.faq_items_restated,
-        "callouts_to_prose": writer.callouts_converted,
+        "callouts_to_prose": writer.callouts_converted, "framework_list_inserted": writer.framework_inserted,
         "slot_reasons": {str(index): codes for index, codes in sorted(draft.reasons.items())},
         "node_acceptance": writer.acceptance_seen[:_MAX_LOGGED_DETAILS],
         "call_count": runtime.usage.calls, "duration_ms": int((time.perf_counter() - started) * _MS),

@@ -84,6 +84,11 @@ IDM_CHARS_PER_TOKEN_ESTIMATE: Final = 3.5
 IDM_MAX_ATTEMPT_TRACE_EVENTS: Final = 64
 # The judge is skipped when less than this remains (spec §7.7.5).
 IDM_JUDGE_MIN_REMAINING_SECONDS: Final = 25.0
+# A W5 repair whose findings a deterministic step settles anyway (a framework the html does not list) is a targeted
+# repair at low thinking, started only with this much time left: QC run 8de1c76b (Q3) spent 57 s on the writer of
+# "Bản đồ 5 chuyển dịch" and its medium-thinking repair was cut at 52.6 s by the 120 s unit deadline. Below the bound
+# the deterministic step runs at once, so the extra latency of a targeted repair is at most one low-thinking call.
+IDM_TARGETED_REPAIR_MIN_SECONDS: Final = 30.0
 
 # --- Thinking levels per stage (spec §5.5, revised after QC course 234653) ---------------
 # W1-reduce, W2 and W4 classify and order a compact block catalog; "high" thinking used the
@@ -102,6 +107,7 @@ THINKING_W6: Final = "low"
 # The repair of an answer cut at max_output_tokens thinks less and asks for a shorter answer;
 # re-sending the same prompt at the same level would be cut again.
 THINKING_AFTER_TRUNCATION: Final = "low"
+THINKING_TARGETED_REPAIR: Final = "low"
 
 # --- Validation thresholds -----------------------------------------------------------------
 IDM_LO_MIN_COUNT: Final = 3
@@ -237,6 +243,8 @@ OUTPUT_VERBS_VI: Final = ("ký", "lập", "điền", "soạn", "viết", "xây d
 OUTPUT_VERBS_EN: Final = ("sign", "draft", "write", "fill in", "fill out", "build", "design", "redesign", "map",
                           "draw up", "prepare")
 MAX_COMPONENTS_PER_UNIT: Final = 4
+# Bound of IdmComponentDesignV1.support_items (Node reads the same bound).
+MAX_SUPPORT_ITEMS: Final = 6
 # Assessment obligations exist only for slots 1..3 (SQL CHECK, spec §4.3 / IDM-0.5).
 MAX_OBLIGATION_COMPONENT_INDEX: Final = 3
 

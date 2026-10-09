@@ -597,20 +597,31 @@ class FrameworkUnitTests(StoryboardEndpointTestCase):
         quality = self.assert_envelope(data, "provider_validated", "validated", "provider")
         self.assertIn("c0 IDM_W5_FRAMEWORK_INCOMPLETE at c0: the unit or slot title names a framework of several "
                       "items", provider.calls[1]["prompt"])
-        self.assertIn("(the title promises 3 items; the html shows 0)", provider.calls[1]["prompt"])
+        self.assertIn("(the title promises 3 items; the html shows 0; list every item numbered in SOURCE_FACTS in "
+                      "one bullets block)", provider.calls[1]["prompt"])
+        # QC run 8de1c76b (Q3): a framework-only repair is a targeted one (low thinking).
+        self.assertEqual(provider.calls[1]["thinking_level"], "low")
         self.assertIn('"unit_title":"Ba cấp độ nghiêm trọng"', provider.calls[0]["prompt"])
         self.assertIn("Đã tự sửa: IDM_W5_FRAMEWORK_INCOMPLETE.", quality.author_note)
 
-    async def test_overview_the_repair_cannot_add_is_kept_for_review(self) -> None:
+    async def test_overview_the_repair_cannot_add_is_listed_from_the_facts(self) -> None:
+        # QC run 8de1c76b (Q3): instead of keeping the slot for review, the server lists the three levels by the
+        # names the facts give them; the unit stays reviewable so the author smooths the list into the text.
         body = severity_body()
         writer = levels_in_words(body)
         provider = FakeGenerate(**{WRITER: [writer], REPAIR: [slot_repair(writer, 0)], JUDGE: [judge()]})
         status, data, _ = await self.post(body, provider)
         self.assertEqual(status, 200)
         quality = self.assert_envelope(data, "provider_validated", "review_required", "provider")
-        self.assertNotIn("source_locked_fallback", data["unit"]["components"][0])
-        self.assertIn("Cần xem (IDM_W5_FRAMEWORK_INCOMPLETE, khối 1 (Lý thuyết)): tiêu đề nêu một khung gồm nhiều "
-                      "thành phần", quality.author_note)
+        sections = data["unit"]["components"][0]["semantic_content"]["sections"]
+        self.assertEqual(sections[1]["heading"], "Ba cấp độ gồm những gì?")
+        self.assertEqual(sections[1]["blocks"][0]["items"],
+                         ["Cấp 1: Ảnh hưởng thấp",
+                          "Cấp 2: Thiệt hại tài chính dưới 50 triệu đồng hoặc khách hàng phàn nàn lần thứ hai",
+                          "Cấp 3: Liên quan an toàn"])
+        self.assertIn("Đã chèn danh sách 3 thành phần của khung (tên lấy từ tài liệu)", quality.author_note)
+        self.assertNotIn("Cần xem (IDM_W5_FRAMEWORK_INCOMPLETE", quality.author_note)
+        self.assertIn("IDM_W5_FRAMEWORK_LIST_INSERTED", quality.deterministic_codes)
 
 
 class FrameworkOrientationDesignTests(unittest.IsolatedAsyncioTestCase):

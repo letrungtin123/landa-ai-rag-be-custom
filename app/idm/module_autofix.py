@@ -30,6 +30,7 @@ from app.idm.policy import (
     IDM_PRACTICE_MAX_CRITERIA_FACTS,
     IDM_UNIT_MAX_BLOCKS,
     MAX_COMPONENTS_PER_UNIT,
+    MAX_SUPPORT_ITEMS,
 )
 from app.idm.signals import idm_has_ordered_steps, idm_relationship_pairs, idm_term_definitions
 
@@ -41,7 +42,6 @@ BLOCK_COVERED_CODE: Final = "IDM_W4_AUTOFIX_BLOCK_COVERED"
 FORMAT_TO_HTML_CODE: Final = "IDM_W4_AUTOFIX_FORMAT_TO_HTML"
 COMPONENT_ORDER_CODE: Final = "IDM_W4_AUTOFIX_COMPONENT_ORDER"
 _MIN_TERM_DEFINITIONS: Final = 3
-_MAX_SUPPORT_ITEMS: Final = 6
 _EVIDENCE_TYPES: Final = frozenset({"la_sortable", "la_crossword", "la_diagram"})
 _FIRST_TYPE: Final = "html"
 _LAST_TYPE: Final = "la_faq"
@@ -142,7 +142,7 @@ def _fold(kept: dict[str, Any], dropped: dict[str, Any], order: dict[str, int]) 
 
     kept["block_ids"] = _union(kept["block_ids"], dropped["block_ids"], order, IDM_COMPONENT_MAX_BLOCKS)
     support = [*kept["support_items"], *dropped["support_items"]]
-    kept["support_items"] = list({_support_key(item): item for item in support}.values())[:_MAX_SUPPORT_ITEMS]
+    kept["support_items"] = list({_support_key(item): item for item in support}.values())[:MAX_SUPPORT_ITEMS]
 
 
 def _support_key(item: dict[str, Any]) -> tuple[str, str, str]:

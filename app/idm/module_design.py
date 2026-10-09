@@ -22,11 +22,12 @@ from app.idm.contracts import (
     IdmModuleContextV1,
     IdmPracticeTaskV1,
     IdmShardDesignV1,
+    IdmSupportItemV1,
     IdmW3W4ModuleResponseV1,
     StageOrigin,
     design_hash_of,
 )
-from app.idm.framework import framework_promise
+from app.idm.framework import framework_promise, unit_framework_brief
 from app.idm.limits import answer_limits
 from app.idm.module_autofix import autofix_lesson, format_has_evidence, trim_module_answer
 from app.idm.module_layout import (
@@ -47,6 +48,7 @@ from app.idm.policy import (
     IDM_MODULE_MAX_OUTPUT_TOKENS,
     IDM_MODULE_SCHEMA_REPAIRS,
     IDM_THEORY_RUN_MAX_COMPONENTS,
+    MAX_SUPPORT_ITEMS,
     THINKING_MODULE,
     WORKSHEET_COMPONENT_TYPE,
 )
@@ -352,6 +354,42 @@ def framework_orientation_gaps(lessons: Sequence[IdmLessonDesignV1], scope: Modu
     return gaps
 
 
+def attach_framework_items(lessons: Sequence[IdmLessonDesignV1], scope: ModuleScope,
+                           ) -> tuple[list[IdmLessonDesignV1], int]:
+    """Give a unit that promises "N <items>" the names of the items its own blocks do not number (QC run 8de1c76b,
+    Q3: "Bản đồ 5 chuyển dịch" owned only the introduction; the five shifts were in the next lessons' blocks).
+
+    The names come from the facts of the shard that teach each item and reach the unit's teaching html as a
+    server-written support item (``framework.unit_framework_brief``); the unit brief carries it to the writer
+    and to the W5 check, without changing which facts the unit owns.
+    """
+
+    shard_texts = [scope.fact_text[key] for plan in scope.lesson_plans for block_id in plan.block_ids
+                   for key in scope.blocks[block_id].fact_keys if key in scope.fact_text]
+    attached = 0
+    result: list[IdmLessonDesignV1] = []
+    for lesson in lessons:
+        units = []
+        for unit in lesson.units:
+            target = next((index for index, component in enumerate(unit.components)
+                           if component.type == "html" and component.role != "practice"), None)
+            brief = None if target is None else unit_framework_brief(
+                [unit.title, unit.components[target].title], scope.block_texts(unit.block_ids), shard_texts,
+                scope.locale)
+            if target is None or brief is None:
+                units.append(unit)
+                continue
+            component = unit.components[target]
+            item = IdmSupportItemV1(kind="explain_concept", brief=brief, block_id=component.block_ids[0])
+            support = [entry for entry in component.support_items if entry.brief != brief][:MAX_SUPPORT_ITEMS - 1]
+            components = list(unit.components)
+            components[target] = component.model_copy(update={"support_items": [item, *support]})
+            units.append(unit.model_copy(update={"components": components}))
+            attached += 1
+        result.append(lesson.model_copy(update={"units": units}))
+    return result, attached
+
+
 def with_orientation_note(lesson: IdmLessonDesignV1, phrases: Sequence[str], locale: str) -> IdmLessonDesignV1:
     named = ", ".join(f'"{phrase}"' for phrase in phrases)
     line = (f"Lưu ý: mục tiêu nêu {named} nhưng chưa có unit định hướng liệt kê đủ các thành phần — nên thêm một "
@@ -632,6 +670,9 @@ async def run_idm_module_design(
             )
     if fallback_count:
         record_deterministic_fallback(runtime, stage="idm_module", code="IDM_MODULE_LESSON_FALLBACK")
+    final, attached = attach_framework_items(final, scope)
+    if attached:
+        runtime.adjustments["IDM_W4_FRAMEWORK_ITEMS_ATTACHED"] += attached
     gaps = framework_orientation_gaps(final, scope)
     if gaps:
         codes["IDM_W4_FRAMEWORK_ORIENTATION_MISSING"] += sum(len(phrases) for phrases in gaps.values())

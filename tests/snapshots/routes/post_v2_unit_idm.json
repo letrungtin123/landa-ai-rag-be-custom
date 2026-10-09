@@ -486,8 +486,8 @@
     "op": "generate",
     "model": "gemini-3.8-flash",
     "schema": "StagedInstancePayloadUnit",
-    "prompt_sha256": "cbcb8e941d5863bcb81e35b630f4b6ab2c38aa06b30e574fadb5fd84ef12cafb",
-    "prompt_chars": 9240,
+    "prompt_sha256": "0f8cf2f2c009caf36677e51ad1a26ec55ad91de976dcf8e4c16ec20f4e8a2ee5",
+    "prompt_chars": 9429,
     "config": {
      "max_output_tokens": 16000,
      "response_mime_type": "application/json",

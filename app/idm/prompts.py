@@ -467,7 +467,9 @@ Writing rules (learner-facing, {locale_name(locale)}):
   labels of a template or the edges of a diagram.
 - Every slot title and section heading names what that slot or section actually teaches. When UNIT_BRIEF or a
   slot title names an enumerated framework ("5 chuyển dịch", "6 trụ cột", "3 giai đoạn"), the html lists every
-  item of it, by the name the facts use, in one bullets, steps or table block.
+  item of it, by the name the facts use, in one bullets, steps or table block. A support item that starts with
+  "Liệt kê đủ" / "List all" names every item of that framework (taught in later units): list all of them, one
+  short line each, without teaching them here.
 - Use drafted scenarios/examples only where the brief marks them ai_drafted; they must not add rules.
 - LESSON_CONTEXT_FACTS are read-only background from earlier units; use them for consistency and for the
   correctness criteria, do not re-teach them.

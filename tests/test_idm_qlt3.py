@@ -4,6 +4,8 @@
   (33 Canvas criteria facts, bound 24; an 8-point media brief, bound 6) rejected whole W4 answers, a schema
   rejection used up one of the two attempts, single-block lessons were split into units sharing the block,
   and the failing paths of each attempt were never logged.
+* Q3: the orientation unit "Bản đồ 5 chuyển dịch" owned only the introduction block, so the writer could not
+  list the five shifts, and its repair timed out against the 120 s unit deadline.
 * Q5: two Must Dos had no practice: the fallback kept the provider practice only for kind "do", and
   "Ký cam kết …" was marked "decide"; ``learning_activities`` promised the held practice anyway.
 
@@ -23,8 +25,11 @@ from app.idm.contracts import (
     IdmLessonDesignV1,
     IdmLessonPlanV1,
     IdmPracticeTaskV1,
+    IdmUnitQualityV1,
     IdmW3W4ModuleResponseV1,
+    brief_hash_of,
 )
+from app.idm.framework import framework_support_brief, framework_support_lines
 from app.idm.limits import answer_limits
 from app.idm.module_autofix import (
     BLOCK_ATTACHED_CODE,
@@ -37,14 +42,26 @@ from app.idm.module_autofix import (
     ranked_criteria,
     trim_module_answer,
 )
-from app.idm.module_design import validate_lesson
+from app.idm.module_design import attach_framework_items, validate_lesson
 from app.idm.module_layout import ModuleScope, fallback_lesson, must_do_unit_position, project_lesson
 from app.idm.policy import AI_DRAFTED_MARKER_EN, AI_DRAFTED_MARKER_VI, IDM_PRACTICE_MAX_CRITERIA_FACTS
 from app.idm.prompts import module_prompt
 from app.idm.validation import errors
 from tests import idm_golden_module as gm
 from tests.idm_golden import key, keys
+from tests.idm_test_support import rehash_contract
 from tests.test_idm_module_design import ALLOWED, STAGE, component, design_module, edited, scope_of
+from tests.test_idm_storyboard import (
+    JUDGE,
+    REPAIR,
+    WRITER,
+    FakeGenerate,
+    StoryboardEndpointTestCase,
+    judge,
+    severity_body,
+    severity_writer,
+    slot_repair,
+)
 
 # The 33 facts of block cb_0022 ("Cách điền biểu mẫu CEO Change Mindset Canvas"), run 8de1c76b.
 CANVAS_FACTS = [
@@ -381,6 +398,137 @@ class FallbackPracticeTests(unittest.IsolatedAsyncioTestCase):
         lesson = shard["idm_design"]["lessons"][0]
         self.assertIn("problem", [c["type"] for u in lesson["units"] for c in u["components"]])
         self.assertEqual(shard["lessons"][0]["learning_activities"], [lesson["practice_tasks"][0]["sentence"]])
+
+
+# Facts of chapter 2 of the QC run: cb_0015 only introduces the framework; each shift has its own block.
+SHIFT_INTRO = ["CHƯƠNG 05", "BIC 5 MINDSET SHIFTS • 5 BƯỚC CHUYỂN DỊCH TƯ DUY (1)",
+               "5 Chuyển Dịch Tư Duy Sống Còn Của Lãnh Đạo 5.0",
+               "Để bước qua cánh cổng chuyển đổi, CEO không thể chỉ dừng lại ở sự đồng cảm chung chung."]
+SHIFT_HEADS = [
+    "SHIFT 1: THINK BIG — Từ Tư Duy \"Tồn Tại\" Sang \"Khát Vọng Lớn\"",
+    "SHIFT 2: THINK DIFFERENT — Từ Benchmark Nội Địa Sang Chuẩn Best-in-Class",
+    "SHIFT 3: THINK CUSTOMER — Từ Tiêu Chuẩn Kỹ Thuật Sang \"Customer Delight\"",
+    "SHIFT 4: THINK SYSTEM — Thoát Bẫy \"Chữa Cháy\" Sang Vận Hành Xuất Sắc",
+    "SHIFT 5: THINK ECOSYSTEM — Từ \"Tự Sở Hữu Hữu Hạn\" Sang \"Siêu Kết Nối ERA5.0\"",
+]
+SHIFT_BRIEF = ("Liệt kê đủ 5 chuyển dịch: SHIFT 1: THINK BIG; SHIFT 2: THINK DIFFERENT; SHIFT 3: THINK CUSTOMER; "
+               "SHIFT 4: THINK SYSTEM; SHIFT 5: THINK ECOSYSTEM")
+
+
+def shift_scope() -> ModuleScope:
+    """Module 2 of the QC run: lsn_004 (cb_0015 intro + cb_0016 Shift 1), then one lesson per other shift."""
+
+    texts: dict[str, str] = {}
+    blocks: dict[str, IdmContentBlockV1] = {}
+    rows: dict[str, IdmBlueprintRowV1] = {}
+    contents = [SHIFT_INTRO, *([head, "Tư duy cũ", "Tư duy mới"] for head in SHIFT_HEADS)]
+    for index, facts in enumerate(contents, start=15):
+        block_id = f"cb_{index:04d}"
+        keys_ = [f"d1-c7-f{index * 10 + position}" for position in range(len(facts))]
+        texts.update(zip(keys_, facts, strict=True))
+        blocks[block_id] = block(block_id, keys_)
+        rows[block_id] = row(block_id, [f"md_{max(1, index - 13)}"], "must_know" if index == 15 else "must_do")
+    plans = [IdmLessonPlanV1.model_validate({
+        "lesson_key": f"lsn_{number:03d}", "kind": "learning", "title": f"Bài {number}", "primary_must_do_id": None,
+        "secondary_must_do_ids": [], "block_ids": block_ids, "est_screens": 3, "est_minutes": 6,
+        "ordering_rationale": "Theo khung."})
+        for number, block_ids in ((4, ["cb_0015", "cb_0016"]), (5, ["cb_0017"]), (6, ["cb_0018"]), (7, ["cb_0019"]),
+                                  (8, ["cb_0020"]))]
+    return ModuleScope(blocks=blocks, rows=rows, scope_of_block={key_: "idmcb_" + "b" * 32 for key_ in blocks},
+                       fact_text=texts, lesson_plans=plans, must_do_statement={}, locale="vi")
+
+
+def orientation_lesson(title: str = "Bản đồ 5 chuyển dịch", html_title: str = "Năm chuyển dịch là gì",
+                       ) -> IdmLessonDesignV1:
+    return IdmLessonDesignV1.model_validate(gm._lesson("lsn_004", "Think Big", "Xác lập tham vọng", [
+        practice([key("7", 0)])], [
+        gm._unit(1, "context_explain", title, ["cb_0015"], [
+            gm._component(1, "html", "explain", html_title, ["cb_0015"])]),
+        gm._unit(2, "practice_feedback", "Think Big", ["cb_0016"], [
+            gm._component(1, "html", "explain", "Từ tồn tại sang khát vọng lớn", ["cb_0016"]),
+            gm._component(2, "problem", "practice", "Bạn chọn gì?", ["cb_0016"], practice_id="pt_1")]),
+    ]))
+
+
+class FrameworkOrientationTests(StoryboardEndpointTestCase):
+    """Q3: the orientation unit "Bản đồ 5 chuyển dịch" did not list the 5 shifts: its block held only the
+    introduction, and the repair hit the 120 s unit deadline."""
+
+    def test_w4_hands_the_orientation_unit_every_item_name(self) -> None:
+        scope = shift_scope()
+        lessons, attached = attach_framework_items([orientation_lesson()], scope)
+        self.assertEqual(attached, 1)
+        support = lessons[0].units[0].components[0].support_items
+        self.assertEqual([(item.kind, item.brief, item.block_id) for item in support],
+                         [("explain_concept", SHIFT_BRIEF, "cb_0015")])
+        self.assertEqual(framework_support_lines([support[0].brief]), [head.split(" — ")[0] for head in SHIFT_HEADS])
+        # A unit whose own facts number the items, or whose title promises nothing, is left as it is.
+        self.assertEqual(lessons[0].units[1].components[0].support_items, [])
+        self.assertEqual(attach_framework_items([orientation_lesson("Tổng quan", "Giới thiệu")], scope)[1], 0)
+        # The html slot title alone ("Năm chuyển dịch là gì") is a promise too.
+        self.assertEqual(attach_framework_items([orientation_lesson("Tổng quan")], scope)[1], 1)
+        # English lead; names shortened, then labels only, to stay within the 300-character bound.
+        self.assertTrue(str(framework_support_brief("5 shifts", ["SHIFT 1: THINK BIG"] * 5, "en")).startswith(
+            "List all 5 shifts: SHIFT 1: THINK BIG; "))
+        long_names = [f"Bước {number}: " + "rất dài " * 30 for number in range(1, 9)]
+        brief = framework_support_brief("8 bước", long_names, "vi")
+        self.assertEqual(brief, "Liệt kê đủ 8 bước: " + "; ".join(f"Bước {n}: rất dài rất" for n in range(1, 9)))
+
+    @staticmethod
+    def orientation_body(remaining_ms: int | None = None) -> dict[str, Any]:
+        body = severity_body()
+        contract = body["unit_contract"]
+        contract["unit_title"] = "Bản đồ 5 chuyển dịch"
+        brief = contract["idm_unit_brief"]
+        brief["components"][0]["support_items"] = [
+            {"kind": "explain_concept", "brief": SHIFT_BRIEF, "block_id": "cb_0005"}]
+        brief["brief_hash"] = brief_hash_of(brief)
+        rehash_contract(contract)
+        if remaining_ms is not None:
+            body["remaining_workflow_budget_ms"] = remaining_ms
+        return body
+
+    async def test_w5_lists_the_items_after_a_targeted_repair(self) -> None:
+        body = self.orientation_body()
+        writer = severity_writer(body)
+        provider = FakeGenerate(**{WRITER: [writer], REPAIR: [slot_repair(writer, 0)], JUDGE: [judge()]})
+        status, data, _ = await self.post(body, provider)
+        self.assertEqual(status, 200)
+        self.assertIn(SHIFT_BRIEF, provider.calls[0]["prompt"])
+        # The repair is targeted (low thinking) and points the writer at the support item, not at source text.
+        self.assertEqual(provider.calls[1]["thinking_level"], "low")
+        self.assertIn("list every item named in the support item of the teaching html slot in UNIT_BRIEF",
+                      provider.calls[1]["prompt"])
+        quality = self.assert_envelope(data, "provider_validated", "review_required", "provider")
+        sections = data["unit"]["components"][0]["semantic_content"]["sections"]
+        self.assertEqual((sections[1]["heading"], sections[1]["blocks"][0]["items"]),
+                         ("5 chuyển dịch gồm những gì?", [head.split(" — ")[0] for head in SHIFT_HEADS]))
+        self.assertIn("Đã chèn danh sách 5 thành phần của khung", quality.author_note)
+
+    async def test_without_time_for_a_repair_the_list_is_inserted_at_once(self) -> None:
+        # 34 s for the request (29 s after the response headroom): below the 30 s a targeted repair needs.
+        body = self.orientation_body(remaining_ms=34_000)
+        provider = FakeGenerate(**{WRITER: [severity_writer(body)], JUDGE: [judge()]})
+        status, data, _ = await self.post(body, provider)
+        self.assertEqual(status, 200)
+        self.assertEqual(provider.names, [WRITER, JUDGE])
+        sections = data["unit"]["components"][0]["semantic_content"]["sections"]
+        self.assertEqual(len(sections[1]["blocks"][0]["items"]), 5)
+        self.assertEqual(data["quality_state"], "review_required")
+
+    async def test_unknown_item_names_keep_the_slot_for_review(self) -> None:
+        body = self.orientation_body()
+        brief = body["unit_contract"]["idm_unit_brief"]
+        brief["components"][0]["support_items"] = []
+        brief["brief_hash"] = brief_hash_of(brief)
+        rehash_contract(body["unit_contract"])
+        writer = severity_writer(body)
+        provider = FakeGenerate(**{WRITER: [writer], REPAIR: [slot_repair(writer, 0)], JUDGE: [judge()]})
+        status, data, _ = await self.post(body, provider)
+        self.assertEqual(status, 200)
+        quality = IdmUnitQualityV1.model_validate(data["unit"]["idm_quality"])
+        self.assertIn("Cần xem (IDM_W5_FRAMEWORK_INCOMPLETE", quality.author_note)
+        self.assertEqual(len(data["unit"]["components"][0]["semantic_content"]["sections"]), 1)
 
 
 class PracticeTaskBoundTests(unittest.TestCase):

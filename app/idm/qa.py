@@ -116,6 +116,8 @@ FAQ_RESTATES_HTML_CODE: Final = "IDM_W5_FAQ_RESTATES_HTML"
 FAQ_TITLE_MISMATCH_CODE: Final = "IDM_W5_FAQ_TITLE_MISMATCH"
 # N5: the unit or html slot title names "N <items>" ("Tổng quan 5 chuyển dịch") but the html does not list them.
 FRAMEWORK_INCOMPLETE_CODE: Final = "IDM_W5_FRAMEWORK_INCOMPLETE"
+# QC run 8de1c76b (Q3): the list of the framework's items inserted by the server when the repair did not add it.
+FRAMEWORK_LIST_INSERTED_CODE: Final = "IDM_W5_FRAMEWORK_LIST_INSERTED"
 # A warning block renders as <blockquote> (app.idm.node_acceptance); "callout"/"note" are its aliases.
 CALLOUT_KIND: Final = "warning"
 
@@ -519,6 +521,7 @@ def build_unit_author_note(
     fixed_codes: Sequence[str] = (),
     faq_items_restated: int = 0,
     callouts_to_prose: int = 0,
+    framework_list_inserted: int = 0,
 ) -> str:
     """Template note for the unit ``implementation_notes``; no IDs, no ``<``/``>``.
 
@@ -582,6 +585,11 @@ def build_unit_author_note(
                      "thường — cần SME xác nhận nội dung." if vi
                      else f"{callouts_to_prose} callout(s) not found in the source were turned into plain paragraphs "
                           "— the SME should confirm their content.")
+    if framework_list_inserted:
+        parts.append(f"Đã chèn danh sách {framework_list_inserted} thành phần của khung (tên lấy từ tài liệu) vào phần "
+                     "lý thuyết — tác giả nên biên tập cho liền mạch." if vi
+                     else f"A list of the framework's {framework_list_inserted} items (names from the source) was "
+                          "inserted into the theory block — edit it into the text.")
     if not whole_fallback:
         parts.extend(_check_lines(vi, deterministic_codes, remaining, fixed_codes, slot_types))
     if ai_drafted and not whole_fallback:  # a source-locked unit carries no drafted scenario
@@ -657,7 +665,7 @@ def settled_codes(seen: Sequence[str], remaining: Sequence[SlotFinding],
 
 
 # Codes of a deterministic fix that has its own note line ("Đã bỏ …", "Đã chuyển …").
-_NOTE_LINE_CODES: Final = frozenset({FAQ_ITEMS_DROPPED_CODE, CALLOUT_TO_PROSE_CODE})
+_NOTE_LINE_CODES: Final = frozenset({FAQ_ITEMS_DROPPED_CODE, CALLOUT_TO_PROSE_CODE, FRAMEWORK_LIST_INSERTED_CODE})
 
 
 def build_unit_quality(
@@ -687,8 +695,9 @@ def blocking_count(findings: Sequence[IdmJudgeFindingV1]) -> int:
 __all__ = [
     "ANSWER_LEAK_CODE", "CALLOUT_KIND", "CALLOUT_TO_PROSE_CODE", "CALLOUT_UNGROUNDED_CODE", "CRITERIA",
     "FAQ_ITEMS_DROPPED_CODE", "FAQ_RESTATES_HTML_CODE", "FAQ_TITLE_MISMATCH_CODE", "FAQ_UNGROUNDED_CODE",
-    "FRAMEWORK_INCOMPLETE_CODE", "JUDGE_CRITERIA", "NOT_APPLICABLE", "PRACTICE_CRITERIA", "TITLE_CRITERION",
-    "WORKSHEET_INCOMPLETE_CODE", "JudgeOutcome", "SlotFinding", "advisory_slot_findings", "blocking_count",
+    "FRAMEWORK_INCOMPLETE_CODE", "FRAMEWORK_LIST_INSERTED_CODE", "JUDGE_CRITERIA", "NOT_APPLICABLE",
+    "PRACTICE_CRITERIA", "TITLE_CRITERION", "WORKSHEET_INCOMPLETE_CODE", "JudgeOutcome", "SlotFinding",
+    "advisory_slot_findings", "blocking_count",
     "build_unit_author_note", "build_unit_quality", "callouts_as_paragraphs", "copied_options",
     "deterministic_slot_findings", "faq_item_verdicts", "faq_title_mismatch", "final_unit_findings",
     "has_practice_slot", "html_before", "learner_view", "repair_targets", "restated_faq_items", "run_judge",
