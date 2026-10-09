@@ -10,11 +10,13 @@ The facts are those of the run (``fixtures/qlt4_run_ab8d67e1_blocks.json``); not
 
 from __future__ import annotations
 
+import dataclasses
 import json
 import unittest
 from pathlib import Path
 from typing import Any
 
+from app.idm.budget import judge_repair_fits, repair_thinking_for, writer_thinking
 from app.idm.contracts import IdmLessonDesignV1, IdmLessonPlanV1
 from app.idm.framework import (
     build_promise,
@@ -34,10 +36,26 @@ from app.idm.module_autofix import (
 )
 from app.idm.module_design import attach_framework_items, validate_lesson
 from app.idm.module_layout import ModuleScope
+from app.idm.runtime import IdmRuntime
+from app.idm.storyboard import run_idm_unit
 from app.idm.validation import errors
+from app.schemas.orchestration_v2 import RagLessonAuthorUnitV2Request
+from app.services.orchestration_v2 import unit as unit_service
 from tests import idm_golden_module as gm
 from tests.test_idm_module_design import ALLOWED, component, design_module, edited, scope_of
 from tests.test_idm_qlt3 import block, row
+from tests.test_idm_storyboard import (
+    JUDGE,
+    REPAIR,
+    WRITER,
+    FakeGenerate,
+    judge,
+    severity_body,
+    severity_writer,
+    slot_repair,
+    worksheet_body,
+    worksheet_writer,
+)
 
 RUN = json.loads((Path(__file__).parent / "fixtures" / "qlt4_run_ab8d67e1_blocks.json").read_text("utf-8"))
 CHAPTERS: dict[str, dict[str, Any]] = RUN["chapters"]
@@ -259,3 +277,110 @@ class TaughtBeforeQuestionTests(unittest.IsolatedAsyncioTestCase):
         completed = next(json.loads(line.split("lesson_author_idm ", 1)[1]) for line in logs.output
                          if "idm_stage_completed" in line)
         self.assertEqual(completed["error_codes"].get(QUESTION_ONLY_BLOCK_CODE), 1)
+
+
+# --- R3: writer, repair and judge fit the 120 s unit request ---------------------------------------------------------
+class ClockedGenerate(FakeGenerate):
+    """The fake provider, each call taking the given seconds of a fake clock (writer, repair, judge)."""
+
+    def __init__(self, seconds: dict[str, float], **queues: list[Any]) -> None:
+        super().__init__(**queues)
+        self.seconds = seconds
+        self.now = 1_000.0
+
+    def clock(self) -> float:
+        return self.now
+
+    async def __call__(self, api_key: str, model: str, prompt: str, **options: Any) -> tuple[str, Any]:
+        answer = await super().__call__(api_key, model, prompt, **options)
+        self.now += self.seconds[self.calls[-1]["family"]]
+        return answer
+
+
+def leaking_worksheet(body: dict[str, Any]) -> dict[str, Any]:
+    """The worksheet unit with a key that restates the worked example above it (as c2.l5.u2 of the run)."""
+
+    writer = worksheet_writer(body)
+    writer["components"]["c0"]["semantic_content"]["sections"][2]["blocks"][0]["text"] = (
+        "Ví dụ mẫu: khách quen gọi lại lần hai vì hàng giao muộn; nhân viên ghi nhận cấp hai rồi báo trưởng nhóm.")
+    choices = writer["components"]["c1"]["choices"]
+    choices[1]["text"] = "Báo trưởng nhóm, ghi nhận cấp hai: khách quen gọi lại lần hai vì hàng giao muộn"
+    choices[2]["text"] = "Cấp 3 vì khách dọa đăng lên mạng xã hội"
+    return writer
+
+
+FIXED_CHOICES = [{"text": "Cấp 1 vì chưa có thiệt hại tài chính", "correct": False},
+                 {"text": "Cấp 2, vì cùng một người đã gọi lại để khiếu nại", "correct": True},
+                 {"text": "Cấp 3 vì khách dọa đăng lên mạng xã hội", "correct": False}]
+
+
+def budget_lines(output: list[str]) -> list[dict[str, Any]]:
+    return [json.loads(line.split("lesson_author_idm ", 1)[1]) for line in output if "idm_unit_budget" in line]
+
+
+class UnitBudgetTests(unittest.IsolatedAsyncioTestCase):
+    def test_levels_follow_the_time_left(self) -> None:
+        # Node's 120 s request leaves 115 s: medium p90 80 s + low repair 20 s + judge 25 s + 5 s headroom = 130 s.
+        self.assertEqual(writer_thinking(115.0, repair_room=True, preferred="medium"), "low")
+        self.assertEqual(writer_thinking(115.0, repair_room=False, preferred="medium"), "medium")
+        self.assertEqual(writer_thinking(295.0, repair_room=True, preferred="medium"), "medium")
+        self.assertEqual(writer_thinking(295.0, repair_room=True, preferred="low"), "low")
+        # A leak repair is targeted: low thinking, not started below 30 s.
+        self.assertEqual(repair_thinking_for(36.5, targeted=True, preferred="medium"), "low")
+        self.assertIsNone(repair_thinking_for(29.0, targeted=True, preferred="medium"))
+        # Any other repair: medium with room for it and the judge, else low, else none.
+        self.assertEqual(repair_thinking_for(105.0, targeted=False, preferred="medium"), "medium")
+        self.assertEqual(repair_thinking_for(60.0, targeted=False, preferred="medium"), "low")
+        self.assertIsNone(repair_thinking_for(24.0, targeted=False, preferred="medium"))
+        self.assertEqual((judge_repair_fits(49.0), judge_repair_fits(50.0)), (False, True))
+
+    @staticmethod
+    async def run_unit(provider: ClockedGenerate, body: dict[str, Any], *, seconds: float = 115.0,
+                       judge_mode: str = "observe") -> dict[str, Any]:
+        request = RagLessonAuthorUnitV2Request.model_validate(body)
+        deps = dataclasses.replace(unit_service._idm_unit_deps(request), judge_mode=judge_mode)
+        runtime = IdmRuntime(generate=provider, api_key="test-key", model="fake-model", locale="vi",
+                             deadline=provider.clock() + seconds, clock=provider.clock)
+        return await run_idm_unit(contract=request.unit_contract, runtime=runtime, deps=deps, fallback_only=False)
+
+    async def test_the_leak_repair_of_a_slow_writer_still_fits_with_the_judge(self) -> None:
+        # c2.l5.u2: the writer took 78.5 s and the medium leak repair was cut 31.4 s later. Now the writer of a
+        # question unit thinks low, and even at 78.5 s the leak repair is a low-thinking call the judge follows.
+        body = worksheet_body()
+        writer = leaking_worksheet(body)
+        provider = ClockedGenerate({WRITER: 78.5, REPAIR: 7.0, JUDGE: 8.0}, **{
+            WRITER: [writer], REPAIR: [slot_repair(writer, 1, choices=FIXED_CHOICES)], JUDGE: [judge()]})
+        with self.assertLogs("app.idm", level="INFO") as logs:
+            result = await self.run_unit(provider, body)
+        self.assertEqual(provider.names, [WRITER, REPAIR, JUDGE])
+        self.assertEqual([call["thinking_level"] for call in provider.calls], ["low", "low", "low"])
+        self.assertEqual((result["content_origin"], result["usage_source"]), ("provider_validated", "provider"))
+        self.assertEqual(result["unit"]["idm_quality"]["judge_status"], "pass")
+        self.assertEqual([(item["step"], item["thinking"], item["remaining_ms"]) for item in budget_lines(logs.output)],
+                         [("writer", "low", 115_000), ("repair_targeted", "low", 36_500)])
+
+    async def test_a_repair_that_cannot_finish_is_not_started(self) -> None:
+        # A shared-validator finding (feedback that does not teach) with 22 s left: no call cut by the deadline; the
+        # slot is settled by the deterministic steps and the note says why.
+        body = severity_body()
+        writer = severity_writer(body)
+        writer["components"]["c1"]["explanation"] = "Đúng."
+        provider = ClockedGenerate({WRITER: 93.0, REPAIR: 7.0, JUDGE: 8.0}, **{WRITER: [writer], JUDGE: [judge()]})
+        with self.assertLogs("app.idm", level="INFO") as logs:
+            result = await self.run_unit(provider, body)
+        self.assertEqual(provider.names, [WRITER])
+        self.assertEqual(budget_lines(logs.output)[-1]["thinking"], "skipped")
+        self.assertIn("IDM_W5_REPAIR_SKIPPED_BUDGET", result["unit"]["idm_quality"]["author_note"])
+
+    async def test_a_judge_repair_needs_room_for_the_second_judge(self) -> None:
+        body = severity_body()
+        provider = ClockedGenerate({WRITER: 70.0, REPAIR: 7.0, JUDGE: 8.0}, **{
+            WRITER: [severity_writer(body)], JUDGE: [judge(("Q4_feedback_teaches", "major", 1))]})
+        with self.assertLogs("app.idm", level="INFO") as logs:
+            result = await self.run_unit(provider, body, judge_mode="repair")
+        # 45 s left after the writer, 37 s after the judge: no repair of its finding (that needs 50 s with the second
+        # judge), the finding stays a review note.
+        self.assertEqual(provider.names, [WRITER, JUDGE])
+        self.assertEqual(result["unit"]["idm_quality"]["judge_status"], "review_required")
+        self.assertEqual(budget_lines(logs.output)[-1], {**budget_lines(logs.output)[-1], "step": "judge_repair",
+                                                        "thinking": "skipped"})

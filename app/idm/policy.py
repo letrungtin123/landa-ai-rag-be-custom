@@ -84,6 +84,15 @@ IDM_CHARS_PER_TOKEN_ESTIMATE: Final = 3.5
 IDM_MAX_ATTEMPT_TRACE_EVENTS: Final = 64
 # The judge is skipped when less than this remains (spec §7.7.5).
 IDM_JUDGE_MIN_REMAINING_SECONDS: Final = 25.0
+# --- Unit time budget (QC run ab8d67e1, R3) ------------------------------------------------------------------------
+# Node bounds a unit request to 120 s (IDM_UNIT_SOFT_DEADLINE, minus 5 s of response headroom here). In the run the
+# medium-thinking writer took 10-78.5 s (p90 ~70 s, up to ~9k thinking tokens on question units), medium repairs
+# 26-73 s, low-thinking repairs ~7 s and judges 6-12 s: two leak repairs started at medium with ~36 s left and were
+# cut (AI_PROVIDER_TIMEOUT), and 4 units went unjudged. Each step now gets the thinking level its p90 time leaves
+# room for, the judge included; the numbers are upper estimates with margin, not targets.
+IDM_W5_WRITER_MEDIUM_SECONDS: Final = 80.0
+IDM_W5_REPAIR_MEDIUM_SECONDS: Final = 75.0
+IDM_W5_REPAIR_LOW_SECONDS: Final = 20.0
 # A W5 repair whose findings a deterministic step settles anyway (a framework the html does not list) is a targeted
 # repair at low thinking, started only with this much time left: QC run 8de1c76b (Q3) spent 57 s on the writer of
 # "Bản đồ 5 chuyển dịch" and its medium-thinking repair was cut at 52.6 s by the 120 s unit deadline. Below the bound

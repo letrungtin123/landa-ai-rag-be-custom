@@ -21,6 +21,7 @@ from typing import Any, Final, Protocol
 
 from pydantic import BaseModel, ValidationError
 
+from app.idm.budget import judge_repair_fits, repair_thinking_for, writer_thinking
 from app.idm.contracts import IdmUnitBriefV1, brief_hash_of
 from app.idm.diagram import idm_diagram_relationships
 from app.idm.framework import build_promise, framework_coverage, framework_support_lines, with_framework_list
@@ -47,12 +48,10 @@ from app.idm.node_acceptance import (
 from app.idm.policy import (
     EXTRA_WORDS_PER_MUST_KNOW_BLOCK,
     IDM_FAQ_MIN_ITEMS,
-    IDM_TARGETED_REPAIR_MIN_SECONDS,
     IDM_UNIT_WRITER_MAX_OUTPUT_TOKENS,
     MAX_GENERATED_WORDS,
     MIN_GENERATED_WORDS,
     SEGMENT_WORD_BUDGET,
-    THINKING_TARGETED_REPAIR,
     THINKING_W5,
     VISIBLE_CHARS_PER_WORD,
     WORKSHEET_COMPONENT_TYPE,
@@ -136,8 +135,14 @@ _FIELD_OF_PATH_RE: Final = re.compile(r"^components\[\d+\]\.?")
 _REVIEW_FIRST_CODES: Final = frozenset({WORKSHEET_INCOMPLETE_CODE, ANSWER_LEAK_CODE, CALLOUT_UNGROUNDED_CODE,
                                         FAQ_RESTATES_HTML_CODE, FAQ_TITLE_MISMATCH_CODE,
                                         FRAMEWORK_INCOMPLETE_CODE})
-# Findings a deterministic step settles when the repair does not: their repair alone is a targeted one.
-_TARGETED_REPAIR_CODES: Final = frozenset({FRAMEWORK_INCOMPLETE_CODE, ANSWER_LENGTH_CUE_CODE})
+# Findings a deterministic step settles when the repair does not (a list inserted, an FAQ item dropped, a callout
+# turned into prose, a review note): their repair alone is a targeted one, a scoped rewrite at low thinking. QC run
+# ab8d67e1 (R3): two leak repairs at medium thinking were cut by the unit deadline.
+_TARGETED_REPAIR_CODES: Final = frozenset({FRAMEWORK_INCOMPLETE_CODE, ANSWER_LENGTH_CUE_CODE, ANSWER_LEAK_CODE,
+                                           FAQ_UNGROUNDED_CODE, FAQ_RESTATES_HTML_CODE, FAQ_TITLE_MISMATCH_CODE,
+                                           CALLOUT_UNGROUNDED_CODE})
+# A non-targeted repair that would not finish before the unit deadline is not started (R3).
+REPAIR_SKIPPED_CODE: Final = "IDM_W5_REPAIR_SKIPPED_BUDGET"
 # FAQ findings settled by dropping the items concerned while the slot keeps two items.
 _FAQ_PRUNE_CODES: Final = frozenset({FAQ_UNGROUNDED_CODE, FAQ_RESTATES_HTML_CODE})
 _MAX_HINT_FACT_KEYS: Final = 24
@@ -626,6 +631,23 @@ class IdmUnitWriter:
         return _Draft({**draft.unit, "components": components}, list(draft.fallback_slots), draft.repair_applied,
                       list(draft.review_slots), dict(draft.reasons))
 
+    # -- time budget (QC run ab8d67e1, R3) ------------------------------------------------------
+    def log_budget(self, step: str, thinking: ThinkingLevel | None) -> None:
+        """One line per budget decision: the step, the seconds left and the level chosen (numbers only)."""
+
+        log_stage("idm_unit_budget", {
+            "correlation_id": self.runtime.correlation_id, "unit_path": self.contract.unit_path, "step": step,
+            "remaining_ms": int(self.runtime.remaining_seconds() * _MS), "thinking": thinking or "skipped",
+        })
+
+    def writer_level(self, preferred: ThinkingLevel, step: str) -> ThinkingLevel:
+        level = writer_thinking(self.runtime.remaining_seconds(), repair_room=has_practice_slot(self.brief),
+                                preferred=preferred)
+        if level != preferred:
+            self.runtime.adjustments["w5_writer_thinking_lowered_budget"] += 1
+        self.log_budget(step, level)
+        return level
+
     # -- provider steps -----------------------------------------------------------------------
     async def write(self, repair: str = "", thinking: ThinkingLevel = THINKING_W5) -> dict[str, Any]:
         return await idm_generate(
@@ -853,17 +875,22 @@ class IdmUnitWriter:
                                     if item.component_index is not None
                                     and (item.code, item.component_index) not in issues))
         # A failed repair (budget, provider, invalid answer) falls through to slot fallback. A repair of findings a
-        # deterministic step settles anyway (a missing framework list, a length cue) is a targeted one: low thinking,
-        # and none at all when too little time is left for it (QC run 8de1c76b, Q3: the framework repair of
-        # "Bản đồ 5 chuyển dịch" timed out at 52.6 s against the 120 s unit deadline).
+        # deterministic step settles anyway (a missing framework list, a length cue, a leak, an FAQ item) is a
+        # targeted one: low thinking, and none at all when too little time is left for it (QC run 8de1c76b, Q3). Any
+        # other repair gets the thinking level the remaining time leaves room for (QC run ab8d67e1, R3: two leak
+        # repairs started at medium with ~36 s left and were cut by the 120 s unit deadline).
         targeted = finding is None and {code for code, _index in issues} <= _TARGETED_REPAIR_CODES
         repaired = False
-        if targeted and self.runtime.remaining_seconds() < IDM_TARGETED_REPAIR_MIN_SECONDS:
-            self.runtime.adjustments["w5_targeted_repair_skipped_budget"] += 1
+        level = repair_thinking_for(self.runtime.remaining_seconds(), targeted=targeted, preferred=THINKING_W5)
+        self.log_budget("repair_targeted" if targeted else "repair", level)
+        if level is None:
+            self.runtime.adjustments["w5_targeted_repair_skipped_budget" if targeted
+                                     else "w5_repair_skipped_budget"] += 1
+            if not targeted:
+                self.failure_codes.append(REPAIR_SKIPPED_CODE)
         else:
             try:
-                draft = await self.repair_slots(draft, issues, locations,
-                                                thinking=THINKING_TARGETED_REPAIR if targeted else THINKING_W5)
+                draft = await self.repair_slots(draft, issues, locations, thinking=level)
                 repaired = True
                 if notes_only and any(self.problems(draft)):
                     self.runtime.adjustments["w5_note_repair_reverted"] += 1
@@ -1081,7 +1108,9 @@ def _q5(judge: JudgeOutcome) -> str:
 async def _provider_draft(writer: IdmUnitWriter) -> _Draft | None:
     repair = ""
     thinking: ThinkingLevel = THINKING_W5
-    for _attempt in (1, 2):
+    for attempt in (1, 2):
+        # The writer thinks at medium only when its p90 time still leaves room for a repair and the judge (R3).
+        thinking = writer.writer_level(thinking, "writer" if attempt == 1 else "writer_retry")
         try:
             unit = await writer.write(repair, thinking)
         except IdmResponseInvalidError as error:
@@ -1122,11 +1151,19 @@ async def _judge_and_repair(writer: IdmUnitWriter, draft: _Draft, mode: JudgeMod
     targets = [index for index in repair_targets(judge.findings) if index not in draft.fallback_slots]
     if mode != "repair" or not targets:
         return draft, judge
+    # The repair and the second judge must both fit; otherwise the findings stay as review notes (R3).
+    level = (repair_thinking_for(writer.runtime.remaining_seconds(), targeted=False, preferred=THINKING_W5)
+             if judge_repair_fits(writer.runtime.remaining_seconds()) else None)
+    writer.log_budget("judge_repair", level)
+    if level is None:
+        writer.runtime.adjustments["w6_repair_skipped_budget"] += 1
+        return draft, judge
     issues = [(f"IDM_W6_{finding.criterion.split('_')[0]}", finding.component_index)
               for finding in judge.findings
               if finding.component_index in targets and finding.severity in {"major", "critical"}]
     try:
-        repaired = await writer.repair_slots(draft, [(code, index) for code, index in issues if index is not None])
+        repaired = await writer.repair_slots(draft, [(code, index) for code, index in issues if index is not None],
+                                             thinking=level)
     except (IdmBudgetError, IdmResponseInvalidError, IdmProviderError):
         return draft, judge
     finding, idm = writer.problems(repaired)
