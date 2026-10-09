@@ -8,6 +8,7 @@ salvage), so a single bad lesson never discards the shard.
 from __future__ import annotations
 
 import json
+import re
 import time
 from collections import Counter
 from collections.abc import Mapping, Sequence
@@ -81,6 +82,7 @@ PRACTICE_COMPONENT_TYPES: Final = GRADED_PRACTICE_TYPES | {WORKSHEET_COMPONENT_T
 _MS: Final = 1000
 # Failing codes/paths logged per W4 attempt (QC run 8de1c76b, Q1d); paths are server-built, never content.
 _MAX_LOGGED_ISSUES: Final = 24
+_UNIT_PATH_RE: Final = re.compile(r"\.units\[(\d+)\]")
 _MAX_ACTIVITIES: Final = 3
 _MAX_UNITS_PER_LESSON: Final = 12
 
@@ -423,6 +425,18 @@ def _course_blocks_payload(scope: ModuleScope) -> list[dict[str, Any]]:
     return payload
 
 
+def _component_orders(lesson: IdmLessonDesignV1, issues: Sequence[IdmIssue]) -> list[str]:
+    """The component types of each unit that fails the component order, as "units[i]=html,html,problem"."""
+
+    orders: list[str] = []
+    for issue in issues:
+        match = _UNIT_PATH_RE.search(issue.path) if issue.code == "IDM_W4_COMPONENT_ORDER" else None
+        if match is not None and int(match.group(1)) < len(lesson.units):
+            unit = lesson.units[int(match.group(1))]
+            orders.append(f"units[{match.group(1)}]=" + ",".join(component.type for component in unit.components))
+    return orders
+
+
 @dataclass
 class _Salvage:
     accepted: dict[str, IdmLessonDesignV1] = field(default_factory=dict)
@@ -430,6 +444,9 @@ class _Salvage:
     # Deterministic layout fixes applied to otherwise failing lessons (``module_autofix``), counted.
     fixes: Counter[str] = field(default_factory=Counter)
     practices: dict[str, list[IdmPracticeTaskV1]] = field(default_factory=dict)
+    # lesson_key -> "units[i]=html,html,problem" of each unit still failing the component order after the autofix
+    # (QC run ab8d67e1, R7: only CODE@path was logged, so the cause had to be guessed). Server enum values only.
+    component_orders: dict[str, list[str]] = field(default_factory=dict)
 
 
 def _salvage(
@@ -466,6 +483,9 @@ def _salvage(
                 result.fixes.update(fixes)
         if errors(found):
             result.failures[plan.lesson_key] = errors(found)
+            orders = _component_orders(lesson, errors(found))
+            if orders:
+                result.component_orders[plan.lesson_key] = orders
         else:
             normalized = normalize_lesson(
                 lesson, plan, scope.locale, [issue.code for issue in found if issue.severity == "warning"]
@@ -546,6 +566,7 @@ def _log_attempt(runtime: IdmRuntime, plan: ChapterShardPlanV2, *, call: int, ki
         "accepted_lessons": sorted(salvage.accepted) if salvage else [],
         "lesson_failures": _issue_log(salvage.failures) if salvage else {},
         "autofix": dict(sorted(salvage.fixes.items())) if salvage else {},
+        "component_orders": dict(sorted(salvage.component_orders.items())) if salvage else {},
     })
 
 

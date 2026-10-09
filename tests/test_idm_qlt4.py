@@ -25,9 +25,12 @@ from app.idm.framework import (
     with_framework_list,
     without_row_label,
 )
-from app.idm.module_design import attach_framework_items
+from app.idm.module_autofix import COMPONENT_ORDER_CODE, autofix_lesson
+from app.idm.module_design import attach_framework_items, validate_lesson
 from app.idm.module_layout import ModuleScope
+from app.idm.validation import errors
 from tests import idm_golden_module as gm
+from tests.test_idm_module_design import ALLOWED, component, design_module, edited, scope_of
 from tests.test_idm_qlt3 import block, row
 
 RUN = json.loads((Path(__file__).parent / "fixtures" / "qlt4_run_ab8d67e1_blocks.json").read_text("utf-8"))
@@ -151,3 +154,57 @@ class FrameworkListTests(unittest.TestCase):
         assert inserted is not None
         self.assertEqual(inserted["semantic_content"]["sections"][1]["blocks"][0]["items"],
                          [f"Bước {n}: việc {n}" for n in range(1, 5)])
+
+
+# --- R7: a teaching html next to the worksheet html no longer costs a W4 repair call -------------------------------
+def worksheet_beside_teaching(payload: dict[str, Any]) -> None:
+    """lsn_002 (one block, cb_0005) written as the 4 lessons of chapters 2 and 5 of the run: a teaching html and the
+    worksheet html (role practice) in the one unit, then the question that checks it and the FAQ."""
+
+    teaching = component("html", "explain", ["cb_0005"])
+    teaching["support_items"] = [{"kind": "explain_concept", "brief": "Ba cấp độ và dấu hiệu.", "block_id": "cb_0005"}]
+    payload["lessons"][1]["units"] = [gm._unit(1, "practice_feedback", "Đánh giá mức độ", ["cb_0005"], [
+        teaching, component("html", "practice", ["cb_0005"], practice_id="pt_1"),
+        component("problem", "practice", ["cb_0005"], practice_id="pt_1"),
+        component("la_faq", "clarify", ["cb_0005"])])]
+
+
+class ComponentOrderAutofixTests(unittest.IsolatedAsyncioTestCase):
+    def test_the_worksheet_takes_over_the_teaching_html_of_its_unit(self) -> None:
+        scope = scope_of(0)
+        lesson = IdmLessonDesignV1.model_validate(edited("mod_01", worksheet_beside_teaching)["lessons"][1])
+        plan = scope.lesson_plans[1]
+        self.assertEqual({issue.code for issue in errors(validate_lesson(lesson, plan, scope, ALLOWED,
+                                                                         "lessons[1]"))}, {"IDM_W4_COMPONENT_ORDER"})
+        fixed, codes = autofix_lesson(lesson, plan, scope, ALLOWED)
+        self.assertEqual(codes, {COMPONENT_ORDER_CODE: 1})
+        self.assertEqual(errors(validate_lesson(fixed, plan, scope, ALLOWED, "lessons[1]")), [])
+        components = fixed.units[0].components
+        self.assertEqual([(c.type, c.role, c.practice_id, c.component_index) for c in components],
+                         [("html", "practice", "pt_1", 1), ("problem", "practice", "pt_1", 2),
+                          ("la_faq", "clarify", None, 3)])
+        # What the teaching html carried reaches the worksheet's brief.
+        self.assertEqual([item.brief for item in components[0].support_items], ["Ba cấp độ và dấu hiệu."])
+
+    async def test_no_repair_call_is_needed_and_two_practices_of_one_type_still_get_one(self) -> None:
+        with self.assertLogs("app.idm", level="INFO") as logs:
+            result, provider, runtime = await design_module(0, [edited("mod_01", worksheet_beside_teaching)])
+        self.assertEqual((len(provider.calls), result["shard"]["idm_design"]["stage_origin"]), (1, "provider"))
+        self.assertEqual(runtime.adjustments[COMPONENT_ORDER_CODE], 1)
+        self.assertNotIn("component_orders\": {\"", "".join(logs.output))
+
+        def two_questions(payload: dict[str, Any]) -> None:
+            worksheet_beside_teaching(payload)
+            components = payload["lessons"][1]["units"][0]["components"]
+            components[0] = component("problem", "practice", ["cb_0005"], practice_id="pt_2")
+            payload["lessons"][1]["practice_tasks"].append(
+                {**payload["lessons"][1]["practice_tasks"][0], "practice_id": "pt_2"})
+
+        with self.assertLogs("app.idm", level="INFO") as logs:
+            result, provider, _ = await design_module(
+                0, [edited("mod_01", two_questions), gm.MODULE_RESPONSES["mod_01"]])
+        self.assertEqual(len(provider.calls), 2)
+        attempts = [json.loads(line.split("lesson_author_idm ", 1)[1]) for line in logs.output
+                    if "idm_module_attempt" in line]
+        # The failing unit's component types are logged (server enum values only).
+        self.assertEqual(attempts[0]["component_orders"], {"lsn_002": ["units[0]=problem,html,problem,la_faq"]})

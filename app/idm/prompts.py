@@ -373,7 +373,9 @@ For each lesson:
    "practice_feedback" (the main practice), "summary_apply" (optional). Merge units when the lesson is short.
    Units split a lesson by WHOLE blocks: every block of the lesson belongs to exactly one unit, so a lesson with
    ONE block has exactly ONE unit that both teaches and practises (html first, then the practice components,
-   la_faq last); never repeat a block in a second unit to practise it. Every component lists the blocks it uses
+   la_faq last); never repeat a block in a second unit to practise it. When the practice of such a unit is a
+   worksheet, the worksheet html is the unit's only html (its support_items carry what the practice needs);
+   never a second, teaching html in the same unit. Every component lists the blocks it uses
    (from its unit) and every block of a unit is used by at least one of its components. The main practice sits in a unit
    that contains at least one block of its Must Do. Facts that decide a practice must be taught in the same or an
    earlier unit. Never more than 5 explanation components in a row without a question or practice.

@@ -288,12 +288,22 @@ def _formats_without_evidence(units: list[dict[str, Any]], scope: ModuleScope, a
     return changed
 
 
-def _order_components(units: list[dict[str, Any]]) -> int:
+def _order_components(units: list[dict[str, Any]], order: dict[str, int]) -> int:
+    """Components in the required order: html first, la_faq last, one component per type.
+
+    QC run ab8d67e1 (R7): 4 single-block lessons of chapters 2 and 5 put a teaching html and the worksheet html
+    (role practice) in the same unit, each needing a whole W4 repair call (+78 s on the critical path). Two
+    components of one type are merged as for merged units (``_merge_components``: the practice one wins and takes
+    over the blocks and support items, which is the layout the repair produced); two practices of one type
+    cannot share a unit and stay for the provider repair.
+    """
+
     reordered = 0
     for unit in units:
         types = [item["type"] for item in unit["components"]]
-        ordered = sorted(unit["components"], key=_type_rank)
-        if len(types) == len(set(types)) and ordered != unit["components"]:
+        ordered = (sorted(unit["components"], key=_type_rank) if len(types) == len(set(types))
+                   else _merge_components(unit["components"], order))
+        if ordered != unit["components"]:
             unit["components"] = ordered
             reordered += 1
     return reordered
@@ -315,7 +325,7 @@ def autofix_lesson(lesson: IdmLessonDesignV1, plan: IdmLessonPlanV1, scope: Modu
         codes[BLOCK_ATTACHED_CODE] += _attach_missing_blocks(units, plan, order)
         codes[BLOCK_COVERED_CODE] += _cover_unit_blocks(units, order)
         codes[FORMAT_TO_HTML_CODE] += _formats_without_evidence(units, scope, allowed, order)
-        codes[COMPONENT_ORDER_CODE] += _order_components(units)
+        codes[COMPONENT_ORDER_CODE] += _order_components(units, order)
         for unit_position, unit in enumerate(units, start=1):
             unit["unit_index"] = unit_position
             for component_position, component in enumerate(unit["components"], start=1):
