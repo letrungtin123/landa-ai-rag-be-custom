@@ -862,6 +862,30 @@ class IdmUnitWriter:
         self.runtime.adjustments["w5_callouts_to_prose"] += len(positions)
         return candidate
 
+    async def budgeted_repair(self, draft: _Draft, issues: Sequence[tuple[str, int]],
+                              locations: Mapping[tuple[str, int], str], *, targeted: bool) -> tuple[_Draft, bool]:
+        """One repair call at the thinking level the time left allows, or none (R3); ``(draft, repaired)``.
+
+        A failed repair (budget, provider, invalid answer) leaves the draft for the per-slot settlement."""
+
+        level = repair_thinking_for(self.runtime.remaining_seconds(), targeted=targeted, preferred=THINKING_W5)
+        self.log_budget("repair_targeted" if targeted else "repair", level)
+        if level is None:
+            self.runtime.adjustments["w5_targeted_repair_skipped_budget" if targeted
+                                     else "w5_repair_skipped_budget"] += 1
+            if not targeted:
+                self.failure_codes.append(REPAIR_SKIPPED_CODE)
+            return draft, False
+        try:
+            return await self.repair_slots(draft, issues, locations, thinking=level), True
+        except (IdmBudgetError, IdmResponseInvalidError) as error:
+            self.failure_codes.append(error.code)
+        except IdmProviderError as error:
+            if error.terminal:
+                raise
+            self.failure_codes.append(error.code)
+        return draft, False
+
     async def settle(self, draft: _Draft) -> _Draft | None:
         """Repair once, then replace failing slots with the source-locked fallback.
 
@@ -910,27 +934,10 @@ class IdmUnitWriter:
         # other repair gets the thinking level the remaining time leaves room for (QC run ab8d67e1, R3: two leak
         # repairs started at medium with ~36 s left and were cut by the 120 s unit deadline).
         targeted = finding is None and {code for code, _index in issues} <= _TARGETED_REPAIR_CODES
-        repaired = False
-        level = repair_thinking_for(self.runtime.remaining_seconds(), targeted=targeted, preferred=THINKING_W5)
-        self.log_budget("repair_targeted" if targeted else "repair", level)
-        if level is None:
-            self.runtime.adjustments["w5_targeted_repair_skipped_budget" if targeted
-                                     else "w5_repair_skipped_budget"] += 1
-            if not targeted:
-                self.failure_codes.append(REPAIR_SKIPPED_CODE)
-        else:
-            try:
-                draft = await self.repair_slots(draft, issues, locations, thinking=level)
-                repaired = True
-                if notes_only and any(self.problems(draft)):
-                    self.runtime.adjustments["w5_note_repair_reverted"] += 1
-                    draft = original
-            except (IdmBudgetError, IdmResponseInvalidError) as error:
-                self.failure_codes.append(error.code)  # falls through to the per-slot fallback below
-            except IdmProviderError as error:
-                if error.terminal:
-                    raise
-                self.failure_codes.append(error.code)
+        draft, repaired = await self.budgeted_repair(draft, issues, locations, targeted=targeted)
+        if repaired and notes_only and any(self.problems(draft)):
+            self.runtime.adjustments["w5_note_repair_reverted"] += 1
+            draft = original
         # Each pass settles one step of one slot (Node item pruning, FAQ pruning or callouts to prose, then
         # fallback or review), so the bound never limits.
         for attempt in range(3 * len(self.plans) + 1):
