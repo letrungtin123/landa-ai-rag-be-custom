@@ -514,7 +514,15 @@ class IdmUnitWriter:
         """Deterministic, meaning-preserving fixes before validation: html (``app.idm.html_rules``) and the
         seeded option order of a single-choice question (``app.idm.mcq``, QC course 364564 N2)."""
 
-        plan_type = self.plans[index]["type"] if 0 <= index < len(self.plans) else None
+        plan = self.plans[index] if 0 <= index < len(self.plans) else None
+        # A slot that owns no fact (a supporting question or FAQ) claims no coverage: the plan holds ownership, not
+        # the answer (QC run 61068de6: SUPPORTING_COMPONENT_CLAIMS_OWNERSHIP on a question without a source-locked
+        # rebuild ended the unit in FALLBACK_INVALID and the run in needs_action).
+        if (plan is not None and plan.get("component_plan_id") and not plan.get("source_fact_ids")
+                and isinstance(component, dict) and component.get("covered_source_fact_ids")):
+            component = {**component, "covered_source_fact_ids": []}
+            self.runtime.adjustments["w5_supporting_claim_cleared"] += 1
+        plan_type = plan["type"] if plan is not None else None
         # PDF marks in learner text (QC run ab8d67e1, R5): "Row N:" labels and a repeated word go first.
         artefacts: Counter[str] = Counter()
         if plan_type in {"problem", "la_faq"} and isinstance(component, dict):

@@ -595,3 +595,24 @@ class SourceArtefactTests(StoryboardEndpointTestCase):
                       provider.calls[1]["prompt"])
         quality = IdmUnitQualityV1.model_validate(data["unit"]["idm_quality"])
         self.assertIn("Cần xem (IDM_W5_SOURCE_ARTIFACT, khối 1 (Lý thuyết))", quality.author_note)
+
+
+class SupportingClaimTests(StoryboardEndpointTestCase):
+    """QC run 61068de6 (2026-10-12): a question that owns no fact listed the html slot's facts as covered. The shared
+    validator rejected the unit (SUPPORTING_COMPONENT_CLAIMS_OWNERSHIP), no source-locked question could replace it,
+    and the whole run ended in needs_action with ORCHESTRATION_V2_UNIT_FALLBACK_INVALID."""
+
+    async def test_a_supporting_slot_claim_is_cleared_without_a_repair(self) -> None:
+        body = severity_body()
+        plans = body["unit_contract"]["component_plan"]
+        self.assertEqual(plans[1]["source_fact_ids"], [])
+        writer = severity_writer(body)
+        writer["components"]["c1"]["covered_source_fact_ids"] = list(plans[0]["source_fact_ids"])
+        provider = FakeGenerate(**{WRITER: [writer], JUDGE: [judge()]})
+        status, data, _ = await self.post(body, provider)
+        self.assertEqual(status, 200)
+        self.assertEqual(provider.names, [WRITER, JUDGE])
+        self.assert_envelope(data, "provider_validated", "validated", "provider")
+        components = data["unit"]["components"]
+        self.assertEqual(components[1]["covered_source_fact_ids"], [])
+        self.assertCountEqual(components[0]["covered_source_fact_ids"], plans[0]["source_fact_ids"])
