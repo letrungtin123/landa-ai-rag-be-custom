@@ -142,6 +142,7 @@ def module_context(
     offset = sum(len(item.lessons) for item in design.modules[:chapter_index])
     context = IdmModuleContextV1.model_validate({
         "pipeline_version": "idm-1", "project_context": design.project_context.model_dump(mode="json"),
+        "purpose": design.purpose.model_dump(mode="json"),
         "target_audience": design.target_audience.model_dump(mode="json"),
         "module": module.model_dump(mode="json"),
         "learning_objectives": [item.model_dump(mode="json") for item in design.learning_objectives],

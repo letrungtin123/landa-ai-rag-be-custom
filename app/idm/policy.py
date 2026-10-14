@@ -10,8 +10,8 @@ from typing import Final
 
 IDM_PIPELINE_VERSION: Final = "idm-1"
 LEGACY_PIPELINE_VERSION: Final = "v2-legacy"
-# 2 (QLT-5): project_context.course_description and IdmCourseDesignV1.purpose. Node reads stored contract-1 designs
-# unchanged.
+# 2 (QLT-5): project_context.course_description, IdmCourseDesignV1.purpose, the unit brief's purpose fields and the
+# module context's purpose. Node reads stored contract-1 designs unchanged.
 IDM_CONTRACT_VERSION: Final = 2
 IDM_PROMPT_POLICY_VERSION: Final = "idm-prompt-1"
 IDM_SCOPE_KEY_PREFIX: Final = "idmcb_"

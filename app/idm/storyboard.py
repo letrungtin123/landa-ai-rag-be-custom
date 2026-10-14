@@ -209,6 +209,14 @@ class IdmUnitDeps:
     source_locked_components: Sequence[dict[str, Any] | None] | None = None
 
 
+def brief_purpose(brief: IdmUnitBriefV1) -> dict[str, str] | None:
+    """The course purpose a brief carries (QLT-5), as plan data for the writer and the judge."""
+
+    if brief.purpose_profile is None:
+        return None
+    return {"profile": brief.purpose_profile, "summary": brief.purpose_summary or ""}
+
+
 def parse_brief(contract: UnitGenerationContractV2) -> IdmUnitBriefV1:
     """Validate the brief and check it against the contract slots (spec §7.7.2 step 1)."""
 
@@ -409,6 +417,7 @@ class IdmUnitWriter:
                                        max_chars=self.budget.get("max_visible_chars"),
                                        min_chars=self.min_html_chars)
             if any(slot.type == "html" for slot in brief.components) else "",
+            course_purpose=brief_purpose(brief),
         )
 
     def html_violations(self, component: Any) -> list[HtmlRuleViolation]:
@@ -1187,6 +1196,8 @@ async def _judge_and_repair(writer: IdmUnitWriter, draft: _Draft, mode: JudgeMod
         # sits in another unit and reject teach-only units (QC course 364564, N7).
         "practices": [slot.practice.sentence for slot in writer.brief.components if slot.practice is not None],
         "has_practice_slot": practice_slot,
+        # QLT-5: Q11 judges the unit against the course purpose (null for a brief without one).
+        "course_purpose": brief_purpose(writer.brief),
         "slots": [{"index": index, "type": slot.type, "role": slot.role, "title": slot.title,
                    "treatments": [item.model_dump(mode="json") for item in slot.treatments]}
                   for index, slot in enumerate(writer.brief.components)],

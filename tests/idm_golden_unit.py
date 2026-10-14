@@ -65,7 +65,10 @@ def build_unit_request(
                     for key in block_facts[block_id]]
     brief: dict[str, Any] = {
         "pipeline_version": "idm-1", "course_title": "Xử lý khiếu nại khách hàng đúng quy trình",
-        "target_audience": design.target_audience.description, "module_title": module.title,
+        "target_audience": design.target_audience.description,
+        # QLT-5: Node passes the design's purpose to every unit brief (contract 2).
+        "purpose_profile": design.purpose.profile, "purpose_summary": design.purpose.summary,
+        "module_title": module.title,
         "lesson_title": lesson.title, "lesson_objective": lesson.objective,
         "lesson_practice_sentences": [practice.sentence for practice in lesson.practice_tasks][:3],
         "previous_lesson_title": lessons_in_course[position - 1].title if position > 0 else None,

@@ -23,15 +23,19 @@ from app.idm.contracts import (
     IdmCourseDesignV1,
     IdmCourseSkeletonRequestV1,
     IdmIssueV1,
+    IdmJudgeFindingV1,
+    IdmModuleContextV1,
     IdmMustDoV1,
     IdmProjectContextV1,
     IdmPurposeV1,
+    IdmUnitBriefV1,
     IdmW1ReduceResponseV1,
     IdmW4CourseResponseV1,
+    brief_hash_of,
 )
 from app.idm.course_design import run_idm_course_design
 from app.idm.notes import KeptDefinitionNote, build_course_notes
-from app.idm.prompts import w2_blueprint_prompt
+from app.idm.prompts import judge_prompt, module_prompt, unit_writer_prompt, w2_blueprint_prompt
 from app.idm.purpose import (
     INTENT_TAG,
     ONBOARDING_CONTENT_KEPT_CODE,
@@ -56,11 +60,13 @@ from app.idm.purpose import (
     w2_purpose_rules,
     w4_purpose_rules,
 )
+from app.idm.qa import NOT_APPLICABLE, PURPOSE_CRITERION, criteria_summary, settle_applicability
 from app.idm.runtime import IdmProviderError
 from app.idm.text import is_generic_title
 from app.lesson_author_orchestration_v2_provider import SourceSnapshotFactV2
 from tests import idm_golden as g
-from tests.idm_test_support import make_runtime
+from tests.idm_golden_unit import build_unit_request
+from tests.idm_test_support import golden_design, golden_shard, make_runtime
 
 
 def run_async[T](factory: Callable[[], Awaitable[T]]) -> T:
@@ -457,6 +463,26 @@ class PromptTests(unittest.TestCase):
         self.assertEqual(module_purpose_rules(general), "")
         self.assertEqual(module_purpose_rules(None), "")
 
+    def test_module_writer_and_judge_prompts_carry_the_purpose(self) -> None:
+        purpose = {"profile": "onboarding", "summary": "Giúp nhân viên mới làm quen với công ty."}
+        module = module_prompt("vi", module_plan={}, lesson_plans=[], audience="Nhân viên mới", objectives=[],
+                               must_dos=[], course_blocks=[], facts=[], allowed_components=["html"],
+                               purpose_rules="COURSE PURPOSE (onboarding)\n", course_purpose=purpose)
+        self.assertIn("COURSE PURPOSE (onboarding)\nFor each lesson:", module)
+        self.assertIn('COURSE_PURPOSE={"profile":"onboarding"', module)
+        writer_args: dict[str, Any] = {"course_title": "Khoá", "audience": "Nhân viên", "lesson_title": "Mục",
+                                       "lesson_objective": "Làm", "practice_sentences": [], "previous_title": None,
+                                       "next_title": None, "unit_brief": {}, "facts": [], "context_facts": []}
+        with_purpose = unit_writer_prompt("vi", **writer_args, course_purpose=purpose)
+        self.assertIn("Keep the unit on COURSE_PURPOSE", with_purpose)
+        self.assertIn('COURSE_PURPOSE={"profile":"onboarding"', with_purpose)
+        without = unit_writer_prompt("vi", **writer_args)
+        self.assertNotIn("COURSE_PURPOSE", without)
+        judge = judge_prompt("vi", plan_summary={"course_purpose": purpose}, facts=[], unit_content=[])
+        self.assertIn("Q11_purpose_alignment", judge)
+        self.assertIn("Return one finding per criterion (Q1-Q11)", judge)
+
+
 class PatternTests(unittest.TestCase):
     def plan(self, sections: list[dict[str, Any]]) -> IdmW4CourseResponseV1:
         return IdmW4CourseResponseV1.model_validate({**W4_COURSE, "pattern_sections": sections})
@@ -669,6 +695,24 @@ class NotesTests(unittest.TestCase):
 
 
 class ContractTests(unittest.TestCase):
+    def test_contract_one_requests_and_briefs_still_validate(self) -> None:
+        old_context = {key: value for key, value in onboarding_context().items() if key != "course_description"}
+        self.assertIsNone(IdmProjectContextV1.model_validate(old_context).course_description)
+        self.assertTrue(IdmProjectContextV1.model_validate(onboarding_context(course_description="x" * 2000)))
+        with self.assertRaises(ValueError):
+            IdmProjectContextV1.model_validate(onboarding_context(course_description="x" * 2001))
+        design, _skeleton = golden_design()
+        brief = build_unit_request(design, golden_shard(0), chapter_index=0, lesson_position=0, unit_position=0,
+                                   facts=g.source_facts())["unit_contract"]["idm_unit_brief"]
+        current = IdmUnitBriefV1.model_validate(brief)
+        self.assertEqual((current.purpose_profile, current.purpose_summary),
+                         (design.purpose.profile, design.purpose.summary))
+        old = {key: value for key, value in brief.items()
+               if key not in {"purpose_profile", "purpose_summary", "brief_hash"}}
+        parsed = IdmUnitBriefV1.model_validate({**old, "brief_hash": brief_hash_of(old)})
+        self.assertEqual((parsed.purpose_profile, parsed.purpose_summary), (None, None))
+        self.assertIsNone(IdmModuleContextV1.model_fields["purpose"].default)
+
     def test_the_design_is_contract_two(self) -> None:
         design = IdmCourseDesignV1.model_validate(run_onboarding(onboarding_provider())["idm"])
         payload = design.model_dump(mode="json")
@@ -676,6 +720,16 @@ class ContractTests(unittest.TestCase):
             IdmCourseDesignV1.model_validate({**payload, "idm_contract_version": 1})
         with self.assertRaises(ValueError):
             IdmCourseDesignV1.model_validate({key: value for key, value in payload.items() if key != "purpose"})
+
+
+class JudgeTests(unittest.TestCase):
+    def test_purpose_alignment_is_stored_under_traceability(self) -> None:
+        findings = [IdmJudgeFindingV1(criterion=PURPOSE_CRITERION, severity="major", component_index=0,
+                                      witness="Dạy kỹ năng chốt hợp đồng.")]
+        self.assertEqual(criteria_summary(findings), {"Q9_traceability": "major"})
+        settled = settle_applicability([IdmJudgeFindingV1(criterion=PURPOSE_CRITERION, severity=NOT_APPLICABLE,
+                                                          component_index=None, witness="")], practice_slot=True)
+        self.assertEqual(settled, [])
 
 
 if __name__ == "__main__":

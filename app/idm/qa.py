@@ -77,9 +77,13 @@ CRITERIA: Final[tuple[JudgeCriterion, ...]] = (
 # caught it. The judge answers a tenth criterion; the stored summary (Node reads exactly the nine keys
 # above) records it under Q9_traceability, so the cross-language contract is unchanged.
 TITLE_CRITERION: Final = "Q10_title_matches"
-JUDGE_CRITERIA: Final[tuple[JudgeAnswerCriterion, ...]] = (*CRITERIA, TITLE_CRITERION)
+# QLT-5: the unit serves the course purpose (an onboarding unit that trains selling fails it). Recorded under
+# Q9_traceability like Q10, in the judge's mode (observe by default), so the stored contract stays unchanged.
+PURPOSE_CRITERION: Final = "Q11_purpose_alignment"
+JUDGE_CRITERIA: Final[tuple[JudgeAnswerCriterion, ...]] = (*CRITERIA, TITLE_CRITERION, PURPOSE_CRITERION)
 _STORED_CRITERION: Final[dict[str, JudgeCriterion]] = {
-    **{criterion: criterion for criterion in CRITERIA}, TITLE_CRITERION: "Q9_traceability"}
+    **{criterion: criterion for criterion in CRITERIA}, TITLE_CRITERION: "Q9_traceability",
+    PURPOSE_CRITERION: "Q9_traceability"}
 # QC course 364564 (N7): two teach-only units (html + FAQ) were rejected for Q3/Q4/Q6 because the judge saw
 # the lesson's practice. A unit without a practice slot cannot fail these: they are "not_applicable",
 # which never counts as a finding and never reaches the stored summary.
@@ -98,6 +102,7 @@ _CRITERION_LABEL_VI: Final = {
     "Q8_language": "ngôn ngữ chưa phù hợp người học",
     "Q9_traceability": "có khối không phục vụ Must Do",
     TITLE_CRITERION: "tiêu đề không khớp nội dung được dạy",
+    PURPOSE_CRITERION: "nội dung chưa phục vụ đúng mục đích khoá học",
 }
 _CRITERION_LABEL_EN: Final = {
     "Q1_support_sufficient": "support is not enough for the practice",
@@ -110,6 +115,7 @@ _CRITERION_LABEL_EN: Final = {
     "Q8_language": "language does not suit the learner",
     "Q9_traceability": "a block does not serve the Must Do",
     TITLE_CRITERION: "a title does not match what the unit teaches",
+    PURPOSE_CRITERION: "the content does not serve the course purpose",
 }
 _SEVERITY_RANK: Final = {"pass": 0, "minor": 1, "major": 2, "critical": 3}
 FAQ_UNGROUNDED_CODE: Final = "IDM_W5_FAQ_UNGROUNDED"
@@ -767,7 +773,8 @@ __all__ = [
     "ANSWER_CONTESTED_CODE", "ANSWER_LEAK_CODE", "CALLOUT_KIND", "CALLOUT_TO_PROSE_CODE", "CALLOUT_UNGROUNDED_CODE",
     "CRITERIA", "FAQ_ITEMS_DROPPED_CODE", "FAQ_RESTATES_HTML_CODE", "FAQ_TITLE_MISMATCH_CODE", "FAQ_UNGROUNDED_CODE",
     "FRAMEWORK_INCOMPLETE_CODE", "FRAMEWORK_LIST_INSERTED_CODE", "JUDGE_CRITERIA", "NOT_APPLICABLE",
-    "PRACTICE_CRITERIA", "SOURCE_ARTIFACT_CODE", "TITLE_CRITERION", "WORKSHEET_INCOMPLETE_CODE", "JudgeOutcome",
+    "PRACTICE_CRITERIA", "PURPOSE_CRITERION", "SOURCE_ARTIFACT_CODE", "TITLE_CRITERION", "WORKSHEET_INCOMPLETE_CODE",
+    "JudgeOutcome",
     "SlotFinding", "advisory_slot_findings", "blocking_count",
     "build_unit_author_note", "build_unit_quality", "callouts_as_paragraphs", "copied_options",
     "deterministic_slot_findings", "faq_item_verdicts", "faq_title_mismatch", "final_unit_findings",

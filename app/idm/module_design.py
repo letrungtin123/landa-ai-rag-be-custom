@@ -63,6 +63,7 @@ from app.idm.policy import (
     WORKSHEET_COMPONENT_TYPE,
 )
 from app.idm.prompts import COMPACT_MODULE, answer_repair, module_prompt, repair_suffix
+from app.idm.purpose import module_purpose_rules, purpose_brief
 from app.idm.runtime import (
     SCHEMA_INVALID_CODE,
     IdmBudgetError,
@@ -646,6 +647,8 @@ async def run_idm_module_design(
         facts=[(fact.fact_key, fact.fact_text, None) for fact in facts],
         allowed_components=list(context.allowed_component_types),
         limits=answer_limits(IdmW3W4ModuleResponseV1),
+        # QLT-5: the design's purpose keeps the lessons on what the course is for (none for a contract-1 design).
+        purpose_rules=module_purpose_rules(context.purpose), course_purpose=purpose_brief(context.purpose),
     )
     accepted: dict[str, IdmLessonDesignV1] = {}
     seen_practices: dict[str, list[IdmPracticeTaskV1]] = {}

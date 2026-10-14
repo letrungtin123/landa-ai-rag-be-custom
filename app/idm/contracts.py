@@ -60,7 +60,7 @@ JudgeSeverity = Literal["pass", "minor", "major", "critical"]
 JudgeAnswerCriterion = Literal[
     "Q1_support_sufficient", "Q2_not_copied", "Q3_practice_complete", "Q4_feedback_teaches",
     "Q5_grounded_criteria", "Q6_alignment", "Q7_cognitive_load", "Q8_language", "Q9_traceability",
-    "Q10_title_matches",
+    "Q10_title_matches", "Q11_purpose_alignment",
 ]
 JudgeAnswerSeverity = Literal["pass", "minor", "major", "critical", "not_applicable"]
 Locale = Literal["vi", "en"]
@@ -473,9 +473,14 @@ class IdmBriefComponentV1(IdmModel):
 
 
 class IdmUnitBriefV1(IdmModel):
+    """``purpose_profile``/``purpose_summary`` keep the writer and the judge on the course purpose; a brief built
+    from a contract-1 design (no purpose) leaves them out or null."""
+
     pipeline_version: Literal["idm-1"]
     course_title: str = Field(min_length=1, max_length=500)
     target_audience: str = Field(min_length=1, max_length=2000)
+    purpose_profile: PurposeProfile | None = None
+    purpose_summary: str | None = Field(default=None, max_length=500)
     module_title: str = Field(min_length=1, max_length=500)
     lesson_title: str = Field(min_length=1, max_length=180)
     lesson_objective: str = Field(min_length=1, max_length=500)
@@ -535,8 +540,11 @@ class IdmCourseSkeletonRequestV1(IdmModel):
 
 
 class IdmModuleContextV1(IdmModel):
+    """``purpose`` is the design's purpose; null (or absent) for a design of contract 1."""
+
     pipeline_version: Literal["idm-1"]
     project_context: IdmProjectContextV1
+    purpose: IdmPurposeV1 | None = None
     target_audience: IdmAudienceV1
     module: IdmModulePlanV1
     learning_objectives: list[IdmLearningObjectiveV1] = Field(min_length=1, max_length=8)

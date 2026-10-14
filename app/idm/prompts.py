@@ -352,7 +352,12 @@ def module_prompt(
     allowed_components: Sequence[str],
     scenario_chat: bool = False,
     limits: str = "",
+    purpose_rules: str = "",
+    course_purpose: dict[str, Any] | None = None,
 ) -> str:
+    """``purpose_rules``: ``app.idm.purpose.module_purpose_rules`` (empty for profiles that keep the general
+    rules); ``course_purpose``: the design's purpose as plan data."""
+
     scenario_clause = (
         "; a multi-turn conversation where each reply changes the outcome -> la_scenario_chat" if scenario_chat else ""
     )
@@ -362,7 +367,7 @@ def module_prompt(
     return preamble(locale) + f"""
 TASK: For ONE module, design each listed lesson (Week 3 Instructional Treatment + Week 4 lesson layout).
 Return the lessons in exactly the order and with exactly the lesson_key values of LESSONS.
-For each lesson:
+{purpose_rules}For each lesson:
 1. PRACTICE FIRST. Write 1-3 practice tasks as one sentence
    "Cho [bối cảnh/đầu vào], người học [hành động] để [kết quả/quyết định]"
    ("Given [context/input], the learner [action] to produce/decide [result]"), plus context_input,
@@ -433,6 +438,7 @@ For each lesson:
    (and optionally la_faq); no practice tasks. Contact lists: names and extensions only, no emails or URLs.
 {limits_block}
 {untrusted_block("PLAN_CONTEXT", chr(10).join([
+    "COURSE_PURPOSE=" + _json(course_purpose),
     "MODULE=" + _json(module_plan),
     "LESSONS=" + _json(lesson_plans),
     "TARGET_AUDIENCE=" + _json(audience),
@@ -459,16 +465,19 @@ def unit_writer_prompt(
     facts: Iterable[tuple[str, str, Sequence[str] | None]],
     context_facts: Iterable[tuple[str, str, Sequence[str] | None]],
     html_rules: str = "",
+    course_purpose: dict[str, Any] | None = None,
 ) -> str:
+    purpose_line = ("- Keep the unit on COURSE_PURPOSE (what the course is for and for whom): choose the wording, "
+                    "emphasis and examples that serve it; it never adds facts.\n" if course_purpose else "")
     return preamble(locale) + f"""
 TASK: Week 5 - write the development-ready storyboard content for ONE unit. The plan is approved; do not
 redesign it. Produce exactly the component slots in UNIT_BRIEF (c0, c1, ...), in order, as payloads matching the
 schema.
 {html_rules}
 Writing rules (learner-facing, {locale_name(locale)}):
-- Write for TARGET_AUDIENCE: short sentences, active voice, direct instructions; explain a necessary term the
-  first time; split long text into short paragraphs, bullets, steps or tables; each heading says which question
-  the section answers. Do not paste the source, except definitions, rules and numbers that must stay exact.
+{purpose_line}- Write for TARGET_AUDIENCE: short sentences, active voice, direct instructions; explain a necessary
+  term the first time; split long text into short paragraphs, bullets, steps or tables; each heading says which
+  question the section answers. Do not paste the source, except definitions, rules and numbers that must stay exact.
 - Apply each block treatment: keep -> preserve wording; condense -> remove repetition and long introductions;
   rewrite -> plain language with the same meaning. Keep every condition, negation, quantity, unit and exception
   that matters for the Must Do. Teach only what the practice needs (detail_level).
@@ -529,6 +538,7 @@ Writing rules (learner-facing, {locale_name(locale)}):
 
 {untrusted_block("PLAN_CONTEXT", chr(10).join([
     "COURSE=" + _json(course_title),
+    *(["COURSE_PURPOSE=" + _json(course_purpose)] if course_purpose else []),
     "TARGET_AUDIENCE=" + _json(audience),
     "LESSON=" + _json(lesson_title),
     "MUST_DO=" + _json(lesson_objective),
@@ -739,6 +749,8 @@ UNIT_RULE_TEXT: Final[dict[str, str]] = {
     "IDM_W6_Q9": "every component serves the stated Must Do, practice or support",
     "IDM_W6_Q10": "make the slot title and section headings name what the content teaches, or teach what the "
                   "title promises (every item of a list it names)",
+    "IDM_W6_Q11": "keep the slot on COURSE_PURPOSE: teach what the course is for, for its audience; rewrite or drop "
+                  "content that pulls it towards another purpose, without adding facts",
 }
 # A condensed slot aims below the hard limit, so a near miss does not fail again.
 DENSITY_TARGET_SHARE: Final = 0.9
@@ -818,14 +830,17 @@ another unit of the lesson is never a finding here.
    restates the example, quotation or template shown right before the question.
  Q6_alignment: the practice matches the Must Do action type and Bloom level in the plan.
  Q3, Q4 and Q6 grade this unit's own practice: when PLAN.has_practice_slot is false return not_applicable for
-   them. not_applicable is never allowed for any other criterion.
+   them. not_applicable is never allowed for any other criterion except Q11 as stated below.
  Q7_cognitive_load: no long theory runs; context under 20%; detail matches detail_level.
  Q8_language: clear, suited to the audience, terms explained, no internal IDs or citations.
  Q9_traceability: every component serves the stated Must Do, practice or support.
  Q10_title_matches: PLAN.unit_title, the slot titles and the section headings name what the content actually
    teaches; a title that promises a topic or a list ("Tổng quan 5 chuyển dịch") the content does not present
    is major; an FAQ title that does not match its questions is major.
-Return one finding per criterion (Q1-Q10). verdict = pass (no major/critical) | review_required (any major) |
+ Q11_purpose_alignment: the unit serves PLAN.course_purpose (what the course is for and for whom): content that
+   pulls the unit towards another purpose (an onboarding unit that trains selling or consulting, a compliance unit
+   that loosens a rule) is major. When PLAN.course_purpose is null return not_applicable for Q11.
+Return one finding per criterion (Q1-Q11). verdict = pass (no major/critical) | review_required (any major) |
 reject (any critical); not_applicable never counts.
 
 {untrusted_block("PLAN_CONTEXT", "PLAN=" + _json(plan_summary))}
