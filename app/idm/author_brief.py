@@ -3,8 +3,7 @@
 The author picks a mode when starting AI ID. ``instructional_design`` (and every run started before QLT-6, where the
 mode is absent) is the full IDM design: the author then also enters the learner audience and the course purpose, the
 strongest statements of whom the course is for and what it must achieve. ``preserve_source`` keeps a ready-made
-document word for word; its pipeline is not built yet, so a course-skeleton call in that mode fails before any
-provider call (``assert_design_mode_ready``) instead of running a half-built design.
+document word for word (``app.idm.preserve_design``): it carries no brief and none of these texts reach a prompt.
 
 Node sanitises the author's texts (the launch brief once, at launch) before they reach this service. They are data for
 the prompts, never instructions: author text reaches a prompt only inside the ``AUTHOR_COURSE_INTENT`` data block
@@ -18,12 +17,10 @@ from dataclasses import dataclass
 from typing import Final
 
 from app.idm.contracts import IdmAudienceV1, IdmProjectContextV1, PurposeOrigin
-from app.idm.runtime import IdmStageError
 from app.idm.text import single_line
 from app.prompt_safety import untrusted_block
 
 INTENT_TAG: Final = "AUTHOR_COURSE_INTENT"
-PRESERVE_SOURCE_NOT_READY_CODE: Final = "ORCHESTRATION_V2_PRESERVE_SOURCE_NOT_READY"
 # Project-context keys of the brief. They reach a prompt only in AUTHOR_COURSE_INTENT, never in PROJECT_CONTEXT.
 BRIEF_CONTEXT_KEYS: Final = frozenset({"design_mode", "learner_audience", "course_purpose"})
 _TITLE_MAX_CHARS: Final = 500
@@ -79,13 +76,6 @@ def author_brief(context: IdmProjectContextV1) -> AuthorBrief:
     if context.design_mode == "preserve_source":
         return AuthorBrief(None, None)
     return AuthorBrief(context.learner_audience or None, context.course_purpose or None)
-
-
-def assert_design_mode_ready(context: IdmProjectContextV1) -> None:
-    """Fail a preserve_source course skeleton deterministically, before any provider call (QLT-6 part 1)."""
-
-    if context.design_mode == "preserve_source":
-        raise IdmStageError(PRESERVE_SOURCE_NOT_READY_CODE)
 
 
 def author_intent_block(context: IdmProjectContextV1) -> str:

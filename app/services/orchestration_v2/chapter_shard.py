@@ -11,6 +11,7 @@ from pydantic import ValidationError
 
 from app.core.logging import SERVICE_LOGGER_NAME
 from app.idm.module_design import run_idm_module_design
+from app.idm.preserve_design import is_preserve_context, run_preserve_module_design
 from app.idm.runtime import IdmError, IdmStageError
 from app.lesson_author_orchestration_v2 import OrchestrationContractError
 from app.lesson_author_orchestration_v2_provider import (
@@ -40,6 +41,15 @@ async def lesson_author_orchestration_v2_chapter_shard(
     request: RagLessonAuthorChapterShardV2Request,
 ) -> dict[str, Any]:
     context = request.idm_module_context
+    if context is not None and is_preserve_context(context.project_context):
+        # QLT-6: a kept document's lessons are laid out without a provider call (its intended output, no fallback).
+        try:
+            return run_preserve_module_design(context=context, skeleton=request.skeleton, plan=request.shard_plan,
+                                              facts=request.source_facts)
+        except IdmError as error:
+            raise _idm_http_error(error) from error
+        except ValidationError as error:
+            raise _idm_http_error(IdmStageError("IDM_STAGE_OUTPUT_INVALID")) from error
     if context is not None:
         try:
             result = await run_idm_module_design(

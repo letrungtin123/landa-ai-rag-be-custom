@@ -1,7 +1,7 @@
 """QLT-6 part 1: the launch brief (design mode, learner audience, course purpose) in the IDM course design.
 
 The author starts AI ID in "Thiết kế bài giảng" mode with the learner audience and the course purpose, or in "Giữ
-nguyên nội dung" mode (preserve_source), whose pipeline is not built yet. Requests of contract 1/2 carry no brief and
+nguyên nội dung" mode (preserve_source, built in part 2). Requests of contract 1/2 carry no brief and
 are designed exactly as in QLT-5. Fixtures are the synthetic onboarding company of ``test_idm_purpose``.
 """
 
@@ -14,8 +14,6 @@ from app.idm.author_brief import (
     BRIEF_AUDIENCE_STEP,
     BRIEF_INTENT_RULE,
     INTENT_TAG,
-    PRESERVE_SOURCE_NOT_READY_CODE,
-    assert_design_mode_ready,
     author_audience,
     author_brief,
     author_intent_block,
@@ -39,7 +37,7 @@ from app.idm.purpose import (
     resolve_purpose,
     w1_purpose_step,
 )
-from app.idm.runtime import IdmStageError
+from app.idm.runtime import IdmProviderError, IdmStageError
 from app.services.orchestration_v2.idm import _idm_http_error
 from tests import idm_golden as g
 from tests.idm_golden_unit import build_unit_request
@@ -305,19 +303,22 @@ class NotesTests(unittest.TestCase):
 
 
 class PreserveSourceTests(unittest.TestCase):
-    def test_the_course_design_fails_before_any_provider_call(self) -> None:
-        provider = onboarding_provider()
-        with self.assertRaises(IdmStageError) as raised:
-            run_onboarding(provider, design_mode="preserve_source")
-        self.assertEqual(raised.exception.code, PRESERVE_SOURCE_NOT_READY_CODE)
-        self.assertEqual(provider.calls, [])
-        assert_design_mode_ready(briefed())
-        assert_design_mode_ready(context())
+    """QLT-6 part 2 replaces the part-1 refusal: a kept document is only segmented (``test_idm_preserve_design``)."""
 
-    def test_the_route_answers_a_stable_422(self) -> None:
-        error = _idm_http_error(IdmStageError(PRESERVE_SOURCE_NOT_READY_CODE))
+    def test_a_kept_document_runs_none_of_the_design_stages(self) -> None:
+        provider = g.FakeIdmProvider({"IdmPreserveSegmentationV1": [
+            IdmProviderError("AI_PROVIDER_UNAVAILABLE", terminal=False)]})
+        result = run_onboarding(provider, design_mode="preserve_source")
+        self.assertEqual([call["schema"] for call in provider.calls], ["IdmPreserveSegmentationV1"])
+        design = IdmCourseDesignV1.model_validate(result["idm"])
+        self.assertEqual(design.project_context.design_mode, "preserve_source")
+        self.assertEqual(design.stage_origins, {"preserve_segmentation": "deterministic_fallback"})
+        self.assertEqual(design.target_audience.origin, "client")
+
+    def test_a_stage_failure_answers_a_stable_422(self) -> None:
+        error = _idm_http_error(IdmStageError("IDM_PRESERVE_SOURCE_TOO_LARGE"))
         self.assertEqual(error.status_code, 422)
-        self.assertEqual(error.detail, {"code": "ORCHESTRATION_V2_PRESERVE_SOURCE_NOT_READY",
+        self.assertEqual(error.detail, {"code": "IDM_PRESERVE_SOURCE_TOO_LARGE",
                                         "message": "The IDM stage cannot be completed for this source."})
 
 

@@ -16,6 +16,7 @@ from pydantic import BaseModel, ValidationError
 from app.core.config import settings
 from app.core.logging import SERVICE_LOGGER_NAME
 from app.idm.diagram import idm_source_step_diagram
+from app.idm.preserve_unit import is_preserve_unit, run_preserve_unit
 from app.idm.runtime import IdmError, IdmStageError
 from app.idm.source_locked import idm_source_faq, idm_source_grounded_single_choice, render_idm_source_locked_html
 from app.idm.storyboard import IdmUnitDeps, run_idm_unit
@@ -77,6 +78,15 @@ ORCHESTRATION_V2_UNIT_FALLBACK_RESPONSE_HEADROOM_MS = 5_000
 async def lesson_author_orchestration_v2_unit(
     request: RagLessonAuthorUnitV2Request,
 ) -> dict[str, Any]:
+    if is_preserve_unit(request.unit_contract):
+        # QLT-6: a kept document's unit is its own lines, word for word: no provider call, no fallback metric.
+        try:
+            return run_preserve_unit(contract=request.unit_contract, locale=request.locale,
+                                     fallback_only=request.fallback_only, correlation_id=request.correlation_id)
+        except IdmError as error:
+            raise _idm_http_error(error) from error
+        except ValidationError as error:
+            raise _idm_http_error(IdmStageError("IDM_STAGE_OUTPUT_INVALID")) from error
     if request.unit_contract.idm_unit_brief is not None:
         budget_ms = max(1_000, request.remaining_workflow_budget_ms - ORCHESTRATION_V2_UNIT_FALLBACK_RESPONSE_HEADROOM_MS)
         try:

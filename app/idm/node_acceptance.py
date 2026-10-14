@@ -217,6 +217,9 @@ class AcceptanceContext:
     budget: Mapping[str, int] | None = None
     # Plan indexes of IDM worksheets (html slot with role practice).
     worksheet_slots: frozenset[int] = field(default_factory=frozenset)
+    # A kept document (QLT-6 preserve_source): Node skips the instructional-quality rules of generated html
+    # (``enforceGeneratedContentQuality: false``) and checks the exact text instead (``app.idm.preserve_render``).
+    preserve_source: bool = False
 
 
 # --- html: sanitizer, contract, instructional quality -------------------------------------------
@@ -1086,7 +1089,8 @@ def node_acceptance_findings(unit: Mapping[str, Any], context: AcceptanceContext
             target.append(AcceptanceFinding(check, error.code, index, error.detail, error.items))
             continue
         if kind == "html":
-            if (code := html_contract_code(html, plan.get("required_artifacts") or [])) is None:
+            if (code := html_contract_code(html, plan.get("required_artifacts") or [])) is None \
+                    and not context.preserve_source:
                 code = html_quality_code(html, context.exact_identifiers, worksheet=index in context.worksheet_slots)
             if code is not None:
                 coverage.append(AcceptanceFinding("coverage", code, index))

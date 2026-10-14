@@ -1,6 +1,7 @@
 """IDM ``course_skeleton`` task: W0/W1 → W1-reduce → W2 → W4 → assembly (spec §5.1, §7.1-§7.5).
 
 QLT-5: W1-reduce also decides the course purpose (``app.idm.purpose``); W2, W4 and the assembled design follow it.
+QLT-6: a document the author keeps as it is (``preserve_source``) is only segmented (``app.idm.preserve_design``).
 """
 
 from __future__ import annotations
@@ -10,7 +11,7 @@ import time
 from typing import Any, Final
 
 from app.idm.architecture import AssemblyInput, assemble_idm_course_design, project_course_skeleton, run_w4
-from app.idm.author_brief import BRIEF_CONTEXT_KEYS, assert_design_mode_ready
+from app.idm.author_brief import BRIEF_CONTEXT_KEYS
 from app.idm.blueprint import blocked_must_dos, build_dispositions, hold_items, run_w2
 from app.idm.content_map import (
     FactIndex,
@@ -30,6 +31,7 @@ from app.idm.policy import (
     IDM_W2_MAX_OUTPUT_TOKENS,
     IDM_W4_COURSE_MAX_OUTPUT_TOKENS,
 )
+from app.idm.preserve_design import is_preserve_context, run_preserve_course_design
 from app.idm.purpose import resolve_purpose
 from app.idm.runtime import IdmRuntime, IdmStageError, idm_tail_reserve, log_stage
 from app.idm.signals import IdmCapacityError, SectionPlan, compute_fact_signals, plan_idm_sections
@@ -67,9 +69,10 @@ async def run_idm_course_design(
     """Return the ``/course-skeleton`` response: legacy envelope plus ``idm`` (spec §5.6)."""
 
     started = time.perf_counter()
-    # QLT-6 part 1: the preserve_source pipeline is not built yet; fail before any provider call.
-    assert_design_mode_ready(request.project_context)
     _validate_source(request)
+    if is_preserve_context(request.project_context):
+        # QLT-6: the document is kept as it is: one segmentation call, none of the design stages.
+        return await run_preserve_course_design(request, source_snapshot_hash=source_snapshot_hash, runtime=runtime)
     context = request.project_context
     facts = request.source_facts
     document_names = {item.document_id: item.name for item in context.source_documents}

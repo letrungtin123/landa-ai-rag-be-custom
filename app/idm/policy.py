@@ -374,3 +374,42 @@ EXPLANATION_DEVICES_EN: Final = (
 # The label that marks an example the AI drafted (owner decision 2026-10-14); the author note lists every one.
 EXAMPLE_LABEL_VI: Final = "Ví dụ minh hoạ:"
 EXAMPLE_LABEL_EN: Final = "Illustrative example:"
+
+# --- Keep the document as it is (QLT-6 preserve_source, ``app.idm.preserve_*``) --------------------------------------
+# One provider call segments the document: it returns line numbers only (no text), so a small answer at low thinking
+# is enough (~120 lessons x ~80 characters of JSON); one repair, then the deterministic segmentation.
+IDM_PRESERVE_SEGMENT_MAX_OUTPUT_TOKENS: Final = 16_000
+THINKING_PRESERVE_SEGMENT: Final = "low"
+# Lines the model sees: heading candidates in full, body lines shortened (it never copies text, it only numbers it).
+IDM_PRESERVE_PROMPT_BODY_CHARS: Final = 140
+# A heading line the course can carry verbatim as a chapter, lesson or unit title (IdmLessonPlanV1.title bounds).
+IDM_PRESERVE_TITLE_MIN_CHARS: Final = 3
+IDM_PRESERVE_TITLE_MAX_CHARS: Final = 180
+IDM_PRESERVE_TITLE_MAX_WORDS: Final = 30
+# Page furniture removed before segmentation: page numbers, and a short line repeated identically on at least this
+# many different pages (a running header or footer; its first occurrence stays, it may be the real heading).
+IDM_PRESERVE_FURNITURE_MIN_PAGES: Final = 3
+IDM_PRESERVE_FURNITURE_MAX_CHARS: Final = 100
+# Unit size (reading units of a kept document): the job-aid reading budget per unit, raised up to the instructional
+# density hard limits (``app.instructional_density``: 48 facts, 12,000 source characters, 1,600 words) when a lesson
+# would otherwise need more than 12 units. Units split at line boundaries only; text is never cut.
+IDM_PRESERVE_UNIT_TARGET_WORDS: Final = SEGMENT_WORD_BUDGET["job_aid"]
+IDM_PRESERVE_UNIT_MAX_WORDS: Final = MAX_GENERATED_WORDS
+IDM_PRESERVE_UNIT_MAX_FACTS: Final = 48
+IDM_PRESERVE_UNIT_MAX_CHARS: Final = 12_000
+# Rendered html stays under Node's 20,000-character unit html limit (``MAX_UNIT_HTML_CHARS``) with headroom.
+IDM_PRESERVE_UNIT_MAX_HTML_CHARS: Final = 18_000
+IDM_PRESERVE_MAX_UNITS_PER_LESSON: Final = 12
+# Course bounds of the design contract (modules, lessons per module, lessons, blocks).
+IDM_PRESERVE_MAX_CHAPTERS: Final = IDM_MAX_MODULES
+IDM_PRESERVE_MAX_LESSONS_PER_CHAPTER: Final = IDM_MAX_LESSONS_PER_MODULE
+IDM_PRESERVE_MAX_LESSONS: Final = IDM_MAX_LESSONS
+IDM_PRESERVE_MAX_UNITS: Final = IDM_MAX_BLOCKS
+# Size-based segmentation (no heading found): a lesson closes at the first page change after this many words.
+IDM_PRESERVE_FALLBACK_LESSON_WORDS: Final = 1_500
+# Reading speed for the author-facing lesson minutes estimate.
+IDM_PRESERVE_WORDS_PER_MINUTE: Final = 200
+# Table limits of the course html sanitizer (``sanitizeCourseHtmlData``): a longer run starts a new table, a wider
+# row is shown as a line of text (its cells in order).
+IDM_PRESERVE_TABLE_MAX_ROWS: Final = 100
+IDM_PRESERVE_TABLE_MAX_COLUMNS: Final = 50

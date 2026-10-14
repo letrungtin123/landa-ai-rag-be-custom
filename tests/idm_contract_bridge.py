@@ -22,6 +22,12 @@ Stages:
 * ``acceptance``     — the Python mirror of Node's unit acceptance
   (``app.idm.node_acceptance``) for each ``request.units[i]`` against ``request.contract``:
   the first finding as ``{"check", "code", "path"}`` or ``null`` (Node parity test).
+
+QLT-6 ``preserve_source`` (a document kept as it is): ``course_skeleton`` answers the one segmentation call from
+``tests/idm_preserve_golden.py`` (or ``options.segmentation``); ``chapter_shard`` and ``unit`` fail the test if the
+provider is called at all. ``preserve_source`` returns that fixture's facts and context; ``preserve_text`` runs the
+exact-text check (``app.idm.preserve_render.preserve_text_finding``) on ``request.cases[i]`` (``facts`` texts and an
+``html`` fragment) for the Node parity test.
 """
 
 from __future__ import annotations
@@ -39,11 +45,13 @@ from fastapi import HTTPException
 from app import main
 from app.api import deps as api_deps
 from app.idm.node_acceptance import node_acceptance_findings
+from app.idm.preserve_render import preserve_text_finding
 from app.idm.storyboard import acceptance_context, parse_brief
 from app.lesson_author_orchestration_v2_provider import UnitGenerationContractV2
 from app.schemas.common import AiUsage
 from tests import idm_golden as g
 from tests import idm_golden_module as gm
+from tests import idm_preserve_golden as pg
 
 ROUTES = {
     "course_skeleton": "/v1/lesson-author/orchestration-v2/course-skeleton",
@@ -184,6 +192,29 @@ class UnitGenerate:
         return text, _usage(prompt, text)
 
 
+class NoProviderCalls:
+    """A provider that must never be called (a kept document's module and unit stages)."""
+
+    def __init__(self) -> None:
+        self.calls: list[str] = []
+
+    async def __call__(self, api_key: str, model: str, prompt: str, **options: Any) -> tuple[str, Any]:
+        self.calls.append(options["response_schema"].__name__)
+        raise AssertionError("a kept document stage called the provider")
+
+
+def _preserve(request: dict[str, Any], *path: str) -> bool:
+    node: Any = request
+    for part in path:
+        node = node.get(part) if isinstance(node, dict) else None
+    return isinstance(node, dict) and node.get("design_mode") == "preserve_source"
+
+
+def preserve_source() -> dict[str, Any]:
+    return {"snapshot_hash": pg.SNAPSHOT_HASH, "facts": [fact.model_dump(mode="json") for fact in pg.source_facts()],
+            "project_context": pg.project_context(), "segmentation": pg.SEGMENTATION}
+
+
 def _held_module(module_key: str, hold_lessons: list[str]) -> dict[str, Any]:
     response: dict[str, Any] = json.loads(json.dumps(gm.MODULE_RESPONSES[module_key], ensure_ascii=False))
     for lesson in response["lessons"]:
@@ -233,10 +264,21 @@ def acceptance(request: dict[str, Any]) -> list[dict[str, Any] | None]:
 async def run(stage: str, request: dict[str, Any], options: dict[str, Any]) -> dict[str, Any]:
     if stage == "golden_unit":
         return {"status": 200, "response": golden_units(), "calls": []}
+    if stage == "preserve_source":
+        return {"status": 200, "response": preserve_source(), "calls": []}
+    if stage == "preserve_text":
+        return {"status": 200, "response": {"results": [preserve_text_finding(item["facts"], item["html"])
+                                                         for item in request["cases"]]}, "calls": []}
     if stage == "acceptance":
         return {"status": 200, "response": {"results": acceptance(request)}, "calls": []}
-    if stage == "course_skeleton":
-        fake: Any = GoldenGenerate(g.golden_provider())
+    if stage == "course_skeleton" and _preserve(request, "idm", "project_context"):
+        answer = options.get("segmentation") or pg.SEGMENTATION
+        fake: Any = GoldenGenerate(pg.preserve_provider(answer, answer))
+    elif stage == "course_skeleton":
+        fake = GoldenGenerate(g.golden_provider())
+    elif (stage == "chapter_shard" and _preserve(request, "idm_module_context", "project_context")) or (
+            stage == "unit" and _preserve(request, "unit_contract", "idm_unit_brief")):
+        fake = NoProviderCalls()
     elif stage == "chapter_shard":
         module_key = request["idm_module_context"]["module"]["module_key"]
         answer = _held_module(module_key, list(options.get("hold_lessons", [])))
