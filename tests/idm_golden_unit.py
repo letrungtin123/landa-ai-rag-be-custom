@@ -84,11 +84,16 @@ def build_unit_request(
             "treatments": [{"block_id": block_id, "treatment": rows[block_id].treatment,
                             "detail_level": rows[block_id].detail_level} for block_id in component.block_ids],
             "owned_fact_keys": plan["source_fact_ids"], "supporting_fact_keys": plan["supporting_evidence_fact_ids"],
+            # QLT-5 D: the W4 plan of an la_faq slot (only when there is one).
+            **({"faq_items": [item.model_dump(mode="json") for item in component.faq_items]}
+               if component.faq_items else {}),
         } for component, plan in zip(unit.components, plans, strict=True)],
         "lesson_context_facts": [{"fact_key": key, "fact_text": fact_by_key[key].fact_text}
                                  for key in context_keys][:80],
         "job_aid_signpost": None,
     }
+    if any(component.type == "la_faq" for component in unit.components):
+        brief["faq_material"] = faq_material(design, lesson, unit)
     brief["brief_hash"] = brief_hash_of(brief)
     contract: dict[str, Any] = {
         "contract_version": 2, "unit_content_policy_version": "unit-content-v4-alignment-1",
@@ -112,6 +117,23 @@ def build_unit_request(
         "source_documents": [{"document_id": facts[0].document_id, "kb_id": "00000000-0000-4000-8000-0000000000b1",
                               "name": "quy-trinh-khieu-nai.pdf", "type": "pdf", "status": "ready"}],
         "contract_version": 2, "unit_contract": contract, "remaining_workflow_budget_ms": remaining_ms,
+    }
+
+
+def faq_material(design: IdmCourseDesignV1, lesson: Any, unit: Any) -> dict[str, Any]:
+    """QLT-5 D: what W1 found about the unit's blocks and the feedback focus of the lesson practices (Node
+    ``buildIdmUnitBrief``), for a unit with an la_faq slot."""
+
+    blocks = {block.block_id: block for block in design.blocks}
+    return {
+        "blocks": [{"block_id": block_id, "name": blocks[block_id].name, "intent": blocks[block_id].intent,
+                    "content_kind": blocks[block_id].content_kind, "support_role": blocks[block_id].support_role,
+                    "issues": [issue.model_dump(mode="json") for issue in blocks[block_id].issues],
+                    "gaps": [gap.model_dump(mode="json") for gap in blocks[block_id].gaps],
+                    "sme_questions": list(blocks[block_id].sme_questions)} for block_id in unit.block_ids],
+        "practices": [{"practice_id": practice.practice_id, "sentence": practice.sentence,
+                       "feedback_focus": practice.feedback_focus.model_dump(mode="json")}
+                      for practice in lesson.practice_tasks if not practice.hold][:3],
     }
 
 

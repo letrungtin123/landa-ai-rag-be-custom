@@ -273,6 +273,12 @@ def plan_idm_sections(
     return SectionPlan(sections=sections, warnings=warnings)
 
 
+def states_rule(text: str) -> bool:
+    """The text carries a rule word ("bắt buộc", "không được", "trừ khi", "must", "unless" ...): the R flag."""
+
+    return _RULE_RE.search(idm_fold(text)) is not None
+
+
 def idm_has_ordered_steps(texts: Iterable[str], *, locale: str) -> bool:
     return len(ordered_source_steps(list(texts), locale=locale)) >= IDM_STEP_RUN_MIN_LINES
 

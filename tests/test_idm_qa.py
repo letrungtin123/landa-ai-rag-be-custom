@@ -22,17 +22,15 @@ from app.idm.qa import (
     copied_options,
     criteria_summary,
     deterministic_slot_findings,
-    faq_item_verdicts,
     learner_view,
     repair_targets,
     run_judge,
     settled_codes,
-    ungrounded_faq_items,
     worksheet_complete,
     worst_counts,
 )
 from app.idm.runtime import IdmProviderError
-from app.idm.text import evidence_index
+from app.idm.text import evidence_index, grounding_verdict
 from tests import idm_golden as g
 from tests import idm_golden_unit as gu
 from tests.idm_golden import FakeIdmProvider
@@ -214,17 +212,21 @@ def faq(*answers: str) -> dict[str, Any]:
                       for index, answer in enumerate(answers, start=1)]}
 
 
-class FaqGroundingTests(unittest.TestCase):
-    """QC course 234653 (R6): FAQ answers must restate the facts the writer was given."""
+class GroundingVerdictTests(unittest.TestCase):
+    """The restatement measure of callouts and self-check items (QC course 234653, R6). Since QLT-5 D it no longer
+    decides an FAQ answer: there it only marks an answer as inferred for the SME (``tests/test_idm_faq.py``)."""
 
     def setUp(self) -> None:
         self.evidence = evidence_index(MISTAKE_FACTS, number_texts=["Chọn 1 quy trình hay lỗi nhất"])
 
-    def test_restated_answers_are_grounded(self) -> None:
-        self.assertEqual(faq_item_verdicts(faq(*GROUNDED_ANSWERS), self.evidence), ["grounded", "grounded"])
+    def verdicts(self, *texts: str) -> list[str]:
+        return [grounding_verdict(text, self.evidence) for text in texts]
+
+    def test_restated_text_is_grounded(self) -> None:
+        self.assertEqual(self.verdicts(*GROUNDED_ANSWERS), ["grounded", "grounded"])
         # Leading zeros and the approved plan's numbers are not new numbers.
-        self.assertEqual(faq_item_verdicts(faq("Chọn 1 quy trình hay xảy ra sự cố nhất rồi áp dụng 5Why để tìm "
-                                               "nguyên nhân gốc."), self.evidence), ["grounded"])
+        self.assertEqual(self.verdicts("Chọn 1 quy trình hay xảy ra sự cố nhất rồi áp dụng 5Why để tìm nguyên nhân "
+                                       "gốc."), ["grounded"])
 
     def test_new_numbers_new_advice_and_an_invented_sentence_are_not(self) -> None:
         answers = (
@@ -234,20 +236,14 @@ class FaqGroundingTests(unittest.TestCase):
             GROUNDED_ANSWERS[0] + " Ngoài ra hãy tặng phiếu giảm giá cho khách thân thiết để giữ chân họ lâu dài "
                                   "hơn trong mùa mua sắm cao điểm.",
         )
-        self.assertEqual(faq_item_verdicts(faq(*answers), self.evidence), ["numbers", "support", "sentence"])
-        self.assertEqual(ungrounded_faq_items(faq(GROUNDED_ANSWERS[0], answers[0], GROUNDED_ANSWERS[1]),
-                                              self.evidence), [1])
-        self.assertEqual(faq_item_verdicts({"type": "la_faq", "items": ["not-an-item"]}, self.evidence), ["support"])
-        self.assertEqual(faq_item_verdicts({"type": "la_faq"}, self.evidence), [])
+        self.assertEqual(self.verdicts(*answers), ["numbers", "support", "sentence"])
 
-    def test_slot_finding_needs_the_evidence(self) -> None:
+    def test_faq_slots_are_not_judged_by_restatement_any_more(self) -> None:
+        # QLT-5 D: an FAQ answer that explains beyond the words of the facts is no finding (no repair back to
+        # restating); without an FAQ checker an la_faq slot is not measured at all.
         value = unit(faq(GROUNDED_ANSWERS[0], "Lãnh đạo nên tập trung truy vấn hệ thống nào bị hỏng thay vì quy chụp "
                                               "ai làm sai trong buổi họp giao ban."))
-        self.assertEqual(deterministic_slot_findings(value, brief(), ["", ""], self.evidence),
-                         [SlotFinding("IDM_W5_FAQ_UNGROUNDED", 0)])
-        self.assertEqual(deterministic_slot_findings(value, brief(), ["", ""]), [])
-        grounded = unit(faq(*GROUNDED_ANSWERS))
-        self.assertEqual(deterministic_slot_findings(grounded, brief(), ["", ""], self.evidence), [])
+        self.assertEqual(deterministic_slot_findings(value, brief(), ["", ""], self.evidence), [])
 
 
 def worksheet_brief() -> IdmUnitBriefV1:
@@ -405,12 +401,12 @@ class AuthorNoteAndQualityTests(unittest.TestCase):
         note = build_unit_author_note(
             locale="vi", judge=JudgeOutcome("pass"), deterministic_codes=["HTML_SEMANTIC_INVALID"],
             fallback_slots=[0], ai_drafted=False, review_slots=[2], slot_types=["html", "problem", "la_faq"],
-            slot_reasons={0: ["HTML_SEMANTIC_INVALID"], 2: ["IDM_W5_FAQ_UNGROUNDED"]},
+            slot_reasons={0: ["HTML_SEMANTIC_INVALID"], 2: ["IDM_W5_FAQ_TYPE_MIX"]},
             failure_codes=["IDM_W5_REPAIR_INVALID", "not a code"], faq_items_dropped=1)
         self.assertEqual(note, "QA tự động: không phát hiện vấn đề lớn. "
                                "1 khối dùng bản dự phòng dựng từ tài liệu — cần biên tập. "
                                "Lý do: khối 1 (Lý thuyết) — HTML_SEMANTIC_INVALID. "
-                               "Giữ bản AI để tác giả rà soát: khối 3 (Hỏi đáp) — IDM_W5_FAQ_UNGROUNDED. "
+                               "Giữ bản AI để tác giả rà soát: khối 3 (Hỏi đáp) — IDM_W5_FAQ_TYPE_MIX. "
                                "Sửa tự động không thành công: IDM_W5_REPAIR_INVALID. "
                                "Đã bỏ 1 câu hỏi đáp có nội dung ngoài tài liệu. "
                                "Kiểm tra tự động còn cảnh báo: HTML_SEMANTIC_INVALID.")
@@ -435,7 +431,7 @@ class AuthorNoteAndQualityTests(unittest.TestCase):
         self.assertEqual(fixed, "QA tự động: không phát hiện vấn đề lớn. "
                                 "Đã tự sửa: HTML_SOURCE_LOCATOR, IDM_W5_PRACTICE_INCOMPLETE.")
         remaining = [SlotFinding("IDM_W5_ANSWER_LENGTH_CUE", 1), SlotFinding("IDM_W5_ANSWER_LEAK", 1),
-                     SlotFinding("IDM_W5_FAQ_UNGROUNDED", 2)]
+                     SlotFinding("IDM_W5_WORKSHEET_INCOMPLETE", 2)]
         vi = build_unit_author_note(locale="vi", judge=JudgeOutcome("not_run"), deterministic_codes=[],
                                     fallback_slots=[], ai_drafted=False, slot_types=types, remaining=remaining,
                                     fixed_codes=["HTML_SOURCE_LOCATOR"])
@@ -444,7 +440,7 @@ class AuthorNoteAndQualityTests(unittest.TestCase):
                              "nội dung ngay trước câu hỏi — người học có thể chọn theo trí nhớ thay vì áp dụng tiêu "
                              "chí. Cần xem (IDM_W5_ANSWER_LENGTH_CUE, khối 2 (Quiz)): đáp án đúng dài hơn hẳn các "
                              "phương án khác — người học có thể đoán theo độ dài. "
-                             "Kiểm tra tự động còn cảnh báo: IDM_W5_FAQ_UNGROUNDED.")
+                             "Kiểm tra tự động còn cảnh báo: IDM_W5_WORKSHEET_INCOMPLETE.")
         en = build_unit_author_note(locale="en", judge=JudgeOutcome("not_run"), deterministic_codes=[],
                                     fallback_slots=[], ai_drafted=False, slot_types=types, remaining=remaining,
                                     fixed_codes=["HTML_SOURCE_LOCATOR"])
@@ -453,7 +449,7 @@ class AuthorNoteAndQualityTests(unittest.TestCase):
                              "text shown right before the question — learners can match it instead of applying the "
                              "criterion. Review (IDM_W5_ANSWER_LENGTH_CUE, block 2 (Quiz)): the correct option is "
                              "much longer than the others — learners can guess it by length. "
-                             "Automatic checks still warn: IDM_W5_FAQ_UNGROUNDED.")
+                             "Automatic checks still warn: IDM_W5_WORKSHEET_INCOMPLETE.")
         whole = build_unit_author_note(locale="en", judge=JudgeOutcome("not_run"), deterministic_codes=["X_CODE"],
                                        fallback_slots=[0], ai_drafted=False, whole_fallback=True, remaining=[],
                                        fixed_codes=["X_CODE"])
@@ -461,8 +457,9 @@ class AuthorNoteAndQualityTests(unittest.TestCase):
 
     def test_settled_codes_leave_out_open_and_otherwise_explained_codes(self) -> None:
         seen = ["IDM_W5_PRACTICE_INCOMPLETE", "HTML_SOURCE_LOCATOR", "IDM_W5_FAQ_ITEMS_DROPPED",
-                "IDM_W5_FAQ_UNGROUNDED", "HTML_SEMANTIC_INVALID", "IDM_W5_PRACTICE_INCOMPLETE"]
-        self.assertEqual(settled_codes(seen, [SlotFinding("IDM_W5_FAQ_UNGROUNDED", 2)], {"HTML_SEMANTIC_INVALID"}),
+                "IDM_W5_WORKSHEET_INCOMPLETE", "HTML_SEMANTIC_INVALID", "IDM_W5_PRACTICE_INCOMPLETE"]
+        remaining = [SlotFinding("IDM_W5_WORKSHEET_INCOMPLETE", 2)]
+        self.assertEqual(settled_codes(seen, remaining, {"HTML_SEMANTIC_INVALID"}),
                          ["IDM_W5_PRACTICE_INCOMPLETE", "HTML_SOURCE_LOCATOR"])
 
     def test_author_note_is_bounded_and_has_no_angle_brackets(self) -> None:

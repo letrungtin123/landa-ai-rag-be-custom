@@ -29,6 +29,7 @@ from app.idm.contracts import (
     StageOrigin,
     design_hash_of,
 )
+from app.idm.faq_plan import FAQ_DROPPED_CODE, FAQ_PLANNED_CODE, gate_and_plan_faq
 from app.idm.fidelity import TEACHING_SUPPORT_CODE, module_fidelity_rules, plan_teaching_supports, purpose_mode
 from app.idm.framework import framework_promise, unit_framework_brief
 from app.idm.limits import answer_limits
@@ -739,6 +740,12 @@ async def run_idm_module_design(
     if fallback_count:
         record_deterministic_fallback(runtime, stage="idm_module", code="IDM_MODULE_LESSON_FALLBACK")
     final = _taught_before_questions(final, scope, runtime, codes)
+    # QLT-5 D: an FAQ only where its unit has something to clarify, and a plan for each of its items.
+    faq = gate_and_plan_faq(final, scope)
+    final = faq.lessons
+    for code, count in ((FAQ_DROPPED_CODE, faq.dropped), (FAQ_PLANNED_CODE, faq.planned)):
+        if count:
+            runtime.adjustments[code] += count
     final, attached = attach_framework_items(final, scope)
     if attached:
         runtime.adjustments["IDM_W4_FRAMEWORK_ITEMS_ATTACHED"] += attached

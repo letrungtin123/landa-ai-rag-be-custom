@@ -462,7 +462,7 @@ class FaqValueTests(StoryboardEndpointTestCase):
         self.assertEqual([item["answer"] for item in data["unit"]["components"][2]["items"]],
                          [EDGE_CASE, MISCONCEPTION])
         self.assertIn("Đã bỏ 1 câu hỏi đáp chỉ nhắc lại nội dung vừa học.", quality.author_note)
-        self.assertIn("Each la_faq item adds value: a common misconception, an edge case", provider.calls[0]["prompt"])
+        self.assertIn("An la_faq slot digs deeper than the html", provider.calls[0]["prompt"])
 
     async def test_too_few_items_left_keeps_the_faq_for_review(self) -> None:
         body = faq_after_html_body()

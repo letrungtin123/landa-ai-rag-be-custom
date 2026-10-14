@@ -185,6 +185,12 @@ TASK: Week 1 - build the SME Content Map for ONE section of the source.
 5. Record content gaps that will matter for examples, practice, feedback or assessment: missing_example |
    missing_exception | missing_criteria | missing_step | missing_sample_output | missing_common_mistake |
    missing_feedback_basis | missing_unit_variation.
+   Look explicitly for common mistakes, misconceptions and exceptions. When the source states one (a "lỗi thường
+   gặp" / "common mistakes" part, a wrong action shown as an example, "lưu ý", "cảnh báo", "trừ khi", "không áp dụng
+   khi", "unless", "except"), keep it: mistakes and misconceptions as a block with support_role common_mistake, an
+   exception inside the decision or policy block it limits. When a decision, policy or procedure block has none in
+   the source, record the gap missing_common_mistake (and missing_exception when the rule clearly needs one); never
+   write a mistake or exception the source does not state.
 6. Write SME questions that point at the exact rule, example or gap
    (good: "Ngoài an toàn và pháp lý, giá trị giao dịch có phải tiêu chí bắt buộc escalate không?";
    bad: "Phần nào quan trọng?").
@@ -402,8 +408,10 @@ Return the lessons in exactly the order and with exactly the lesson_key values o
    improvement (what to fix). Never just "Correct/Incorrect".
 5. FORMAT last, simplest that works, ONLY from ALLOWED_COMPONENTS:
    short principle -> html; compare concepts -> html table; relationships/structure/process map -> la_diagram
-   (only when the facts state the relations); annotated or worked example -> html; common confusions or
-   mistakes -> la_faq; ordering steps -> la_sortable (only with source order); terminology to memorise ->
+   (only when the facts state the relations); annotated or worked example -> html; a common mistake, a condition
+   or exception the facts state, or the misconception behind a question's wrong options -> la_faq (only then: the
+   server removes an la_faq whose unit has none of these; never an FAQ that only recalls facts); ordering steps ->
+   la_sortable (only with source order); terminology to memorise ->
    la_crossword (at least 3 source definitions with short terms); knowledge check of a Must Know -> problem
    (single choice); decision in a short situation -> problem as a scenario question{scenario_clause}; producing
    an output (Must Do of kind "do") -> worksheet: html with role practice + problem that checks a sample answer.
@@ -473,8 +481,10 @@ def unit_writer_prompt(
     html_rules: str = "",
     course_purpose: dict[str, Any] | None = None,
     fidelity_rules: str = "",
+    faq_rules: str = "",
 ) -> str:
-    """``fidelity_rules``: ``app.idm.fidelity.writer_fidelity_rules`` (the content mode; default structured)."""
+    """``fidelity_rules``: ``app.idm.fidelity.writer_fidelity_rules`` (the content mode; default structured);
+    ``faq_rules``: ``app.idm.faq_checks.faq_writer_rules`` for a unit with an la_faq slot (QLT-5 D), else empty."""
 
     content_mode = fidelity_rules or writer_fidelity_rules(DEFAULT_MODE, locale)
     purpose_line = ("- Keep the unit on COURSE_PURPOSE (what the course is for and for whom): choose the wording, "
@@ -517,12 +527,7 @@ Writing rules (learner-facing, {locale_name(locale)}):
   has the same length budget as any html slot, so keep it lean: one template row per field (its value one guiding
   question of at most 15 words), a worked example of at most two filled entries and at most 6 self-check items;
   a worksheet still over the budget loses its worked example.
-- la_faq answers restate only what SOURCE_FACTS or LESSON_CONTEXT_FACTS say: no number, example, reason, advice
-  or exception they do not state. When the facts cannot answer a question, ask a different question they answer.
-- Each la_faq item adds value: a common misconception, an edge case or a "what if" that the facts answer. Never
-  an item whose answer repeats a table row, list or paragraph of this unit's html. The la_faq title names what
-  its questions are about.
-- A "warning" block is shown to the learner as a quotation/callout: use it only for a rule, warning or
+{faq_rules}- A "warning" block is shown to the learner as a quotation/callout: use it only for a rule, warning or
   statement that SOURCE_FACTS state, quoted or closely restated. Never write your own maxim, slogan, consequence
   or rule as a warning; such text is a plain paragraph, or is left out.
 - Never invent rules, thresholds, criteria, labels or consequences the facts do not state, not even as the
@@ -747,12 +752,19 @@ UNIT_RULE_TEXT: Final[dict[str, str]] = {
     "IDM_W5_SOURCE_ARTIFACT": "a list item, row label or table cell ends cut as the PDF line did (an open \"(\", a "
                               "trailing \"/\" or a word such as \"Best-in\"): write it out in full from the facts "
                               "or drop the cut part",
-    "IDM_W5_FAQ_UNGROUNDED": "answer only from these facts: rewrite each listed answer so it restates what "
-                             "SOURCE_FACTS or LESSON_CONTEXT_FACTS say, with no number, example, reason or advice "
-                             "they do not state; replace a question the facts cannot answer with one they do",
     "IDM_W5_FAQ_RESTATES_HTML": "these items only repeat the html above: replace each listed item with a common "
                                 "misconception, an edge case or a what-if question that SOURCE_FACTS or "
                                 "LESSON_CONTEXT_FACTS answer",
+    # QLT-5 D: the FAQ checks (``app.idm.faq_checks``); an answer explains, it is never asked to restate.
+    "IDM_W5_FAQ_RESTATES_SOURCE": "the listed answers repeat a source sentence almost word for word: rewrite each in "
+                                  "2-4 sentences of your own that explain why, what happens if, or what goes wrong, "
+                                  "based on its facts; add no number, rule or name",
+    "IDM_W5_FAQ_TYPE_MIX": "the questions mostly ask for facts again: keep at most one recall question and make at "
+                           "least one a why, what-if or common-mistake question on the planned facts, each answered in "
+                           "2-4 explaining sentences",
+    "IDM_W5_FAQ_NEW_FACT": "the listed items state a number, date, amount or a person, company or product name their "
+                           "facts do not state: remove it or use what the facts say; explaining in your own words "
+                           "stays allowed",
     "IDM_W5_FAQ_TITLE_MISMATCH": "the la_faq title names what its questions are about: retitle it from its questions",
     "IDM_W5_CALLOUT_UNGROUNDED": "a warning block is shown as a quotation/callout: quote or closely restate what "
                                  "SOURCE_FACTS state, or make it a paragraph block; never a rule, threshold or "
@@ -779,6 +791,8 @@ UNIT_RULE_TEXT: Final[dict[str, str]] = {
                   "content that pulls it towards another purpose, without adding facts",
     "IDM_W6_Q12": "explain the content for the learner: the main idea in plain words, why it matters and a short "
                   "example; rules, definitions and numbers stay exact; add no fact",
+    "IDM_W6_Q13": "make the la_faq explain instead of restating: why, what happens if, or what goes wrong, based on "
+                  "the facts, at most one recall question; add no number, rule or name",
 }
 # A condensed slot aims below the hard limit, so a near miss does not fail again.
 DENSITY_TARGET_SHARE: Final = 0.9
@@ -862,7 +876,7 @@ another unit of the lesson is never a finding here.
    restates the example, quotation or template shown right before the question.
  Q6_alignment: the practice matches the Must Do action type and Bloom level in the plan.
  Q3, Q4 and Q6 grade this unit's own practice: when PLAN.has_practice_slot is false return not_applicable for
-   them. not_applicable is never allowed for any other criterion except Q11 and Q12 as stated below.
+   them. not_applicable is never allowed for any other criterion except Q11, Q12 and Q13 as stated below.
  Q7_cognitive_load: no long theory runs; context under 20%; detail matches detail_level.
  Q8_language: clear, suited to the audience, terms explained, no internal IDs or citations.
  Q9_traceability: every component serves the stated Must Do, practice or support.
@@ -877,7 +891,12 @@ another unit of the lesson is never a finding here.
    labelled "Ví dụ minh hoạ" or "Illustrative example" may be drafted, but it adds no number, rule or name); a
    teaching slot that only restates the source is major. For any other PLAN.fidelity_mode return not_applicable
    for Q12.
-Return one finding per criterion (Q1-Q12). verdict = pass (no major/critical) | review_required (any major) |
+ Q13_faq_value: when PLAN.has_faq_slot is true, the la_faq slot adds value: its questions ask why, what happens if,
+   what goes wrong or how to apply (at most one plain recall question), and each answer explains from the facts
+   instead of restating a source sentence or the html above it; an FAQ that only restates the content is major; an
+   answer that adds a number, rule or name the facts do not state is major. When PLAN.has_faq_slot is false return
+   not_applicable for Q13.
+Return one finding per criterion (Q1-Q13). verdict = pass (no major/critical) | review_required (any major) |
 reject (any critical); not_applicable never counts.
 
 {untrusted_block("PLAN_CONTEXT", "PLAN=" + _json(plan_summary))}

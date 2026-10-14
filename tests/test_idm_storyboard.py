@@ -87,15 +87,19 @@ def severity_writer(body: dict[str, Any], explanation: str | None = None) -> dic
                    "pháp lý hay truyền thông.")}}}
 
 
+# An answer with a number (20%) and a name (VIP) the FAQ's facts do not state (QLT-5 D: IDM_W5_FAQ_NEW_FACT).
 UNGROUNDED_ANSWER = ("Nên tặng phiếu giảm giá 20% cho khách VIP để giữ chân họ lâu dài hơn trong mùa mua sắm cao "
                      "điểm cuối năm.")
+FAQ_QUESTIONS = ("Điều gì dễ nhầm khi khách hàng khiếu nại đòi hoàn tiền ngay?",
+                 "Vì sao cấp độ khiếu nại hay bị ghi thấp hơn thực tế?",
+                 "Nếu chưa chắc về cấp độ khiếu nại thì xử lý sao?",
+                 "Điều gì xảy ra nếu xử lý khiếu nại mà bỏ qua yếu tố truyền thông?")
 
 
 def escalate_with_faq(body: dict[str, Any], *answers: str) -> dict[str, Any]:
     writer = escalate_writer(body)
-    writer["components"]["c1"]["items"] = [
-        {"question": f"Điều gì dễ nhầm số {index} khi xử lý khiếu nại?", "answer": answer}
-        for index, answer in enumerate(answers, start=1)]
+    writer["components"]["c1"]["items"] = [{"question": FAQ_QUESTIONS[index], "answer": answer}
+                                           for index, answer in enumerate(answers)]
     return writer
 
 
@@ -404,8 +408,9 @@ class UnitEndpointTests(StoryboardEndpointTestCase):
         self.assertEqual([(e["outcome"], e["failure_code"]) for e in data["attempt_trace"]],
                          [("failed", "AI_PROVIDER_UNAVAILABLE"), ("fallback", "IDM_W5_UNIT_FALLBACK")])
 
-    async def test_ungrounded_faq_answer_gets_a_targeted_repair(self) -> None:
-        # QC course 234653 (R6): an FAQ answer added a claim the source never makes.
+    async def test_faq_answer_with_a_new_number_gets_a_targeted_repair(self) -> None:
+        # QC course 234653 (R6) and QLT-5 D: an FAQ answer stated a number the facts never give. The repair names the
+        # items and the planned facts; it no longer asks the writer to restate the source.
         body = escalate_body()
         good = escalate_writer(body)
         items = good["components"]["c1"]["items"]
@@ -415,16 +420,18 @@ class UnitEndpointTests(StoryboardEndpointTestCase):
         self.assertEqual(status, 200)
         quality = self.assert_envelope(data, "provider_validated", "validated", "provider")
         self.assertEqual(provider.names, [WRITER, REPAIR, JUDGE])
+        self.assertEqual(provider.calls[1]["thinking_level"], "low")
         prompt = provider.calls[1]["prompt"]
-        self.assertIn('{"code":"IDM_W5_FAQ_UNGROUNDED","path":"components[1]"}', prompt)
-        self.assertIn("c1 IDM_W5_FAQ_UNGROUNDED at c1.items[1]: answer only from these facts", prompt)
-        self.assertIn("Start from this slot's facts: [", prompt)
+        self.assertIn('{"code":"IDM_W5_FAQ_NEW_FACT","path":"components[1]"}', prompt)
+        self.assertIn("c1 IDM_W5_FAQ_NEW_FACT at c1.items[1]: the listed items state a number", prompt)
+        self.assertIn("Plan: items[0] common_mistake on [", prompt)
         self.assertNotIn(UNGROUNDED_ANSWER, prompt.split("REPAIR_REQUIREMENTS")[1])
-        self.assertIn("la_faq answers restate only what SOURCE_FACTS or LESSON_CONTEXT_FACTS say", prompt)
-        self.assertEqual(quality.deterministic_codes, ["IDM_W5_FAQ_UNGROUNDED"])
+        self.assertNotIn("restate only what", prompt)
+        self.assertIn("An la_faq slot digs deeper than the html", prompt)
+        self.assertEqual(quality.deterministic_codes, ["IDM_W5_FAQ_NEW_FACT"])
         self.assertEqual(data["unit"]["components"][1]["items"], items)
 
-    async def test_still_ungrounded_faq_items_are_dropped_while_two_grounded_items_remain(self) -> None:
+    async def test_faq_items_with_a_new_number_are_dropped_while_two_items_remain(self) -> None:
         body = escalate_body()
         grounded = [item["answer"] for item in escalate_writer(body)["components"]["c1"]["items"]]
         bad = escalate_with_faq(body, grounded[0], UNGROUNDED_ANSWER, grounded[1])
@@ -433,38 +440,34 @@ class UnitEndpointTests(StoryboardEndpointTestCase):
         self.assertEqual(status, 200)
         quality = self.assert_envelope(data, "provider_validated", "validated", "provider")
         self.assertEqual([item["answer"] for item in data["unit"]["components"][1]["items"]], grounded)
-        self.assertEqual(quality.deterministic_codes, ["IDM_W5_FAQ_ITEMS_DROPPED", "IDM_W5_FAQ_UNGROUNDED"])
+        self.assertEqual(quality.deterministic_codes, ["IDM_W5_FAQ_ITEMS_DROPPED", "IDM_W5_FAQ_NEW_FACT"])
         self.assertIn("Đã bỏ 1 câu hỏi đáp có nội dung ngoài tài liệu.", quality.author_note)
         self.assertNotIn("fallback", [e["outcome"] for e in data["attempt_trace"]])
 
-    async def test_faq_without_two_grounded_items_follows_the_slot_fallback_rules(self) -> None:
-        # The IDM FAQ fallback restates the unit's explicit source conditions (run c2e5ac41): the slot is replaced.
+    async def test_faq_finding_never_brings_back_the_verbatim_source_faq(self) -> None:
+        # QLT-5 D: the source-locked FAQ is made of verbatim source sentences (run c2e5ac41). An FAQ that still states a
+        # new number after its repair, with too few items left to drop it, is kept for author review instead.
         body = escalate_body()
         grounded = escalate_writer(body)["components"]["c1"]["items"][0]["answer"]
         bad = escalate_with_faq(body, grounded, UNGROUNDED_ANSWER)
-        provider = FakeGenerate(**{WRITER: [bad], REPAIR: [slot_repair(bad, 1)], JUDGE: [judge()]})
-        status, data, _ = await self.post(body, provider)
-        self.assertEqual(status, 200)
-        self.assert_envelope(data, "structured_fallback", "review_required", "provider")
-        faq = data["unit"]["components"][1]
-        self.assertIs(faq["source_locked_fallback"], True)
-        facts = " ".join(fact["fact_text"] for fact in body["unit_contract"]["source_facts"])
-        self.assertTrue(all(item["answer"] in facts for item in faq["items"]))
-
-    async def test_faq_without_two_grounded_items_and_no_fallback_is_kept_for_review(self) -> None:
-        # No source-locked FAQ can be built for this unit: the slot is kept for author review, with the reason.
-        body = escalate_body()
-        grounded = escalate_writer(body)["components"]["c1"]["items"][0]["answer"]
-        bad = escalate_with_faq(body, grounded, UNGROUNDED_ANSWER)
-        provider = FakeGenerate(**{WRITER: [bad], REPAIR: [slot_repair(bad, 1)], JUDGE: [judge()]})
-        with patch("app.services.orchestration_v2.unit.idm_source_faq", lambda *_args, **_kwargs: None):
-            status, data, _ = await self.post(body, provider)
-        self.assertEqual(status, 200)
-        quality = self.assert_envelope(data, "provider_validated", "review_required", "provider")
-        self.assertEqual(len(data["unit"]["components"][1]["items"]), 2)
-        self.assertIn("Giữ bản AI để tác giả rà soát: khối 2 (Hỏi đáp) — IDM_W5_FAQ_UNGROUNDED.",
-                      quality.author_note)
-        self.assertEqual(quality.deterministic_codes, ["IDM_W5_FAQ_UNGROUNDED"])
+        for source_faq in (True, False):
+            with self.subTest(source_faq=source_faq):
+                provider = FakeGenerate(**{WRITER: [bad], REPAIR: [slot_repair(bad, 1)], JUDGE: [judge()]})
+                if source_faq:
+                    status, data, _ = await self.post(body, provider)
+                else:
+                    with patch("app.services.orchestration_v2.unit.idm_source_faq", lambda *_args, **_kwargs: None):
+                        status, data, _ = await self.post(body, provider)
+                self.assertEqual(status, 200)
+                quality = self.assert_envelope(data, "provider_validated", "review_required", "provider")
+                faq = data["unit"]["components"][1]
+                self.assertNotIn("source_locked_fallback", faq)
+                self.assertEqual([item["answer"] for item in faq["items"]], [grounded, UNGROUNDED_ANSWER])
+                self.assertIn("Giữ bản AI để tác giả rà soát: khối 2 (Hỏi đáp) — IDM_W5_FAQ_NEW_FACT.",
+                              quality.author_note)
+                self.assertIn("Cần xem khối 2 (Hỏi đáp): câu hỏi đáp có số liệu hoặc tên riêng không có trong tài liệu",
+                              quality.author_note)
+                self.assertEqual(quality.deterministic_codes, ["IDM_W5_FAQ_NEW_FACT"])
 
     async def test_worksheet_slot_for_a_doing_must_do(self) -> None:
         # QC course 234653 (R5): the html practice slot is written as a worksheet the problem then checks.

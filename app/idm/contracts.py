@@ -11,7 +11,8 @@ from __future__ import annotations
 
 from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, StringConstraints
+from pydantic import BaseModel, ConfigDict, Field, SerializerFunctionWrapHandler, StringConstraints, model_serializer
+from pydantic.json_schema import SkipJsonSchema
 
 from app.lesson_author_orchestration_v2 import (
     ArchitectureComponentAuthorReviewV2,
@@ -62,7 +63,7 @@ JudgeSeverity = Literal["pass", "minor", "major", "critical"]
 JudgeAnswerCriterion = Literal[
     "Q1_support_sufficient", "Q2_not_copied", "Q3_practice_complete", "Q4_feedback_teaches",
     "Q5_grounded_criteria", "Q6_alignment", "Q7_cognitive_load", "Q8_language", "Q9_traceability",
-    "Q10_title_matches", "Q11_purpose_alignment", "Q12_explained",
+    "Q10_title_matches", "Q11_purpose_alignment", "Q12_explained", "Q13_faq_value",
 ]
 JudgeAnswerSeverity = Literal["pass", "minor", "major", "critical", "not_applicable"]
 Locale = Literal["vi", "en"]
@@ -74,6 +75,10 @@ PurposeEvidence = Literal["title", "description", "source"]
 # How closely learner text follows the source wording (QLT-5 C, ``app.idm.fidelity``): derived from the purpose
 # profile (and a clear wording request in the author's description), never chosen by authors.
 FidelityMode = Literal["keep", "structured", "explain"]
+# The question an FAQ item answers and where its point comes from (QLT-5 D, ``app.idm.faq_plan``): server-planned at
+# W4 from the unit's evidence, never chosen by authors. "recall" is allowed at most once per FAQ.
+FaqQuestionType = Literal["why", "what_if", "common_mistake", "how_to_apply", "comparison", "recall"]
+FaqItemOrigin = Literal["source", "distractor", "ai_drafted"]
 
 # --- Shared constrained strings ------------------------------------------------------------
 FactKey = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=255)]
@@ -408,6 +413,28 @@ class IdmSupportItemV1(IdmModel):
     block_id: BlockId
 
 
+class IdmFaqItemPlanV1(IdmModel):
+    """One planned FAQ item (QLT-5 D): the question type, the facts its answer is built on and where its point comes
+    from (a mistake or condition the source states, the misconception behind a practice question's wrong option, or a
+    confusion inferred from the facts)."""
+
+    question_type: FaqQuestionType
+    anchor_fact_keys: list[FactKey] = Field(min_length=1, max_length=6)
+    origin: FaqItemOrigin
+
+
+def _without_empty_faq_items(data: Any) -> Any:
+    """A slot without an FAQ plan serialises as before QLT-5 D (no ``faq_items`` key), so the hashes of designs and
+    briefs that hold no FAQ plan do not change."""
+
+    if isinstance(data, dict) and not data.get("faq_items"):
+        data.pop("faq_items", None)
+    return data
+
+
+# ``faq_items`` (QLT-5 D) is the server's plan of an la_faq slot (``app.idm.faq_plan``): left out of the provider schema
+# (the W4 writer never answers it) and out of the JSON form when empty. A comment, not a docstring: the docstring is
+# the schema description the provider reads.
 class IdmComponentDesignV1(IdmModel):
     component_index: int = Field(ge=1, le=4)
     type: IdmComponentType
@@ -418,6 +445,11 @@ class IdmComponentDesignV1(IdmModel):
     practice_id: str | None = Field(default=None, pattern=r"^pt_[1-9]$")
     support_items: list[IdmSupportItemV1] = Field(default_factory=list, max_length=6)
     author_review: ArchitectureComponentAuthorReviewV2
+    faq_items: SkipJsonSchema[list[IdmFaqItemPlanV1]] = Field(default_factory=list, max_length=6)
+
+    @model_serializer(mode="wrap")
+    def _serialize(self, handler: SerializerFunctionWrapHandler) -> Any:
+        return _without_empty_faq_items(handler(self))
 
 
 class IdmUnitDesignV1(IdmModel):
@@ -468,6 +500,8 @@ class IdmContextFactV1(IdmModel):
 
 
 class IdmBriefComponentV1(IdmModel):
+    """``faq_items``: the W4 plan of an la_faq slot (QLT-5 D); absent for every other slot and in older briefs."""
+
     component_plan_id: ComponentPlanId
     type: IdmComponentType
     role: ComponentRole
@@ -477,12 +511,46 @@ class IdmBriefComponentV1(IdmModel):
     treatments: list[IdmTreatmentRefV1] = Field(max_length=24)
     owned_fact_keys: list[FactKey] = Field(max_length=32768)
     supporting_fact_keys: list[FactKey] = Field(max_length=32768)
+    faq_items: list[IdmFaqItemPlanV1] = Field(default_factory=list, max_length=6)
+
+    @model_serializer(mode="wrap")
+    def _serialize(self, handler: SerializerFunctionWrapHandler) -> Any:
+        return _without_empty_faq_items(handler(self))
+
+
+class IdmFaqBlockNoteV1(IdmModel):
+    """What W1 found about one block of a unit with an FAQ (QLT-5 D): its role, the source issues and gaps and the
+    open SME questions. Raw material for real confusions; never facts."""
+
+    block_id: BlockId
+    name: str = Field(min_length=1, max_length=180)
+    intent: Intent
+    content_kind: ContentKind
+    support_role: SupportRole | None
+    issues: list[IdmIssueV1] = Field(max_length=16)
+    gaps: list[IdmGapV1] = Field(max_length=8)
+    sme_questions: list[SmeQuestion] = Field(max_length=8)
+
+
+class IdmFaqPracticeNoteV1(IdmModel):
+    """A practice of the unit's lesson: what decides right and wrong, why the better choice is better and what to fix
+    (the "why wrong" basis of the misconceptions behind its wrong options)."""
+
+    practice_id: str = Field(pattern=r"^pt_[1-9]$")
+    sentence: str = Field(min_length=10, max_length=280)
+    feedback_focus: IdmFeedbackFocusV1
+
+
+class IdmFaqMaterialV1(IdmModel):
+    blocks: list[IdmFaqBlockNoteV1] = Field(max_length=24)
+    practices: list[IdmFaqPracticeNoteV1] = Field(max_length=3)
 
 
 class IdmUnitBriefV1(IdmModel):
     """``purpose_profile``/``purpose_summary`` keep the writer and the judge on the course purpose; a brief built
     from a contract-1 design (no purpose) leaves them out or null. ``fidelity_mode`` is the design purpose's content
-    mode (QLT-5 C); absent or null reads as "structured", today's behaviour."""
+    mode (QLT-5 C); absent or null reads as "structured", today's behaviour. ``faq_material`` (QLT-5 D) is set only for
+    a unit with an la_faq slot."""
 
     pipeline_version: Literal["idm-1"]
     course_title: str = Field(min_length=1, max_length=500)
@@ -501,6 +569,7 @@ class IdmUnitBriefV1(IdmModel):
     components: list[IdmBriefComponentV1] = Field(min_length=1, max_length=4)
     lesson_context_facts: list[IdmContextFactV1] = Field(default_factory=list, max_length=80)
     job_aid_signpost: str | None = Field(default=None, max_length=300)
+    faq_material: IdmFaqMaterialV1 | None = None
     brief_hash: Sha256
 
 

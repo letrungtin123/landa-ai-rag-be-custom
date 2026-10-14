@@ -480,7 +480,7 @@ class PromptTests(unittest.TestCase):
         self.assertNotIn("COURSE_PURPOSE", without)
         judge = judge_prompt("vi", plan_summary={"course_purpose": purpose}, facts=[], unit_content=[])
         self.assertIn("Q11_purpose_alignment", judge)
-        self.assertIn("Return one finding per criterion (Q1-Q12)", judge)
+        self.assertIn("Return one finding per criterion (Q1-Q13)", judge)
 
 
 class PatternTests(unittest.TestCase):

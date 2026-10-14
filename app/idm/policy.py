@@ -160,9 +160,11 @@ IDM_NOTES_SUMMARY_CHARS: Final = 160
 IDM_NOTES_MAX_REMOVED: Final = 12
 IDM_UNIT_AUTHOR_NOTE_MAX_CHARS: Final = 1_500
 
-# --- FAQ evidence guard (QC course 234653, R6) ------------------------------------------------
-# An la_faq answer must restate what the facts given to the writer say. Calibrated on the 18 FAQ
-# answers of run e869f43a against the unit's facts: answers that only rephrase the source have
+# --- Evidence guard of callouts and worksheet checklists (QC course 234653, R6) ------------------
+# A callout or a self-check item must restate what the facts given to the writer say (until QLT-5 D an la_faq answer
+# too; an FAQ answer now explains and is grounded in its own basis facts, and the measure below only marks it as
+# inferred for the SME). Calibrated on the 18 FAQ answers of run e869f43a against the unit's facts: answers that only
+# rephrase the source have
 # >= 0.18 of their content word-pairs in the facts; answers that add advice, reasons or examples
 # the source never states ("dừng ở tầng thứ 3 hoặc 7", "đội ngũ liên chức năng không cần tuyển
 # thêm người") have <= 0.12. Function words never count (short connective phrasing is free).
@@ -174,7 +176,7 @@ IDM_FAQ_MIN_WORD_SUPPORT: Final = 0.6
 IDM_FAQ_SENTENCE_MIN_WORDS: Final = 8
 IDM_FAQ_SENTENCE_MIN_PAIR_SUPPORT: Final = 0.08
 IDM_FAQ_SENTENCE_MIN_WORD_SUPPORT: Final = 0.45
-# The shared payload validator needs two FAQ items; ungrounded items are only dropped above it.
+# The shared payload validator needs two FAQ items; items are only dropped above it.
 IDM_FAQ_MIN_ITEMS: Final = 2
 # Share of a worksheet's self-check items that must restate the facts (same test as an FAQ answer).
 IDM_WORKSHEET_MIN_GROUNDED_SHARE: Final = 0.5
@@ -254,6 +256,27 @@ FAQ_TITLE_GENERIC_WORDS: Final = frozenset({
     "frequently", "asked", "questions", "question", "common", "mistakes", "mistake", "misconceptions",
     "misconception", "notes", "note", "clarifications", "answers", "doubts", "faqs",
 })
+
+# --- FAQ that digs deeper (QLT-5 D, ``app.idm.faq_plan``, ``app.idm.faq_checks``) ----------------------------------
+# Measured on 100 FAQ items of 6 runs (plan 2026-10-13 §2.3): 58% recalled a list or checked a yes/no fact, 5% asked
+# "what if", about half of each answer's word pairs came straight from the source and 23% of the answers had a best
+# single-fact LCS >= 0.6; an FAQ sat in 39 of 71 units. W4 now plans an FAQ only for a unit with something to clarify,
+# with at most this many items, each built on at most this many anchor facts.
+IDM_FAQ_PLAN_MAX_ITEMS: Final = 3
+IDM_FAQ_ANCHOR_MAX_FACTS: Final = 3
+# Plain recall questions ("là gì", "gồm những gì", "what is") allowed per FAQ (the QC target is <= 25% recall); an FAQ
+# needs at least one question of a clarifying type.
+IDM_FAQ_MAX_RECALL_ITEMS: Final = 1
+FAQ_COMPONENT_TYPE: Final = "la_faq"
+FAQ_DEEP_TYPES: Final = frozenset({"why", "what_if", "common_mistake"})
+# An answer restates the source when ONE fact holds most of it: the longest common word subsequence (accent-folded)
+# with one fact covers at least this share of the answer's words, or at least this share of the answer's word 5-grams
+# are in one fact. Answers under the minimum number of words are too short to tell. The keep content mode (compliance)
+# may restate its rules and is not measured.
+IDM_FAQ_SOURCE_COPY_MIN_WORDS: Final = 8
+IDM_FAQ_SOURCE_COPY_LCS_SHARE: Final = 0.6
+IDM_FAQ_SOURCE_COPY_NGRAM: Final = 5
+IDM_FAQ_SOURCE_COPY_NGRAM_SHARE: Final = 0.6
 
 # --- Methodology word lists (folded: lower case, no diacritics, d for đ) ----------------
 GENERIC_TITLES: Final = frozenset({

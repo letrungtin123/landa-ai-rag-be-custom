@@ -234,6 +234,61 @@ def is_labelled_example(text: str) -> bool:
     return idm_fold(text).lstrip(" \"'(").startswith(_LABELLED_EXAMPLE_HEADS)
 
 
+@dataclass(frozen=True)
+class KnownFacts:
+    """The numbers, words and adjacent word pairs a text may state: the facts it is built on plus the approved plan.
+    Shared by the content-mode check (``FidelityChecker``) and the FAQ check of each answer (``app.idm.faq_checks``)."""
+
+    numbers: frozenset[str]
+    words: frozenset[str]
+    # Adjacent folded word pairs: a name of several words ("Hồ Chí Minh") is known only as a whole.
+    pairs: frozenset[tuple[str, str]]
+
+    @classmethod
+    def of(cls, texts: Iterable[str], *, plan_texts: Iterable[str] = (),
+           evidence: EvidenceIndex | None = None) -> KnownFacts:
+        """``texts`` (and ``evidence``, an index of more facts) and ``plan_texts``, whose numbers and names may be
+        repeated."""
+
+        numbers: set[str] = set(evidence.numbers) if evidence is not None else set()
+        words: set[str] = set(evidence.words) if evidence is not None else set()
+        pairs: set[tuple[str, str]] = set(evidence.pairs) if evidence is not None else set()
+        for text in [*texts, *plan_texts]:
+            numbers.update(number_tokens(text))
+            tokens = words_of(text)
+            words.update(tokens)
+            pairs.update(pairwise(tokens))
+        return cls(frozenset(numbers), frozenset(words), frozenset(pairs))
+
+    def _known_name(self, run: Sequence[str]) -> bool:
+        folded = [idm_fold(token) for token in run]
+        if len(folded) == 1 and folded[0] in _COMMON_CAPITALISED:
+            return True
+        return all(word in self.words for word in folded) and all(pair in self.pairs for pair in pairwise(folded))
+
+    def new_names(self, text: str) -> list[str]:
+        """Runs of capitalised words (after a sentence's first word) the facts and the plan do not contain: a single
+        word must be known, a run of several ("Hà Nội") must appear as a whole."""
+
+        found: list[str] = []
+        for sentence in _NAME_SPLIT_RE.split(unicodedata.normalize("NFC", " ".join(text.split()))):
+            run: list[str] = []
+            for token in [*_WORD_RE.findall(_LEADING_PUNCTUATION_RE.sub("", sentence))[1:], ""]:
+                if len(token) > 1 and token[0].isupper():
+                    run.append(token)
+                    continue
+                if run and not self._known_name(run):
+                    found.append(" ".join(run))
+                run = []
+        return found
+
+    def states_new_fact(self, text: str) -> bool:
+        """``text`` states a number or a name the facts and the plan do not (a list ordinal is layout, not a fact)."""
+
+        stripped = _ORDINAL_RE.sub("", text, count=1)
+        return bool(number_tokens(stripped) - self.numbers or self.new_names(stripped))
+
+
 @dataclass
 class FidelityChecker:
     """The content mode of one unit and what its checks compare against (built once per unit)."""
@@ -244,10 +299,7 @@ class FidelityChecker:
     # Teaching slots whose treatments are all "keep": exempt from the copy check in structured mode (as before).
     keep_only: frozenset[int]
     slot_grams: Mapping[int, EvidenceGrams]
-    known_numbers: frozenset[str]
-    known_words: frozenset[str]
-    # Adjacent folded word pairs: a name of several words ("Hồ Chí Minh") is known only as a whole.
-    known_pairs: frozenset[tuple[str, str]]
+    known: KnownFacts
 
     @classmethod
     def build(cls, brief: IdmUnitBriefV1, fact_text: Mapping[str, str], evidence: EvidenceIndex, *,
@@ -265,12 +317,8 @@ class FidelityChecker:
             grams[index] = EvidenceGrams([fact_text[key] for key in keys] if keys else everything)
         keep_only = frozenset(index for index in teaching if brief.components[index].treatments
                               and {item.treatment for item in brief.components[index].treatments} == {"keep"})
-        plan = list(plan_texts)
-        numbers = set(evidence.numbers).union(*(number_tokens(text) for text in plan))
-        words = set(evidence.words).union(*(words_of(text) for text in plan))
-        pairs = set(evidence.pairs).union(*(set(pairwise(words_of(text))) for text in plan))
-        return cls(brief_mode(brief), locale, teaching, keep_only, grams, frozenset(numbers), frozenset(words),
-                   frozenset(pairs))
+        return cls(brief_mode(brief), locale, teaching, keep_only, grams,
+                   KnownFacts.of((), plan_texts=plan_texts, evidence=evidence))
 
     def report(self, index: int, component: Mapping[str, Any]) -> CopyReport:
         return copy_report(component, self.slot_grams[index])
@@ -291,38 +339,13 @@ class FidelityChecker:
         report = self.report(index, component)
         return report.judged >= IDM_SENTENCE_COPY_MIN_SENTENCES and report.share > limit
 
-    def _known_name(self, run: Sequence[str]) -> bool:
-        folded = [idm_fold(token) for token in run]
-        if len(folded) == 1 and folded[0] in _COMMON_CAPITALISED:
-            return True
-        return all(word in self.known_words for word in folded) and all(
-            pair in self.known_pairs for pair in pairwise(folded))
-
     def new_names(self, text: str) -> list[str]:
-        """Runs of capitalised words (after a sentence's first word) the facts and the plan do not contain: a single
-        word must be known, a run of several ("Hà Nội") must appear as a whole."""
-
-        found: list[str] = []
-        for sentence in _NAME_SPLIT_RE.split(unicodedata.normalize("NFC", " ".join(text.split()))):
-            run: list[str] = []
-            for token in [*_WORD_RE.findall(_LEADING_PUNCTUATION_RE.sub("", sentence))[1:], ""]:
-                if len(token) > 1 and token[0].isupper():
-                    run.append(token)
-                    continue
-                if run and not self._known_name(run):
-                    found.append(" ".join(run))
-                run = []
-        return found
+        return self.known.new_names(text)
 
     def new_fact_locations(self, component: Mapping[str, Any]) -> list[str]:
         """Locations of texts with a number or a name the facts and the plan do not state (never the text)."""
 
-        locations: list[str] = []
-        for unit in text_units(component):
-            text = _ORDINAL_RE.sub("", unit.text, count=1)
-            if number_tokens(text) - self.known_numbers or self.new_names(text):
-                locations.append(unit.location)
-        return locations
+        return [unit.location for unit in text_units(component) if self.known.states_new_fact(unit.text)]
 
     def findings(self, components: Sequence[Any]) -> list[tuple[str, int]]:
         """(code, slot) of every content-mode finding of the unit's teaching html slots."""
@@ -416,6 +439,7 @@ class FidelityChecker:
 
 __all__ = [
     "EXPLANATION_MISSING_CODE", "FIDELITY_CODES", "NEW_FACT_CODE", "SENTENCE_COPY_CODE",
-    "CopyReport", "EvidenceGrams", "FidelityChecker", "TextUnit", "carries_exact_claim", "copy_report", "explained",
+    "CopyReport", "EvidenceGrams", "FidelityChecker", "KnownFacts", "TextUnit", "carries_exact_claim", "copy_report",
+    "explained",
     "is_labelled_example", "sentences_of", "text_units", "words_of",
 ]

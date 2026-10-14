@@ -20,6 +20,7 @@ from app.idm.contracts import (
     JudgeCriterion,
     JudgeSeverity,
 )
+from app.idm.faq_checks import FAQ_NEW_FACT_CODE, FAQ_RESTATES_SOURCE_CODE, FAQ_TYPE_MIX_CODE, FaqChecker
 from app.idm.fidelity_checks import (
     EXPLANATION_MISSING_CODE,
     NEW_FACT_CODE,
@@ -89,11 +90,14 @@ PURPOSE_CRITERION: Final = "Q11_purpose_alignment"
 # QLT-5 C: an explained unit (content mode explain) explains its teaching for the learner. Stored under Q2_not_copied
 # (the same question: taught, not pasted), so the stored contract stays unchanged; observe mode like the others.
 EXPLAINED_CRITERION: Final = "Q12_explained"
+# QLT-5 D: the FAQ explains (why, what if, a common mistake) instead of restating the source or the html. Stored under
+# Q2_not_copied (restated, not taught), observe mode like Q10-Q12; "not_applicable" for a unit without an la_faq slot.
+FAQ_VALUE_CRITERION: Final = "Q13_faq_value"
 JUDGE_CRITERIA: Final[tuple[JudgeAnswerCriterion, ...]] = (*CRITERIA, TITLE_CRITERION, PURPOSE_CRITERION,
-                                                          EXPLAINED_CRITERION)
+                                                          EXPLAINED_CRITERION, FAQ_VALUE_CRITERION)
 _STORED_CRITERION: Final[dict[str, JudgeCriterion]] = {
     **{criterion: criterion for criterion in CRITERIA}, TITLE_CRITERION: "Q9_traceability",
-    PURPOSE_CRITERION: "Q9_traceability", EXPLAINED_CRITERION: "Q2_not_copied"}
+    PURPOSE_CRITERION: "Q9_traceability", EXPLAINED_CRITERION: "Q2_not_copied", FAQ_VALUE_CRITERION: "Q2_not_copied"}
 # QC course 364564 (N7): two teach-only units (html + FAQ) were rejected for Q3/Q4/Q6 because the judge saw
 # the lesson's practice. A unit without a practice slot cannot fail these: they are "not_applicable",
 # which never counts as a finding and never reaches the stored summary.
@@ -114,6 +118,7 @@ _CRITERION_LABEL_VI: Final = {
     TITLE_CRITERION: "tiêu đề không khớp nội dung được dạy",
     PURPOSE_CRITERION: "nội dung chưa phục vụ đúng mục đích khoá học",
     EXPLAINED_CRITERION: "phần lý thuyết chưa được giảng giải cho người học",
+    FAQ_VALUE_CRITERION: "phần hỏi đáp chỉ nhắc lại nội dung, chưa giải thích vì sao hay lỗi hay gặp",
 }
 _CRITERION_LABEL_EN: Final = {
     "Q1_support_sufficient": "support is not enough for the practice",
@@ -128,9 +133,9 @@ _CRITERION_LABEL_EN: Final = {
     TITLE_CRITERION: "a title does not match what the unit teaches",
     PURPOSE_CRITERION: "the content does not serve the course purpose",
     EXPLAINED_CRITERION: "the theory is not explained for the learner",
+    FAQ_VALUE_CRITERION: "the FAQ only restates the content instead of explaining why or common mistakes",
 }
 _SEVERITY_RANK: Final = {"pass": 0, "minor": 1, "major": 2, "critical": 3}
-FAQ_UNGROUNDED_CODE: Final = "IDM_W5_FAQ_UNGROUNDED"
 FAQ_ITEMS_DROPPED_CODE: Final = "IDM_W5_FAQ_ITEMS_DROPPED"
 WORKSHEET_INCOMPLETE_CODE: Final = "IDM_W5_WORKSHEET_INCOMPLETE"
 ANSWER_LEAK_CODE: Final = "IDM_W5_ANSWER_LEAK"
@@ -188,20 +193,6 @@ def unexplained_options(component: dict[str, Any]) -> list[int]:
         if not by_letter and not (len(text) >= ANSWER_LEAK_MIN_CHARS and text[:_OPTION_TEXT_PREFIX] in folded):
             missing.append(index)
     return missing
-
-
-def faq_item_verdicts(component: dict[str, Any], evidence: EvidenceIndex) -> list[str]:
-    """Grounding verdict of every FAQ answer ("grounded", "numbers", "support", "sentence")."""
-
-    items = component.get("items")
-    return [grounding_verdict(str(item.get("answer") or ""), evidence) if isinstance(item, dict) else "support"
-            for item in items] if isinstance(items, list) else []
-
-
-def ungrounded_faq_items(component: dict[str, Any], evidence: EvidenceIndex) -> list[int]:
-    """Indexes of FAQ items whose answer adds a claim the unit's facts do not state (QC 234653, R6)."""
-
-    return [index for index, verdict in enumerate(faq_item_verdicts(component, evidence)) if verdict != "grounded"]
 
 
 def html_before(unit: dict[str, Any], index: int) -> str:
@@ -309,15 +300,16 @@ def worksheet_complete(component: dict[str, Any], evidence: EvidenceIndex | None
 def deterministic_slot_findings(
     unit: dict[str, Any], brief: IdmUnitBriefV1, owned_text_by_slot: Sequence[str],
     evidence: EvidenceIndex | None = None, framework: FrameworkPromise | None = None, *,
-    fidelity: FidelityChecker | None = None,
+    fidelity: FidelityChecker | None = None, faq_check: FaqChecker | None = None,
 ) -> list[SlotFinding]:
     """IDM checks on top of the shared staged validator (spec §7.7.2(b)).
 
-    With ``evidence`` (the facts the writer was given), FAQ answers and callouts must restate them and a
-    worksheet's self-check list must come from them. With ``framework`` (the "N <items>" a title of the
-    unit promises), the unit's teaching html must list every item (reported on its first html slot). With
-    ``fidelity`` (QLT-5 C), the teaching html slots follow the unit's content mode (``fidelity_checks``); the
-    slot-level verbatim check then only runs in the structured mode, as before.
+    With ``evidence`` (the facts the writer was given), callouts must restate them and a worksheet's self-check
+    list must come from them. With ``framework`` (the "N <items>" a title of the unit promises), the unit's
+    teaching html must list every item (reported on its first html slot). With ``fidelity`` (QLT-5 C), the
+    teaching html slots follow the unit's content mode (``fidelity_checks``); the slot-level verbatim check then
+    only runs in the structured mode, as before. With ``faq_check`` (QLT-5 D), an la_faq slot mixes its question types,
+    does not copy a source fact and states no number or name its basis facts do not (``faq_checks``).
     """
 
     slot_copy_check = fidelity is None or fidelity.mode == "structured"
@@ -347,8 +339,8 @@ def deterministic_slot_findings(
             if cut_fragments(component.get("semantic_content")):
                 findings.append(SlotFinding(SOURCE_ARTIFACT_CODE, index))
         elif kind == "la_faq":
-            if evidence is not None and ungrounded_faq_items(component, evidence):
-                findings.append(SlotFinding(FAQ_UNGROUNDED_CODE, index))
+            if faq_check is not None:
+                findings.extend(SlotFinding(code, index) for code in faq_check.findings(index, component))
             if restated_faq_items(component, preceding_html):
                 findings.append(SlotFinding(FAQ_RESTATES_HTML_CODE, index))
             if faq_title_mismatch(component):
@@ -447,13 +439,13 @@ def advisory_slot_findings(unit: dict[str, Any], exempt: Collection[int] = ()) -
 def final_unit_findings(unit: dict[str, Any], brief: IdmUnitBriefV1, owned_text_by_slot: Sequence[str],
                         evidence: EvidenceIndex | None, fallback_slots: Collection[int], *,
                         framework: FrameworkPromise | None = None,
-                        fidelity: FidelityChecker | None = None) -> list[SlotFinding]:
+                        fidelity: FidelityChecker | None = None, faq: FaqChecker | None = None) -> list[SlotFinding]:
     """What the returned unit still has (QC course 364564, N8): the IDM checks of its provider slots plus the
     review-only notes. A code seen before a repair is not in it unless the final unit still fails it."""
 
     exempt = set(fallback_slots)
     found = [item for item in deterministic_slot_findings(unit, brief, owned_text_by_slot, evidence, framework,
-                                                          fidelity=fidelity)
+                                                          fidelity=fidelity, faq_check=faq)
              if item.component_index not in exempt]
     return [*found, *advisory_slot_findings(unit, exempt)]
 
@@ -501,13 +493,16 @@ def has_practice_slot(brief: IdmUnitBriefV1) -> bool:
     return any(slot.role == "practice" or slot.type in GRADED_PRACTICE_TYPES for slot in brief.components)
 
 
-def settle_applicability(findings: Sequence[IdmJudgeFindingV1], *, practice_slot: bool) -> list[IdmJudgeFindingV1]:
-    """Q3/Q4/Q6 of a unit without a practice slot become "not_applicable" whatever the judge answered;
-    "not_applicable" on any other criterion is no verdict and is dropped (QC course 364564, N7)."""
+def settle_applicability(findings: Sequence[IdmJudgeFindingV1], *, practice_slot: bool,
+                         faq_slot: bool = True) -> list[IdmJudgeFindingV1]:
+    """Q3/Q4/Q6 of a unit without a practice slot (and Q13 of a unit without an la_faq slot) become "not_applicable"
+    whatever the judge answered; "not_applicable" on any other criterion is no verdict and is dropped (QC course
+    364564, N7)."""
 
     settled: list[IdmJudgeFindingV1] = []
     for finding in findings:
-        if finding.criterion in PRACTICE_CRITERIA and not practice_slot:
+        if ((finding.criterion in PRACTICE_CRITERIA and not practice_slot)
+                or (finding.criterion == FAQ_VALUE_CRITERION and not faq_slot)):
             settled.append(finding.model_copy(update={"severity": NOT_APPLICABLE}))
         elif finding.severity != NOT_APPLICABLE:
             settled.append(finding)
@@ -528,11 +523,12 @@ async def run_judge(
     facts: Sequence[tuple[str, str]],
     unit: dict[str, Any],
     practice_slot: bool = True,
+    faq_slot: bool = True,
 ) -> JudgeOutcome:
     """One bounded judge call; never raises for provider/budget/response problems.
 
     ``practice_slot`` is False for a unit without a practice or question slot: its practice criteria
-    are not applicable (QC course 364564, N7).
+    are not applicable (QC course 364564, N7); ``faq_slot`` is False for a unit without an la_faq slot (Q13).
     """
 
     if mode == "off":
@@ -554,7 +550,8 @@ async def run_judge(
         return JudgeOutcome("failed")
     component_count = len(unit.get("components", []))
     findings = [finding.model_copy(update={"witness": sanitize_author_text(finding.witness, 300)})
-                for finding in settle_applicability(response.findings, practice_slot=practice_slot)
+                for finding in settle_applicability(response.findings, practice_slot=practice_slot,
+                                                    faq_slot=faq_slot)
                 if finding.component_index is None or finding.component_index < component_count]
     counts = worst_counts(findings)
     status: JudgeStatus = "reject" if counts.critical else "review_required" if counts.major else "pass"
@@ -607,6 +604,9 @@ def build_unit_author_note(
     framework_list_inserted: int = 0,
     worksheet_compacted: bool = False,
     drafted_examples: Mapping[int, int] | None = None,
+    faq_items_copied: int = 0,
+    faq_items_recall: int = 0,
+    faq_inferred: Mapping[int, int] | None = None,
 ) -> str:
     """Template note for the unit ``implementation_notes``; no IDs, no ``<``/``>``.
 
@@ -618,6 +618,9 @@ def build_unit_author_note(
     still open). Without ``remaining`` every deterministic code counts as still open.
 
     ``drafted_examples`` (QLT-5 C): the examples labelled "Ví dụ minh hoạ" per slot; the author checks each one.
+    ``faq_items_copied``/``faq_items_recall`` (QLT-5 D): FAQ items dropped because they copied a source sentence or only
+    asked for a fact again; ``faq_inferred``: per FAQ slot, the answers that explain beyond the words of their facts
+    (the SME checks that they add no rule).
     """
 
     vi = locale == "vi"
@@ -663,6 +666,12 @@ def build_unit_author_note(
     if faq_items_restated:
         parts.append(f"Đã bỏ {faq_items_restated} câu hỏi đáp chỉ nhắc lại nội dung vừa học." if vi
                      else f"{faq_items_restated} FAQ item(s) that only repeated the content just taught were removed.")
+    if faq_items_copied:
+        parts.append(f"Đã bỏ {faq_items_copied} câu hỏi đáp gần như chép nguyên câu tài liệu." if vi
+                     else f"{faq_items_copied} FAQ item(s) that nearly copied a source sentence were removed.")
+    if faq_items_recall:
+        parts.append(f"Đã bỏ {faq_items_recall} câu hỏi đáp chỉ hỏi lại kiến thức đã học." if vi
+                     else f"{faq_items_recall} FAQ item(s) that only asked for a fact again were removed.")
     if faq_items_invalid:
         parts.append(f"Đã bỏ {faq_items_invalid} câu hỏi đáp hệ thống không lưu được (ký tự góc nhọn, câu hỏi trùng)."
                      if vi else f"{faq_items_invalid} FAQ item(s) the course editor cannot store (angle brackets, "
@@ -686,6 +695,8 @@ def build_unit_author_note(
         parts.extend(_check_lines(vi, deterministic_codes, remaining, fixed_codes, slot_types))
     if drafted_examples and not whole_fallback:
         parts.append(_drafted_examples_line(drafted_examples, slot_types, vi))
+    if faq_inferred and not whole_fallback:
+        parts.append(_faq_inferred_line(faq_inferred, slot_types, vi))
     if ai_drafted and not whole_fallback:  # a source-locked unit carries no drafted scenario
         parts.append("Tình huống minh hoạ do AI soạn, cần SME xác nhận tính thực tế." if vi
                      else "The illustrative scenario was drafted by AI; the SME should confirm it is realistic.")
@@ -704,18 +715,40 @@ def _drafted_examples_line(examples: Mapping[int, int], slot_types: Sequence[str
             else f"Illustrative examples drafted by AI — please check: {total} example(s) ({where}).")
 
 
+def _faq_inferred_line(inferred: Mapping[int, int], slot_types: Sequence[str], vi: bool) -> str:
+    """One plain line: FAQ answers that explain beyond the words of their facts, for the SME to check."""
+
+    labels = _SLOT_LABEL_VI if vi else _SLOT_LABEL_EN
+    total = sum(inferred.values())
+    where = ", ".join(f"{'khối' if vi else 'block'} {index + 1}"
+                      + (f" ({labels[slot_types[index]]})" if index < len(slot_types) and slot_types[index] in labels
+                         else "") for index in sorted(inferred))
+    return (f"Câu trả lời hỏi đáp có phần AI suy luận từ tài liệu — SME cần kiểm tra không có quy định mới: "
+            f"{total} câu ({where})." if vi
+            else f"FAQ answers with AI reasoning drawn from the source — the SME should check they add no new rule: "
+                 f"{total} answer(s) ({where}).")
+
+
 # Content-mode findings (QLT-5 C) in plain words, without codes.
 _PLAIN_HINT_VI: Final = {
     SENTENCE_COPY_CODE: "nhiều câu gần như chép nguyên văn tài liệu — nên viết lại bằng lời dễ hiểu và giải thích thêm",
     EXPLANATION_MISSING_CODE: "phần lý thuyết mới nêu lại nội dung tài liệu — nên thêm giải thích vì sao quan trọng "
                               "và một ví dụ",
     NEW_FACT_CODE: "có số liệu hoặc tên riêng không có trong tài liệu — cần kiểm tra và bỏ nếu không đúng",
+    FAQ_TYPE_MIX_CODE: "phần hỏi đáp chủ yếu hỏi lại kiến thức — nên có câu hỏi vì sao, nếu… thì sao hoặc lỗi hay gặp",
+    FAQ_RESTATES_SOURCE_CODE: "câu trả lời hỏi đáp gần như chép nguyên câu tài liệu — nên giải thích bằng lời của mình",
+    FAQ_NEW_FACT_CODE: "câu hỏi đáp có số liệu hoặc tên riêng không có trong tài liệu — cần kiểm tra và bỏ nếu không "
+                       "đúng",
 }
 _PLAIN_HINT_EN: Final = {
     SENTENCE_COPY_CODE: "many sentences copy the source almost word for word — rewrite them in plain words and explain "
                         "them",
     EXPLANATION_MISSING_CODE: "the theory only restates the source — add why it matters and an example",
     NEW_FACT_CODE: "a number or a name that is not in the source — check it and remove it if it is wrong",
+    FAQ_TYPE_MIX_CODE: "the FAQ mostly asks for facts again — add a why, what-if or common-mistake question",
+    FAQ_RESTATES_SOURCE_CODE: "an FAQ answer nearly copies a source sentence — explain it in your own words",
+    FAQ_NEW_FACT_CODE: "an FAQ item states a number or a name that is not in the source — check it and remove it if it "
+                       "is wrong",
 }
 
 
@@ -830,15 +863,14 @@ def blocking_count(findings: Sequence[IdmJudgeFindingV1]) -> int:
 __all__ = [
     "ANSWER_CONTESTED_CODE", "ANSWER_LEAK_CODE", "CALLOUT_KIND", "CALLOUT_TO_PROSE_CODE", "CALLOUT_UNGROUNDED_CODE",
     "CRITERIA", "EXPLAINED_CRITERION", "FAQ_ITEMS_DROPPED_CODE", "FAQ_RESTATES_HTML_CODE", "FAQ_TITLE_MISMATCH_CODE",
-    "FAQ_UNGROUNDED_CODE",
+    "FAQ_VALUE_CRITERION",
     "FRAMEWORK_INCOMPLETE_CODE", "FRAMEWORK_LIST_INSERTED_CODE", "JUDGE_CRITERIA", "NOT_APPLICABLE",
     "PRACTICE_CRITERIA", "PURPOSE_CRITERION", "SOURCE_ARTIFACT_CODE", "TITLE_CRITERION", "WORKSHEET_INCOMPLETE_CODE",
     "JudgeOutcome",
     "SlotFinding", "advisory_slot_findings", "blocking_count",
     "build_unit_author_note", "build_unit_quality", "callouts_as_paragraphs", "copied_options",
-    "deterministic_slot_findings", "faq_item_verdicts", "faq_title_mismatch", "final_unit_findings",
+    "deterministic_slot_findings", "faq_title_mismatch", "final_unit_findings",
     "has_practice_slot", "html_before", "learner_view", "repair_targets", "restated_faq_items", "reworded_key",
     "run_judge",
-    "settle_applicability", "settled_codes", "unexplained_options", "ungrounded_callouts", "ungrounded_faq_items",
-    "worksheet_complete",
+    "settle_applicability", "settled_codes", "unexplained_options", "ungrounded_callouts", "worksheet_complete",
 ]

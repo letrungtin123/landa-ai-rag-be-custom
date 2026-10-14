@@ -673,7 +673,33 @@
             "example_scenario": null,
             "visual_asset": null,
             "user_behavior_navigation": "Đọc, chọn rồi xem phản hồi."
-           }
+           },
+           "faq_items": [
+            {
+             "question_type": "common_mistake",
+             "anchor_fact_keys": [
+              "d1-c8-f2",
+              "d1-c8-f3"
+             ],
+             "origin": "source"
+            },
+            {
+             "question_type": "what_if",
+             "anchor_fact_keys": [
+              "d1-c8-f3"
+             ],
+             "origin": "source"
+            },
+            {
+             "question_type": "common_mistake",
+             "anchor_fact_keys": [
+              "d1-c6-f2",
+              "d1-c6-f3",
+              "d1-c6-f4"
+             ],
+             "origin": "distractor"
+            }
+           ]
           }
          ],
          "media_brief": null
@@ -684,7 +710,7 @@
      ],
      "lesson_index_offset": 2,
      "stage_origin": "provider",
-     "design_hash": "d09949dc7d30db98c5525848983ee170031ddf077371799a7ed29734b145d542"
+     "design_hash": "39ce5fa32e873a9b6d31b4abd0d5686fabf1da330b077715cdfb01889f3e183c"
     }
    },
    "usage": {
@@ -704,8 +730,8 @@
     "op": "generate",
     "model": "test-model",
     "schema": "IdmW3W4ModuleResponseV1",
-    "prompt_sha256": "622762a9b96b7a663fc0b1f023035248b9118663f5c9f427f9b244554707b54b",
-    "prompt_chars": 12736,
+    "prompt_sha256": "4f7f148c66b989da286a164faeb4908a1e6b57aaba2071ae1750803c976cb39b",
+    "prompt_chars": 12936,
     "config": {
      "max_output_tokens": 48000,
      "response_mime_type": "application/json",

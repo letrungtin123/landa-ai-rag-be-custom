@@ -26,6 +26,16 @@ from app.idm.artifacts import clean_question, clean_semantic
 from app.idm.budget import judge_repair_fits, repair_thinking_for, writer_thinking
 from app.idm.contracts import IdmUnitBriefV1, brief_hash_of
 from app.idm.diagram import idm_diagram_relationships
+from app.idm.faq_checks import (
+    FAQ_RESTATES_SOURCE_CODE,
+    FAQ_TYPE_MIX_CODE,
+    FAQ_VALUE_CODES,
+    RECALL,
+    FaqChecker,
+    extra_recall_items,
+    faq_writer_rules,
+    question_types,
+)
 from app.idm.fidelity import brief_mode, budget_words, slot_marks, writer_fidelity_rules
 from app.idm.fidelity_checks import (
     FIDELITY_CODES,
@@ -57,6 +67,8 @@ from app.idm.node_acceptance import (
 )
 from app.idm.policy import (
     EXTRA_WORDS_PER_MUST_KNOW_BLOCK,
+    FAQ_COMPONENT_TYPE,
+    FAQ_DEEP_TYPES,
     IDM_FAQ_MIN_ITEMS,
     IDM_UNIT_WRITER_MAX_OUTPUT_TOKENS,
     MAX_GENERATED_WORDS,
@@ -84,7 +96,6 @@ from app.idm.qa import (
     FAQ_ITEMS_DROPPED_CODE,
     FAQ_RESTATES_HTML_CODE,
     FAQ_TITLE_MISMATCH_CODE,
-    FAQ_UNGROUNDED_CODE,
     FRAMEWORK_INCOMPLETE_CODE,
     FRAMEWORK_LIST_INSERTED_CODE,
     SOURCE_ARTIFACT_CODE,
@@ -105,7 +116,6 @@ from app.idm.qa import (
     run_judge,
     settled_codes,
     ungrounded_callouts,
-    ungrounded_faq_items,
 )
 from app.idm.runtime import (
     IdmBudgetError,
@@ -147,22 +157,25 @@ VERBATIM_COPY_CODE: Final = "IDM_W5_VERBATIM_COPY"
 # the author fixes in a minute.
 # QLT-5 C: a copy (slot or sentence level), explanation or new-fact finding of a teaching slot is a review note too:
 # the source-locked rebuild would answer "too close to the source" with the source itself (plan 2026-10-13 §2.2,
-# point 5).
+# point 5). QLT-5 D: so is an FAQ that recalls, copies a source sentence or states a new number or name: the
+# source-locked FAQ is made of verbatim source sentences.
 _REVIEW_FIRST_CODES: Final = frozenset({WORKSHEET_INCOMPLETE_CODE, ANSWER_LEAK_CODE, ANSWER_CONTESTED_CODE,
                                         CALLOUT_UNGROUNDED_CODE, FAQ_RESTATES_HTML_CODE, FAQ_TITLE_MISMATCH_CODE,
                                         FRAMEWORK_INCOMPLETE_CODE, SOURCE_ARTIFACT_CODE, VERBATIM_COPY_CODE,
-                                        *FIDELITY_CODES})
+                                        *FIDELITY_CODES, *FAQ_VALUE_CODES})
+# Findings whose repair is dropped when it breaks a shared or Node rule: they end as review notes anyway.
+_REVIEW_ONLY_CODES: Final = frozenset({*FIDELITY_CODES, *FAQ_VALUE_CODES})
 # Findings a deterministic step settles when the repair does not (a list inserted, an FAQ item dropped, a callout
 # turned into prose, a review note): their repair alone is a targeted one, a scoped rewrite at low thinking. QC run
 # ab8d67e1 (R3): two leak repairs at medium thinking were cut by the unit deadline.
 _TARGETED_REPAIR_CODES: Final = frozenset({FRAMEWORK_INCOMPLETE_CODE, ANSWER_LENGTH_CUE_CODE, ANSWER_LEAK_CODE,
-                                           ANSWER_CONTESTED_CODE, FAQ_UNGROUNDED_CODE, FAQ_RESTATES_HTML_CODE,
-                                           FAQ_TITLE_MISMATCH_CODE, CALLOUT_UNGROUNDED_CODE, SOURCE_ARTIFACT_CODE,
-                                           *FIDELITY_CODES})
+                                           ANSWER_CONTESTED_CODE, FAQ_RESTATES_HTML_CODE, FAQ_TITLE_MISMATCH_CODE,
+                                           CALLOUT_UNGROUNDED_CODE, SOURCE_ARTIFACT_CODE, *FIDELITY_CODES,
+                                           *FAQ_VALUE_CODES})
 # A non-targeted repair that would not finish before the unit deadline is not started (R3).
 REPAIR_SKIPPED_CODE: Final = "IDM_W5_REPAIR_SKIPPED_BUDGET"
 # FAQ findings settled by dropping the items concerned while the slot keeps two items.
-_FAQ_PRUNE_CODES: Final = frozenset({FAQ_UNGROUNDED_CODE, FAQ_RESTATES_HTML_CODE})
+_FAQ_PRUNE_CODES: Final = frozenset({FAQ_RESTATES_HTML_CODE, *FAQ_VALUE_CODES})
 _MAX_HINT_FACT_KEYS: Final = 24
 # Locations named per content-mode repair line (server-built JSON paths, never text).
 _MAX_HINT_LOCATIONS: Final = 8
@@ -376,10 +389,15 @@ class IdmUnitWriter:
         # QLT-5 C: the content mode of the unit and its checks of the teaching html slots. Names and numbers of the
         # approved plan's titles may be repeated; drafted plan text (support briefs, scenarios) adds none.
         self.mode = brief_mode(brief)
-        self.fidelity = FidelityChecker.build(
-            brief, self.text_by_id, self.evidence, locale=runtime.locale,
-            plan_texts=[brief.course_title, brief.module_title, brief.lesson_title, brief.lesson_objective,
-                        brief.unit_purpose, contract.unit_title, *(slot.title for slot in brief.components)])
+        plan_texts = [brief.course_title, brief.module_title, brief.lesson_title, brief.lesson_objective,
+                      brief.unit_purpose, contract.unit_title, *(slot.title for slot in brief.components)]
+        self.fidelity = FidelityChecker.build(brief, self.text_by_id, self.evidence, locale=runtime.locale,
+                                              plan_texts=plan_texts)
+        # QLT-5 D: the FAQ plan and the facts each FAQ answer is grounded in (its anchors, not the whole lesson).
+        self.faq = FaqChecker.build(
+            brief, {**{item.fact_key: item.fact_text for item in brief.lesson_context_facts}, **self.text_by_id},
+            plan_texts=[*plan_texts, *brief.lesson_practice_sentences])
+        self.has_faq = any(slot.type == FAQ_COMPONENT_TYPE for slot in brief.components)
         # A unit or html slot title that names "N <items>" promises an overview of all N items (QC 364564, N5). The
         # items come from the unit's facts or, for an orientation unit whose blocks only introduce the framework,
         # from the server-written support item W4 attached with the names of every item (QC run 8de1c76b, Q3).
@@ -400,6 +418,10 @@ class IdmUnitWriter:
         self.faq_items_dropped = 0
         # FAQ items dropped because their answer only repeated the html above them (N11).
         self.faq_items_restated = 0
+        # QLT-5 D: FAQ items dropped because they copied a source sentence, or asked for a fact again past the one
+        # recall question allowed.
+        self.faq_items_copied = 0
+        self.faq_items_recall = 0
         # FAQ items dropped because Node's workspace schema rejects them (not a grounding problem).
         self.faq_items_invalid = 0
         # Ungrounded callouts turned into plain paragraphs after the repair could not ground them (N9).
@@ -427,7 +449,10 @@ class IdmUnitWriter:
             "treatments": [item.model_dump(mode="json") for item in slot.treatments],
             "owned_fact_keys": slot.owned_fact_keys, "supporting_fact_keys": slot.supporting_fact_keys,
             **slot_marks(brief, index),
+            **({"faq_items": [item.model_dump(mode="json") for item in slot.faq_items]} if slot.faq_items else {}),
         } for index, slot in enumerate(brief.components)]
+        material = ({"faq_material": brief.faq_material.model_dump(mode="json")}
+                    if brief.faq_material is not None else {})
         return unit_writer_prompt(
             self.runtime.locale, course_title=brief.course_title, audience=brief.target_audience,
             lesson_title=brief.lesson_title, lesson_objective=brief.lesson_objective,
@@ -435,7 +460,7 @@ class IdmUnitWriter:
             next_title=brief.next_lesson_title,
             unit_brief={"unit_title": self.contract.unit_title, "segment": brief.unit_segment,
                         "purpose": brief.unit_purpose, "slots": slots,
-                        "job_aid_signpost": brief.job_aid_signpost},
+                        "job_aid_signpost": brief.job_aid_signpost, **material},
             facts=[(fact.fact_key, fact.fact_text, None) for fact in self.contract.source_facts],
             context_facts=[(item.fact_key, item.fact_text, None) for item in brief.lesson_context_facts],
             html_rules=html_slot_rules(max_words=self.budget.get("max_words"),
@@ -443,6 +468,7 @@ class IdmUnitWriter:
                                        min_chars=self.min_html_chars, explain=self.mode == "explain")
             if any(slot.type == "html" for slot in brief.components) else "",
             course_purpose=brief_purpose(brief), fidelity_rules=writer_fidelity_rules(self.mode, self.runtime.locale),
+            faq_rules=faq_writer_rules(self.mode) if self.has_faq else "",
         )
 
     def html_violations(self, component: Any) -> list[HtmlRuleViolation]:
@@ -496,14 +522,22 @@ class IdmUnitWriter:
                     explained.add(code)
         return lines
 
-    def faq_rule_line(self, slot: str, index: int, component: dict[str, Any], code: str = FAQ_UNGROUNDED_CODE,
+    def faq_rule_line(self, slot: str, index: int, component: dict[str, Any], code: str,
                       unit: dict[str, Any] | None = None) -> str:
-        """Targeted repair: which items to rewrite and which facts they may use (keys, never text)."""
+        """Targeted repair: which items to rewrite, the server-measured type mix and the facts each item is planned
+        on (keys and numbers, never text)."""
 
+        hint = self.faq.plan_hint(index) or self.fact_hint(index)
+        if code == FAQ_TYPE_MIX_CODE:
+            types = question_types(component)
+            deep = sum(kind in FAQ_DEEP_TYPES for kind in types)
+            return (rule_line(slot, code, f"{slot}.items") + f" ({types.count(RECALL)} recall question(s), {deep} why, "
+                    "what-if or common-mistake question(s))" + hint)
         found = (restated_faq_items(component, html_before(unit or {}, index)) if code == FAQ_RESTATES_HTML_CODE
-                 else ungrounded_faq_items(component, self.evidence))
+                 else self.faq.restated(component) if code == FAQ_RESTATES_SOURCE_CODE
+                 else self.faq.with_new_facts(index, component))
         items = ", ".join(f"{slot}.items[{item}]" for item in found)
-        return rule_line(slot, code, items or slot) + self.fact_hint(index)
+        return rule_line(slot, code, items or slot) + hint
 
     def callout_rule_line(self, slot: str, index: int, component: dict[str, Any]) -> str:
         """Targeted repair of the callouts the facts do not support (QC course 364564, N9)."""
@@ -684,7 +718,7 @@ class IdmUnitWriter:
         exempt = {*draft.fallback_slots, *draft.review_slots}
         idm = [(item.code, item.component_index)
                for item in deterministic_slot_findings(draft.unit, self.brief, self.owned_text, self.evidence,
-                                                       self.framework, fidelity=self.fidelity)
+                                                       self.framework, fidelity=self.fidelity, faq_check=self.faq)
                if item.component_index not in exempt]
         return finding, idm
 
@@ -833,25 +867,38 @@ class IdmUnitWriter:
                       sorted({*draft.review_slots, index}), {**draft.reasons, index: list(dict.fromkeys(reasons))})
 
     def prune_faq(self, draft: _Draft, index: int) -> _Draft | None:
-        """Drop the FAQ items the facts do not support or that repeat the html above them (N11) while the
-        slot keeps its minimum item count."""
+        """Drop the FAQ items that repeat the html above them (N11), copy a source sentence or state a number or a
+        name their facts do not (QLT-5 D), and the recall questions past the one allowed when a clarifying question
+        stays, while the slot keeps its minimum item count."""
 
         components = list(draft.unit.get("components", []))
         component = components[index] if 0 <= index < len(components) else None
         items = component.get("items") if isinstance(component, dict) else None
-        if not isinstance(component, dict) or component.get("type") != "la_faq" or not isinstance(items, list):
+        if (not isinstance(component, dict) or component.get("type") != FAQ_COMPONENT_TYPE
+                or not isinstance(items, list)):
             return None
-        ungrounded = set(ungrounded_faq_items(component, self.evidence))
-        restated = set(restated_faq_items(component, html_before(draft.unit, index))) - ungrounded
-        drop = ungrounded | restated
+        restated = set(restated_faq_items(component, html_before(draft.unit, index)))
+        copied = set(self.faq.restated(component)) - restated
+        new_facts = set(self.faq.with_new_facts(index, component)) - restated - copied
+        drop = restated | copied | new_facts
+        types = question_types(component)
+        kept = [position for position in range(len(items)) if position not in drop]
+        kept_types = [types[position] for position in kept]
+        recall = ({kept[position] for position in extra_recall_items(kept_types)}
+                  if any(kind in FAQ_DEEP_TYPES for kind in kept_types) else set())
+        drop |= recall
         keep = [item for position, item in enumerate(items) if position not in drop]
         if not drop or len(keep) < IDM_FAQ_MIN_ITEMS:
             return None
         components[index] = {**component, "items": keep}
-        self.faq_items_dropped += len(ungrounded)
+        self.faq_items_dropped += len(new_facts)
         self.faq_items_restated += len(restated)
+        self.faq_items_copied += len(copied)
+        self.faq_items_recall += len(recall)
         self.codes.append(FAQ_ITEMS_DROPPED_CODE)
-        for key, count in (("w5_faq_items_dropped", len(ungrounded)), ("w5_faq_items_restated_dropped", len(restated))):
+        for key, count in (("w5_faq_items_dropped", len(new_facts)), ("w5_faq_items_restated_dropped", len(restated)),
+                           ("w5_faq_items_copied_dropped", len(copied)),
+                           ("w5_faq_items_recall_dropped", len(recall))):
             if count:
                 self.runtime.adjustments[key] += count
         return _Draft({**draft.unit, "components": components}, list(draft.fallback_slots), draft.repair_applied,
@@ -983,10 +1030,10 @@ class IdmUnitWriter:
         original = draft
         # Only notes to settle: a repair that breaks anything else is dropped (the unit was acceptable before).
         notes_only = finding is None and not idm
-        # Only content-mode findings (QLT-5 C): they end as review notes, so a repair that makes a slot fail a shared
-        # or Node rule (a longer explanation over the budget) is dropped instead of replacing the slot with the
+        # Only content-mode or FAQ findings (QLT-5 C, D): they end as review notes, so a repair that makes a slot fail a
+        # shared or Node rule (a longer explanation over the budget) is dropped instead of replacing the slot with the
         # source-locked copy.
-        fidelity_only = finding is None and bool(idm) and {code for code, _index in idm} <= FIDELITY_CODES
+        review_only = finding is None and bool(idm) and {code for code, _index in idm} <= _REVIEW_ONLY_CODES
         slot = _slot_of(finding)
         if finding is not None and slot is None:
             return None
@@ -1008,8 +1055,9 @@ class IdmUnitWriter:
         if repaired and notes_only and any(self.problems(draft)):
             self.runtime.adjustments["w5_note_repair_reverted"] += 1
             draft = original
-        elif repaired and fidelity_only and self.problems(draft)[0] is not None:
-            self.runtime.adjustments["w5_fidelity_repair_reverted"] += 1
+        elif repaired and review_only and self.problems(draft)[0] is not None:
+            fidelity = {code for code, _index in idm} <= FIDELITY_CODES
+            self.runtime.adjustments["w5_fidelity_repair_reverted" if fidelity else "w5_faq_repair_reverted"] += 1
             draft = original
         # Each pass settles one step of one slot (Node item pruning, FAQ pruning or callouts to prose, then
         # fallback or review), so the bound never limits.
@@ -1032,8 +1080,8 @@ class IdmUnitWriter:
                     draft = pruned
                     continue
             if finding is None:
-                # Still-ungrounded FAQ answers (R6) and answers that repeat the html above (N11) are dropped
-                # while the slot keeps two items.
+                # FAQ answers that repeat the html above (N11), copy a source sentence or state a new number or name,
+                # and recall questions past the allowance (QLT-5 D) are dropped while the slot keeps two items.
                 pruned = self.prune_faq(draft, bad) if set(reasons) & _FAQ_PRUNE_CODES else None
                 if pruned is not None:
                     draft = pruned
@@ -1168,11 +1216,13 @@ async def run_idm_unit(
     # N8: "still warns" is recomputed on the returned unit; codes settled on the way are listed apart.
     remaining = [] if whole_fallback else final_unit_findings(draft.unit, brief, writer.owned_text, writer.evidence,
                                                               draft.fallback_slots, framework=writer.framework,
-                                                              fidelity=writer.fidelity)
+                                                              fidelity=writer.fidelity, faq=writer.faq)
     components = draft.unit.get("components", [])
     # Labelled examples of provider slots only: a source-locked slot carries none.
     drafted = {} if whole_fallback else {index: count for index, count in writer.fidelity.drafted_examples(
         components).items() if index not in draft.fallback_slots}
+    # FAQ answers that explain beyond the words of their facts: the SME checks they add no rule (QLT-5 D).
+    inferred = {} if whole_fallback else writer.faq.inferred_counts(components, draft.fallback_slots)
     fixed = [] if whole_fallback else settled_codes(
         writer.codes, remaining, {code for index in draft.fallback_slots for code in draft.reasons.get(index, ())})
     note = build_unit_author_note(
@@ -1183,7 +1233,8 @@ async def run_idm_unit(
         faq_items_invalid=writer.faq_items_invalid, remaining=remaining, fixed_codes=fixed,
         faq_items_restated=writer.faq_items_restated, callouts_to_prose=writer.callouts_converted,
         framework_list_inserted=writer.framework_inserted, worksheet_compacted=writer.worksheet_compacted,
-        drafted_examples=drafted)
+        drafted_examples=drafted, faq_items_copied=writer.faq_items_copied, faq_items_recall=writer.faq_items_recall,
+        faq_inferred=inferred)
     quality = build_unit_quality(mode=deps.judge_mode, judge=judge, repair_applied=draft.repair_applied,
                                  deterministic_codes=[*writer.codes, *(item.code for item in remaining)],
                                  author_note=note)
@@ -1197,6 +1248,8 @@ async def run_idm_unit(
         "remaining_codes": sorted({item.code for item in remaining}), "fixed_codes": sorted(set(fixed)),
         "failure_codes": sorted(set(writer.failure_codes)), "faq_items_dropped": writer.faq_items_dropped,
         "faq_items_invalid": writer.faq_items_invalid, "faq_items_restated": writer.faq_items_restated,
+        "faq_items_copied": writer.faq_items_copied, "faq_items_recall": writer.faq_items_recall,
+        "faq": {} if whole_fallback else writer.faq.metrics(components),
         "callouts_to_prose": writer.callouts_converted, "framework_list_inserted": writer.framework_inserted,
         "slot_reasons": {str(index): codes for index, codes in sorted(draft.reasons.items())},
         "node_acceptance": writer.acceptance_seen[:_MAX_LOGGED_DETAILS],
@@ -1263,12 +1316,14 @@ async def _judge_and_repair(writer: IdmUnitWriter, draft: _Draft, mode: JudgeMod
         "course_purpose": brief_purpose(writer.brief),
         # QLT-5 C: Q12 judges how an explained unit explains (not_applicable in the other modes).
         "fidelity_mode": writer.mode,
+        # QLT-5 D: Q13 judges the value of the unit's FAQ (not_applicable without one).
+        "has_faq_slot": writer.has_faq,
         "slots": [{"index": index, "type": slot.type, "role": slot.role, "title": slot.title,
                    "treatments": [item.model_dump(mode="json") for item in slot.treatments]}
                   for index, slot in enumerate(writer.brief.components)],
     }
     judge = await run_judge(writer.runtime, mode=mode, plan_summary=summary, facts=facts, unit=draft.unit,
-                            practice_slot=practice_slot)
+                            practice_slot=practice_slot, faq_slot=writer.has_faq)
     targets = [index for index in repair_targets(judge.findings) if index not in draft.fallback_slots]
     if mode != "repair" or not targets:
         return draft, judge
@@ -1291,7 +1346,7 @@ async def _judge_and_repair(writer: IdmUnitWriter, draft: _Draft, mode: JudgeMod
     if finding is not None or idm:
         return draft, judge
     second = await run_judge(writer.runtime, mode=mode, plan_summary=summary, facts=facts, unit=repaired.unit,
-                             practice_slot=practice_slot)
+                             practice_slot=practice_slot, faq_slot=writer.has_faq)
     if second.status in {"pass", "review_required", "reject"} and (
             blocking_count(second.findings) < blocking_count(judge.findings)):
         return repaired, second
