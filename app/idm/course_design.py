@@ -10,6 +10,7 @@ import time
 from typing import Any, Final
 
 from app.idm.architecture import AssemblyInput, assemble_idm_course_design, project_course_skeleton, run_w4
+from app.idm.author_brief import BRIEF_CONTEXT_KEYS, assert_design_mode_ready
 from app.idm.blueprint import blocked_must_dos, build_dispositions, hold_items, run_w2
 from app.idm.content_map import (
     FactIndex,
@@ -66,6 +67,8 @@ async def run_idm_course_design(
     """Return the ``/course-skeleton`` response: legacy envelope plus ``idm`` (spec §5.6)."""
 
     started = time.perf_counter()
+    # QLT-6 part 1: the preserve_source pipeline is not built yet; fail before any provider call.
+    assert_design_mode_ready(request.project_context)
     _validate_source(request)
     context = request.project_context
     facts = request.source_facts
@@ -77,8 +80,11 @@ async def run_idm_course_design(
     # Later stages keep their minimum admissible share of the task allowance (runtime.idm_tail_reserve).
     tail = idm_tail_reserve(IDM_W1_REDUCE_MAX_OUTPUT_TOKENS, IDM_W2_MAX_OUTPUT_TOKENS,
                             IDM_W4_COURSE_MAX_OUTPUT_TOKENS)
+    # The launch brief (QLT-6) reaches the stages that decide the course, inside AUTHOR_COURSE_INTENT; W1-map only
+    # maps the source, so its PROJECT_CONTEXT stays as before.
     section_results = await map_sections(
-        runtime, section_plan.sections, index, context.model_dump(mode="json"), furniture,
+        runtime, section_plan.sections, index, context.model_dump(mode="json", exclude=set(BRIEF_CONTEXT_KEYS)),
+        furniture,
         parallelism=parallelism, tail_reserve_tokens=tail,
     )
     blocks, noise = rekey_blocks(section_results, index)

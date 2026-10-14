@@ -153,6 +153,8 @@ def build_course_notes(
     pattern_label: str = "",
     template_gaps: Sequence[str] = (),
     kept_background: Sequence[KeptDefinitionNote] = (),
+    brief_lines: Sequence[str] = (),
+    audience_entered: bool = False,
 ) -> str:
     """Course ``implementation_notes`` (spec §8.4).
 
@@ -167,14 +169,23 @@ def build_course_notes(
     QLT-5: the head says which course purpose the design followed (``purpose_line``); right after the Holds come
     the required parts of the purpose's course pattern the source lacks (``template_gaps``, plain notes the AI wrote
     no content for), and after the kept definitions the onboarding background kept against the W2 proposal.
+
+    QLT-6: right after the workflow tag, what the author entered when starting AI ID (``brief_lines``: the learner
+    audience and the course purpose, as entered); with an entered audience (``audience_entered``) only the
+    objectives are marked as proposed by AI.
     """
 
     vi = locale == "vi"
     head = [f"[Thiết kế theo quy trình ID — {IDM_PIPELINE_VERSION}]" if vi
             else f"[Designed with the ID workflow — {IDM_PIPELINE_VERSION}]"]
+    head.extend(line for line in brief_lines if line.strip())
     if purpose_line:
         head.append(purpose_line)
-    if ai_proposed:
+    if ai_proposed and audience_entered:
+        head.append("• Mục tiêu học tập: do AI đề xuất theo mục đích và đối tượng học tác giả nhập — cần xác nhận."
+                    if vi else "• Learning objectives: proposed by AI for the purpose and audience the author entered "
+                               "— please confirm.")
+    elif ai_proposed:
         head.append("• Mục tiêu học tập và đối tượng học: do AI đề xuất từ tài liệu — cần xác nhận." if vi
                     else "• Learning objectives and target audience: proposed by AI from the source — please confirm.")
     head.append(f"• Thời lượng ước tính: {total_minutes} phút ({lesson_count} mục, {module_count} chương)." if vi

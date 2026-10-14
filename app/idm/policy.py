@@ -13,7 +13,9 @@ LEGACY_PIPELINE_VERSION: Final = "v2-legacy"
 # 2 (QLT-5): project_context.course_description, IdmCourseDesignV1.purpose, the unit brief's purpose fields and the
 # module context's purpose. Node reads stored contract-1 designs unchanged. QLT-5 C adds, still in contract 2 (not
 # released yet), the optional purpose.fidelity_mode and unit brief fidelity_mode and the "explain" treatment.
-IDM_CONTRACT_VERSION: Final = 2
+# 3 (QLT-6): the launch brief in project_context (design_mode, learner_audience, course_purpose), the "author"
+# audience origin, the "purpose" purpose evidence and the unit brief's design_mode. Node reads contracts 1-2 unchanged.
+IDM_CONTRACT_VERSION: Final = 3
 IDM_PROMPT_POLICY_VERSION: Final = "idm-prompt-1"
 IDM_SCOPE_KEY_PREFIX: Final = "idmcb_"
 IDM_SCOPE_KEY_HEX_CHARS: Final = 32

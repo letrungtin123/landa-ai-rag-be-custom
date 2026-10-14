@@ -8,6 +8,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any, Final
 
+from app.idm.author_brief import author_brief, brief_note_lines
 from app.idm.blueprint import KeptDefinition
 from app.idm.contracts import (
     IdmAudienceV1,
@@ -529,6 +530,7 @@ def _build_notes(data: AssemblyInput) -> IdmAuthorNotesV1:
     names = {block.block_id: block.name for block in data.blocks}
     pending = pending_objective_ids(data.objectives, data.must_dos, data.blocked)
     purpose = data.purpose or default_purpose(data.context)
+    author_purpose = author_brief(data.context).course_purpose is not None
     course = build_course_notes(
         locale=locale, ai_proposed=ai_proposed, total_minutes=sum(lesson.est_minutes for lesson in lessons),
         lesson_count=len(lessons), module_count=len(data.plan.modules), reference_block_count=reference_count,
@@ -548,13 +550,15 @@ def _build_notes(data: AssemblyInput) -> IdmAuthorNotesV1:
         kept_definitions=[KeptDefinitionNote(names[item.block_id], item.terms, item.proposed)
                           for item in data.kept_definitions if item.block_id in names],
         # QLT-5 C: then how the content is written (the content mode), and whether the description asked for it.
-        purpose_line=purpose_note_line(purpose, locale) + "\n" + fidelity_note_line(
+        purpose_line=purpose_note_line(purpose, locale, author_purpose=author_purpose) + "\n" + fidelity_note_line(
             purpose_mode(purpose), locale,
             requested=purpose_mode(purpose) != PROFILES[purpose.profile].fidelity_mode),
         pattern_label=profile_label(purpose.profile, locale),
         template_gaps=[gap.note for gap in purpose.template_gaps],
         kept_background=[KeptDefinitionNote(names[item.block_id], (), item.proposed)
                          for item in data.kept_background if item.block_id in names],
+        # QLT-6: what the author entered when starting AI ID, as entered.
+        brief_lines=brief_note_lines(data.context), audience_entered=data.audience.origin == "author",
     )
     blooms = {item.must_do_id: item.bloom for item in data.must_dos}
     modules = {module.module_key: build_module_notes(

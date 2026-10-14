@@ -49,6 +49,8 @@ UnitSegment = Literal["context_explain", "example", "practice_feedback", "summar
 ScenarioOrigin = Literal["source", "ai_drafted", "none"]
 SignalFlag = Literal["H", "T", "S", "R", "E", "M", "D", "V"]
 Origin = Literal["client", "ai_proposed"]
+# Who set the course audience: the request ("client"), the author when starting AI ID ("author", QLT-6) or the AI.
+AudienceOrigin = Literal["client", "ai_proposed", "author"]
 StageOrigin = Literal["provider", "partial_fallback", "deterministic_fallback"]
 IdmComponentType = Literal["html", "problem", "la_faq", "la_sortable", "la_crossword", "la_diagram"]
 # Keys of the stored quality summary (``IdmUnitQualityV1.criteria``; Node mirror ``IDM_JUDGE_CRITERIA``).
@@ -71,7 +73,11 @@ Locale = Literal["vi", "en"]
 PurposeProfile = Literal["onboarding", "product", "compliance", "sales", "soft_skills", "general"]
 PurposeConfidence = Literal["high", "medium", "low"]
 PurposeOrigin = Literal["author_intent", "ai_inferred", "deterministic_fallback"]
-PurposeEvidence = Literal["title", "description", "source"]
+# "purpose" (QLT-6): the course purpose the author entered when starting AI ID.
+PurposeEvidence = Literal["title", "description", "source", "purpose"]
+# How the author started AI ID (QLT-6): the full IDM design, or the document kept word for word. Absent (None) on runs
+# started before QLT-6, which are designed as before.
+DesignMode = Literal["instructional_design", "preserve_source"]
 # How closely learner text follows the source wording (QLT-5 C, ``app.idm.fidelity``): derived from the purpose
 # profile (and a clear wording request in the author's description), never chosen by authors.
 FidelityMode = Literal["keep", "structured", "explain"]
@@ -115,11 +121,16 @@ class IdmSourceDocumentRefV1(IdmModel):
 class IdmProjectContextV1(IdmModel):
     """``course_title_hint`` and ``course_description`` are the author's intent (the CMS course name and
     description, sanitised by Node). They are data for the prompts, never instructions (QLT-5 A); a request
-    of contract 1 has no description and reads as ``None``."""
+    of contract 1 has no description and reads as ``None``. Contract 3 (QLT-6) adds the launch brief
+    (``app.idm.author_brief``): ``design_mode`` and, for a designed course, the ``learner_audience`` and
+    ``course_purpose`` the author entered when starting AI ID; a request of contract 1 or 2 reads them as ``None``."""
 
     locale: Locale
     course_title_hint: str | None = Field(default=None, max_length=500)
     course_description: str | None = Field(default=None, max_length=2000)
+    design_mode: DesignMode | None = None
+    learner_audience: str | None = Field(default=None, max_length=300)
+    course_purpose: str | None = Field(default=None, max_length=500)
     source_documents: list[IdmSourceDocumentRefV1] = Field(min_length=1, max_length=20)
     target_audience: str | None = Field(default=None, max_length=2000)
     learning_objectives: list[Line500] = Field(default_factory=list, max_length=8)
@@ -220,7 +231,7 @@ class IdmConflictV1(IdmModel):
 
 class IdmAudienceV1(IdmModel):
     description: str = Field(min_length=10, max_length=2000)
-    origin: Origin
+    origin: AudienceOrigin
 
 
 class IdmW1ReduceResponseV1(IdmModel):
@@ -354,18 +365,19 @@ class IdmPurposeV1(IdmModel):
     summary: str = Field(min_length=10, max_length=500)
     confidence: PurposeConfidence
     origin: PurposeOrigin
-    evidence: list[PurposeEvidence] = Field(max_length=3)
+    evidence: list[PurposeEvidence] = Field(max_length=4)
     signals: list[PurposeSignal] = Field(max_length=8)
     template_gaps: list[IdmTemplateGapV1] = Field(max_length=12)
     fidelity_mode: FidelityMode | None = None
 
 
 class IdmCourseDesignV1(IdmModel):
-    """Contract 2 adds ``purpose`` and ``project_context.course_description``; Node still reads stored
-    designs of contract 1 (``lesson-author-idm.contract.ts``)."""
+    """Contract 2 adds ``purpose`` and ``project_context.course_description``; contract 3 (QLT-6) the launch brief in
+    ``project_context`` and the "author" audience origin. Node still reads stored designs of contracts 1 and 2
+    (``lesson-author-idm.contract.ts``)."""
 
     pipeline_version: Literal["idm-1"]
-    idm_contract_version: Literal[2]
+    idm_contract_version: Literal[3]
     prompt_policy_version: Literal["idm-prompt-1"]
     source_snapshot_hash: Sha256
     project_context: IdmProjectContextV1
@@ -550,7 +562,8 @@ class IdmUnitBriefV1(IdmModel):
     """``purpose_profile``/``purpose_summary`` keep the writer and the judge on the course purpose; a brief built
     from a contract-1 design (no purpose) leaves them out or null. ``fidelity_mode`` is the design purpose's content
     mode (QLT-5 C); absent or null reads as "structured", today's behaviour. ``faq_material`` (QLT-5 D) is set only for
-    a unit with an la_faq slot."""
+    a unit with an la_faq slot. ``design_mode`` (contract 3, QLT-6) is how the author started AI ID; absent or null in
+    a brief built from an older design."""
 
     pipeline_version: Literal["idm-1"]
     course_title: str = Field(min_length=1, max_length=500)
@@ -558,6 +571,7 @@ class IdmUnitBriefV1(IdmModel):
     purpose_profile: PurposeProfile | None = None
     purpose_summary: str | None = Field(default=None, max_length=500)
     fidelity_mode: FidelityMode | None = None
+    design_mode: DesignMode | None = None
     module_title: str = Field(min_length=1, max_length=500)
     lesson_title: str = Field(min_length=1, max_length=180)
     lesson_objective: str = Field(min_length=1, max_length=500)

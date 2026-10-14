@@ -10,6 +10,7 @@ from collections.abc import Collection, Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any, Final, Literal
 
+from app.idm.author_brief import author_audience
 from app.idm.contracts import (
     IdmAudienceV1,
     IdmBlockLoLinkV1,
@@ -584,9 +585,11 @@ def fallback_w1_reduce(
     links = [IdmBlockLoLinkV1(block_id=block.block_id, relation="direct",
                               lo_id=objectives[position * len(objectives) // max(1, len(groups))].lo_id)
              for position, (_title, items) in enumerate(groups) for block in items]
-    if context.target_audience:
+    # QLT-6: the audience the author entered when starting AI ID comes first and is never replaced.
+    audience = author_audience(context)
+    if audience is None and context.target_audience:
         audience = IdmAudienceV1(description=context.target_audience, origin="client")
-    else:
+    elif audience is None:
         audience = IdmAudienceV1(description=single_line(fallback_audience(context), 2000), origin="ai_proposed")
     # The purpose of a fallback reduce is the server classifier's (``app.idm.purpose``); the course design records
     # it with origin deterministic_fallback.
@@ -598,10 +601,14 @@ def fallback_w1_reduce(
 
 
 def apply_client_context(response: IdmW1ReduceResponseV1, context: IdmProjectContextV1) -> IdmW1ReduceResponseV1:
-    """Client-provided audience/objectives are authoritative and copied verbatim."""
+    """Client-provided audience/objectives are authoritative and copied verbatim; the audience the author entered
+    when starting AI ID (QLT-6, origin "author") comes first."""
 
     update: dict[str, Any] = {}
-    if context.target_audience:
+    entered = author_audience(context)
+    if entered is not None:
+        update["target_audience"] = entered
+    elif context.target_audience:
         update["target_audience"] = IdmAudienceV1(description=context.target_audience, origin="client")
     else:
         update["target_audience"] = response.target_audience.model_copy(update={

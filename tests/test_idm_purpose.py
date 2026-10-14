@@ -15,6 +15,7 @@ from collections.abc import Awaitable, Callable
 from typing import Any
 
 from app.idm.architecture import run_w4
+from app.idm.author_brief import INTENT_TAG, author_intent_block
 from app.idm.blueprint import run_w2
 from app.idm.content_map import FactIndex, run_w1_reduce, validate_w1_reduce
 from app.idm.contracts import (
@@ -37,7 +38,6 @@ from app.idm.course_design import run_idm_course_design
 from app.idm.notes import KeptDefinitionNote, build_course_notes
 from app.idm.prompts import judge_prompt, module_prompt, unit_writer_prompt, w2_blueprint_prompt
 from app.idm.purpose import (
-    INTENT_TAG,
     ONBOARDING_CONTENT_KEPT_CODE,
     PATTERN_GAP_CODE,
     PATTERN_ORDER_CODE,
@@ -45,7 +45,6 @@ from app.idm.purpose import (
     PROFILES,
     PURPOSE_MISSING_CODE,
     PURPOSE_OVERRIDDEN_CODE,
-    author_intent_block,
     check_pattern,
     classify_author_intent,
     fallback_audience,
@@ -579,7 +578,7 @@ class OnboardingCourseDesignTests(unittest.TestCase):
         result = run_onboarding(provider)
         design = IdmCourseDesignV1.model_validate(result["idm"])
         self.assertEqual((design.idm_contract_version, design.purpose.profile, design.purpose.origin),
-                         (2, "onboarding", "author_intent"))
+                         (3, "onboarding", "author_intent"))
         self.assertEqual(design.project_context.course_description, "Khoá học dành cho")
         self.assertEqual([gap.section_key for gap in design.purpose.template_gaps], ["organisation", "ways_of_working"])
         history = {item.fact_key: item.disposition for item in design.dispositions}

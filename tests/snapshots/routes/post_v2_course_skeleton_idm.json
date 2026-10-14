@@ -1114,13 +1114,16 @@
    },
    "idm": {
     "pipeline_version": "idm-1",
-    "idm_contract_version": 2,
+    "idm_contract_version": 3,
     "prompt_policy_version": "idm-prompt-1",
     "source_snapshot_hash": "af8270f967b41b2da4243ff9c472b446458f9de9bdeac1fa8ef354f80624587f",
     "project_context": {
      "locale": "vi",
      "course_title_hint": "Xử lý khiếu nại khách hàng",
      "course_description": null,
+     "design_mode": null,
+     "learner_audience": null,
+     "course_purpose": null,
      "source_documents": [
       {
        "document_id": "00000000-0000-4000-8000-0000000000d1",
@@ -2479,7 +2482,7 @@
      "w2": "provider",
      "w4": "provider"
     },
-    "design_hash": "fed43da7f6f25b85213910b4b480998be97b09d89d4922c9557dcbd9d0c9e325"
+    "design_hash": "297e5875e4d0f34ead1102be656a47ad5f2a5788b00785443d37519ef5984059"
    },
    "usage": {
     "inputTokens": 1924,
@@ -2520,8 +2523,8 @@
      "max_output_tokens": 24000,
      "response_mime_type": "application/json",
      "response_schema": {
-      "sha256": "aaa1c399ab3a473a5942ccc965fcfbcf4b67ae2ffeea050bddfe4e95e84ea903",
-      "chars": 3436
+      "sha256": "5f975cdf3d63881f5d8c2e24ef3fe9609c25f03e74fea8bb389c84ee750542d5",
+      "chars": 3457
      },
      "temperature": 0.2
     }
