@@ -64,6 +64,11 @@ JudgeAnswerCriterion = Literal[
 ]
 JudgeAnswerSeverity = Literal["pass", "minor", "major", "critical", "not_applicable"]
 Locale = Literal["vi", "en"]
+# Course purpose profiles (QLT-5 B, ``app.idm.purpose``): internal, inferred, never chosen by the author.
+PurposeProfile = Literal["onboarding", "product", "compliance", "sales", "soft_skills", "general"]
+PurposeConfidence = Literal["high", "medium", "low"]
+PurposeOrigin = Literal["author_intent", "ai_inferred", "deterministic_fallback"]
+PurposeEvidence = Literal["title", "description", "source"]
 
 # --- Shared constrained strings ------------------------------------------------------------
 FactKey = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=255)]
@@ -77,6 +82,8 @@ ScopeKey = Annotated[str, StringConstraints(pattern=r"^idmcb_[0-9a-f]{32}$")]
 Sha256 = Annotated[str, StringConstraints(pattern=r"^[0-9a-f]{64}$")]
 ComponentPlanId = Annotated[str, StringConstraints(pattern=r"^cp2_[a-f0-9]{32}$")]
 SmeQuestion = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=400)]
+PatternSectionKey = Annotated[str, StringConstraints(pattern=r"^[a-z][a-z_]{1,39}$")]
+PurposeSignal = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=40)]
 Line300 = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=300)]
 Line500 = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=500)]
 Line280 = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=280)]
@@ -96,8 +103,13 @@ class IdmSourceDocumentRefV1(IdmModel):
 
 
 class IdmProjectContextV1(IdmModel):
+    """``course_title_hint`` and ``course_description`` are the author's intent (the CMS course name and
+    description, sanitised by Node). They are data for the prompts, never instructions (QLT-5 A); a request
+    of contract 1 has no description and reads as ``None``."""
+
     locale: Locale
     course_title_hint: str | None = Field(default=None, max_length=500)
+    course_description: str | None = Field(default=None, max_length=2000)
     source_documents: list[IdmSourceDocumentRefV1] = Field(min_length=1, max_length=20)
     target_audience: str | None = Field(default=None, max_length=2000)
     learning_objectives: list[Line500] = Field(default_factory=list, max_length=8)
@@ -202,8 +214,15 @@ class IdmAudienceV1(IdmModel):
 
 
 class IdmW1ReduceResponseV1(IdmModel):
+    """The purpose fields are required on the provider wire but may be null: a missing or unusable answer falls
+    back to the server classifier (``app.idm.purpose.resolve_purpose``) instead of rejecting the whole stage.
+    Their bounds are generous for the same reason; the server trims the summary."""
+
     merges: list[IdmMergeV1] = Field(default_factory=list, max_length=100)
     conflicts: list[IdmConflictV1] = Field(default_factory=list, max_length=50)
+    purpose_profile: PurposeProfile | None
+    purpose_summary: str | None = Field(max_length=2000)
+    purpose_evidence: list[PurposeEvidence] = Field(max_length=8)
     target_audience: IdmAudienceV1
     learning_objectives: list[IdmLearningObjectiveV1] = Field(min_length=1, max_length=8)
     must_dos: list[IdmMustDoV1] = Field(min_length=1, max_length=40)
@@ -259,12 +278,22 @@ class IdmModulePlanV1(IdmModel):
     lessons: list[IdmLessonPlanV1] = Field(min_length=1, max_length=30)
 
 
+class IdmPatternSectionMapV1(IdmModel):
+    """Which lessons teach one part of the purpose's course pattern. Keys are checked by the server (an unknown
+    key or lesson is ignored with a warning), so they are plain bounded strings here."""
+
+    section_key: str = Field(min_length=1, max_length=60)
+    lesson_keys: list[Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=16)]] = (
+        Field(max_length=120))
+
+
 class IdmW4CourseResponseV1(IdmModel):
     course_title: str = Field(min_length=3, max_length=500)
     course_summary: str = Field(min_length=20, max_length=2000)
     assessment_strategy: str = Field(min_length=10, max_length=2000)
     prerequisites: list[Line300] = Field(default_factory=list, max_length=10)
     modules: list[IdmModulePlanV1] = Field(min_length=1, max_length=24)
+    pattern_sections: list[IdmPatternSectionMapV1] = Field(max_length=24)
 
 
 # --- Course design (spec §6.6) ---------------------------------------------------------------
@@ -299,12 +328,36 @@ class IdmAuthorNotesV1(IdmModel):
     lessons: dict[str, Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=2000)]]
 
 
+class IdmTemplateGapV1(IdmModel):
+    """A required part of the purpose's course pattern the source has no content for (author-facing note)."""
+
+    section_key: PatternSectionKey
+    note: str = Field(min_length=1, max_length=300)
+
+
+class IdmPurposeV1(IdmModel):
+    """The course purpose the pipeline designed for (QLT-5 B). ``evidence`` names the inputs that decided it,
+    ``signals`` the server keywords found in the author's course name/description."""
+
+    profile: PurposeProfile
+    summary: str = Field(min_length=10, max_length=500)
+    confidence: PurposeConfidence
+    origin: PurposeOrigin
+    evidence: list[PurposeEvidence] = Field(max_length=3)
+    signals: list[PurposeSignal] = Field(max_length=8)
+    template_gaps: list[IdmTemplateGapV1] = Field(max_length=12)
+
+
 class IdmCourseDesignV1(IdmModel):
+    """Contract 2 adds ``purpose`` and ``project_context.course_description``; Node still reads stored
+    designs of contract 1 (``lesson-author-idm.contract.ts``)."""
+
     pipeline_version: Literal["idm-1"]
-    idm_contract_version: Literal[1]
+    idm_contract_version: Literal[2]
     prompt_policy_version: Literal["idm-prompt-1"]
     source_snapshot_hash: Sha256
     project_context: IdmProjectContextV1
+    purpose: IdmPurposeV1
     target_audience: IdmAudienceV1
     learning_objectives: list[IdmLearningObjectiveV1] = Field(min_length=1, max_length=8)
     must_dos: list[IdmMustDoV1] = Field(min_length=1, max_length=40)

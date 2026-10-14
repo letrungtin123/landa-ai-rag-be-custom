@@ -19,6 +19,7 @@ from app.idm.contracts import (
     IdmMustDoV1,
     IdmNoiseDraftV1,
     IdmProjectContextV1,
+    IdmPurposeV1,
     IdmW2BlueprintResponseV1,
     Placement,
     StageOrigin,
@@ -26,6 +27,14 @@ from app.idm.contracts import (
 )
 from app.idm.policy import IDM_W2_MAX_OUTPUT_TOKENS, IDM_W2_SINGLE_CALL_MAX_BLOCKS, THINKING_W2
 from app.idm.prompts import COMPACT_W2, answer_repair, repair_suffix, w2_blueprint_prompt
+from app.idm.purpose import (
+    ONBOARDING_CONTENT_KEPT_CODE,
+    KeptBackground,
+    default_purpose,
+    keep_onboarding_content,
+    prompt_project_context,
+    w2_purpose_rules,
+)
 from app.idm.runtime import (
     IdmBudgetError,
     IdmProviderError,
@@ -80,6 +89,8 @@ class BlueprintResult:
     origin: StageOrigin
     codes: dict[str, int]
     kept_definitions: list[KeptDefinition] = field(default_factory=list)
+    # QLT-5: onboarding background W2 proposed to leave out, kept by the server.
+    kept_background: list[KeptBackground] = field(default_factory=list)
 
 
 def blueprint_catalog(blocks: Sequence[IdmContentBlockV1], links: Sequence[IdmBlockLoLinkV1]) -> list[dict[str, Any]]:
@@ -412,7 +423,13 @@ async def run_w2(
     must_dos: Sequence[IdmMustDoV1],
     index: FactIndex,
     tail_reserve_tokens: int,
+    purpose: IdmPurposeV1 | None = None,
 ) -> BlueprintResult:
+    """``purpose`` (QLT-5) adds the author intent and what the course purpose keeps; without it the general
+    profile applies (today's rules)."""
+
+    purpose = purpose or default_purpose(context)
+    rules, background = w2_purpose_rules(context, purpose)
     codes: Counter[str] = Counter()
     rows: list[IdmBlueprintRowV1] = []
     fallback_batches = 0
@@ -420,10 +437,11 @@ async def run_w2(
     for batch in batches:
         batch_ids = {block.block_id for block in batch}
         prompt = w2_blueprint_prompt(
-            runtime.locale, project_context=context.model_dump(mode="json"),
+            runtime.locale, project_context=prompt_project_context(context),
             objectives=[item.model_dump(mode="json") for item in objectives],
             must_dos=[item.model_dump(mode="json") for item in must_dos],
             catalog=blueprint_catalog(batch, [link for link in links if link.block_id in batch_ids]),
+            purpose_rules=rules, background_rule=background,
         )
         accepted: list[IdmBlueprintRowV1] | None = None
         repair = ""
@@ -464,7 +482,11 @@ async def run_w2(
                                        fact_text=index.text)
     if kept:
         codes[TERM_DEFINITION_KEPT_CODE] += len(kept)
+    rows, background_kept = keep_onboarding_content(rows, blocks, profile=purpose.profile, must_dos=must_dos,
+                                                    locale=context.locale)
+    if background_kept:
+        codes[ONBOARDING_CONTENT_KEPT_CODE] += len(background_kept)
     applied_blocks, applied_links, applied_rows = apply_w2(rows, blocks, links, index)
     origin: StageOrigin = ("provider" if fallback_batches == 0
                            else "deterministic_fallback" if fallback_batches == len(batches) else "partial_fallback")
-    return BlueprintResult(applied_blocks, applied_links, applied_rows, origin, dict(codes), kept)
+    return BlueprintResult(applied_blocks, applied_links, applied_rows, origin, dict(codes), kept, background_kept)

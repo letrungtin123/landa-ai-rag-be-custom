@@ -1015,7 +1015,7 @@
   },
   {
    "schema": "IdmW1ReduceResponseV1",
-   "text": "{\"merges\": [], \"conflicts\": [], \"target_audience\": {\"description\": \"Nhân viên Chăm sóc Khách hàng tuyến đầu tiếp nhận khiếu nại qua tổng đài, đã nắm sản phẩm cơ bản và cần xử lý đúng quy trình, đúng thời hạn.\", \"origin\": \"ai_proposed\"}, \"learning_objectives\": [{\"lo_id\": \"lo_1\", \"statement\": \"Người học có thể phân loại khiếu nại theo nhóm và mức độ nghiêm trọng dựa trên bảng cấp độ\", \"bloom\": \"apply\", \"origin\": \"ai_proposed\"}, {\"lo_id\": \"lo_2\", \"statement\": \"Người học có thể quyết định tự xử lý hay escalate khiếu nại theo tiêu chí bắt buộc\", \"bloom\": \"evaluate\", \"origin\": \"ai_proposed\"}, {\"lo_id\": \"lo_3\", \"statement\": \"Người học có thể thực hiện quy trình tiếp nhận và xử lý khiếu nại đúng trình tự\", \"bloom\": \"apply\", \"origin\": \"ai_proposed\"}], \"must_dos\": [{\"must_do_id\": \"md_1\", \"lo_id\": \"lo_1\", \"statement\": \"Phân loại khiếu nại theo nhóm\", \"kind\": \"do\", \"bloom\": \"apply\"}, {\"must_do_id\": \"md_2\", \"lo_id\": \"lo_1\", \"statement\": \"Đánh giá mức độ nghiêm trọng của khiếu nại\", \"kind\": \"decide\", \"bloom\": \"analyze\"}, {\"must_do_id\": \"md_3\", \"lo_id\": \"lo_2\", \"statement\": \"Quyết định tự xử lý hay escalate\", \"kind\": \"decide\", \"bloom\": \"evaluate\"}, {\"must_do_id\": \"md_4\", \"lo_id\": \"lo_3\", \"statement\": \"Thực hiện các bước tiếp nhận khiếu nại đúng trình tự\", \"kind\": \"do\", \"bloom\": \"apply\"}, {\"must_do_id\": \"md_5\", \"lo_id\": \"lo_3\", \"statement\": \"Phản hồi khách hàng đúng thời hạn\", \"kind\": \"do\", \"bloom\": \"apply\"}], \"lo_links\": [{\"block_id\": \"cb_0001\", \"lo_id\": \"lo_3\", \"relation\": \"unrelated\"}, {\"block_id\": \"cb_0002\", \"lo_id\": \"lo_3\", \"relation\": \"unrelated\"}, {\"block_id\": \"cb_0003\", \"lo_id\": \"lo_1\", \"relation\": \"supporting\"}, {\"block_id\": \"cb_0004\", \"lo_id\": \"lo_1\", \"relation\": \"direct\"}, {\"block_id\": \"cb_0005\", \"lo_id\": \"lo_1\", \"relation\": \"direct\"}, {\"block_id\": \"cb_0005\", \"lo_id\": \"lo_2\", \"relation\": \"supporting\"}, {\"block_id\": \"cb_0006\", \"lo_id\": \"lo_3\", \"relation\": \"direct\"}, {\"block_id\": \"cb_0007\", \"lo_id\": \"lo_3\", \"relation\": \"direct\"}, {\"block_id\": \"cb_0008\", \"lo_id\": \"lo_3\", \"relation\": \"direct\"}, {\"block_id\": \"cb_0009\", \"lo_id\": \"lo_2\", \"relation\": \"direct\"}, {\"block_id\": \"cb_0010\", \"lo_id\": \"lo_3\", \"relation\": \"direct\"}, {\"block_id\": \"cb_0011\", \"lo_id\": \"lo_2\", \"relation\": \"supporting\"}, {\"block_id\": \"cb_0012\", \"lo_id\": \"lo_3\", \"relation\": \"supporting\"}, {\"block_id\": \"cb_0013\", \"lo_id\": \"lo_1\", \"relation\": \"context\"}, {\"block_id\": \"cb_0014\", \"lo_id\": \"lo_2\", \"relation\": \"context\"}]}",
+   "text": "{\"merges\": [], \"conflicts\": [], \"purpose_profile\": \"compliance\", \"purpose_summary\": \"Giúp nhân viên Chăm sóc Khách hàng xử lý khiếu nại đúng quy trình, đúng tiêu chí escalate và đúng thời hạn.\", \"purpose_evidence\": [\"title\", \"source\"], \"target_audience\": {\"description\": \"Nhân viên Chăm sóc Khách hàng tuyến đầu tiếp nhận khiếu nại qua tổng đài, đã nắm sản phẩm cơ bản và cần xử lý đúng quy trình, đúng thời hạn.\", \"origin\": \"ai_proposed\"}, \"learning_objectives\": [{\"lo_id\": \"lo_1\", \"statement\": \"Người học có thể phân loại khiếu nại theo nhóm và mức độ nghiêm trọng dựa trên bảng cấp độ\", \"bloom\": \"apply\", \"origin\": \"ai_proposed\"}, {\"lo_id\": \"lo_2\", \"statement\": \"Người học có thể quyết định tự xử lý hay escalate khiếu nại theo tiêu chí bắt buộc\", \"bloom\": \"evaluate\", \"origin\": \"ai_proposed\"}, {\"lo_id\": \"lo_3\", \"statement\": \"Người học có thể thực hiện quy trình tiếp nhận và xử lý khiếu nại đúng trình tự\", \"bloom\": \"apply\", \"origin\": \"ai_proposed\"}], \"must_dos\": [{\"must_do_id\": \"md_1\", \"lo_id\": \"lo_1\", \"statement\": \"Phân loại khiếu nại theo nhóm\", \"kind\": \"do\", \"bloom\": \"apply\"}, {\"must_do_id\": \"md_2\", \"lo_id\": \"lo_1\", \"statement\": \"Đánh giá mức độ nghiêm trọng của khiếu nại\", \"kind\": \"decide\", \"bloom\": \"analyze\"}, {\"must_do_id\": \"md_3\", \"lo_id\": \"lo_2\", \"statement\": \"Quyết định tự xử lý hay escalate\", \"kind\": \"decide\", \"bloom\": \"evaluate\"}, {\"must_do_id\": \"md_4\", \"lo_id\": \"lo_3\", \"statement\": \"Thực hiện các bước tiếp nhận khiếu nại đúng trình tự\", \"kind\": \"do\", \"bloom\": \"apply\"}, {\"must_do_id\": \"md_5\", \"lo_id\": \"lo_3\", \"statement\": \"Phản hồi khách hàng đúng thời hạn\", \"kind\": \"do\", \"bloom\": \"apply\"}], \"lo_links\": [{\"block_id\": \"cb_0001\", \"lo_id\": \"lo_3\", \"relation\": \"unrelated\"}, {\"block_id\": \"cb_0002\", \"lo_id\": \"lo_3\", \"relation\": \"unrelated\"}, {\"block_id\": \"cb_0003\", \"lo_id\": \"lo_1\", \"relation\": \"supporting\"}, {\"block_id\": \"cb_0004\", \"lo_id\": \"lo_1\", \"relation\": \"direct\"}, {\"block_id\": \"cb_0005\", \"lo_id\": \"lo_1\", \"relation\": \"direct\"}, {\"block_id\": \"cb_0005\", \"lo_id\": \"lo_2\", \"relation\": \"supporting\"}, {\"block_id\": \"cb_0006\", \"lo_id\": \"lo_3\", \"relation\": \"direct\"}, {\"block_id\": \"cb_0007\", \"lo_id\": \"lo_3\", \"relation\": \"direct\"}, {\"block_id\": \"cb_0008\", \"lo_id\": \"lo_3\", \"relation\": \"direct\"}, {\"block_id\": \"cb_0009\", \"lo_id\": \"lo_2\", \"relation\": \"direct\"}, {\"block_id\": \"cb_0010\", \"lo_id\": \"lo_3\", \"relation\": \"direct\"}, {\"block_id\": \"cb_0011\", \"lo_id\": \"lo_2\", \"relation\": \"supporting\"}, {\"block_id\": \"cb_0012\", \"lo_id\": \"lo_3\", \"relation\": \"supporting\"}, {\"block_id\": \"cb_0013\", \"lo_id\": \"lo_1\", \"relation\": \"context\"}, {\"block_id\": \"cb_0014\", \"lo_id\": \"lo_2\", \"relation\": \"context\"}]}",
    "usage": [
     301,
     603,
@@ -1033,7 +1033,7 @@
   },
   {
    "schema": "IdmW4CourseResponseV1",
-   "text": "{\"course_title\": \"Xử lý khiếu nại khách hàng đúng quy trình\", \"course_summary\": \"Khoá học giúp nhân viên Chăm sóc Khách hàng phân loại, đánh giá và quyết định hướng xử lý khiếu nại đúng tiêu chí, tránh hứa hẹn sai và escalate đúng lúc.\", \"assessment_strategy\": \"Kiểm tra nhanh sau phần Must Know, bài tình huống quyết định escalate cuối mỗi mục.\", \"prerequisites\": [\"Biết sử dụng tổng đài và hệ thống CRM ở mức cơ bản\"], \"modules\": [{\"module_key\": \"mod_01\", \"title\": \"Phân loại và đánh giá mức độ khiếu nại\", \"performance_goal\": \"Phân loại đúng nhóm và mức độ của mọi khiếu nại tiếp nhận\", \"lo_ids\": [\"lo_1\"], \"lessons\": [{\"lesson_key\": \"lsn_001\", \"kind\": \"learning\", \"title\": \"Phân loại khiếu nại theo nhóm\", \"primary_must_do_id\": \"md_1\", \"secondary_must_do_ids\": [], \"block_ids\": [\"cb_0003\", \"cb_0004\"], \"est_screens\": 4, \"est_minutes\": 6, \"ordering_rationale\": \"Nền tảng trước, theo thứ tự công việc thực tế.\"}, {\"lesson_key\": \"lsn_002\", \"kind\": \"learning\", \"title\": \"Đánh giá mức độ nghiêm trọng\", \"primary_must_do_id\": \"md_2\", \"secondary_must_do_ids\": [], \"block_ids\": [\"cb_0005\"], \"est_screens\": 4, \"est_minutes\": 6, \"ordering_rationale\": \"Nền tảng trước, theo thứ tự công việc thực tế.\"}]}, {\"module_key\": \"mod_02\", \"title\": \"Quyết định escalate khiếu nại\", \"performance_goal\": \"Quyết định đúng khi nào tự xử lý và khi nào phải escalate\", \"lo_ids\": [\"lo_2\"], \"lessons\": [{\"lesson_key\": \"lsn_003\", \"kind\": \"learning\", \"title\": \"Quyết định tự xử lý hay escalate\", \"primary_must_do_id\": \"md_3\", \"secondary_must_do_ids\": [], \"block_ids\": [\"cb_0009\", \"cb_0011\"], \"est_screens\": 6, \"est_minutes\": 10, \"ordering_rationale\": \"Nền tảng trước, theo thứ tự công việc thực tế.\"}]}, {\"module_key\": \"mod_03\", \"title\": \"Tiếp nhận khiếu nại theo quy trình\", \"performance_goal\": \"Thực hiện đúng trình tự tiếp nhận và xử lý khiếu nại\", \"lo_ids\": [\"lo_3\"], \"lessons\": [{\"lesson_key\": \"lsn_004\", \"kind\": \"learning\", \"title\": \"Thực hiện quy trình tiếp nhận khiếu nại\", \"primary_must_do_id\": \"md_4\", \"secondary_must_do_ids\": [], \"block_ids\": [\"cb_0006\", \"cb_0007\", \"cb_0008\"], \"est_screens\": 6, \"est_minutes\": 10, \"ordering_rationale\": \"Nền tảng trước, theo thứ tự công việc thực tế.\"}, {\"lesson_key\": \"lsn_005\", \"kind\": \"job_aid\", \"title\": \"Bảng tra mã khiếu nại và đầu mối liên hệ\", \"primary_must_do_id\": null, \"secondary_must_do_ids\": [], \"block_ids\": [\"cb_0013\", \"cb_0014\"], \"est_screens\": 2, \"est_minutes\": 3, \"ordering_rationale\": \"Nền tảng trước, theo thứ tự công việc thực tế.\"}]}]}",
+   "text": "{\"course_title\": \"Xử lý khiếu nại khách hàng đúng quy trình\", \"course_summary\": \"Khoá học giúp nhân viên Chăm sóc Khách hàng phân loại, đánh giá và quyết định hướng xử lý khiếu nại đúng tiêu chí, tránh hứa hẹn sai và escalate đúng lúc.\", \"assessment_strategy\": \"Kiểm tra nhanh sau phần Must Know, bài tình huống quyết định escalate cuối mỗi mục.\", \"prerequisites\": [\"Biết sử dụng tổng đài và hệ thống CRM ở mức cơ bản\"], \"modules\": [{\"module_key\": \"mod_01\", \"title\": \"Phân loại và đánh giá mức độ khiếu nại\", \"performance_goal\": \"Phân loại đúng nhóm và mức độ của mọi khiếu nại tiếp nhận\", \"lo_ids\": [\"lo_1\"], \"lessons\": [{\"lesson_key\": \"lsn_001\", \"kind\": \"learning\", \"title\": \"Phân loại khiếu nại theo nhóm\", \"primary_must_do_id\": \"md_1\", \"secondary_must_do_ids\": [], \"block_ids\": [\"cb_0003\", \"cb_0004\"], \"est_screens\": 4, \"est_minutes\": 6, \"ordering_rationale\": \"Nền tảng trước, theo thứ tự công việc thực tế.\"}, {\"lesson_key\": \"lsn_002\", \"kind\": \"learning\", \"title\": \"Đánh giá mức độ nghiêm trọng\", \"primary_must_do_id\": \"md_2\", \"secondary_must_do_ids\": [], \"block_ids\": [\"cb_0005\"], \"est_screens\": 4, \"est_minutes\": 6, \"ordering_rationale\": \"Nền tảng trước, theo thứ tự công việc thực tế.\"}]}, {\"module_key\": \"mod_02\", \"title\": \"Quyết định escalate khiếu nại\", \"performance_goal\": \"Quyết định đúng khi nào tự xử lý và khi nào phải escalate\", \"lo_ids\": [\"lo_2\"], \"lessons\": [{\"lesson_key\": \"lsn_003\", \"kind\": \"learning\", \"title\": \"Quyết định tự xử lý hay escalate\", \"primary_must_do_id\": \"md_3\", \"secondary_must_do_ids\": [], \"block_ids\": [\"cb_0009\", \"cb_0011\"], \"est_screens\": 6, \"est_minutes\": 10, \"ordering_rationale\": \"Nền tảng trước, theo thứ tự công việc thực tế.\"}]}, {\"module_key\": \"mod_03\", \"title\": \"Tiếp nhận khiếu nại theo quy trình\", \"performance_goal\": \"Thực hiện đúng trình tự tiếp nhận và xử lý khiếu nại\", \"lo_ids\": [\"lo_3\"], \"lessons\": [{\"lesson_key\": \"lsn_004\", \"kind\": \"learning\", \"title\": \"Thực hiện quy trình tiếp nhận khiếu nại\", \"primary_must_do_id\": \"md_4\", \"secondary_must_do_ids\": [], \"block_ids\": [\"cb_0006\", \"cb_0007\", \"cb_0008\"], \"est_screens\": 6, \"est_minutes\": 10, \"ordering_rationale\": \"Nền tảng trước, theo thứ tự công việc thực tế.\"}, {\"lesson_key\": \"lsn_005\", \"kind\": \"job_aid\", \"title\": \"Bảng tra mã khiếu nại và đầu mối liên hệ\", \"primary_must_do_id\": null, \"secondary_must_do_ids\": [], \"block_ids\": [\"cb_0013\", \"cb_0014\"], \"est_screens\": 2, \"est_minutes\": 3, \"ordering_rationale\": \"Nền tảng trước, theo thứ tự công việc thực tế.\"}]}], \"pattern_sections\": [{\"section_key\": \"why_it_matters\", \"lesson_keys\": []}, {\"section_key\": \"rules\", \"lesson_keys\": [\"lsn_001\", \"lsn_002\", \"lsn_003\"]}, {\"section_key\": \"procedure\", \"lesson_keys\": [\"lsn_004\"]}, {\"section_key\": \"violations\", \"lesson_keys\": []}, {\"section_key\": \"check\", \"lesson_keys\": []}]}",
    "usage": [
     309,
     618,
@@ -1114,12 +1114,13 @@
    },
    "idm": {
     "pipeline_version": "idm-1",
-    "idm_contract_version": 1,
+    "idm_contract_version": 2,
     "prompt_policy_version": "idm-prompt-1",
     "source_snapshot_hash": "af8270f967b41b2da4243ff9c472b446458f9de9bdeac1fa8ef354f80624587f",
     "project_context": {
      "locale": "vi",
      "course_title_hint": "Xử lý khiếu nại khách hàng",
+     "course_description": null,
      "source_documents": [
       {
        "document_id": "00000000-0000-4000-8000-0000000000d1",
@@ -1130,6 +1131,18 @@
      "target_audience": null,
      "learning_objectives": [],
      "duration_target_minutes": null
+    },
+    "purpose": {
+     "profile": "compliance",
+     "summary": "Giúp nhân viên Chăm sóc Khách hàng xử lý khiếu nại đúng quy trình, đúng tiêu chí escalate và đúng thời hạn.",
+     "confidence": "medium",
+     "origin": "ai_inferred",
+     "evidence": [
+      "title",
+      "source"
+     ],
+     "signals": [],
+     "template_gaps": []
     },
     "target_audience": {
      "description": "Nhân viên Chăm sóc Khách hàng tuyến đầu tiếp nhận khiếu nại qua tổng đài, đã nắm sản phẩm cơ bản và cần xử lý đúng quy trình, đúng thời hạn.",
@@ -2445,7 +2458,7 @@
      }
     ],
     "notes": {
-     "course": "[Thiết kế theo quy trình ID — idm-1]\n• Mục tiêu học tập và đối tượng học: do AI đề xuất từ tài liệu — cần xác nhận.\n• Thời lượng ước tính: 35 phút (5 mục, 3 chương).\n• Nội dung chuyển sang Tài liệu tra cứu/Job Aid: 2 khối. Nội dung loại khỏi khoá học: 2 khối (Nice to Know/Remove).\n• Cần chuyên gia bổ sung (Hold) — chờ SME xác nhận (2), chưa đưa vào bài học:\n  1. Phải phản hồi khách hàng trong bao lâu? — Thời hạn 24 giờ mâu thuẫn với 48 giờ cho khiếu nại cấp 2. Câu hỏi cho SME: Khiếu nại cấp 2 phải phản hồi trong 24 giờ hay 48 giờ? Must Do chưa dạy được: Phản hồi khách hàng đúng thời hạn.\n  2. Ghi nhận khiếu nại trên CRM như thế nào? — Hướng dẫn CRM dựa trên ảnh chụp phiên bản 2021, có thể đã lỗi thời. Câu hỏi cho SME: Giao diện CRM hiện tại còn đúng các bước Tạo mới, chọn mã và đính kèm phiếu không?\n• Nội dung tham khảo đã lược (Nice to know) — 1 khối, tác giả có thể bổ sung thủ công:\n  - Phiên bản và ngày áp dụng của quy trình: Nội dung về: Phiên bản và ngày áp dụng của quy trình\n• Nội dung đã loại khỏi khoá (Remove) — 1 khối, kèm lý do:\n  - Phòng Chăm sóc Khách hàng đã phát triển ra sao?: Quyết định theo luồng Week 2.\n• Cấu trúc được thiết kế theo Must Do, không theo mục lục tài liệu.",
+     "course": "[Thiết kế theo quy trình ID — idm-1]\n• Mục đích khoá học: Quy trình, quy định, tuân thủ, an toàn — Giúp nhân viên Chăm sóc Khách hàng xử lý khiếu nại đúng quy trình, đúng tiêu chí escalate và đúng thời hạn (AI suy ra từ tên, mô tả khoá học và tài liệu — cần xác nhận).\n• Mục tiêu học tập và đối tượng học: do AI đề xuất từ tài liệu — cần xác nhận.\n• Thời lượng ước tính: 35 phút (5 mục, 3 chương).\n• Nội dung chuyển sang Tài liệu tra cứu/Job Aid: 2 khối. Nội dung loại khỏi khoá học: 2 khối (Nice to Know/Remove).\n• Cần chuyên gia bổ sung (Hold) — chờ SME xác nhận (2), chưa đưa vào bài học:\n  1. Phải phản hồi khách hàng trong bao lâu? — Thời hạn 24 giờ mâu thuẫn với 48 giờ cho khiếu nại cấp 2. Câu hỏi cho SME: Khiếu nại cấp 2 phải phản hồi trong 24 giờ hay 48 giờ? Must Do chưa dạy được: Phản hồi khách hàng đúng thời hạn.\n  2. Ghi nhận khiếu nại trên CRM như thế nào? — Hướng dẫn CRM dựa trên ảnh chụp phiên bản 2021, có thể đã lỗi thời. Câu hỏi cho SME: Giao diện CRM hiện tại còn đúng các bước Tạo mới, chọn mã và đính kèm phiếu không?\n• Nội dung tham khảo đã lược (Nice to know) — 1 khối, tác giả có thể bổ sung thủ công:\n  - Phiên bản và ngày áp dụng của quy trình: Nội dung về: Phiên bản và ngày áp dụng của quy trình\n• Nội dung đã loại khỏi khoá (Remove) — 1 khối, kèm lý do:\n  - Phòng Chăm sóc Khách hàng đã phát triển ra sao?: Quyết định theo luồng Week 2.\n• Cấu trúc được thiết kế theo Must Do, không theo mục lục tài liệu.",
      "modules": {
       "mod_01": "Mục tiêu hiệu suất: Phân loại đúng nhóm và mức độ của mọi khiếu nại tiếp nhận\n• Mục tiêu học tập phục vụ:\n  - Người học có thể phân loại khiếu nại theo nhóm và mức độ nghiêm trọng dựa trên bảng cấp độ\n• 2 mục, ước tính 12 phút.",
       "mod_02": "Mục tiêu hiệu suất: Quyết định đúng khi nào tự xử lý và khi nào phải escalate\n• Mục tiêu học tập phục vụ:\n  - Người học có thể quyết định tự xử lý hay escalate khiếu nại theo tiêu chí bắt buộc\n• 1 mục, ước tính 10 phút.",
@@ -2465,7 +2478,7 @@
      "w2": "provider",
      "w4": "provider"
     },
-    "design_hash": "b94289063c18ea03931ec80cb021ffe41ee5b9fea0d5fc0d59299c85ee7c225b"
+    "design_hash": "32bc61160cf6c24074f94131de599d053d6df7449c851f3d479f96481efcbeed"
    },
    "usage": {
     "inputTokens": 1924,
@@ -2484,8 +2497,8 @@
     "op": "generate",
     "model": "test-model",
     "schema": "IdmW1SectionResponseV1",
-    "prompt_sha256": "b745a612430d20d88d929d8aaa397e75c4456179aff1195dbc2fa299f8fcad2f",
-    "prompt_chars": 10139,
+    "prompt_sha256": "4dd6b3b3919efcf51ef6c584785b7566b088dea2abf6d5c75404b2bd7843c639",
+    "prompt_chars": 10165,
     "config": {
      "max_output_tokens": 12000,
      "response_mime_type": "application/json",
@@ -2500,14 +2513,14 @@
     "op": "generate",
     "model": "test-model",
     "schema": "IdmW1ReduceResponseV1",
-    "prompt_sha256": "04c339f3285390b05249052cb713ddb3961518c66405f78080eebbc6d9b36397",
-    "prompt_chars": 8515,
+    "prompt_sha256": "c7ca88626733e47f4b12377166a11f83c5c92695410fd1f14be719b46fc0e74e",
+    "prompt_chars": 13837,
     "config": {
      "max_output_tokens": 24000,
      "response_mime_type": "application/json",
      "response_schema": {
-      "sha256": "3a92a681bd9b4b80af9493153e9f115cdd63e38bc9f8ad7f51e1eadc6c1cf473",
-      "chars": 2957
+      "sha256": "aaa1c399ab3a473a5942ccc965fcfbcf4b67ae2ffeea050bddfe4e95e84ea903",
+      "chars": 3436
      },
      "temperature": 0.2
     }
@@ -2516,8 +2529,8 @@
     "op": "generate",
     "model": "test-model",
     "schema": "IdmW2BlueprintResponseV1",
-    "prompt_sha256": "832811ce722fa12924c4e2b1f866f8240d29d8fb4c13c426fcba8ad915dcba50",
-    "prompt_chars": 10869,
+    "prompt_sha256": "3b20bc7abe9b3227663d51f094c131859201d0fd267aa05681d1b146806cecc4",
+    "prompt_chars": 12070,
     "config": {
      "max_output_tokens": 32000,
      "response_mime_type": "application/json",
@@ -2532,14 +2545,14 @@
     "op": "generate",
     "model": "test-model",
     "schema": "IdmW4CourseResponseV1",
-    "prompt_sha256": "b9a2d5f3c84e911640b5c6f9c8123e7768992df4261d62948e750368e88efd86",
-    "prompt_chars": 8263,
+    "prompt_sha256": "6ef59d0b88f5126bc915a98b4ffff21c844cc6da4fd781843fa8ff2a5242db2c",
+    "prompt_chars": 10501,
     "config": {
      "max_output_tokens": 16000,
      "response_mime_type": "application/json",
      "response_schema": {
-      "sha256": "7a87586e1c7b109afd1626dd5709d552477c1b2321c82f8326cd917ef0cc8068",
-      "chars": 1940
+      "sha256": "f8bea84d1f62355558424653b5bd6363574fbd9b983837465cd4fe8770bc1efb",
+      "chars": 2574
      },
      "temperature": 0.2
     }

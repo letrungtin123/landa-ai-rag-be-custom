@@ -36,7 +36,6 @@ from app.idm.policy import (
     IDM_TABLE_SHARE,
     IDM_W1_MAP_MAX_OUTPUT_TOKENS,
     IDM_W1_REDUCE_MAX_OUTPUT_TOKENS,
-    MUST_DO_TOPIC_PREFIXES,
     THINKING_W1_MAP,
     THINKING_W1_REDUCE,
 )
@@ -47,6 +46,16 @@ from app.idm.prompts import (
     repair_suffix,
     w1_reduce_prompt,
     w1_section_prompt,
+)
+from app.idm.purpose import (
+    classify_context,
+    fallback_audience,
+    fallback_summary,
+    must_do_is_topic,
+    objective_unmeasurable,
+    prompt_project_context,
+    resolve_purpose,
+    w1_purpose_step,
 )
 from app.idm.runtime import (
     IdmBudgetError,
@@ -64,7 +73,6 @@ from app.idm.text import (
     fallback_objective_statement,
     idm_fold,
     is_generic_title,
-    is_unmeasurable_objective,
     single_line,
 )
 from app.idm.validation import IdmIssue, errors
@@ -410,9 +418,14 @@ def validate_w1_reduce(
     action_blocks: Collection[str] = (),
 ) -> list[IdmIssue]:
     """Errors trigger a repair; ``IDM_W1_ACTION_ITEM_UNLINKED`` (a block with an explicit action item that no
-    objective links directly, QC 364564 N5) is a warning counted in the stage log."""
+    objective links directly, QC 364564 N5) is a warning counted in the stage log.
 
-    issues: list[IdmIssue] = []
+    QLT-5: objectives and Must Dos are checked against the resolved course purpose (an onboarding objective may be
+    "biết liên hệ ai"); a missing or overridden purpose answer is a warning, never a repair.
+    """
+
+    purpose, purpose_codes = resolve_purpose(context, response)
+    issues: list[IdmIssue] = [IdmIssue(code, "purpose_profile", "warning") for code in purpose_codes]
     block_ids = {block.block_id for block in blocks}
     lo_ids = [objective.lo_id for objective in response.learning_objectives]
     client = context.learning_objectives
@@ -426,7 +439,7 @@ def validate_w1_reduce(
     if not client:
         issues.extend(IdmIssue("IDM_W0_LO_UNMEASURABLE", f"learning_objectives[{position}].statement")
                       for position, objective in enumerate(response.learning_objectives)
-                      if is_unmeasurable_objective(objective.statement))
+                      if objective_unmeasurable(objective.statement, purpose.profile))
     known_los = set(lo_ids)
     must_do_ids = Counter(item.must_do_id for item in response.must_dos)
     for position, must_do in enumerate(response.must_dos):
@@ -435,7 +448,7 @@ def validate_w1_reduce(
             issues.append(IdmIssue("IDM_W0_MUST_DO_ORPHAN", f"{path}.lo_id"))
         if must_do_ids[must_do.must_do_id] > 1:
             issues.append(IdmIssue("IDM_W0_MUST_DO_ID_DUPLICATED", f"{path}.must_do_id"))
-        if idm_fold(must_do.statement).startswith(MUST_DO_TOPIC_PREFIXES):
+        if must_do_is_topic(must_do.statement, purpose.profile):
             issues.append(IdmIssue("IDM_W0_MUST_DO_IS_TOPIC", f"{path}.statement"))
     covered = {must_do.lo_id for must_do in response.must_dos}
     issues.extend(IdmIssue("IDM_W0_LO_WITHOUT_MUST_DO", f"learning_objectives[{position}]")
@@ -546,7 +559,6 @@ def fallback_w1_reduce(
 ) -> IdmW1ReduceResponseV1:
     """One objective per top-level heading; client objectives stay authoritative (spec §7.3)."""
 
-    vi = context.locale == "vi"
     client = list(context.learning_objectives)
     groups = _merge_groups(_top_heading_groups(blocks, sections, index), len(client) or _MAX_REDUCE_LOS)
     objectives: list[IdmLearningObjectiveV1] = []
@@ -575,12 +587,13 @@ def fallback_w1_reduce(
     if context.target_audience:
         audience = IdmAudienceV1(description=context.target_audience, origin="client")
     else:
-        topic = context.course_title_hint or context.source_documents[0].name
-        audience = IdmAudienceV1(
-            description=single_line((f"Nhân sự cần áp dụng nội dung {topic} trong công việc" if vi
-                                     else f"Staff who need to apply {topic} in their work"), 2000),
-            origin="ai_proposed")
-    return IdmW1ReduceResponseV1(merges=[], conflicts=[], target_audience=audience,
+        audience = IdmAudienceV1(description=single_line(fallback_audience(context), 2000), origin="ai_proposed")
+    # The purpose of a fallback reduce is the server classifier's (``app.idm.purpose``); the course design records
+    # it with origin deterministic_fallback.
+    intent = classify_context(context)
+    return IdmW1ReduceResponseV1(merges=[], conflicts=[], purpose_profile=intent.profile,
+                                 purpose_summary=fallback_summary(intent.profile, context.locale),
+                                 purpose_evidence=list(intent.evidence), target_audience=audience,
                                  learning_objectives=objectives, must_dos=must_dos, lo_links=links)
 
 
@@ -657,8 +670,9 @@ async def run_w1_reduce(
     tail_reserve_tokens: int,
     index: FactIndex | None = None,
 ) -> tuple[IdmW1ReduceResponseV1, StageOriginLiteral, dict[str, int]]:
-    prompt = w1_reduce_prompt(runtime.locale, project_context=context.model_dump(mode="json"),
-                              catalog=reduce_catalog(blocks, index.text if index is not None else None))
+    prompt = w1_reduce_prompt(runtime.locale, project_context=prompt_project_context(context),
+                              catalog=reduce_catalog(blocks, index.text if index is not None else None),
+                              purpose_step=w1_purpose_step(context))
     action_blocks = {block.block_id for block in blocks if index is not None and action_items(block, index.text)}
     codes: Counter[str] = Counter()
     repair = ""

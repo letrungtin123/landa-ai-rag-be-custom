@@ -1,4 +1,7 @@
-"""IDM ``course_skeleton`` task: W0/W1 → W1-reduce → W2 → W4 → assembly (spec §5.1, §7.1-§7.5)."""
+"""IDM ``course_skeleton`` task: W0/W1 → W1-reduce → W2 → W4 → assembly (spec §5.1, §7.1-§7.5).
+
+QLT-5: W1-reduce also decides the course purpose (``app.idm.purpose``); W2, W4 and the assembled design follow it.
+"""
 
 from __future__ import annotations
 
@@ -26,6 +29,7 @@ from app.idm.policy import (
     IDM_W2_MAX_OUTPUT_TOKENS,
     IDM_W4_COURSE_MAX_OUTPUT_TOKENS,
 )
+from app.idm.purpose import resolve_purpose
 from app.idm.runtime import IdmRuntime, IdmStageError, idm_tail_reserve, log_stage
 from app.idm.signals import IdmCapacityError, SectionPlan, compute_fact_signals, plan_idm_sections
 from app.lesson_author_orchestration_v2_provider import SourceSnapshotFactV2
@@ -95,10 +99,12 @@ async def run_idm_course_design(
     blocks, links = apply_w1_reduce(reduce_response, blocks, index, context.locale)
     objectives = list(reduce_response.learning_objectives)
     must_dos = list(reduce_response.must_dos)
+    # A fallback reduce carries no purpose answer: the classifier decides (never a repair, never a new call).
+    purpose, _codes = resolve_purpose(context, reduce_response if reduce_origin == "provider" else None)
 
     blueprint = await run_w2(
         runtime, context=context, blocks=blocks, links=links, objectives=objectives, must_dos=must_dos,
-        index=index, tail_reserve_tokens=idm_tail_reserve(IDM_W4_COURSE_MAX_OUTPUT_TOKENS),
+        index=index, tail_reserve_tokens=idm_tail_reserve(IDM_W4_COURSE_MAX_OUTPUT_TOKENS), purpose=purpose,
     )
     blocked = blocked_must_dos(blueprint.rows, must_dos)
     holds = hold_items(blueprint.rows, blueprint.blocks, blocked)
@@ -109,8 +115,9 @@ async def run_idm_course_design(
     architecture = await run_w4(
         runtime, context=context, audience=reduce_response.target_audience, objectives=objectives,
         must_dos=must_dos, blocks=blueprint.blocks, rows=blueprint.rows, blocked=blocked,
-        block_chars=block_chars,
+        block_chars=block_chars, purpose=purpose,
     )
+    purpose = purpose.model_copy(update={"template_gaps": list(architecture.template_gaps)})
     stage_origins: dict[str, StageOrigin] = {
         "w1_map": w1_origin, "w1_reduce": reduce_origin, "w2": blueprint.origin, "w4": architecture.origin,
     }
@@ -122,7 +129,7 @@ async def run_idm_course_design(
         audience=reduce_response.target_audience, objectives=objectives, must_dos=must_dos,
         blocks=blueprint.blocks, links=blueprint.links, rows=blueprint.rows, blocked=blocked, holds=holds,
         plan=architecture.plan, dispositions=dispositions, stage_origins=stage_origins,
-        kept_definitions=blueprint.kept_definitions,
+        kept_definitions=blueprint.kept_definitions, purpose=purpose, kept_background=blueprint.kept_background,
     ))
     skeleton = await asyncio.to_thread(project_course_skeleton, design, architecture.plan)
 
@@ -147,6 +154,8 @@ async def run_idm_course_design(
         "error_codes": {"w1_reduce": reduce_codes, "w2": blueprint.codes, "w4": architecture.codes,
                         "w1_map": _merge([result.issue_codes for result in section_results])},
         "warnings": architecture.warnings, "response_adjustments": dict(sorted(runtime.adjustments.items())),
+        "purpose": {"profile": purpose.profile, "confidence": purpose.confidence, "origin": purpose.origin,
+                    "template_gap_count": len(purpose.template_gaps)},
     })
     return {
         "contract_version": 2,

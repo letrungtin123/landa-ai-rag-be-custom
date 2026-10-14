@@ -139,9 +139,15 @@ def source_facts() -> list[SourceSnapshotFactV2]:
     return facts
 
 
+# The CMS course description (QLT-5): weak purpose words only ("quy trình", "khách hàng"), so W1-reduce decides the
+# purpose (compliance) from the source.
+COURSE_DESCRIPTION = ("Khoá học dành cho nhân viên Chăm sóc Khách hàng tuyến đầu: tiếp nhận và xử lý khiếu nại đúng "
+                      "quy trình, đúng thời hạn.")
+
+
 def project_context() -> dict[str, Any]:
     return {
-        "locale": "vi", "course_title_hint": "Xử lý khiếu nại khách hàng",
+        "locale": "vi", "course_title_hint": "Xử lý khiếu nại khách hàng", "course_description": COURSE_DESCRIPTION,
         "source_documents": [{"document_id": DOCUMENT_ID, "name": "quy-trinh-khieu-nai.pdf", "type": "pdf"}],
         "target_audience": None, "learning_objectives": [], "duration_target_minutes": None,
     }
@@ -191,6 +197,10 @@ W1_SECTION: dict[str, Any] = {
 W1_REDUCE: dict[str, Any] = {
     "merges": [],
     "conflicts": [],
+    "purpose_profile": "compliance",
+    "purpose_summary": "Giúp nhân viên Chăm sóc Khách hàng xử lý khiếu nại đúng quy trình, đúng tiêu chí escalate và "
+                       "đúng thời hạn.",
+    "purpose_evidence": ["title", "source"],
     "target_audience": {
         "description": "Nhân viên Chăm sóc Khách hàng tuyến đầu tiếp nhận khiếu nại qua tổng đài, đã nắm sản phẩm "
                        "cơ bản và cần xử lý đúng quy trình, đúng thời hạn.",
@@ -306,6 +316,14 @@ W4_COURSE: dict[str, Any] = {
              _lesson("lsn_005", "job_aid", "Bảng tra mã khiếu nại và đầu mối liên hệ", None,
                      ["cb_0013", "cb_0014"], 2, 3),
          ]},
+    ],
+    # The compliance pattern (QLT-5): the rules before the procedure; no part on violations or a final check.
+    "pattern_sections": [
+        {"section_key": "why_it_matters", "lesson_keys": []},
+        {"section_key": "rules", "lesson_keys": ["lsn_001", "lsn_002", "lsn_003"]},
+        {"section_key": "procedure", "lesson_keys": ["lsn_004"]},
+        {"section_key": "violations", "lesson_keys": []},
+        {"section_key": "check", "lesson_keys": []},
     ],
 }
 

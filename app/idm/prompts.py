@@ -25,6 +25,7 @@ from app.idm.html_rules import (
     HtmlRuleViolation,
 )
 from app.idm.policy import IDM_PROMPT_POLICY_VERSION
+from app.idm.purpose import DEFAULT_BACKGROUND_RULE, DEFAULT_SUMMARY_RULE, DEFAULT_TITLE_RULE
 from app.prompt_safety import untrusted_block
 
 # Mirrors ``app.idm.runtime.TRUNCATED_CODE`` (prompts stay free of runtime imports).
@@ -195,24 +196,29 @@ SECTION={section_id}
 """
 
 
-def w1_reduce_prompt(locale: Locale, *, project_context: dict[str, Any], catalog: list[dict[str, Any]]) -> str:
-    return preamble(locale) + f"""
-TASK: Consolidate the section Content Maps into ONE course-level SME Content Map, then propose the learning
-objectives and the Must Do list.
+def w1_reduce_prompt(locale: Locale, *, project_context: dict[str, Any], catalog: list[dict[str, Any]],
+                     purpose_step: str = "") -> str:
+    """``purpose_step`` (``app.idm.purpose.w1_purpose_step``): the author intent block and the purpose profiles."""
 
+    return preamble(locale) + f"""
+TASK: Consolidate the section Content Maps into ONE course-level SME Content Map, decide the course purpose, then
+propose the learning objectives and the Must Do list for that purpose.
+{purpose_step}
 1. Merge duplicate blocks across sections (same purpose): keep one block_id, list the merged ids, give a reason.
    Flag cross-section conflicts (blocks that give different instructions) with a specific SME question.
-2. Target audience: if PROJECT_CONTEXT.target_audience is null, propose one (role, experience level, work
-   context, constraints) with origin "ai_proposed"; otherwise copy it with origin "client".
+2. Target audience: if PROJECT_CONTEXT.target_audience is null, propose one that fits the course purpose (role,
+   experience level, work context, constraints) with origin "ai_proposed"; otherwise copy it with origin "client".
 3. Learning objectives: if PROJECT_CONTEXT.learning_objectives is not empty, copy them verbatim in order with
    origin "client". Otherwise propose 3-8 performance-based, measurable objectives, one action each:
    "{{learner}} có thể {{observable verb}} {{object}} {{condition or criterion when the source provides it}}".
    Never use unmeasurable main verbs (hiểu, biết, nắm được, nắm rõ, làm quen, understand, know, learn about,
-   be aware of). Give each a Bloom level (remember | understand | apply | analyze | evaluate | create); prefer
-   apply/analyze/evaluate when the source describes work actions or decisions. Objectives must be achievable
+   be aware of) beyond the forms the OBJECTIVE POLICY of the course purpose allows. Give each a Bloom level
+   (remember | understand | apply | analyze | evaluate | create); prefer apply/analyze/evaluate when the source
+   describes work actions or decisions, unless the OBJECTIVE POLICY says otherwise. Objectives must be achievable
    with the source content. Use ids lo_1, lo_2, ... in order.
-4. Must Do (1-5 per objective): concrete actions or decisions performed at work ("Phân loại khiếu nại theo mức
-   độ", "Quyết định tự xử lý hay escalate"). A Must Do is not a topic. kind: do | decide. Ids md_1, md_2, ...
+4. Must Do (1-5 per objective): concrete actions or decisions performed at work, as the MUST DO POLICY of the
+   course purpose describes them ("Phân loại khiếu nại theo mức độ", "Quyết định tự xử lý hay escalate"). A Must
+   Do is not a topic. kind: do | decide. Ids md_1, md_2, ...
    Every objective needs at least one Must Do. Every explicit action item of the source ("HÀNH ĐỘNG CEO",
    "Hành động", "Việc cần làm", "Action", "Next step"; blocks listed with action_items in BLOCK_CATALOG) is a
    Must Do candidate: make it a Must Do of the objective it serves, or name it inside a Must Do statement;
@@ -234,10 +240,15 @@ def w2_blueprint_prompt(
     objectives: list[dict[str, Any]],
     must_dos: list[dict[str, Any]],
     catalog: list[dict[str, Any]],
+    purpose_rules: str = "",
+    background_rule: str = DEFAULT_BACKGROUND_RULE,
 ) -> str:
+    """``purpose_rules``/``background_rule``: ``app.idm.purpose.w2_purpose_rules`` (the author intent and what the
+    course purpose keeps); the defaults are the job-performance rules of the general profile."""
+
     return preamble(locale) + f"""
 TASK: Week 2 - decide, for EVERY block in BLOCK_CATALOG, what happens to it. Return exactly one row per block.
-Decision flow (apply in order):
+{purpose_rules}Decision flow (apply in order):
   a. Does the block serve an objective or a Must Do? No -> nice_to_know (useful but not needed) or remove
      (unrelated, outdated, duplicated, wrong audience, too specialised).
   b. Must the learner REMEMBER it to perform the Must Do correctly? No -> reference with treatment
@@ -253,10 +264,10 @@ convert_to_job_aid (reference) | remove (nice_to_know, remove)
 detail_level: one sentence on what to keep ("Định nghĩa ngắn + dấu hiệu phân biệt 3 cấp độ";
 "Chỉ 6 nhóm bước chính; ngoại lệ hiếm chuyển sang Job Aid").
 Rules: repeated content is not automatically important; SME emphasis is a signal to check, not a decision;
-full legal text, code lists, contact lists, forms and rare exceptions -> reference/job aid; department history and
-background trivia -> nice_to_know or remove; "remove" is not a judgement of quality. Never classify as
+full legal text, code lists, contact lists, forms and rare exceptions -> reference/job aid; {background_rule};
+"remove" is not a judgement of quality. Never classify as
 nice_to_know or remove a block that defines or gives the formula of a term that appears in the course title
-(PROJECT_CONTEXT.course_title_hint or a source document name), an objective or a Must Do: it is must_know
+(COURSE_NAME in AUTHOR_COURSE_INTENT or a source document name), an objective or a Must Do: it is must_know
 (or reference), with a detail_level that keeps the definition and drops the history around it.
 must_know rows list the must_do_ids they enable; must_do rows list the Must Do they represent; lo_id is the
 objective the block serves (null when none). Only must_do/must_know rows may hold.
@@ -281,12 +292,19 @@ def w4_course_prompt(
     reference_blocks: list[dict[str, Any]],
     blocked_must_dos: list[str],
     duration_target_minutes: int | None,
+    purpose_rules: str = "",
+    course_purpose: dict[str, Any] | None = None,
+    titles: str = DEFAULT_TITLE_RULE,
+    summary: str = DEFAULT_SUMMARY_RULE,
 ) -> str:
+    """``purpose_rules``, ``titles`` and ``summary`` come from ``app.idm.purpose`` (server-owned); ``course_purpose``
+    is plan data (profile and the W1-reduce summary)."""
+
     return preamble(locale) + f"""
 TASK: Week 4 (course level) - group Must Dos into Modules and Lessons and order them.
-- Module = lessons serving one larger performance. Lesson = helps the learner do ONE main Must Do; a closely
-  related second Must Do may share the lesson only when it uses the same practice and the same support at the
-  same moment. One objective may need several lessons. Each lesson lists the course blocks it uses; every course
+{purpose_rules}- Module = lessons serving one larger performance. Lesson = helps the learner do ONE main Must Do; a
+  closely related second Must Do may share the lesson only when it uses the same practice and the same support at
+  the same moment. One objective may need several lessons. Each lesson lists the course blocks it uses; every course
   block and every reference block belongs to exactly one lesson; the content_chars of one lesson's blocks add up
   to at most 90000. Every Must Do that is not blocked is the primary
   or secondary Must Do of exactly one learning lesson.
@@ -300,13 +318,16 @@ TASK: Week 4 (course level) - group Must Dos into Modules and Lessons and order 
 - Reference/Job Aid blocks go into lessons of kind "job_aid" (primary_must_do_id null, no course blocks): at the
   end of the module that uses them, or one final job_aid lesson at the end of the course when several modules use
   them. Learning lessons never contain reference blocks.
-- Action-oriented titles in {locale_name(locale)}; no generic titles ("Giới thiệu", "Tổng quan", "Phần 1").
-- Also write: course_title, course_summary (what performance problem the course solves, for whom),
-  assessment_strategy (where knowledge checks, practices and end-of-module practices sit), prerequisites.
+- Titles in {locale_name(locale)}: {titles}
+- Also write: course_title (a learner-facing name that reflects AUTHOR_COURSE_INTENT and the course purpose: keep
+  the author's course name when it already names the course well; never a name that changes the purpose),
+  course_summary ({summary}), assessment_strategy (where knowledge checks, practices and end-of-module practices
+  sit), prerequisites, pattern_sections (see COURSE PATTERN; [] when there is none).
 Keys: mod_01, mod_02, ... ; lesson keys lsn_001, lsn_002, ... across the whole course in order.
 
 {untrusted_block("PLAN_CONTEXT", chr(10).join([
     "PROJECT_CONTEXT=" + _json(project_context),
+    "COURSE_PURPOSE=" + _json(course_purpose),
     "TARGET_AUDIENCE=" + _json(audience),
     "OBJECTIVES=" + _json(objectives),
     "MUST_DOS=" + _json(must_dos),

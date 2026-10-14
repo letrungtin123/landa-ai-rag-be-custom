@@ -247,7 +247,7 @@ class CoercionTests(unittest.TestCase):
         course = {"course_title": "Khoá học", "course_summary": "Tóm tắt khoá học đủ hai mươi ký tự.",
                   "assessment_strategy": "Luyện tập cuối mỗi mục.", "prerequisites": [],
                   "modules": [{"module_key": "mod_01", "title": "Mô-đun", "performance_goal": "Mục tiêu hiệu suất.",
-                               "lo_ids": ["lo_1"], "lessons": [lesson]}]}
+                               "lo_ids": ["lo_1"], "lessons": [lesson]}], "pattern_sections": []}
         adjusted, codes = coerce_provider_answer(IdmW4CourseResponseV1, course)
         plan = IdmW4CourseResponseV1.model_validate(adjusted).modules[0].lessons[0]
         self.assertEqual((plan.est_screens, plan.est_minutes), (2, 60))

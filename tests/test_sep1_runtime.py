@@ -400,7 +400,7 @@ class EndpointTests(unittest.TestCase):
         self.assertEqual(body["contracts"], {
             "orchestration_v2_contract_version": 2,
             "orchestration_v2_provider_schema_projection": "orchestration-v2-google-wire-2",
-            "idm_pipeline_version": "idm-1", "idm_contract_version": 1, "idm_prompt_policy_version": "idm-prompt-1",
+            "idm_pipeline_version": "idm-1", "idm_contract_version": 2, "idm_prompt_policy_version": "idm-prompt-1",
             "rag_index_request_version": 2,
         })
         self.assertEqual(body["capabilities"]["index_source_download_url"], True)

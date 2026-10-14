@@ -149,6 +149,10 @@ def build_course_notes(
     nice_to_know: Sequence[SkippedBlockNote | tuple[str, str]] = (),
     removed: Sequence[SkippedBlockNote | tuple[str, str]] = (),
     kept_definitions: Sequence[KeptDefinitionNote] = (),
+    purpose_line: str = "",
+    pattern_label: str = "",
+    template_gaps: Sequence[str] = (),
+    kept_background: Sequence[KeptDefinitionNote] = (),
 ) -> str:
     """Course ``implementation_notes`` (spec §8.4).
 
@@ -159,11 +163,17 @@ def build_course_notes(
     ("và N mục khác") and stays complete in the workspace panels. The SME questions come last and take
     all the room that is left (no count cap, QC run 8de1c76b); the few that may not fit are counted with
     a pointer to the complete list in the course's AI ID notes.
+
+    QLT-5: the head says which course purpose the design followed (``purpose_line``); right after the Holds come
+    the required parts of the purpose's course pattern the source lacks (``template_gaps``, plain notes the AI wrote
+    no content for), and after the kept definitions the onboarding background kept against the W2 proposal.
     """
 
     vi = locale == "vi"
     head = [f"[Thiết kế theo quy trình ID — {IDM_PIPELINE_VERSION}]" if vi
             else f"[Designed with the ID workflow — {IDM_PIPELINE_VERSION}]"]
+    if purpose_line:
+        head.append(purpose_line)
     if ai_proposed:
         head.append("• Mục tiêu học tập và đối tượng học: do AI đề xuất từ tài liệu — cần xác nhận." if vi
                     else "• Learning objectives and target audience: proposed by AI from the source — please confirm.")
@@ -192,6 +202,12 @@ def build_course_notes(
         else f"• Needs SME input (Hold) — awaiting SME confirmation ({len(hold_notes)}), not in the lessons yet:",
         [_hold_line(index, hold, vi) for index, hold in enumerate(hold_notes, start=1)], more,
         IDM_NOTES_MAX_HOLD_ITEMS)
+    gaps = [item for item in dict.fromkeys(template_gaps) if item.strip()]
+    budget.section(
+        f"• Khung khoá học ({pattern_label}): tài liệu còn thiếu {len(gaps)} phần — AI không tự viết nội dung cho "
+        "các phần này:" if vi else
+        f"• Course pattern ({pattern_label}): the source lacks {len(gaps)} parts — the AI wrote no content for them:",
+        [f"  - {item}" for item in gaps], more, IDM_NOTES_MAX_HOLD_ITEMS)
     budget.section(
         "• Mục tiêu học tập chờ SME (chưa hiển thị là kết quả đầu ra của khoá học):" if vi
         else "• Learning objectives awaiting the SME (not shown as course outcomes):",
@@ -206,6 +222,13 @@ def build_course_notes(
          + (f"(đề xuất ban đầu: {proposed_vi.get(item.proposed, item.proposed)})." if vi
             else f"(first proposed: {proposed_vi.get(item.proposed, item.proposed)}).")
          for item in kept_definitions], more, IDM_NOTES_MAX_REMOVED)
+    budget.section(
+        f"• Giữ lại vì là nội dung hội nhập nhân viên mới cần (Week 2 đề xuất loại) — {len(kept_background)} khối:"
+        if vi else f"• Kept as onboarding content a new employee needs (Week 2 proposed to leave them out) — "
+                   f"{len(kept_background)} blocks:",
+        [f"  - {item.name} " + (f"(đề xuất ban đầu: {proposed_vi.get(item.proposed, item.proposed)})." if vi
+                                else f"(first proposed: {proposed_vi.get(item.proposed, item.proposed)}).")
+         for item in kept_background], more, IDM_NOTES_MAX_REMOVED)
     skipped = [item if isinstance(item, SkippedBlockNote) else SkippedBlockNote(*item) for item in nice_to_know]
     budget.section(
         f"• Nội dung tham khảo đã lược (Nice to know) — {len(skipped)} khối, tác giả có thể bổ sung thủ công:" if vi

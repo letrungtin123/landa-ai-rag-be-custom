@@ -5,7 +5,7 @@ from __future__ import annotations
 import hashlib
 from collections import Counter
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Final
 
 from app.idm.blueprint import KeptDefinition
@@ -24,6 +24,8 @@ from app.idm.contracts import (
     IdmModulePlanV1,
     IdmMustDoV1,
     IdmProjectContextV1,
+    IdmPurposeV1,
+    IdmTemplateGapV1,
     IdmW4CourseResponseV1,
     StageOrigin,
     design_hash_of,
@@ -54,6 +56,18 @@ from app.idm.policy import (
     THINKING_W4_COURSE,
 )
 from app.idm.prompts import COMPACT_W4, answer_repair, repair_suffix, w4_course_prompt
+from app.idm.purpose import (
+    KeptBackground,
+    check_pattern,
+    default_purpose,
+    profile_label,
+    prompt_project_context,
+    purpose_brief,
+    purpose_note_line,
+    summary_rule,
+    title_rule,
+    w4_purpose_rules,
+)
 from app.idm.runtime import (
     IdmBudgetError,
     IdmProviderError,
@@ -84,6 +98,8 @@ class ArchitectureResult:
     origin: StageOrigin
     codes: dict[str, int]
     warnings: list[str]
+    # Required parts of the purpose's course pattern no lesson teaches (QLT-5); only a validated plan has them.
+    template_gaps: list[IdmTemplateGapV1] = field(default_factory=list)
 
 
 def pending_objective_ids(
@@ -308,7 +324,7 @@ def fallback_w4(
                              "luyện tập được đánh dấu để tác giả bổ sung." if vi
                              else "Each section's practice is designed with its lessons; a section without a "
                                   "practice is flagged for the author to add one."),
-        prerequisites=[], modules=modules,
+        prerequisites=[], modules=modules, pattern_sections=[],
     )
 
 
@@ -347,7 +363,12 @@ async def run_w4(
     rows: Sequence[IdmBlueprintRowV1],
     blocked: Sequence[str],
     block_chars: Mapping[str, int] | None = None,
+    purpose: IdmPurposeV1 | None = None,
 ) -> ArchitectureResult:
+    """``purpose`` (QLT-5) adds the author intent, the profile's title policy and its course pattern; without it
+    the general profile applies (today's rules)."""
+
+    purpose = purpose or default_purpose(context)
     course_blocks, reference_blocks = _course_and_reference_blocks(blocks, rows)
     row_by_id = {row.block_id: row for row in rows}
 
@@ -359,12 +380,14 @@ async def run_w4(
                 "fact_count": len(block.fact_keys), "content_chars": (block_chars or {}).get(block.block_id, 0)}
 
     prompt = w4_course_prompt(
-        runtime.locale, project_context=context.model_dump(mode="json"), audience=audience.model_dump(mode="json"),
+        runtime.locale, project_context=prompt_project_context(context), audience=audience.model_dump(mode="json"),
         objectives=[item.model_dump(mode="json") for item in objectives],
         must_dos=[item.model_dump(mode="json") for item in must_dos],
         course_blocks=[describe(block) for block in course_blocks],
         reference_blocks=[describe(block) for block in reference_blocks],
         blocked_must_dos=list(blocked), duration_target_minutes=context.duration_target_minutes,
+        purpose_rules=w4_purpose_rules(context, purpose), course_purpose=purpose_brief(purpose),
+        titles=title_rule(purpose), summary=summary_rule(purpose),
     )
     codes: Counter[str] = Counter()
     repair = ""
@@ -395,8 +418,11 @@ async def run_w4(
                                 block_chars=block_chars)
             codes.update(issue.code for issue in found)
             if not errors(found):
+                pattern = check_pattern(response, purpose.profile, context.locale)
+                codes.update(pattern.warnings)
                 return ArchitectureResult(_normalize_w4(response), "provider", dict(codes),
-                                          [issue.code for issue in found if issue.severity == "warning"])
+                                          [*(issue.code for issue in found if issue.severity == "warning"),
+                                           *pattern.warnings], list(pattern.gaps))
             repair = repair_suffix([issue.as_repair_item() for issue in errors(found)])
     record_deterministic_fallback(runtime, stage="idm_w4", code="IDM_W4_FALLBACK")
     plan = fallback_w4(context=context, objectives=objectives, must_dos=must_dos, rows=rows,
@@ -425,6 +451,9 @@ class AssemblyInput:
     stage_origins: dict[str, StageOrigin]
     # Blocks W2 left out although they define a course term, kept by the server (N4).
     kept_definitions: Sequence[KeptDefinition] = ()
+    # QLT-5: the course purpose (with its pattern gaps) and the onboarding background kept against W2.
+    purpose: IdmPurposeV1 | None = None
+    kept_background: Sequence[KeptBackground] = ()
 
 
 def assemble_idm_course_design(data: AssemblyInput) -> IdmCourseDesignV1:
@@ -459,6 +488,7 @@ def assemble_idm_course_design(data: AssemblyInput) -> IdmCourseDesignV1:
         "pipeline_version": IDM_PIPELINE_VERSION, "idm_contract_version": IDM_CONTRACT_VERSION,
         "prompt_policy_version": IDM_PROMPT_POLICY_VERSION, "source_snapshot_hash": data.source_snapshot_hash,
         "project_context": data.context.model_dump(mode="json"),
+        "purpose": (data.purpose or default_purpose(data.context)).model_dump(mode="json"),
         "target_audience": data.audience.model_dump(mode="json"),
         "learning_objectives": [item.model_dump(mode="json") for item in data.objectives],
         "must_dos": [item.model_dump(mode="json") for item in data.must_dos],
@@ -496,6 +526,7 @@ def _build_notes(data: AssemblyInput) -> IdmAuthorNotesV1:
     row_by_id = {row.block_id: row for row in data.rows}
     names = {block.block_id: block.name for block in data.blocks}
     pending = pending_objective_ids(data.objectives, data.must_dos, data.blocked)
+    purpose = data.purpose or default_purpose(data.context)
     course = build_course_notes(
         locale=locale, ai_proposed=ai_proposed, total_minutes=sum(lesson.est_minutes for lesson in lessons),
         lesson_count=len(lessons), module_count=len(data.plan.modules), reference_block_count=reference_count,
@@ -514,6 +545,11 @@ def _build_notes(data: AssemblyInput) -> IdmAuthorNotesV1:
                  if block.block_id in row_by_id and row_by_id[block.block_id].classification == "remove"],
         kept_definitions=[KeptDefinitionNote(names[item.block_id], item.terms, item.proposed)
                           for item in data.kept_definitions if item.block_id in names],
+        purpose_line=purpose_note_line(purpose, locale),
+        pattern_label=profile_label(purpose.profile, locale),
+        template_gaps=[gap.note for gap in purpose.template_gaps],
+        kept_background=[KeptDefinitionNote(names[item.block_id], (), item.proposed)
+                         for item in data.kept_background if item.block_id in names],
     )
     blooms = {item.must_do_id: item.bloom for item in data.must_dos}
     modules = {module.module_key: build_module_notes(
