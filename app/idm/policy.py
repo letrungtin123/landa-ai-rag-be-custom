@@ -11,7 +11,8 @@ from typing import Final
 IDM_PIPELINE_VERSION: Final = "idm-1"
 LEGACY_PIPELINE_VERSION: Final = "v2-legacy"
 # 2 (QLT-5): project_context.course_description, IdmCourseDesignV1.purpose, the unit brief's purpose fields and the
-# module context's purpose. Node reads stored contract-1 designs unchanged.
+# module context's purpose. Node reads stored contract-1 designs unchanged. QLT-5 C adds, still in contract 2 (not
+# released yet), the optional purpose.fidelity_mode and unit brief fidelity_mode and the "explain" treatment.
 IDM_CONTRACT_VERSION: Final = 2
 IDM_PROMPT_POLICY_VERSION: Final = "idm-prompt-1"
 IDM_SCOPE_KEY_PREFIX: Final = "idmcb_"
@@ -310,3 +311,41 @@ EXTRA_WORDS_PER_MUST_KNOW_BLOCK: Final = 120
 MIN_GENERATED_WORDS: Final = 250
 MAX_GENERATED_WORDS: Final = 1_600
 VISIBLE_CHARS_PER_WORD: Final = 7
+# QLT-5 C: an explained unit (content mode "explain") adds, per main idea, why it matters and a short example; the
+# measured output was ~1.3x the source words with no room for either. Its word budget (after the clamp above) is
+# raised by this percentage, in integer arithmetic so Node (``IDM_EXPLAIN_BUDGET_PERCENT``,
+# ``lesson-author-idm-unit.logic.ts``) computes exactly the same number. Job-aid units (lookup content) keep theirs.
+EXPLAIN_BUDGET_PERCENT: Final = 135
+
+# --- Content mode checks of teaching html slots (QLT-5 C, ``app.idm.fidelity_checks``) --------------------------
+# Measured on 6 runs (plan 2026-10-13 §2.2): 14-28% of html sentences were near-verbatim copies of the source, with
+# no explanation device in 83 of 89 units; the slot-level 8-gram check (>= 300 characters, share > 0.7, keep rows
+# exempt) never fired. A sentence is judged when it has at least this many words; shorter ones are labels.
+IDM_SENTENCE_MIN_WORDS: Final = 6
+# Near-verbatim: at least this share of the sentence's word 5-grams (accent-folded) appear in the slot's facts, or
+# one run of the facts covers at least this share of the sentence's words.
+IDM_SENTENCE_COPY_NGRAM: Final = 5
+IDM_SENTENCE_COPY_NGRAM_SHARE: Final = 0.6
+IDM_SENTENCE_COPY_RUN_SHARE: Final = 0.7
+# A slot with fewer judged sentences (definitions, rules and numbers excluded) is too short to tell.
+IDM_SENTENCE_COPY_MIN_SENTENCES: Final = 3
+# Highest share of near-verbatim judged sentences per teaching slot: an explained slot may quote at most about a
+# third (the QC target is <= 10% on average); an organised slot stays close to today's tolerance. The keep mode has
+# no copy check.
+IDM_SENTENCE_COPY_MAX_SHARE_EXPLAIN: Final = 0.35
+IDM_SENTENCE_COPY_MAX_SHARE_STRUCTURED: Final = 0.6
+# Explanation devices (NFC, lower case, with diacritics: "vì" must not match "ví"). A teaching slot of an explained
+# unit uses at least one of them in a sentence it did not copy from the facts.
+EXPLANATION_DEVICES_VI: Final = (
+    "ví dụ minh hoạ", "ví dụ minh họa", "ví dụ", "chẳng hạn", "nghĩa là", "tức là", "nói cách khác", "hiểu đơn giản",
+    "vì", "bởi vì", "do đó", "vì vậy", "nhờ đó", "nhờ vậy", "để", "giúp", "lý do", "vì sao", "tại sao", "so với",
+    "khác với", "giống như", "hãy hình dung", "dễ nhầm",
+)
+EXPLANATION_DEVICES_EN: Final = (
+    "illustrative example", "for example", "for instance", "such as", "this means", "that is", "in other words",
+    "because", "so that", "which helps", "helps", "why", "the reason", "compared with", "unlike", "imagine",
+    "a common mistake", "a common confusion",
+)
+# The label that marks an example the AI drafted (owner decision 2026-10-14); the author note lists every one.
+EXAMPLE_LABEL_VI: Final = "Ví dụ minh hoạ:"
+EXAMPLE_LABEL_EN: Final = "Illustrative example:"

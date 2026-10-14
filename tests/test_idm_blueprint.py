@@ -49,16 +49,17 @@ from tests.idm_golden import (
     source_facts,
 )
 
-# Spec §7.4 consistency matrix: classification -> (required placement, allowed treatments).
+# Spec §7.4 consistency matrix: classification -> (required placement, allowed treatments). "explain" (QLT-5 C) is
+# valid in every content mode; the mode policy changes it afterwards (``fidelity.enforce_treatments``).
 SPEC_MATRIX: dict[str, tuple[str, set[str]]] = {
-    "must_do": ("course", {"keep", "condense", "rewrite", "combine", "separate"}),
-    "must_know": ("course", {"keep", "condense", "rewrite", "combine", "separate"}),
+    "must_do": ("course", {"keep", "condense", "rewrite", "explain", "combine", "separate"}),
+    "must_know": ("course", {"keep", "condense", "rewrite", "explain", "combine", "separate"}),
     "reference": ("reference_job_aid", {"move_to_reference", "convert_to_job_aid"}),
     "nice_to_know": ("excluded", {"remove"}),
     "remove": ("excluded", {"remove"}),
 }
-TREATMENTS = ("keep", "condense", "rewrite", "combine", "separate", "move_to_reference", "convert_to_job_aid",
-              "remove")
+TREATMENTS = ("keep", "condense", "rewrite", "explain", "combine", "separate", "move_to_reference",
+              "convert_to_job_aid", "remove")
 PLACEMENTS = ("course", "reference_job_aid", "excluded")
 
 

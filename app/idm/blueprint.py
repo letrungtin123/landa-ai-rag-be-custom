@@ -25,6 +25,7 @@ from app.idm.contracts import (
     StageOrigin,
     Treatment,
 )
+from app.idm.fidelity import TREATMENT_POLICY_CODE, enforce_treatments, purpose_mode, w2_treatment_rules
 from app.idm.policy import IDM_W2_MAX_OUTPUT_TOKENS, IDM_W2_SINGLE_CALL_MAX_BLOCKS, THINKING_W2
 from app.idm.prompts import COMPACT_W2, answer_repair, repair_suffix, w2_blueprint_prompt
 from app.idm.purpose import (
@@ -53,9 +54,11 @@ PLACEMENT_BY_CLASSIFICATION: Final[dict[str, Placement]] = {
     "must_do": "course", "must_know": "course", "reference": "reference_job_aid",
     "nice_to_know": "excluded", "remove": "excluded",
 }
+# "explain" is valid in every mode: the content mode decides afterwards (``fidelity.enforce_treatments``), so a mode
+# rule never costs a W2 repair call.
 TREATMENTS_BY_CLASSIFICATION: Final = {
-    "must_do": {"keep", "condense", "rewrite", "combine", "separate"},
-    "must_know": {"keep", "condense", "rewrite", "combine", "separate"},
+    "must_do": {"keep", "condense", "rewrite", "explain", "combine", "separate"},
+    "must_know": {"keep", "condense", "rewrite", "explain", "combine", "separate"},
     "reference": {"move_to_reference", "convert_to_job_aid"},
     "nice_to_know": {"remove"},
     "remove": {"remove"},
@@ -426,9 +429,11 @@ async def run_w2(
     purpose: IdmPurposeV1 | None = None,
 ) -> BlueprintResult:
     """``purpose`` (QLT-5) adds the author intent and what the course purpose keeps; without it the general
-    profile applies (today's rules)."""
+    profile applies (today's rules). Its content mode (QLT-5 C) defines the treatments the prompt allows and the
+    server enforces on the final rows."""
 
     purpose = purpose or default_purpose(context)
+    mode = purpose_mode(purpose)
     rules, background = w2_purpose_rules(context, purpose)
     codes: Counter[str] = Counter()
     rows: list[IdmBlueprintRowV1] = []
@@ -441,7 +446,7 @@ async def run_w2(
             objectives=[item.model_dump(mode="json") for item in objectives],
             must_dos=[item.model_dump(mode="json") for item in must_dos],
             catalog=blueprint_catalog(batch, [link for link in links if link.block_id in batch_ids]),
-            purpose_rules=rules, background_rule=background,
+            purpose_rules=rules, background_rule=background, treatment_rules=w2_treatment_rules(mode),
         )
         accepted: list[IdmBlueprintRowV1] | None = None
         repair = ""
@@ -487,6 +492,9 @@ async def run_w2(
     if background_kept:
         codes[ONBOARDING_CONTENT_KEPT_CODE] += len(background_kept)
     applied_blocks, applied_links, applied_rows = apply_w2(rows, blocks, links, index)
+    applied_rows, enforced = enforce_treatments(applied_rows, applied_blocks, mode)
+    if enforced:
+        codes[TREATMENT_POLICY_CODE] += enforced
     origin: StageOrigin = ("provider" if fallback_batches == 0
                            else "deterministic_fallback" if fallback_batches == len(batches) else "partial_fallback")
     return BlueprintResult(applied_blocks, applied_links, applied_rows, origin, dict(codes), kept, background_kept)

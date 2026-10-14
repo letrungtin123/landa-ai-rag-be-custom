@@ -20,6 +20,12 @@ from app.idm.contracts import (
     JudgeCriterion,
     JudgeSeverity,
 )
+from app.idm.fidelity_checks import (
+    EXPLANATION_MISSING_CODE,
+    NEW_FACT_CODE,
+    SENTENCE_COPY_CODE,
+    FidelityChecker,
+)
 from app.idm.framework import FrameworkPromise, framework_listed
 from app.idm.mcq import ANSWER_LENGTH_CUE_CODE, OPTION_LETTERS, answer_length_cue, labelled_letters
 from app.idm.policy import (
@@ -80,10 +86,14 @@ TITLE_CRITERION: Final = "Q10_title_matches"
 # QLT-5: the unit serves the course purpose (an onboarding unit that trains selling fails it). Recorded under
 # Q9_traceability like Q10, in the judge's mode (observe by default), so the stored contract stays unchanged.
 PURPOSE_CRITERION: Final = "Q11_purpose_alignment"
-JUDGE_CRITERIA: Final[tuple[JudgeAnswerCriterion, ...]] = (*CRITERIA, TITLE_CRITERION, PURPOSE_CRITERION)
+# QLT-5 C: an explained unit (content mode explain) explains its teaching for the learner. Stored under Q2_not_copied
+# (the same question: taught, not pasted), so the stored contract stays unchanged; observe mode like the others.
+EXPLAINED_CRITERION: Final = "Q12_explained"
+JUDGE_CRITERIA: Final[tuple[JudgeAnswerCriterion, ...]] = (*CRITERIA, TITLE_CRITERION, PURPOSE_CRITERION,
+                                                          EXPLAINED_CRITERION)
 _STORED_CRITERION: Final[dict[str, JudgeCriterion]] = {
     **{criterion: criterion for criterion in CRITERIA}, TITLE_CRITERION: "Q9_traceability",
-    PURPOSE_CRITERION: "Q9_traceability"}
+    PURPOSE_CRITERION: "Q9_traceability", EXPLAINED_CRITERION: "Q2_not_copied"}
 # QC course 364564 (N7): two teach-only units (html + FAQ) were rejected for Q3/Q4/Q6 because the judge saw
 # the lesson's practice. A unit without a practice slot cannot fail these: they are "not_applicable",
 # which never counts as a finding and never reaches the stored summary.
@@ -103,6 +113,7 @@ _CRITERION_LABEL_VI: Final = {
     "Q9_traceability": "có khối không phục vụ Must Do",
     TITLE_CRITERION: "tiêu đề không khớp nội dung được dạy",
     PURPOSE_CRITERION: "nội dung chưa phục vụ đúng mục đích khoá học",
+    EXPLAINED_CRITERION: "phần lý thuyết chưa được giảng giải cho người học",
 }
 _CRITERION_LABEL_EN: Final = {
     "Q1_support_sufficient": "support is not enough for the practice",
@@ -116,6 +127,7 @@ _CRITERION_LABEL_EN: Final = {
     "Q9_traceability": "a block does not serve the Must Do",
     TITLE_CRITERION: "a title does not match what the unit teaches",
     PURPOSE_CRITERION: "the content does not serve the course purpose",
+    EXPLAINED_CRITERION: "the theory is not explained for the learner",
 }
 _SEVERITY_RANK: Final = {"pass": 0, "minor": 1, "major": 2, "critical": 3}
 FAQ_UNGROUNDED_CODE: Final = "IDM_W5_FAQ_UNGROUNDED"
@@ -296,14 +308,19 @@ def worksheet_complete(component: dict[str, Any], evidence: EvidenceIndex | None
 
 def deterministic_slot_findings(
     unit: dict[str, Any], brief: IdmUnitBriefV1, owned_text_by_slot: Sequence[str],
-    evidence: EvidenceIndex | None = None, framework: FrameworkPromise | None = None,
+    evidence: EvidenceIndex | None = None, framework: FrameworkPromise | None = None, *,
+    fidelity: FidelityChecker | None = None,
 ) -> list[SlotFinding]:
     """IDM checks on top of the shared staged validator (spec §7.7.2(b)).
 
     With ``evidence`` (the facts the writer was given), FAQ answers and callouts must restate them and a
     worksheet's self-check list must come from them. With ``framework`` (the "N <items>" a title of the
-    unit promises), the unit's teaching html must list every item (reported on its first html slot).
+    unit promises), the unit's teaching html must list every item (reported on its first html slot). With
+    ``fidelity`` (QLT-5 C), the teaching html slots follow the unit's content mode (``fidelity_checks``); the
+    slot-level verbatim check then only runs in the structured mode, as before.
     """
+
+    slot_copy_check = fidelity is None or fidelity.mode == "structured"
 
     components = [item for item in unit.get("components", []) if isinstance(item, dict)]
     findings: list[SlotFinding] = []
@@ -318,7 +335,7 @@ def deterministic_slot_findings(
             text = _visible(component)
             preceding_html += " " + text
             treatments = {item.treatment for item in slot.treatments} if slot else set()
-            if (len(text) >= VERBATIM_MIN_CHARS and treatments and treatments != {"keep"}
+            if (slot_copy_check and len(text) >= VERBATIM_MIN_CHARS and treatments and treatments != {"keep"}
                     and index < len(owned_text_by_slot)
                     and ngram_overlap(text, owned_text_by_slot[index]) > VERBATIM_MAX_OVERLAP):
                 findings.append(SlotFinding("IDM_W5_VERBATIM_COPY", index))
@@ -360,6 +377,8 @@ def deterministic_slot_findings(
     if framework is not None and html_slots and not framework_listed(
             framework, [components[index] for index in html_slots], preceding_html):
         findings.append(SlotFinding(FRAMEWORK_INCOMPLETE_CODE, html_slots[0]))
+    if fidelity is not None:
+        findings.extend(SlotFinding(code, index) for code, index in fidelity.findings(components))
     return findings
 
 
@@ -427,12 +446,14 @@ def advisory_slot_findings(unit: dict[str, Any], exempt: Collection[int] = ()) -
 
 def final_unit_findings(unit: dict[str, Any], brief: IdmUnitBriefV1, owned_text_by_slot: Sequence[str],
                         evidence: EvidenceIndex | None, fallback_slots: Collection[int], *,
-                        framework: FrameworkPromise | None = None) -> list[SlotFinding]:
+                        framework: FrameworkPromise | None = None,
+                        fidelity: FidelityChecker | None = None) -> list[SlotFinding]:
     """What the returned unit still has (QC course 364564, N8): the IDM checks of its provider slots plus the
     review-only notes. A code seen before a repair is not in it unless the final unit still fails it."""
 
     exempt = set(fallback_slots)
-    found = [item for item in deterministic_slot_findings(unit, brief, owned_text_by_slot, evidence, framework)
+    found = [item for item in deterministic_slot_findings(unit, brief, owned_text_by_slot, evidence, framework,
+                                                          fidelity=fidelity)
              if item.component_index not in exempt]
     return [*found, *advisory_slot_findings(unit, exempt)]
 
@@ -585,6 +606,7 @@ def build_unit_author_note(
     callouts_to_prose: int = 0,
     framework_list_inserted: int = 0,
     worksheet_compacted: bool = False,
+    drafted_examples: Mapping[int, int] | None = None,
 ) -> str:
     """Template note for the unit ``implementation_notes``; no IDs, no ``<``/``>``.
 
@@ -594,6 +616,8 @@ def build_unit_author_note(
     ``remaining`` are the findings of the unit as returned and ``fixed_codes`` the codes found and
     settled during generation (QC course 364564, N8: codes seen before a repair were printed as
     still open). Without ``remaining`` every deterministic code counts as still open.
+
+    ``drafted_examples`` (QLT-5 C): the examples labelled "Ví dụ minh hoạ" per slot; the author checks each one.
     """
 
     vi = locale == "vi"
@@ -660,10 +684,39 @@ def build_unit_author_note(
                           "its table) was left out — the author may add a short example back.")
     if not whole_fallback:
         parts.extend(_check_lines(vi, deterministic_codes, remaining, fixed_codes, slot_types))
+    if drafted_examples and not whole_fallback:
+        parts.append(_drafted_examples_line(drafted_examples, slot_types, vi))
     if ai_drafted and not whole_fallback:  # a source-locked unit carries no drafted scenario
         parts.append("Tình huống minh hoạ do AI soạn, cần SME xác nhận tính thực tế." if vi
                      else "The illustrative scenario was drafted by AI; the SME should confirm it is realistic.")
     return sanitize_author_text(" ".join(parts), IDM_UNIT_AUTHOR_NOTE_MAX_CHARS)
+
+
+def _drafted_examples_line(examples: Mapping[int, int], slot_types: Sequence[str], vi: bool) -> str:
+    """One plain line per unit: how many AI-drafted examples, and in which slots."""
+
+    labels = _SLOT_LABEL_VI if vi else _SLOT_LABEL_EN
+    total = sum(examples.values())
+    where = ", ".join(f"{'khối' if vi else 'block'} {index + 1}"
+                      + (f" ({labels[slot_types[index]]})" if index < len(slot_types) and slot_types[index] in labels
+                         else "") for index in sorted(examples))
+    return (f"Ví dụ minh hoạ do AI soạn — cần kiểm tra: {total} ví dụ ({where})." if vi
+            else f"Illustrative examples drafted by AI — please check: {total} example(s) ({where}).")
+
+
+# Content-mode findings (QLT-5 C) in plain words, without codes.
+_PLAIN_HINT_VI: Final = {
+    SENTENCE_COPY_CODE: "nhiều câu gần như chép nguyên văn tài liệu — nên viết lại bằng lời dễ hiểu và giải thích thêm",
+    EXPLANATION_MISSING_CODE: "phần lý thuyết mới nêu lại nội dung tài liệu — nên thêm giải thích vì sao quan trọng "
+                              "và một ví dụ",
+    NEW_FACT_CODE: "có số liệu hoặc tên riêng không có trong tài liệu — cần kiểm tra và bỏ nếu không đúng",
+}
+_PLAIN_HINT_EN: Final = {
+    SENTENCE_COPY_CODE: "many sentences copy the source almost word for word — rewrite them in plain words and explain "
+                        "them",
+    EXPLANATION_MISSING_CODE: "the theory only restates the source — add why it matters and an example",
+    NEW_FACT_CODE: "a number or a name that is not in the source — check it and remove it if it is wrong",
+}
 
 
 _REVIEW_HINT_VI: Final = {
@@ -712,15 +765,20 @@ def _check_lines(vi: bool, deterministic_codes: Sequence[str], remaining: Sequen
     still = list(deterministic_codes) if remaining is None else [item.code for item in remaining]
     hints = _REVIEW_HINT_VI if vi else _REVIEW_HINT_EN
     labels = _SLOT_LABEL_VI if vi else _SLOT_LABEL_EN
-    for code, hint in hints.items():
+    plain = _PLAIN_HINT_VI if vi else _PLAIN_HINT_EN
+    for code, hint in [*hints.items(), *plain.items()]:
         slots = sorted({item.component_index for item in remaining or () if item.code == code})
         if not slots:
             continue
         where = ", ".join(f"{'khối' if vi else 'block'} {index + 1}"
                           + (f" ({labels[slot_types[index]]})" if index < len(slot_types)
                              and slot_types[index] in labels else "") for index in slots)
-        lines.append(f"Cần xem ({code}, {where}): {hint}." if vi else f"Review ({code}, {where}): {hint}.")
-    warn = sorted({code for code in still if remaining is None or code not in hints})[:_MAX_NOTE_CODES]
+        if code in plain:
+            lines.append(f"Cần xem {where}: {hint}." if vi else f"Review {where}: {hint}.")
+        else:
+            lines.append(f"Cần xem ({code}, {where}): {hint}." if vi else f"Review ({code}, {where}): {hint}.")
+    warn = sorted({code for code in still if remaining is None or (code not in hints and code not in plain)})[
+        :_MAX_NOTE_CODES]
     if warn:
         lines.append("Kiểm tra tự động còn cảnh báo: " + ", ".join(warn) + "." if vi
                      else "Automatic checks still warn: " + ", ".join(warn) + ".")
@@ -771,7 +829,8 @@ def blocking_count(findings: Sequence[IdmJudgeFindingV1]) -> int:
 
 __all__ = [
     "ANSWER_CONTESTED_CODE", "ANSWER_LEAK_CODE", "CALLOUT_KIND", "CALLOUT_TO_PROSE_CODE", "CALLOUT_UNGROUNDED_CODE",
-    "CRITERIA", "FAQ_ITEMS_DROPPED_CODE", "FAQ_RESTATES_HTML_CODE", "FAQ_TITLE_MISMATCH_CODE", "FAQ_UNGROUNDED_CODE",
+    "CRITERIA", "EXPLAINED_CRITERION", "FAQ_ITEMS_DROPPED_CODE", "FAQ_RESTATES_HTML_CODE", "FAQ_TITLE_MISMATCH_CODE",
+    "FAQ_UNGROUNDED_CODE",
     "FRAMEWORK_INCOMPLETE_CODE", "FRAMEWORK_LIST_INSERTED_CODE", "JUDGE_CRITERIA", "NOT_APPLICABLE",
     "PRACTICE_CRITERIA", "PURPOSE_CRITERION", "SOURCE_ARTIFACT_CODE", "TITLE_CRITERION", "WORKSHEET_INCOMPLETE_CODE",
     "JudgeOutcome",

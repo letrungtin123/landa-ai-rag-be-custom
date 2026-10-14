@@ -200,12 +200,18 @@ def _held_module(module_key: str, hold_lessons: list[str]) -> dict[str, Any]:
 
 
 def golden_units() -> dict[str, Any]:
-    """Golden unit requests with a valid writer answer each (``severity``: html explain + problem)."""
+    """Golden unit requests with a valid writer answer each (``severity``: html explain + problem;
+    ``severity_explain``: the same unit in an explained course, QLT-5 C, whose budget is 135%)."""
 
+    from tests import test_idm_fidelity_unit as fu  # noqa: PLC0415 - test fixtures, loaded only for this stage
     from tests import test_idm_storyboard as sb  # noqa: PLC0415 - test fixtures, loaded only for this stage
 
+    def explain_writer(body: dict[str, Any]) -> dict[str, Any]:
+        return fu.writer_with(body, fu.explained_c0(fu.owned_of(body)))
+
     units = {"worksheet": (sb.worksheet_body, sb.worksheet_writer), "escalate": (sb.escalate_body, sb.escalate_writer),
-             "severity": (sb.severity_body, sb.severity_writer)}
+             "severity": (sb.severity_body, sb.severity_writer),
+             "severity_explain": (fu.explain_body, explain_writer)}
     result: dict[str, Any] = {}
     for name, (body_of, writer_of) in units.items():
         body = body_of()

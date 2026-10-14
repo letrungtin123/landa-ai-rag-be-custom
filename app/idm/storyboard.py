@@ -26,6 +26,13 @@ from app.idm.artifacts import clean_question, clean_semantic
 from app.idm.budget import judge_repair_fits, repair_thinking_for, writer_thinking
 from app.idm.contracts import IdmUnitBriefV1, brief_hash_of
 from app.idm.diagram import idm_diagram_relationships
+from app.idm.fidelity import brief_mode, budget_words, slot_marks, writer_fidelity_rules
+from app.idm.fidelity_checks import (
+    FIDELITY_CODES,
+    NEW_FACT_CODE,
+    SENTENCE_COPY_CODE,
+    FidelityChecker,
+)
 from app.idm.framework import build_promise, framework_coverage, framework_support_lines, with_framework_list
 from app.idm.html_rules import (
     DENSITY_CODE,
@@ -129,6 +136,7 @@ _SAFE_CODE_RE: Final = re.compile(r"^[A-Z][A-Z0-9_]{2,99}$")
 _SAFE_PATH_RE: Final = re.compile(r"^[A-Za-z0-9_.\[\]]{1,160}$")
 _MAX_LOGGED_DETAILS: Final = 16
 _FIELD_OF_PATH_RE: Final = re.compile(r"^components\[\d+\]\.?")
+VERBATIM_COPY_CODE: Final = "IDM_W5_VERBATIM_COPY"
 # A worksheet that misses part of its structure keeps the provider slot for author review: the
 # source-locked html fallback would replace the practice with plain explanation.
 # An option copying the html before the question (QC course 364564, N3) is a review note once the repair
@@ -137,20 +145,27 @@ _FIELD_OF_PATH_RE: Final = re.compile(r"^components\[\d+\]\.?")
 # others remain, an FAQ title that does not match its questions (N11) and a title that promises a framework
 # the html does not list (N5): the source-locked rebuild would replace the whole teaching slot for a problem
 # the author fixes in a minute.
+# QLT-5 C: a copy (slot or sentence level), explanation or new-fact finding of a teaching slot is a review note too:
+# the source-locked rebuild would answer "too close to the source" with the source itself (plan 2026-10-13 §2.2,
+# point 5).
 _REVIEW_FIRST_CODES: Final = frozenset({WORKSHEET_INCOMPLETE_CODE, ANSWER_LEAK_CODE, ANSWER_CONTESTED_CODE,
                                         CALLOUT_UNGROUNDED_CODE, FAQ_RESTATES_HTML_CODE, FAQ_TITLE_MISMATCH_CODE,
-                                        FRAMEWORK_INCOMPLETE_CODE, SOURCE_ARTIFACT_CODE})
+                                        FRAMEWORK_INCOMPLETE_CODE, SOURCE_ARTIFACT_CODE, VERBATIM_COPY_CODE,
+                                        *FIDELITY_CODES})
 # Findings a deterministic step settles when the repair does not (a list inserted, an FAQ item dropped, a callout
 # turned into prose, a review note): their repair alone is a targeted one, a scoped rewrite at low thinking. QC run
 # ab8d67e1 (R3): two leak repairs at medium thinking were cut by the unit deadline.
 _TARGETED_REPAIR_CODES: Final = frozenset({FRAMEWORK_INCOMPLETE_CODE, ANSWER_LENGTH_CUE_CODE, ANSWER_LEAK_CODE,
                                            ANSWER_CONTESTED_CODE, FAQ_UNGROUNDED_CODE, FAQ_RESTATES_HTML_CODE,
-                                           FAQ_TITLE_MISMATCH_CODE, CALLOUT_UNGROUNDED_CODE, SOURCE_ARTIFACT_CODE})
+                                           FAQ_TITLE_MISMATCH_CODE, CALLOUT_UNGROUNDED_CODE, SOURCE_ARTIFACT_CODE,
+                                           *FIDELITY_CODES})
 # A non-targeted repair that would not finish before the unit deadline is not started (R3).
 REPAIR_SKIPPED_CODE: Final = "IDM_W5_REPAIR_SKIPPED_BUDGET"
 # FAQ findings settled by dropping the items concerned while the slot keeps two items.
 _FAQ_PRUNE_CODES: Final = frozenset({FAQ_UNGROUNDED_CODE, FAQ_RESTATES_HTML_CODE})
 _MAX_HINT_FACT_KEYS: Final = 24
+# Locations named per content-mode repair line (server-built JSON paths, never text).
+_MAX_HINT_LOCATIONS: Final = 8
 _FALLBACK_INVALID: Final = "ORCHESTRATION_V2_UNIT_FALLBACK_INVALID"
 
 
@@ -238,11 +253,13 @@ def parse_brief(contract: UnitGenerationContractV2) -> IdmUnitBriefV1:
 
 
 def output_budget(brief: IdmUnitBriefV1, contract: UnitGenerationContractV2) -> dict[str, Any]:
-    """Segment-based teaching budget (spec §7.7.3); never the 1.75x-source rule."""
+    """Segment-based teaching budget (spec §7.7.3); never the 1.75x-source rule. An explained unit (QLT-5 C) gets
+    ``EXPLAIN_BUDGET_PERCENT`` of it; Node's ``idmUnitOutputBudget`` computes the same numbers from the brief."""
 
     blocks = {treatment.block_id for slot in brief.components for treatment in slot.treatments}
     words = SEGMENT_WORD_BUDGET[brief.unit_segment] + EXTRA_WORDS_PER_MUST_KNOW_BLOCK * max(0, len(blocks) - 1)
-    words = max(MIN_GENERATED_WORDS, min(MAX_GENERATED_WORDS, words))
+    words = budget_words(max(MIN_GENERATED_WORDS, min(MAX_GENERATED_WORDS, words)), brief_mode(brief),
+                         brief.unit_segment)
     source_chars = sum(len(fact.fact_text) for fact in contract.source_facts)
     return {"policy_version": INSTRUCTIONAL_DENSITY_POLICY_VERSION, "source_content_chars": source_chars,
             "source_estimated_words": len(" ".join(fact.fact_text for fact in contract.source_facts).split()),
@@ -356,6 +373,13 @@ class IdmUnitWriter:
             [*(fact.fact_text for fact in contract.source_facts),
              *(item.fact_text for item in brief.lesson_context_facts)],
             number_texts=[brief.lesson_objective, brief.unit_purpose, *brief.lesson_practice_sentences])
+        # QLT-5 C: the content mode of the unit and its checks of the teaching html slots. Names and numbers of the
+        # approved plan's titles may be repeated; drafted plan text (support briefs, scenarios) adds none.
+        self.mode = brief_mode(brief)
+        self.fidelity = FidelityChecker.build(
+            brief, self.text_by_id, self.evidence, locale=runtime.locale,
+            plan_texts=[brief.course_title, brief.module_title, brief.lesson_title, brief.lesson_objective,
+                        brief.unit_purpose, contract.unit_title, *(slot.title for slot in brief.components)])
         # A unit or html slot title that names "N <items>" promises an overview of all N items (QC 364564, N5). The
         # items come from the unit's facts or, for an orientation unit whose blocks only introduce the framework,
         # from the server-written support item W4 attached with the names of every item (QC run 8de1c76b, Q3).
@@ -402,6 +426,7 @@ class IdmUnitWriter:
             },
             "treatments": [item.model_dump(mode="json") for item in slot.treatments],
             "owned_fact_keys": slot.owned_fact_keys, "supporting_fact_keys": slot.supporting_fact_keys,
+            **slot_marks(brief, index),
         } for index, slot in enumerate(brief.components)]
         return unit_writer_prompt(
             self.runtime.locale, course_title=brief.course_title, audience=brief.target_audience,
@@ -415,9 +440,9 @@ class IdmUnitWriter:
             context_facts=[(item.fact_key, item.fact_text, None) for item in brief.lesson_context_facts],
             html_rules=html_slot_rules(max_words=self.budget.get("max_words"),
                                        max_chars=self.budget.get("max_visible_chars"),
-                                       min_chars=self.min_html_chars)
+                                       min_chars=self.min_html_chars, explain=self.mode == "explain")
             if any(slot.type == "html" for slot in brief.components) else "",
-            course_purpose=brief_purpose(brief),
+            course_purpose=brief_purpose(brief), fidelity_rules=writer_fidelity_rules(self.mode, self.runtime.locale),
         )
 
     def html_violations(self, component: Any) -> list[HtmlRuleViolation]:
@@ -437,7 +462,8 @@ class IdmUnitWriter:
             component = components[index] if 0 <= index < len(components) else None
             violations = self.html_violations(component)
             only_density = bool(violations) and all(item.code == DENSITY_CODE for item in violations)
-            lines.extend(html_violation_line(slot, item, only_density=only_density) for item in violations)
+            lines.extend(html_violation_line(slot, item, only_density=only_density, explain=self.mode == "explain")
+                         for item in violations)
             explained = {item.code for item in violations}
             if any(item.structural for item in violations):
                 explained.add("HTML_SEMANTIC_INVALID")
@@ -462,6 +488,8 @@ class IdmUnitWriter:
                             f"{measured[1]})" if measured else ""))
                     elif code == ANSWER_CONTESTED_CODE and isinstance(component, dict):
                         lines.append(self.contested_rule_line(slot, index, component, unit))
+                    elif code in {SENTENCE_COPY_CODE, NEW_FACT_CODE} and isinstance(component, dict):
+                        lines.append(self.fidelity_rule_line(slot, index, component, code))
                     else:
                         field = _FIELD_OF_PATH_RE.sub("", locations.get((code, index), ""))
                         lines.append(rule_line(slot, code, f"{slot}.{field}" if field else slot))
@@ -511,6 +539,21 @@ class IdmUnitWriter:
         return rule_line(slot, ANSWER_CONTESTED_CODE, f"{slot}.question") + (
             f" (the case also meets the criteria the unit gives for{letter or ' another option'})")
 
+    def fidelity_rule_line(self, slot: str, index: int, component: dict[str, Any], code: str) -> str:
+        """Targeted repair of a content-mode finding: the locations and, for a copy, the server-measured share."""
+
+        if code == SENTENCE_COPY_CODE:
+            report = self.fidelity.report(index, component)
+            limit = self.fidelity.copy_limit(index) or 0.0
+            locations = list(dict.fromkeys(report.copied))[:_MAX_HINT_LOCATIONS]
+            measured = (f" ({len(report.copied)} of {report.judged} judged sentences repeat the facts word for word; "
+                        f"at most {int(limit * 100)}% may)")
+        else:
+            locations = self.fidelity.new_fact_locations(component)[:_MAX_HINT_LOCATIONS]
+            measured = ""
+        where = ", ".join(f"{slot}.{location}" for location in locations)
+        return rule_line(slot, code, where or slot) + measured
+
     def fact_hint(self, index: int) -> str:
         brief_slot = self.brief.components[index] if index < len(self.brief.components) else None
         keys = list(dict.fromkeys([*brief_slot.owned_fact_keys, *brief_slot.supporting_fact_keys]))[
@@ -554,11 +597,17 @@ class IdmUnitWriter:
         if isinstance(semantic, dict):
             semantic = clean_semantic(semantic, self.evidence.pairs, self.runtime.locale, artefacts)
         fixes.update(artefacts)
+        component = {**component, "semantic_content": semantic} if fixes else component
+        # QLT-5 C: an example that does not repeat the facts carries the illustrative label (explain mode, teaching
+        # slots), so a drafted example never reads as a fact.
+        component, labelled = self.fidelity.label_examples(index, component)
+        if labelled:
+            fixes["example_labelled"] += labelled
         if not fixes:
             return component
         self.html_fixes.update(fixes)
         self.runtime.adjustments.update({f"w5_html_{key}": count for key, count in fixes.items()})
-        return {**component, "semantic_content": semantic}
+        return component
 
     def count_artefacts(self, artefacts: Counter[str]) -> None:
         self.runtime.adjustments.update({f"w5_text_{key}": count for key, count in artefacts.items()})
@@ -635,7 +684,7 @@ class IdmUnitWriter:
         exempt = {*draft.fallback_slots, *draft.review_slots}
         idm = [(item.code, item.component_index)
                for item in deterministic_slot_findings(draft.unit, self.brief, self.owned_text, self.evidence,
-                                                       self.framework)
+                                                       self.framework, fidelity=self.fidelity)
                if item.component_index not in exempt]
         return finding, idm
 
@@ -934,6 +983,10 @@ class IdmUnitWriter:
         original = draft
         # Only notes to settle: a repair that breaks anything else is dropped (the unit was acceptable before).
         notes_only = finding is None and not idm
+        # Only content-mode findings (QLT-5 C): they end as review notes, so a repair that makes a slot fail a shared
+        # or Node rule (a longer explanation over the budget) is dropped instead of replacing the slot with the
+        # source-locked copy.
+        fidelity_only = finding is None and bool(idm) and {code for code, _index in idm} <= FIDELITY_CODES
         slot = _slot_of(finding)
         if finding is not None and slot is None:
             return None
@@ -954,6 +1007,9 @@ class IdmUnitWriter:
         draft, repaired = await self.budgeted_repair(draft, issues, locations, targeted=targeted)
         if repaired and notes_only and any(self.problems(draft)):
             self.runtime.adjustments["w5_note_repair_reverted"] += 1
+            draft = original
+        elif repaired and fidelity_only and self.problems(draft)[0] is not None:
+            self.runtime.adjustments["w5_fidelity_repair_reverted"] += 1
             draft = original
         # Each pass settles one step of one slot (Node item pruning, FAQ pruning or callouts to prose, then
         # fallback or review), so the bound never limits.
@@ -1111,7 +1167,12 @@ async def run_idm_unit(
                   or (ai_drafted and _q5(judge) != "pass"))
     # N8: "still warns" is recomputed on the returned unit; codes settled on the way are listed apart.
     remaining = [] if whole_fallback else final_unit_findings(draft.unit, brief, writer.owned_text, writer.evidence,
-                                                              draft.fallback_slots, framework=writer.framework)
+                                                              draft.fallback_slots, framework=writer.framework,
+                                                              fidelity=writer.fidelity)
+    components = draft.unit.get("components", [])
+    # Labelled examples of provider slots only: a source-locked slot carries none.
+    drafted = {} if whole_fallback else {index: count for index, count in writer.fidelity.drafted_examples(
+        components).items() if index not in draft.fallback_slots}
     fixed = [] if whole_fallback else settled_codes(
         writer.codes, remaining, {code for index in draft.fallback_slots for code in draft.reasons.get(index, ())})
     note = build_unit_author_note(
@@ -1121,7 +1182,8 @@ async def run_idm_unit(
         whole_fallback=whole_fallback, faq_items_dropped=writer.faq_items_dropped,
         faq_items_invalid=writer.faq_items_invalid, remaining=remaining, fixed_codes=fixed,
         faq_items_restated=writer.faq_items_restated, callouts_to_prose=writer.callouts_converted,
-        framework_list_inserted=writer.framework_inserted, worksheet_compacted=writer.worksheet_compacted)
+        framework_list_inserted=writer.framework_inserted, worksheet_compacted=writer.worksheet_compacted,
+        drafted_examples=drafted)
     quality = build_unit_quality(mode=deps.judge_mode, judge=judge, repair_applied=draft.repair_applied,
                                  deterministic_codes=[*writer.codes, *(item.code for item in remaining)],
                                  author_note=note)
@@ -1138,6 +1200,7 @@ async def run_idm_unit(
         "callouts_to_prose": writer.callouts_converted, "framework_list_inserted": writer.framework_inserted,
         "slot_reasons": {str(index): codes for index, codes in sorted(draft.reasons.items())},
         "node_acceptance": writer.acceptance_seen[:_MAX_LOGGED_DETAILS],
+        "fidelity": {"mode": writer.mode} if whole_fallback else writer.fidelity.metrics(components),
         "call_count": runtime.usage.calls, "duration_ms": int((time.perf_counter() - started) * _MS),
     })
     return {
@@ -1198,6 +1261,8 @@ async def _judge_and_repair(writer: IdmUnitWriter, draft: _Draft, mode: JudgeMod
         "has_practice_slot": practice_slot,
         # QLT-5: Q11 judges the unit against the course purpose (null for a brief without one).
         "course_purpose": brief_purpose(writer.brief),
+        # QLT-5 C: Q12 judges how an explained unit explains (not_applicable in the other modes).
+        "fidelity_mode": writer.mode,
         "slots": [{"index": index, "type": slot.type, "role": slot.role, "title": slot.title,
                    "treatments": [item.model_dump(mode="json") for item in slot.treatments]}
                   for index, slot in enumerate(writer.brief.components)],

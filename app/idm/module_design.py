@@ -29,6 +29,7 @@ from app.idm.contracts import (
     StageOrigin,
     design_hash_of,
 )
+from app.idm.fidelity import TEACHING_SUPPORT_CODE, module_fidelity_rules, plan_teaching_supports, purpose_mode
 from app.idm.framework import framework_promise, unit_framework_brief
 from app.idm.limits import answer_limits
 from app.idm.mcq import encode_key_letters
@@ -622,6 +623,8 @@ async def run_idm_module_design(
 
     started = time.perf_counter()
     scope = build_module_scope(context, plan, facts)
+    # QLT-5 C: the design's content mode (structured for a design without one).
+    mode = purpose_mode(context.purpose)
     allowed: set[str] = set(context.allowed_component_types)
     lesson_md = {
         md for lesson in scope.lesson_plans for md in [lesson.primary_must_do_id, *lesson.secondary_must_do_ids] if md
@@ -649,6 +652,7 @@ async def run_idm_module_design(
         limits=answer_limits(IdmW3W4ModuleResponseV1),
         # QLT-5: the design's purpose keeps the lessons on what the course is for (none for a contract-1 design).
         purpose_rules=module_purpose_rules(context.purpose), course_purpose=purpose_brief(context.purpose),
+        fidelity_rules=module_fidelity_rules(mode, scope.locale),
     )
     accepted: dict[str, IdmLessonDesignV1] = {}
     seen_practices: dict[str, list[IdmPracticeTaskV1]] = {}
@@ -738,6 +742,11 @@ async def run_idm_module_design(
     final, attached = attach_framework_items(final, scope)
     if attached:
         runtime.adjustments["IDM_W4_FRAMEWORK_ITEMS_ATTACHED"] += attached
+    # Explain mode: every teaching html plans an example, a comparison or why it matters (AI-drafted when needed).
+    final, supports = plan_teaching_supports(final, {block_id: block.name for block_id, block in scope.blocks.items()},
+                                             mode, scope.locale)
+    if supports:
+        runtime.adjustments[TEACHING_SUPPORT_CODE] += supports
     if plan.shard_index == 0:
         # The chapter's practice questions get their key letters in turn (QC run 8de1c76b, Q4); a later shard does
         # not know its lessons' place in the chapter and keeps the plain per-unit letters.

@@ -34,8 +34,10 @@ LoRelation = Literal["direct", "supporting", "context", "unrelated", "unknown"]
 Bloom = Literal["remember", "understand", "apply", "analyze", "evaluate", "create"]
 Classification = Literal["must_do", "must_know", "reference", "nice_to_know", "remove"]
 Placement = Literal["course", "reference_job_aid", "excluded"]
+# "explain" (QLT-5 C): plain language + why it matters + an example, for a course explained to its learners.
 Treatment = Literal[
-    "keep", "condense", "rewrite", "combine", "separate", "move_to_reference", "convert_to_job_aid", "remove",
+    "keep", "condense", "rewrite", "explain", "combine", "separate", "move_to_reference", "convert_to_job_aid",
+    "remove",
 ]
 Disposition = Literal["course", "reference_job_aid", "nice_to_know", "remove", "hold", "noise"]
 SupportKind = Literal[
@@ -60,7 +62,7 @@ JudgeSeverity = Literal["pass", "minor", "major", "critical"]
 JudgeAnswerCriterion = Literal[
     "Q1_support_sufficient", "Q2_not_copied", "Q3_practice_complete", "Q4_feedback_teaches",
     "Q5_grounded_criteria", "Q6_alignment", "Q7_cognitive_load", "Q8_language", "Q9_traceability",
-    "Q10_title_matches", "Q11_purpose_alignment",
+    "Q10_title_matches", "Q11_purpose_alignment", "Q12_explained",
 ]
 JudgeAnswerSeverity = Literal["pass", "minor", "major", "critical", "not_applicable"]
 Locale = Literal["vi", "en"]
@@ -69,6 +71,9 @@ PurposeProfile = Literal["onboarding", "product", "compliance", "sales", "soft_s
 PurposeConfidence = Literal["high", "medium", "low"]
 PurposeOrigin = Literal["author_intent", "ai_inferred", "deterministic_fallback"]
 PurposeEvidence = Literal["title", "description", "source"]
+# How closely learner text follows the source wording (QLT-5 C, ``app.idm.fidelity``): derived from the purpose
+# profile (and a clear wording request in the author's description), never chosen by authors.
+FidelityMode = Literal["keep", "structured", "explain"]
 
 # --- Shared constrained strings ------------------------------------------------------------
 FactKey = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=255)]
@@ -337,7 +342,8 @@ class IdmTemplateGapV1(IdmModel):
 
 class IdmPurposeV1(IdmModel):
     """The course purpose the pipeline designed for (QLT-5 B). ``evidence`` names the inputs that decided it,
-    ``signals`` the server keywords found in the author's course name/description."""
+    ``signals`` the server keywords found in the author's course name/description. ``fidelity_mode`` (QLT-5 C) is
+    the content mode every later stage follows; a purpose stored without it reads as "structured" (today's rules)."""
 
     profile: PurposeProfile
     summary: str = Field(min_length=10, max_length=500)
@@ -346,6 +352,7 @@ class IdmPurposeV1(IdmModel):
     evidence: list[PurposeEvidence] = Field(max_length=3)
     signals: list[PurposeSignal] = Field(max_length=8)
     template_gaps: list[IdmTemplateGapV1] = Field(max_length=12)
+    fidelity_mode: FidelityMode | None = None
 
 
 class IdmCourseDesignV1(IdmModel):
@@ -474,13 +481,15 @@ class IdmBriefComponentV1(IdmModel):
 
 class IdmUnitBriefV1(IdmModel):
     """``purpose_profile``/``purpose_summary`` keep the writer and the judge on the course purpose; a brief built
-    from a contract-1 design (no purpose) leaves them out or null."""
+    from a contract-1 design (no purpose) leaves them out or null. ``fidelity_mode`` is the design purpose's content
+    mode (QLT-5 C); absent or null reads as "structured", today's behaviour."""
 
     pipeline_version: Literal["idm-1"]
     course_title: str = Field(min_length=1, max_length=500)
     target_audience: str = Field(min_length=1, max_length=2000)
     purpose_profile: PurposeProfile | None = None
     purpose_summary: str | None = Field(default=None, max_length=500)
+    fidelity_mode: FidelityMode | None = None
     module_title: str = Field(min_length=1, max_length=500)
     lesson_title: str = Field(min_length=1, max_length=180)
     lesson_objective: str = Field(min_length=1, max_length=500)

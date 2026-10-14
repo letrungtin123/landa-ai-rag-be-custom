@@ -294,7 +294,7 @@ class ProfileSpecTests(unittest.TestCase):
         self.assertEqual(set(PROFILES), {"onboarding", "product", "compliance", "sales", "soft_skills", "general"})
         self.assertEqual({key: spec.fidelity_mode for key, spec in PROFILES.items()},
                          {"onboarding": "explain", "product": "explain", "soft_skills": "explain",
-                          "compliance": "verbatim", "sales": "structured", "general": "structured"})
+                          "compliance": "keep", "sales": "structured", "general": "structured"})
         for spec in PROFILES.values():
             with self.subTest(profile=spec.key):
                 self.assertTrue(spec.label_vi and spec.label_en and spec.statement and spec.objective_policy)
@@ -480,7 +480,7 @@ class PromptTests(unittest.TestCase):
         self.assertNotIn("COURSE_PURPOSE", without)
         judge = judge_prompt("vi", plan_summary={"course_purpose": purpose}, facts=[], unit_content=[])
         self.assertIn("Q11_purpose_alignment", judge)
-        self.assertIn("Return one finding per criterion (Q1-Q11)", judge)
+        self.assertIn("Return one finding per criterion (Q1-Q12)", judge)
 
 
 class PatternTests(unittest.TestCase):

@@ -311,6 +311,12 @@ def _numbers(folded: str) -> set[str]:
     return {_normal_number(token) for token in _NUMBER_RE.findall(folded)}
 
 
+def number_tokens(text: str) -> set[str]:
+    """The numbers of ``text`` in the normal form ``EvidenceIndex.numbers`` holds ("1.500" and "1,500" alike)."""
+
+    return _numbers(idm_fold(text))
+
+
 def _content(word: str) -> bool:
     return len(word) >= _MIN_CONTENT_WORD_CHARS and word not in _FUNCTION_WORDS and not word.isdigit()
 

@@ -20,6 +20,7 @@ from itertools import pairwise
 from typing import Final, Literal
 
 from app.idm.contracts import (
+    FidelityMode,
     IdmBlueprintRowV1,
     IdmContentBlockV1,
     IdmMustDoV1,
@@ -32,11 +33,11 @@ from app.idm.contracts import (
     PurposeEvidence,
     PurposeProfile,
 )
+from app.idm.fidelity import resolve_fidelity
 from app.idm.policy import MUST_DO_TOPIC_PREFIXES
 from app.idm.text import first_main_verb, idm_fold, is_unmeasurable_objective, single_line, trim_at_boundary
 from app.prompt_safety import untrusted_block
 
-FidelityMode = Literal["verbatim", "structured", "explain"]
 Locale = Literal["vi", "en"]
 
 INTENT_TAG: Final = "AUTHOR_COURSE_INTENT"
@@ -223,7 +224,7 @@ PROFILES: Final[dict[PurposeProfile, PurposeSpec]] = {
             "This is a compliance course: practice checks that the learner follows each step and applies each rule "
             "exactly as the source states it (sequence the steps, decide whether a case breaks a rule); never "
             "restate a rule with a different condition."),
-        fidelity_mode="verbatim",
+        fidelity_mode="keep",
         pattern=(
             _section("why_it_matters", "Vì sao quy định này quan trọng", "Why the rule matters",
                      "the risk or purpose behind the rule", required=False),
@@ -440,31 +441,38 @@ def resolve_purpose(
 
     A purpose the author named outright (a strong keyword in the course name or description) is authoritative: a
     different model answer is overridden (QC "Onboarding" runs e78cef82/cf57ac77 became sales courses). Otherwise the
-    model's answer decides; without a usable one the classifier stands in.
+    model's answer decides; without a usable one the classifier stands in. QLT-5 C: the purpose carries the
+    profile's content mode (``app.idm.fidelity``), tightened to "keep" when the description asks for the wording.
     """
 
     intent = classify_context(context)
     answer_profile = response.purpose_profile if response is not None else None
     answer_summary = _answer_summary(response)
     codes: list[str] = []
+
+    def mode(profile: PurposeProfile) -> FidelityMode:
+        return resolve_fidelity(PROFILES[profile].fidelity_mode, context.course_description)
+
     if intent.confidence == "high":
         if answer_profile is not None and answer_profile != intent.profile:
             codes.append(PURPOSE_OVERRIDDEN_CODE)
         summary = (answer_summary if answer_profile == intent.profile and answer_summary is not None
                    else fallback_summary(intent.profile, context.locale))
         return IdmPurposeV1(profile=intent.profile, summary=summary, confidence="high", origin="author_intent",
-                            evidence=list(intent.evidence), signals=list(intent.signals), template_gaps=[]), codes
+                            evidence=list(intent.evidence), signals=list(intent.signals), template_gaps=[],
+                            fidelity_mode=mode(intent.profile)), codes
     if response is not None and answer_profile is not None and answer_summary is not None:
         agrees = intent.profile == answer_profile and intent.confidence == "medium"
         return IdmPurposeV1(
             profile=answer_profile, summary=answer_summary, confidence="high" if agrees else "medium",
             origin="ai_inferred", evidence=_answer_evidence(response, context),
-            signals=list(intent.signals) if agrees else [], template_gaps=[]), codes
+            signals=list(intent.signals) if agrees else [], template_gaps=[],
+            fidelity_mode=mode(answer_profile)), codes
     if response is not None:
         codes.append(PURPOSE_MISSING_CODE)
     return IdmPurposeV1(profile=intent.profile, summary=fallback_summary(intent.profile, context.locale),
                         confidence=intent.confidence, origin="deterministic_fallback", evidence=list(intent.evidence),
-                        signals=list(intent.signals), template_gaps=[]), codes
+                        signals=list(intent.signals), template_gaps=[], fidelity_mode=mode(intent.profile)), codes
 
 
 def fallback_audience(context: IdmProjectContextV1) -> str:

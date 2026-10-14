@@ -30,6 +30,7 @@ from app.idm.contracts import (
     StageOrigin,
     design_hash_of,
 )
+from app.idm.fidelity import fidelity_note_line, purpose_mode
 from app.idm.notes import (
     HoldNote,
     KeptDefinitionNote,
@@ -57,6 +58,7 @@ from app.idm.policy import (
 )
 from app.idm.prompts import COMPACT_W4, answer_repair, repair_suffix, w4_course_prompt
 from app.idm.purpose import (
+    PROFILES,
     KeptBackground,
     check_pattern,
     default_purpose,
@@ -545,7 +547,10 @@ def _build_notes(data: AssemblyInput) -> IdmAuthorNotesV1:
                  if block.block_id in row_by_id and row_by_id[block.block_id].classification == "remove"],
         kept_definitions=[KeptDefinitionNote(names[item.block_id], item.terms, item.proposed)
                           for item in data.kept_definitions if item.block_id in names],
-        purpose_line=purpose_note_line(purpose, locale),
+        # QLT-5 C: then how the content is written (the content mode), and whether the description asked for it.
+        purpose_line=purpose_note_line(purpose, locale) + "\n" + fidelity_note_line(
+            purpose_mode(purpose), locale,
+            requested=purpose_mode(purpose) != PROFILES[purpose.profile].fidelity_mode),
         pattern_label=profile_label(purpose.profile, locale),
         template_gaps=[gap.note for gap in purpose.template_gaps],
         kept_background=[KeptDefinitionNote(names[item.block_id], (), item.proposed)

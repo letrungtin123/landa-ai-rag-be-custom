@@ -13,6 +13,7 @@ from collections.abc import Iterable, Sequence
 from typing import Any, Final, Literal
 
 from app.idm.artifacts import ROW_LABEL_ANY_RE
+from app.idm.fidelity import DEFAULT_MODE, w2_treatment_rules, writer_fidelity_rules
 from app.idm.html_rules import (
     DENSITY_CODE,
     GROUP_LIMITS,
@@ -242,9 +243,13 @@ def w2_blueprint_prompt(
     catalog: list[dict[str, Any]],
     purpose_rules: str = "",
     background_rule: str = DEFAULT_BACKGROUND_RULE,
+    treatment_rules: str = "",
 ) -> str:
     """``purpose_rules``/``background_rule``: ``app.idm.purpose.w2_purpose_rules`` (the author intent and what the
-    course purpose keeps); the defaults are the job-performance rules of the general profile."""
+    course purpose keeps); the defaults are the job-performance rules of the general profile. ``treatment_rules``:
+    ``app.idm.fidelity.w2_treatment_rules`` (every treatment defined, then the content mode; default structured)."""
+
+    treatments = treatment_rules or w2_treatment_rules(DEFAULT_MODE)
 
     return preamble(locale) + f"""
 TASK: Week 2 - decide, for EVERY block in BLOCK_CATALOG, what happens to it. Return exactly one row per block.
@@ -254,14 +259,13 @@ TASK: Week 2 - decide, for EVERY block in BLOCK_CATALOG, what happens to it. Ret
   b. Must the learner REMEMBER it to perform the Must Do correctly? No -> reference with treatment
      move_to_reference (look up when needed) or convert_to_job_aid (used often while working: checklist,
      decision tree, code table, form guide, contact list, response templates).
-  c. Yes -> keep it in the course at the MINIMUM level of detail that still lets the learner act correctly.
+  c. Yes -> keep it in the course with the detail the learner needs to act correctly; leave out detail the Must
+     Do does not need.
   d. Unclear, conflicting or outdated content that affects correctness, or a decision block that lacks the
      criteria needed to judge practice -> hold = true with hold_reason and one specific sme_question.
 classification: must_do | must_know | reference | nice_to_know | remove
 placement: course (must_do, must_know) | reference_job_aid (reference) | excluded (nice_to_know, remove)
-treatment: keep | condense | rewrite | combine | separate (must_do, must_know) | move_to_reference |
-convert_to_job_aid (reference) | remove (nice_to_know, remove)
-detail_level: one sentence on what to keep ("Định nghĩa ngắn + dấu hiệu phân biệt 3 cấp độ";
+{treatments}detail_level: one sentence on what to keep ("Định nghĩa ngắn + dấu hiệu phân biệt 3 cấp độ";
 "Chỉ 6 nhóm bước chính; ngoại lệ hiếm chuyển sang Job Aid").
 Rules: repeated content is not automatically important; SME emphasis is a signal to check, not a decision;
 full legal text, code lists, contact lists, forms and rare exceptions -> reference/job aid; {background_rule};
@@ -354,9 +358,11 @@ def module_prompt(
     limits: str = "",
     purpose_rules: str = "",
     course_purpose: dict[str, Any] | None = None,
+    fidelity_rules: str = "",
 ) -> str:
     """``purpose_rules``: ``app.idm.purpose.module_purpose_rules`` (empty for profiles that keep the general
-    rules); ``course_purpose``: the design's purpose as plan data."""
+    rules); ``course_purpose``: the design's purpose as plan data; ``fidelity_rules``:
+    ``app.idm.fidelity.module_fidelity_rules`` (empty unless the content mode is explain)."""
 
     scenario_clause = (
         "; a multi-turn conversation where each reply changes the outcome -> la_scenario_chat" if scenario_chat else ""
@@ -367,7 +373,7 @@ def module_prompt(
     return preamble(locale) + f"""
 TASK: For ONE module, design each listed lesson (Week 3 Instructional Treatment + Week 4 lesson layout).
 Return the lessons in exactly the order and with exactly the lesson_key values of LESSONS.
-{purpose_rules}For each lesson:
+{purpose_rules}{fidelity_rules}For each lesson:
 1. PRACTICE FIRST. Write 1-3 practice tasks as one sentence
    "Cho [bối cảnh/đầu vào], người học [hành động] để [kết quả/quyết định]"
    ("Given [context/input], the learner [action] to produce/decide [result]"), plus context_input,
@@ -466,7 +472,11 @@ def unit_writer_prompt(
     context_facts: Iterable[tuple[str, str, Sequence[str] | None]],
     html_rules: str = "",
     course_purpose: dict[str, Any] | None = None,
+    fidelity_rules: str = "",
 ) -> str:
+    """``fidelity_rules``: ``app.idm.fidelity.writer_fidelity_rules`` (the content mode; default structured)."""
+
+    content_mode = fidelity_rules or writer_fidelity_rules(DEFAULT_MODE, locale)
     purpose_line = ("- Keep the unit on COURSE_PURPOSE (what the course is for and for whom): choose the wording, "
                     "emphasis and examples that serve it; it never adds facts.\n" if course_purpose else "")
     return preamble(locale) + f"""
@@ -477,10 +487,11 @@ schema.
 Writing rules (learner-facing, {locale_name(locale)}):
 {purpose_line}- Write for TARGET_AUDIENCE: short sentences, active voice, direct instructions; explain a necessary
   term the first time; split long text into short paragraphs, bullets, steps or tables; each heading says which
-  question the section answers. Do not paste the source, except definitions, rules and numbers that must stay exact.
-- Apply each block treatment: keep -> preserve wording; condense -> remove repetition and long introductions;
-  rewrite -> plain language with the same meaning. Keep every condition, negation, quantity, unit and exception
-  that matters for the Must Do. Teach only what the practice needs (detail_level).
+  question the section answers.
+{content_mode}- Apply each block treatment: keep -> preserve wording; condense -> remove repetition and long
+  introductions; rewrite -> plain language with the same meaning; explain -> plain language, why it matters to the
+  learner and a short example. Keep every condition, negation, quantity, unit and exception that matters for the
+  Must Do. Teach what the practice needs (detail_level).
 - Context building stays under 20% of the unit text.
 - Practice slots of type problem, la_sortable or la_crossword contain context, task, the input the learner works
   with, exactly one correct answer, and feedback that teaches. Single-choice: 3-4 options, plausible distractors
@@ -524,7 +535,8 @@ Writing rules (learner-facing, {locale_name(locale)}):
   item of it, by the name the facts use, in one bullets, steps or table block. A support item that starts with
   "Liệt kê đủ" / "List all" names every item of that framework (taught in later units): list all of them, one
   short line each, without teaching them here.
-- Use drafted scenarios/examples only where the brief marks them ai_drafted; they must not add rules.
+- Use drafted scenarios/examples only where the brief marks them ai_drafted (a practice with scenario_origin
+  ai_drafted, or a slot with "examples": "ai_drafted"); they never add rules, numbers or names.
 - LESSON_CONTEXT_FACTS are read-only background from earlier units; use them for consistency and for the
   correctness criteria, do not re-teach them.
 - No file names, page or slide numbers, citations, internal IDs, "theo tài liệu nguồn", emails or URLs; never a
@@ -552,8 +564,10 @@ Writing rules (learner-facing, {locale_name(locale)}):
 """
 
 
-def html_slot_rules(*, max_words: int | None, max_chars: int | None, min_chars: int | None) -> str:
-    """The ordered-content rules the server enforces on every ``html`` slot (stated up front)."""
+def html_slot_rules(*, max_words: int | None, max_chars: int | None, min_chars: int | None,
+                    explain: bool = False) -> str:
+    """The ordered-content rules the server enforces on every ``html`` slot (stated up front); ``explain``: the
+    budget leaves room for the explanation and the example of an explained unit (QLT-5 C)."""
 
     paragraphs, paragraph_chars = GROUP_LIMITS["paragraphs"]
     bullets, bullet_chars = GROUP_LIMITS["bullet_points"]
@@ -566,7 +580,9 @@ def html_slot_rules(*, max_words: int | None, max_chars: int | None, min_chars: 
                   "counted; every space-separated word or syllable counts)")
         if min_chars is not None:
             length += f"; at least {min_chars} visible characters"
-        length += ". Stay well inside the budget: teach only what the practice needs."
+        length += (". Stay inside the budget: teach what the practice needs, with the explanation and the example of "
+                   "each main idea." if explain else ". Stay well inside the budget: teach only what the practice "
+                                                     "needs.")
     return f"""
 HTML SLOT FORMAT (type "html"). The server renders the HTML itself and rejects an answer that breaks ANY rule:
 - Write the slot only as semantic_content = {{"sections": [...]}} and set "html" to null. Every string is plain
@@ -718,6 +734,16 @@ UNIT_RULE_TEXT: Final[dict[str, str]] = {
                                "case (or the key) so it meets the criteria of exactly one option and contradicts no "
                                "FAQ answer of this unit; keep the explanation's reason for every option",
     "IDM_W5_VERBATIM_COPY": "rewrite for the learner instead of copying the source text",
+    # QLT-5 C: the content mode checks of a teaching html slot (``app.idm.fidelity_checks``).
+    "IDM_W5_SENTENCE_COPY": "too many sentences repeat the facts word for word: rewrite the listed sentences in your "
+                            "own plain words and explain them (definitions, rules and numbers stay exact); add no "
+                            "fact",
+    "IDM_W5_EXPLANATION_MISSING": "this teaching slot only states the facts: add the explanation the CONTENT MODE asks "
+                                  "for (the main idea in plain words, why it matters to the learner, a short example; "
+                                  "a drafted example starts with its illustrative-example label) without adding facts",
+    "IDM_W5_NEW_FACT": "the listed text states a number, date, amount or a person, company or product name the facts "
+                       "do not state: remove it or use what the facts say (a drafted example uses roles, never names "
+                       "or new numbers)",
     "IDM_W5_SOURCE_ARTIFACT": "a list item, row label or table cell ends cut as the PDF line did (an open \"(\", a "
                               "trailing \"/\" or a word such as \"Best-in\"): write it out in full from the facts "
                               "or drop the cut part",
@@ -751,6 +777,8 @@ UNIT_RULE_TEXT: Final[dict[str, str]] = {
                   "title promises (every item of a list it names)",
     "IDM_W6_Q11": "keep the slot on COURSE_PURPOSE: teach what the course is for, for its audience; rewrite or drop "
                   "content that pulls it towards another purpose, without adding facts",
+    "IDM_W6_Q12": "explain the content for the learner: the main idea in plain words, why it matters and a short "
+                  "example; rules, definitions and numbers stay exact; add no fact",
 }
 # A condensed slot aims below the hard limit, so a near miss does not fail again.
 DENSITY_TARGET_SHARE: Final = 0.9
@@ -763,17 +791,21 @@ def _metrics_text(violation: HtmlRuleViolation) -> str:
     return f"measured {measured}; limit {limits}"
 
 
-def html_violation_line(slot: str, violation: HtmlRuleViolation, *, only_density: bool = False) -> str:
-    """One repair line: slot, code, JSON location, the rule and the server-measured numbers."""
+def html_violation_line(slot: str, violation: HtmlRuleViolation, *, only_density: bool = False,
+                        explain: bool = False) -> str:
+    """One repair line: slot, code, JSON location, the rule and the server-measured numbers. ``explain``: an
+    explained unit cuts repetition first and keeps its explanations and examples (QLT-5 C)."""
 
     location = f"{slot}.{violation.location}"
     if violation.code == DENSITY_CODE and violation.metrics:
         targets = " and ".join(f"{int(limit * DENSITY_TARGET_SHARE)} {unit}"
                                for unit, _value, limit in violation.metrics)
+        cut = ("cut repetition first, then long introductions and source detail the practice does not need; keep the "
+               "explanation and the example of each main idea" if explain else
+               "cut repetition, long introductions and examples the brief does not ask for")
         line = (f"{slot} {violation.code} at {location}: {_metrics_text(violation)}. Condense this slot to at "
-                f"most {targets}: cut repetition, long introductions and examples the brief does not ask for; keep "
-                "every rule, condition, number and exception of the owned facts; prefer short bullets to long "
-                "paragraphs; do not move content into other slots.")
+                f"most {targets}: {cut}; keep every rule, condition, number and exception of the owned facts; prefer "
+                "short bullets to long paragraphs; do not move content into other slots.")
         if only_density:
             line += " Everything else in this slot is valid: keep its sections and their order, only shorten it."
         return line
@@ -830,7 +862,7 @@ another unit of the lesson is never a finding here.
    restates the example, quotation or template shown right before the question.
  Q6_alignment: the practice matches the Must Do action type and Bloom level in the plan.
  Q3, Q4 and Q6 grade this unit's own practice: when PLAN.has_practice_slot is false return not_applicable for
-   them. not_applicable is never allowed for any other criterion except Q11 as stated below.
+   them. not_applicable is never allowed for any other criterion except Q11 and Q12 as stated below.
  Q7_cognitive_load: no long theory runs; context under 20%; detail matches detail_level.
  Q8_language: clear, suited to the audience, terms explained, no internal IDs or citations.
  Q9_traceability: every component serves the stated Must Do, practice or support.
@@ -840,7 +872,12 @@ another unit of the lesson is never a finding here.
  Q11_purpose_alignment: the unit serves PLAN.course_purpose (what the course is for and for whom): content that
    pulls the unit towards another purpose (an onboarding unit that trains selling or consulting, a compliance unit
    that loosens a rule) is major. When PLAN.course_purpose is null return not_applicable for Q11.
-Return one finding per criterion (Q1-Q11). verdict = pass (no major/critical) | review_required (any major) |
+ Q12_explained: when PLAN.fidelity_mode is "explain", every teaching html slot explains its content for the
+   learner: the main idea in plain words, why it matters to them and a short example or situation (an example
+   labelled "Ví dụ minh hoạ" or "Illustrative example" may be drafted, but it adds no number, rule or name); a
+   teaching slot that only restates the source is major. For any other PLAN.fidelity_mode return not_applicable
+   for Q12.
+Return one finding per criterion (Q1-Q12). verdict = pass (no major/critical) | review_required (any major) |
 reject (any critical); not_applicable never counts.
 
 {untrusted_block("PLAN_CONTEXT", "PLAN=" + _json(plan_summary))}

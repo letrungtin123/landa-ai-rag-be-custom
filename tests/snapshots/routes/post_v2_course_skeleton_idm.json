@@ -1142,7 +1142,8 @@
       "source"
      ],
      "signals": [],
-     "template_gaps": []
+     "template_gaps": [],
+     "fidelity_mode": "keep"
     },
     "target_audience": {
      "description": "Nhân viên Chăm sóc Khách hàng tuyến đầu tiếp nhận khiếu nại qua tổng đài, đã nắm sản phẩm cơ bản và cần xử lý đúng quy trình, đúng thời hạn.",
@@ -1744,7 +1745,7 @@
       ],
       "classification": "must_know",
       "placement": "course",
-      "treatment": "rewrite",
+      "treatment": "keep",
       "detail_level": "Giữ phần cần để thực hiện đúng Must Do.",
       "hold": true,
       "hold_reason": "Thời hạn 24 giờ mâu thuẫn với 48 giờ cho khiếu nại cấp 2",
@@ -1778,7 +1779,7 @@
       ],
       "classification": "must_know",
       "placement": "course",
-      "treatment": "rewrite",
+      "treatment": "keep",
       "detail_level": "Giữ phần cần để thực hiện đúng Must Do.",
       "hold": true,
       "hold_reason": "Hướng dẫn CRM dựa trên ảnh chụp phiên bản 2021, có thể đã lỗi thời",
@@ -2458,7 +2459,7 @@
      }
     ],
     "notes": {
-     "course": "[Thiết kế theo quy trình ID — idm-1]\n• Mục đích khoá học: Quy trình, quy định, tuân thủ, an toàn — Giúp nhân viên Chăm sóc Khách hàng xử lý khiếu nại đúng quy trình, đúng tiêu chí escalate và đúng thời hạn (AI suy ra từ tên, mô tả khoá học và tài liệu — cần xác nhận).\n• Mục tiêu học tập và đối tượng học: do AI đề xuất từ tài liệu — cần xác nhận.\n• Thời lượng ước tính: 35 phút (5 mục, 3 chương).\n• Nội dung chuyển sang Tài liệu tra cứu/Job Aid: 2 khối. Nội dung loại khỏi khoá học: 2 khối (Nice to Know/Remove).\n• Cần chuyên gia bổ sung (Hold) — chờ SME xác nhận (2), chưa đưa vào bài học:\n  1. Phải phản hồi khách hàng trong bao lâu? — Thời hạn 24 giờ mâu thuẫn với 48 giờ cho khiếu nại cấp 2. Câu hỏi cho SME: Khiếu nại cấp 2 phải phản hồi trong 24 giờ hay 48 giờ? Must Do chưa dạy được: Phản hồi khách hàng đúng thời hạn.\n  2. Ghi nhận khiếu nại trên CRM như thế nào? — Hướng dẫn CRM dựa trên ảnh chụp phiên bản 2021, có thể đã lỗi thời. Câu hỏi cho SME: Giao diện CRM hiện tại còn đúng các bước Tạo mới, chọn mã và đính kèm phiếu không?\n• Nội dung tham khảo đã lược (Nice to know) — 1 khối, tác giả có thể bổ sung thủ công:\n  - Phiên bản và ngày áp dụng của quy trình: Nội dung về: Phiên bản và ngày áp dụng của quy trình\n• Nội dung đã loại khỏi khoá (Remove) — 1 khối, kèm lý do:\n  - Phòng Chăm sóc Khách hàng đã phát triển ra sao?: Quyết định theo luồng Week 2.\n• Cấu trúc được thiết kế theo Must Do, không theo mục lục tài liệu.",
+     "course": "[Thiết kế theo quy trình ID — idm-1]\n• Mục đích khoá học: Quy trình, quy định, tuân thủ, an toàn — Giúp nhân viên Chăm sóc Khách hàng xử lý khiếu nại đúng quy trình, đúng tiêu chí escalate và đúng thời hạn (AI suy ra từ tên, mô tả khoá học và tài liệu — cần xác nhận).\n• Cách trình bày nội dung: giữ nguyên câu chữ của tài liệu cho quy định, quy trình và định nghĩa — chỉ chia khối, sắp xếp và thêm tiêu đề.\n• Mục tiêu học tập và đối tượng học: do AI đề xuất từ tài liệu — cần xác nhận.\n• Thời lượng ước tính: 35 phút (5 mục, 3 chương).\n• Nội dung chuyển sang Tài liệu tra cứu/Job Aid: 2 khối. Nội dung loại khỏi khoá học: 2 khối (Nice to Know/Remove).\n• Cần chuyên gia bổ sung (Hold) — chờ SME xác nhận (2), chưa đưa vào bài học:\n  1. Phải phản hồi khách hàng trong bao lâu? — Thời hạn 24 giờ mâu thuẫn với 48 giờ cho khiếu nại cấp 2. Câu hỏi cho SME: Khiếu nại cấp 2 phải phản hồi trong 24 giờ hay 48 giờ? Must Do chưa dạy được: Phản hồi khách hàng đúng thời hạn.\n  2. Ghi nhận khiếu nại trên CRM như thế nào? — Hướng dẫn CRM dựa trên ảnh chụp phiên bản 2021, có thể đã lỗi thời. Câu hỏi cho SME: Giao diện CRM hiện tại còn đúng các bước Tạo mới, chọn mã và đính kèm phiếu không?\n• Nội dung tham khảo đã lược (Nice to know) — 1 khối, tác giả có thể bổ sung thủ công:\n  - Phiên bản và ngày áp dụng của quy trình: Nội dung về: Phiên bản và ngày áp dụng của quy trình\n• Nội dung đã loại khỏi khoá (Remove) — 1 khối, kèm lý do:\n  - Phòng Chăm sóc Khách hàng đã phát triển ra sao?: Quyết định theo luồng Week 2.\n• Cấu trúc được thiết kế theo Must Do, không theo mục lục tài liệu.",
      "modules": {
       "mod_01": "Mục tiêu hiệu suất: Phân loại đúng nhóm và mức độ của mọi khiếu nại tiếp nhận\n• Mục tiêu học tập phục vụ:\n  - Người học có thể phân loại khiếu nại theo nhóm và mức độ nghiêm trọng dựa trên bảng cấp độ\n• 2 mục, ước tính 12 phút.",
       "mod_02": "Mục tiêu hiệu suất: Quyết định đúng khi nào tự xử lý và khi nào phải escalate\n• Mục tiêu học tập phục vụ:\n  - Người học có thể quyết định tự xử lý hay escalate khiếu nại theo tiêu chí bắt buộc\n• 1 mục, ước tính 10 phút.",
@@ -2478,7 +2479,7 @@
      "w2": "provider",
      "w4": "provider"
     },
-    "design_hash": "32bc61160cf6c24074f94131de599d053d6df7449c851f3d479f96481efcbeed"
+    "design_hash": "fed43da7f6f25b85213910b4b480998be97b09d89d4922c9557dcbd9d0c9e325"
    },
    "usage": {
     "inputTokens": 1924,
@@ -2529,14 +2530,14 @@
     "op": "generate",
     "model": "test-model",
     "schema": "IdmW2BlueprintResponseV1",
-    "prompt_sha256": "3b20bc7abe9b3227663d51f094c131859201d0fd267aa05681d1b146806cecc4",
-    "prompt_chars": 12070,
+    "prompt_sha256": "6fad2627be18922ead891ecc3d30e5ea0d7e00b40869488251c855dc73a1d887",
+    "prompt_chars": 12914,
     "config": {
      "max_output_tokens": 32000,
      "response_mime_type": "application/json",
      "response_schema": {
-      "sha256": "ec1c0b949914f151d96242e18e097f0a678207cfceac1ac1e4513f056dec89ae",
-      "chars": 2078
+      "sha256": "a319336b3f4798cdb98ad03b677230830ad5c3dd7dfb46f99761451c941bbc8c",
+      "chars": 2089
      },
      "temperature": 0.2
     }

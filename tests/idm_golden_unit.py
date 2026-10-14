@@ -68,6 +68,8 @@ def build_unit_request(
         "target_audience": design.target_audience.description,
         # QLT-5: Node passes the design's purpose to every unit brief (contract 2).
         "purpose_profile": design.purpose.profile, "purpose_summary": design.purpose.summary,
+        # QLT-5 C: and its content mode ("keep" for the golden compliance course).
+        "fidelity_mode": design.purpose.fidelity_mode,
         "module_title": module.title,
         "lesson_title": lesson.title, "lesson_objective": lesson.objective,
         "lesson_practice_sentences": [practice.sentence for practice in lesson.practice_tasks][:3],
