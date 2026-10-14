@@ -8,7 +8,11 @@ itself:
 * the partition rule: single-block lessons were split into an explanation unit and a practice unit that
   shared the block (Node requires every block in exactly one unit), so the units are merged;
 * layout slips: components out of order, a unit block no component used, a lesson block no unit held, a
-  diagram or sortable the facts give no evidence for.
+  diagram or sortable the facts give no evidence for;
+* a PRACTICE sortable, crossword or diagram the facts give no evidence for (QLT-5 E: in 3 consecutive real runs a
+  lesson fell back to the deterministic design on IDM_W4_FORMAT_EVIDENCE at a practice slot, and the provider repair
+  failed too): it becomes a single-choice scenario question, or a worksheet with the question that checks it, keeping
+  the linked practice task (``IDM_W4_AUTOFIX_PRACTICE_FORMAT``, a plain note for the author).
 
 Each fix keeps the provider's components and wording; a lesson the fixes cannot make valid is repaired by
 the provider as before. Every applied fix is counted (``IDM_W4_AUTOFIX_*``, never content).
@@ -23,16 +27,19 @@ from typing import Any, Final
 from pydantic import ValidationError
 
 from app.idm.contracts import IdmComponentDesignV1, IdmLessonDesignV1, IdmLessonPlanV1
-from app.idm.module_layout import ModuleScope
+from app.idm.module_layout import ModuleScope, worksheet_check_texts
 from app.idm.policy import (
+    CASE_DECISION_VERBS,
     IDM_COMPONENT_MAX_BLOCKS,
     IDM_CRITERIA_LABEL_MAX_WORDS,
     IDM_PRACTICE_MAX_CRITERIA_FACTS,
     IDM_UNIT_MAX_BLOCKS,
     MAX_COMPONENTS_PER_UNIT,
     MAX_SUPPORT_ITEMS,
+    WORKSHEET_COMPONENT_TYPE,
 )
 from app.idm.signals import idm_has_ordered_steps, idm_relationship_pairs, idm_term_definitions
+from app.idm.text import first_main_verb, idm_fold, sanitize_author_text, single_line
 
 CRITERIA_TRIMMED_CODE: Final = "IDM_W4_CRITERIA_TRIMMED"
 UNITS_MERGED_CODE: Final = "IDM_W4_AUTOFIX_UNITS_MERGED"
@@ -40,11 +47,15 @@ FOREIGN_BLOCK_DROPPED_CODE: Final = "IDM_W4_AUTOFIX_FOREIGN_BLOCK_DROPPED"
 BLOCK_ATTACHED_CODE: Final = "IDM_W4_AUTOFIX_BLOCK_ATTACHED"
 BLOCK_COVERED_CODE: Final = "IDM_W4_AUTOFIX_BLOCK_COVERED"
 FORMAT_TO_HTML_CODE: Final = "IDM_W4_AUTOFIX_FORMAT_TO_HTML"
+PRACTICE_FORMAT_CODE: Final = "IDM_W4_AUTOFIX_PRACTICE_FORMAT"
 COMPONENT_ORDER_CODE: Final = "IDM_W4_AUTOFIX_COMPONENT_ORDER"
 _MIN_TERM_DEFINITIONS: Final = 3
 _EVIDENCE_TYPES: Final = frozenset({"la_sortable", "la_crossword", "la_diagram"})
 _FIRST_TYPE: Final = "html"
 _LAST_TYPE: Final = "la_faq"
+# Bounds of IdmLessonDesignV1.notes and IdmComponentDesignV1.title.
+_NOTES_MAX_CHARS: Final = 2000
+_TITLE_MAX_CHARS: Final = 180
 # A single-choice question shows its facts only in its explanation; sortable items and crossword clues show theirs.
 _QUESTION_TYPE: Final = "problem"
 TAUGHT_BEFORE_QUESTION_CODE: Final = "IDM_W4_AUTOFIX_TAUGHT_BEFORE_QUESTION"
@@ -272,7 +283,7 @@ def _cover_unit_blocks(units: list[dict[str, Any]], order: dict[str, int]) -> in
 def _formats_without_evidence(units: list[dict[str, Any]], scope: ModuleScope, allowed: set[str],
                               order: dict[str, int]) -> int:
     """A teaching diagram, sortable or crossword the facts give no evidence for is folded into the unit's html,
-    or becomes the html; a practice of that type is left to the provider repair."""
+    or becomes the html; a practice of that type is converted by ``_practices_without_evidence``."""
 
     changed = 0
     for unit in units:
@@ -290,6 +301,103 @@ def _formats_without_evidence(units: list[dict[str, Any]], scope: ModuleScope, a
                 raise _Unfixable
             changed += 1
     return changed
+
+
+# --- practice formats without evidence (QLT-5 E) ----------------------------------------------------------------------
+# A practice whose verb decides, recognises or chooses is a single-choice scenario question; "phân biệt" (tell apart)
+# and "determine" too. Folded leading verbs, as ``CASE_DECISION_VERBS``.
+_DECIDING_VERBS: Final = (*CASE_DECISION_VERBS, "phan biet", "distinguish", "determine")
+_LEARNER_LEADS: Final = ("nguoi hoc ", "the learner ")
+_FORMAT_LABELS: Final[dict[str, tuple[str, str]]] = {
+    "la_sortable": ("Sắp xếp", "ordering"), "la_crossword": ("Ô chữ", "crossword"), "la_diagram": ("Sơ đồ", "diagram")}
+_MISSING_EVIDENCE: Final[dict[str, tuple[str, str]]] = {
+    "la_sortable": ("các bước theo thứ tự", "steps in a stated order"),
+    "la_crossword": ("đủ ba định nghĩa thuật ngữ", "three term definitions"),
+    "la_diagram": ("quan hệ giữa các ý", "stated relations between the ideas"),
+}
+_TARGET_LABELS: Final[dict[str, tuple[str, str]]] = {
+    _QUESTION_TYPE: ("câu hỏi tình huống một lựa chọn", "a single-choice scenario question"),
+    WORKSHEET_COMPONENT_TYPE: ("phiếu thực hành kèm câu hỏi đối chiếu bài mẫu",
+                               "a worksheet with a question on a sample answer"),
+}
+
+
+def _decides(practice: dict[str, Any]) -> bool:
+    """The practice asks the learner to decide, recognise or choose: its learner action, or the action named after
+    "người học"/"the learner" in its sentence, starts with such a verb."""
+
+    actions = [idm_fold(first_main_verb(str(practice.get("learner_action") or "")))]
+    sentence = idm_fold(str(practice.get("sentence") or ""))
+    actions.extend(sentence.split(lead, 1)[1] for lead in _LEARNER_LEADS if lead in sentence)
+    return any(action == verb or action.startswith(verb + " ") for action in actions for verb in _DECIDING_VERBS)
+
+
+def _worksheet_check(component: dict[str, Any], locale: str) -> dict[str, Any]:
+    """The single-choice problem that checks a converted worksheet (same practice, same blocks)."""
+
+    title, rationale, navigation = worksheet_check_texts(locale)
+    review = component["author_review"]
+    # component_index is renumbered with the unit (``autofix_lesson``).
+    return {"component_index": component["component_index"], "type": _QUESTION_TYPE, "role": "practice",
+            "title": title, "rationale": rationale, "block_ids": list(component["block_ids"]),
+            "practice_id": component["practice_id"], "support_items": [],
+            "author_review": {"purpose": review.get("purpose"), "example_scenario": review.get("example_scenario"),
+                              "visual_asset": None, "user_behavior_navigation": navigation}}
+
+
+def _converted_rationale(source: str, target: str, locale: str) -> str:
+    if locale == "vi":
+        return (f"{_TARGET_LABELS[target][0].capitalize()} thay cho dạng {_FORMAT_LABELS[source][0]}: tài liệu không "
+                f"nêu {_MISSING_EVIDENCE[source][0]}.")
+    return (f"{_TARGET_LABELS[target][1].capitalize()} instead of a {_FORMAT_LABELS[source][1]}: the source states no "
+            f"{_MISSING_EVIDENCE[source][1]}.")
+
+
+def practice_format_note(conversions: Sequence[tuple[str, str]], locale: str) -> str:
+    """One plain line per conversion for the lesson note: what the practice became and why."""
+
+    if locale == "vi":
+        return "\n".join(
+            f"Lưu ý: bài luyện tập dạng {_FORMAT_LABELS[source][0]} đã được đổi thành {_TARGET_LABELS[target][0]} vì "
+            f"tài liệu không có {_MISSING_EVIDENCE[source][0]}; nhiệm vụ, tiêu chí và phản hồi của bài luyện tập giữ "
+            "nguyên." for source, target in conversions)
+    return "\n".join(
+        f"Note: the {_FORMAT_LABELS[source][1]} practice became {_TARGET_LABELS[target][1]} because the source has no "
+        f"{_MISSING_EVIDENCE[source][1]}; the practice task, criteria and feedback are unchanged."
+        for source, target in conversions)
+
+
+def _practices_without_evidence(units: list[dict[str, Any]], practices: dict[str, dict[str, Any]],
+                                scope: ModuleScope, allowed: set[str]) -> list[tuple[str, str]]:
+    """A practice sortable, crossword or diagram the facts give no evidence for becomes a single-choice problem (a
+    practice that decides, recognises or chooses) or a worksheet html checked by a problem of the same practice
+    (anything else), keeping its practice_id, criteria and feedback focus. Both need a problem; the other target is
+    tried when the preferred one is not allowed. Returns (old type, new type) per conversion; a practice that is
+    unknown or held, or a lesson where neither target is allowed, is left to the provider repair."""
+
+    conversions: list[tuple[str, str]] = []
+    for unit in units:
+        for component in list(unit["components"]):
+            practice = practices.get(component.get("practice_id") or "")
+            if (component["role"] != "practice" or component["type"] not in _EVIDENCE_TYPES or practice is None
+                    or practice.get("hold") or _QUESTION_TYPE not in allowed
+                    or format_has_evidence(component, scope)):
+                continue
+            targets = ((_QUESTION_TYPE, WORKSHEET_COMPONENT_TYPE) if _decides(practice)
+                       else (WORKSHEET_COMPONENT_TYPE, _QUESTION_TYPE))
+            target = next(kind for kind in targets if kind in allowed)
+            source = component["type"]
+            component.update(type=target, rationale=_converted_rationale(source, target, scope.locale))
+            if target == WORKSHEET_COMPONENT_TYPE:
+                # The slot title names the task the learner completes on the worksheet (as a fallback worksheet does).
+                lead = "Phiếu thực hành" if scope.locale == "vi" else "Worksheet"
+                component["title"] = single_line(f"{lead}: {practice.get('learner_action') or ''}", _TITLE_MAX_CHARS)
+            checked = any(item is not component and item["type"] == _QUESTION_TYPE
+                          and item["practice_id"] == component["practice_id"] for item in unit["components"])
+            if target == WORKSHEET_COMPONENT_TYPE and not checked:
+                unit["components"].append(_worksheet_check(component, scope.locale))
+            conversions.append((source, target))
+    return conversions
 
 
 def _order_components(units: list[dict[str, Any]], order: dict[str, int]) -> int:
@@ -366,6 +474,12 @@ def autofix_lesson(lesson: IdmLessonDesignV1, plan: IdmLessonPlanV1, scope: Modu
         codes[BLOCK_ATTACHED_CODE] += _attach_missing_blocks(units, plan, order)
         codes[BLOCK_COVERED_CODE] += _cover_unit_blocks(units, order)
         codes[FORMAT_TO_HTML_CODE] += _formats_without_evidence(units, scope, allowed, order)
+        practices = {str(item["practice_id"]): item for item in data["practice_tasks"]}
+        conversions = _practices_without_evidence(units, practices, scope, allowed)
+        if conversions:
+            codes[PRACTICE_FORMAT_CODE] += len(conversions)
+            data["notes"] = sanitize_author_text(f"{data['notes']}\n{practice_format_note(conversions, scope.locale)}",
+                                                 _NOTES_MAX_CHARS)
         codes[COMPONENT_ORDER_CODE] += _order_components(units, order)
         for unit_position, unit in enumerate(units, start=1):
             unit["unit_index"] = unit_position
@@ -381,7 +495,7 @@ def autofix_lesson(lesson: IdmLessonDesignV1, plan: IdmLessonPlanV1, scope: Modu
 
 __all__ = [
     "BLOCK_ATTACHED_CODE", "BLOCK_COVERED_CODE", "COMPONENT_ORDER_CODE", "CRITERIA_TRIMMED_CODE",
-    "FOREIGN_BLOCK_DROPPED_CODE", "FORMAT_TO_HTML_CODE", "QUESTION_ONLY_BLOCK_CODE", "TAUGHT_BEFORE_QUESTION_CODE",
-    "UNITS_MERGED_CODE", "autofix_lesson", "format_has_evidence", "ranked_criteria", "teach_before_questions",
-    "trim_module_answer",
+    "FOREIGN_BLOCK_DROPPED_CODE", "FORMAT_TO_HTML_CODE", "PRACTICE_FORMAT_CODE", "QUESTION_ONLY_BLOCK_CODE",
+    "TAUGHT_BEFORE_QUESTION_CODE", "UNITS_MERGED_CODE", "autofix_lesson", "format_has_evidence",
+    "practice_format_note", "ranked_criteria", "teach_before_questions", "trim_module_answer",
 ]

@@ -401,6 +401,15 @@ def _salvaged_practices(
     return [practice, *(item for item in held if item.practice_id != practice.practice_id)], units, kept
 
 
+def worksheet_check_texts(locale: str) -> tuple[str, str, str]:
+    """Title, rationale and learner navigation of the single-choice problem that checks a worksheet."""
+
+    return (_vi(locale, "Đối chiếu bài mẫu với tiêu chí", "Check a sample answer against the criteria"),
+            _vi(locale, "Kiểm tra việc áp dụng tiêu chí của phiếu trên một bài mẫu.",
+                "Checks how the worksheet criteria apply to a sample answer."),
+            _vi(locale, "Chọn một đáp án và xem phản hồi.", "Choose one answer and read the feedback."))
+
+
 def _worksheet_unit(unit: IdmUnitDesignV1, practice: IdmPracticeTaskV1, scope: ModuleScope,
                     objective: str) -> IdmUnitDesignV1:
     locale = scope.locale
@@ -424,11 +433,7 @@ def _worksheet_unit(unit: IdmUnitDesignV1, practice: IdmPracticeTaskV1, scope: M
         _vi(locale, "Tự làm phiếu trên bản của mình rồi tự kiểm theo danh sách.",
             "Complete the worksheet on your own copy, then check it against the list."))]
     if "problem" in scope.allowed_types:
-        components.append(slot(
-            2, "problem", _vi(locale, "Đối chiếu bài mẫu với tiêu chí", "Check a sample answer against the criteria"),
-            _vi(locale, "Kiểm tra việc áp dụng tiêu chí của phiếu trên một bài mẫu.",
-                "Checks how the worksheet criteria apply to a sample answer."),
-            _vi(locale, "Chọn một đáp án và xem phản hồi.", "Choose one answer and read the feedback.")))
+        components.append(slot(2, "problem", *worksheet_check_texts(locale)))
     return unit.model_copy(update={"segment": "practice_feedback", "components": components})
 
 
