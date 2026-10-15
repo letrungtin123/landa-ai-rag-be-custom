@@ -13,8 +13,14 @@ it. The checks here, cheap and without a provider call:
   an answer may quote its rule;
 * ``IDM_W5_FAQ_NEW_FACT``: a number or a name that the item's basis facts (its planned anchor facts and the slot's own
   facts) and the approved plan do not state; a whole-lesson vocabulary no longer grounds a stray number;
-* inferred items (never a finding): an answer that explains beyond the words of its basis facts. The author note asks
-  the SME to check it; it is never repaired back into a restatement.
+* ``IDM_W5_FAQ_OPEN_QUESTION`` (QLT-7): a question that asks an open SME question of the unit again (c1.l3.u1 of QC
+  run fae66524 answered "… triển khai đồng loạt toàn bộ 9 công cụ … theo đúng thứ tự PDCA không?", which the SME had
+  not settled); the writer gets those questions as OPEN_QUESTIONS, never to be answered;
+* ``IDM_W5_FAQ_INVENTED_REASON`` (QLT-7): a reason for a number, percentage, deadline or threshold that its basis facts
+  do not explain (c4.l3.u1: "Vì sao … ngưỡng … tối thiểu 30% …?" answered with a reason the source never gives);
+* inferred items (never a finding): an answer that explains beyond the words of its basis facts, or (QLT-7) that has
+  a reasoning sentence ("vì", "nhằm", "giúp" …) no basis fact holds. The author note asks the SME to check it; it is
+  never repaired back into a restatement.
 
 A finding gets one targeted repair, then the items concerned are dropped while two remain, else the slot is kept for
 author review; the source-locked FAQ (verbatim source sentences) is never used for these findings (``storyboard``).
@@ -37,17 +43,23 @@ from app.idm.policy import (
     FAQ_COMPONENT_TYPE,
     FAQ_DEEP_TYPES,
     IDM_FAQ_MAX_RECALL_ITEMS,
+    IDM_FAQ_OPEN_QUESTION_MIN_SHARE,
+    IDM_FAQ_OPEN_QUESTION_MIN_SHARED_WORDS,
+    IDM_FAQ_REASON_SENTENCE_MIN_SUPPORT,
     IDM_FAQ_SOURCE_COPY_LCS_SHARE,
     IDM_FAQ_SOURCE_COPY_MIN_WORDS,
     IDM_FAQ_SOURCE_COPY_NGRAM,
     IDM_FAQ_SOURCE_COPY_NGRAM_SHARE,
 )
-from app.idm.text import EvidenceIndex, evidence_index, grounding_verdict, idm_fold
+from app.idm.text import EvidenceIndex, content_words, evidence_index, grounding_verdict, idm_fold, number_tokens
 
 FAQ_RESTATES_SOURCE_CODE: Final = "IDM_W5_FAQ_RESTATES_SOURCE"
 FAQ_TYPE_MIX_CODE: Final = "IDM_W5_FAQ_TYPE_MIX"
 FAQ_NEW_FACT_CODE: Final = "IDM_W5_FAQ_NEW_FACT"
-FAQ_VALUE_CODES: Final = frozenset({FAQ_RESTATES_SOURCE_CODE, FAQ_TYPE_MIX_CODE, FAQ_NEW_FACT_CODE})
+FAQ_OPEN_QUESTION_CODE: Final = "IDM_W5_FAQ_OPEN_QUESTION"
+FAQ_INVENTED_REASON_CODE: Final = "IDM_W5_FAQ_INVENTED_REASON"
+FAQ_VALUE_CODES: Final = frozenset({FAQ_RESTATES_SOURCE_CODE, FAQ_TYPE_MIX_CODE, FAQ_NEW_FACT_CODE,
+                                    FAQ_OPEN_QUESTION_CODE, FAQ_INVENTED_REASON_CODE})
 RECALL: Final[FaqQuestionType] = "recall"
 
 # --- question types -------------------------------------------------------------------------------------------------
@@ -198,11 +210,110 @@ def copies_one_fact(answer: str, facts: Sequence[_Fact]) -> bool:
     return False
 
 
+# --- open SME questions and invented reasons (QLT-7) -----------------------------------------------------------------
+def asks_open_question(question: str, open_words: Sequence[frozenset[str]]) -> bool:
+    """The FAQ question asks one of the open SME questions again: at least ``IDM_FAQ_OPEN_QUESTION_MIN_SHARED_WORDS``
+    of its content words, and ``IDM_FAQ_OPEN_QUESTION_MIN_SHARE`` of them, are in that question."""
+
+    words = set(content_words(question))
+    return bool(words) and any(
+        len(shared := words & other) >= IDM_FAQ_OPEN_QUESTION_MIN_SHARED_WORDS
+        and len(shared) >= IDM_FAQ_OPEN_QUESTION_MIN_SHARE * len(words) for other in open_words)
+
+
+def _nfc_lower(text: str) -> str:
+    return unicodedata.normalize("NFC", " ".join(text.split())).lower()
+
+
+_NUMBER_RE: Final = re.compile(r"\d+(?:[.,]\d+)*")
+# A number is a threshold, a deadline or an amount when a unit follows it ("30%", "90 ngày", "50 triệu") or a threshold
+# word comes just before it ("tối thiểu 30", "dưới ngưỡng 5"); "6 bậc", "8 cam kết" or "Bậc 02" count items or name a
+# level and are not.
+_UNIT_AFTER_RE: Final = re.compile(
+    r"^\s*(?:%|phần trăm|ngày|tuần|tháng|năm|giờ|phút|lần|triệu|tỷ|nghìn|ngàn|đồng|usd|vnd|percent|days?|weeks?|months?"
+    r"|years?|hours?|minutes?|times|million|billion)(?!\w)")
+_THRESHOLD_BEFORE_RE: Final = re.compile(
+    r"(?:ngưỡng|tối thiểu|tối đa|ít nhất|nhiều nhất|không quá|dưới|trên|vượt|mức|threshold|minimum|maximum|at least"
+    r"|at most|no more than|under|over|below|above|limit)\s*(?:là\s*)?$")
+_BEFORE_CHARS: Final = 24
+# Words that give a reason in a fact ("… vì …", "… nhằm …", "… để …"); "giúp" only says what something does, and
+# "thay vì" means "instead of".
+_FACT_REASON_RE: Final = re.compile(
+    r"(?<!\w)(?:(?<!thay )vì|bởi|lý do|nhằm|để|do đó|because|since|so that|in order to|due to|the reason)(?!\w)")
+# Words that give a reason in an answer sentence about a number ("Ngưỡng 30% đảm bảo …", "… vì …").
+_ANSWER_REASON_RE: Final = re.compile(
+    r"(?<!\w)(?:(?<!thay )vì|bởi|lý do|nhằm|đảm bảo|because|the reason|due to|ensures?|so that)(?!\w)")
+# Reasoning connectives that mark an answer sentence as inference unless one basis fact holds most of its words.
+_REASONING_RE: Final = re.compile(
+    r"(?<!\w)(?:(?<!thay )vì|bởi|nhằm|nên|giúp|để|do đó|vì vậy|nhờ|đảm bảo|because|so that|therefore|helps?|in order to"
+    r"|ensures?)(?!\w)")
+_SENTENCE_RE: Final = re.compile(r"(?<=[.!?;])\s+")
+
+
+def threshold_numbers(text: str) -> set[str]:
+    """The numbers of ``text`` that state a threshold, a deadline or an amount (normalised like ``number_tokens``)."""
+
+    lowered = _nfc_lower(text)
+    found: set[str] = set()
+    for match in _NUMBER_RE.finditer(lowered):
+        before = lowered[max(0, match.start() - _BEFORE_CHARS):match.start()]
+        if _UNIT_AFTER_RE.match(lowered[match.end():]) or _THRESHOLD_BEFORE_RE.search(before.rstrip()):
+            found |= number_tokens(match.group(0))
+    return found
+
+
+def reasoned(numbers: set[str], facts: Sequence[str]) -> bool:
+    """Every number of ``numbers`` sits in a fact sentence that gives a reason ("… vì …", "… nhằm …")."""
+
+    sentences = [sentence for fact in facts for sentence in _SENTENCE_RE.split(_nfc_lower(fact))]
+    return all(any(number in number_tokens(sentence) and _FACT_REASON_RE.search(sentence) for sentence in sentences)
+               for number in numbers)
+
+
+def invents_reason(question: str, answer: str, facts: Sequence[str]) -> bool:
+    """The item gives a reason for a threshold its facts do not explain: a why-question about a threshold, or an
+    answer sentence that holds a threshold and a reason word, while no fact sentence holding that number says why."""
+
+    numbers: set[str] = set()
+    if question_type(question) == "why":
+        numbers |= threshold_numbers(question)
+    for sentence in _SENTENCE_RE.split(_nfc_lower(answer)):
+        if _ANSWER_REASON_RE.search(sentence):
+            numbers |= threshold_numbers(sentence)
+    return bool(numbers) and not reasoned(numbers, facts)
+
+
+def unsupported_reasoning(answer: str, facts: Sequence[str]) -> bool:
+    """An answer sentence with a reasoning connective whose content words no single basis fact mostly holds."""
+
+    fact_words = [set(content_words(fact)) for fact in facts]
+    for sentence in _SENTENCE_RE.split(" ".join(answer.split())):
+        if not _REASONING_RE.search(_nfc_lower(sentence)):
+            continue
+        words = set(content_words(sentence))
+        if words and max((len(words & other) for other in fact_words), default=0) < (
+                IDM_FAQ_REASON_SENTENCE_MIN_SUPPORT * len(words)):
+            return True
+    return False
+
+
+def open_questions(brief: IdmUnitBriefV1) -> tuple[str, ...]:
+    """The SME questions still open for the unit: its blocks' W1 questions and the lesson's Hold questions
+    (``faq_material.open_questions``, contract 3), without repeats."""
+
+    material = brief.faq_material
+    if material is None:
+        return ()
+    return tuple(dict.fromkeys([*(question for block in material.blocks for question in block.sme_questions),
+                                *material.open_questions]))
+
+
 # --- the checker ----------------------------------------------------------------------------------------------------
 @dataclass(frozen=True)
 class _Basis:
     known: KnownFacts
     evidence: EvidenceIndex
+    texts: tuple[str, ...] = ()
 
 
 @dataclass
@@ -216,6 +327,10 @@ class FaqChecker:
     plans: Mapping[int, tuple[IdmFaqItemPlanV1, ...]]
     slot_keys: Mapping[int, tuple[str, ...]]
     _bases: dict[tuple[int, int], _Basis] = field(default_factory=dict)
+    # QLT-7: the open SME questions of the unit (its blocks' W1 questions and the lesson's Hold questions), never to be
+    # answered by the FAQ, and their content words.
+    open_questions: tuple[str, ...] = ()
+    open_words: tuple[frozenset[str], ...] = ()
 
     @classmethod
     def build(cls, brief: IdmUnitBriefV1, fact_text: Mapping[str, str], *, plan_texts: Iterable[str]) -> FaqChecker:
@@ -230,8 +345,10 @@ class FaqChecker:
                 slot_keys[index] = tuple(key for key in dict.fromkeys([*slot.owned_fact_keys,
                                                                        *slot.supporting_fact_keys])
                                          if key in fact_text)
+        questions = open_questions(brief)
         return cls(brief_mode(brief), dict(fact_text), tuple(_Fact.of(text) for text in fact_text.values()),
-                   tuple(plan_texts), plans, slot_keys)
+                   tuple(plan_texts), plans, slot_keys, open_questions=questions,
+                   open_words=tuple(frozenset(content_words(question)) for question in questions))
 
     def basis_keys(self, index: int, position: int) -> list[str]:
         """The facts item ``position`` of slot ``index`` is built on: its planned anchors (all anchors for an item
@@ -247,7 +364,7 @@ class FaqChecker:
         cached = self._bases.get((index, position))
         if cached is None:
             texts = [self.fact_text[key] for key in self.basis_keys(index, position)]
-            cached = _Basis(KnownFacts.of(texts, plan_texts=self.plan_texts), evidence_index(texts))
+            cached = _Basis(KnownFacts.of(texts, plan_texts=self.plan_texts), evidence_index(texts), tuple(texts))
             self._bases[(index, position)] = cached
         return cached
 
@@ -265,11 +382,33 @@ class FaqChecker:
                                                                            _answers(component), strict=True))
                 if self.basis(index, position).known.states_new_fact(f"{question}\n{answer}")]
 
-    def inferred(self, index: int, component: Mapping[str, Any]) -> list[int]:
-        """Items whose answer explains beyond the words of its basis facts (for the SME, never a finding)."""
+    def open_items(self, component: Mapping[str, Any]) -> list[int]:
+        """Items whose question asks an open SME question of the unit again (QLT-7)."""
 
-        return [position for position, answer in enumerate(_answers(component))
-                if answer.strip() and grounding_verdict(answer, self.basis(index, position).evidence) != "grounded"]
+        if not self.open_words:
+            return []
+        return [position for position, question in enumerate(_questions(component))
+                if asks_open_question(question, self.open_words)]
+
+    def invented_reasons(self, index: int, component: Mapping[str, Any]) -> list[int]:
+        """Items that give a reason for a threshold their basis facts do not explain (QLT-7)."""
+
+        return [position for position, (question, answer) in enumerate(zip(_questions(component),
+                                                                           _answers(component), strict=True))
+                if invents_reason(question, answer, self.basis(index, position).texts)]
+
+    def inferred(self, index: int, component: Mapping[str, Any]) -> list[int]:
+        """Items whose answer explains beyond the words of its basis facts, or has a reasoning sentence no basis fact
+        holds (QLT-7: the whole-answer measure alone marked 3 of 25 answers of run fae66524). For the SME, never a
+        finding."""
+
+        found = []
+        for position, answer in enumerate(_answers(component)):
+            basis = self.basis(index, position)
+            if answer.strip() and (grounding_verdict(answer, basis.evidence) != "grounded"
+                                   or unsupported_reasoning(answer, basis.texts)):
+                found.append(position)
+        return found
 
     def findings(self, index: int, component: Mapping[str, Any]) -> list[str]:
         codes: list[str] = []
@@ -279,6 +418,10 @@ class FaqChecker:
             codes.append(FAQ_RESTATES_SOURCE_CODE)
         if self.with_new_facts(index, component):
             codes.append(FAQ_NEW_FACT_CODE)
+        if self.open_items(component):
+            codes.append(FAQ_OPEN_QUESTION_CODE)
+        if self.invented_reasons(index, component):
+            codes.append(FAQ_INVENTED_REASON_CODE)
         return codes
 
     def plan_hint(self, index: int) -> str:
@@ -339,10 +482,15 @@ def faq_writer_rules(mode: FidelityMode) -> str:
         "  * Inference yes, new facts no: never a number, amount, date, threshold, deadline, rule, exception, person, "
         "company or product name that the item's anchor facts do not state. When the facts cannot answer a question, "
         "ask another one.\n"
+        "  * Never give a reason, cause or purpose for a number, percentage, amount, deadline or threshold that its "
+        'anchor facts do not explain (no "Vì sao lại là 30% …?" answered with a reason the facts never give); ask '
+        "what the facts do say about it, or another question.\n"
         "  * FAQ_MATERIAL in UNIT_BRIEF (when present) lists what the source analysis found for this unit's blocks "
         "(their role, unclear points, gaps, open SME questions) and the feedback focus of the lesson practices: use "
-        "it to pick real confusions. A gap means the source is silent: never fill it with an invented rule. An SME "
-        "question is still open: never answer it as if it were settled.\n"
+        "it to pick real confusions. A gap means the source is silent: never fill it with an invented rule.\n"
+        "  * OPEN_QUESTIONS in UNIT_BRIEF (when present) are questions the SME has not answered yet: do not answer "
+        "them; these are unresolved. Never ask or answer any of them, not even in other words or inside another "
+        "item.\n"
         "  * When this unit has a problem slot, base the common_mistake items on its own distractors: the belief "
         "behind a wrong option and why the criterion rules it out, consistent with the answer key.\n"
         + keep +
@@ -350,7 +498,8 @@ def faq_writer_rules(mode: FidelityMode) -> str:
 
 
 __all__ = [
-    "FAQ_NEW_FACT_CODE", "FAQ_RESTATES_SOURCE_CODE", "FAQ_TYPE_MIX_CODE", "FAQ_VALUE_CODES", "RECALL", "FaqChecker",
-    "copies_one_fact", "extra_recall_items", "faq_writer_rules", "lcs_length", "question_type", "question_types",
-    "type_mix_ok",
+    "FAQ_INVENTED_REASON_CODE", "FAQ_NEW_FACT_CODE", "FAQ_OPEN_QUESTION_CODE", "FAQ_RESTATES_SOURCE_CODE",
+    "FAQ_TYPE_MIX_CODE", "FAQ_VALUE_CODES", "RECALL", "FaqChecker", "asks_open_question", "copies_one_fact",
+    "extra_recall_items", "faq_writer_rules", "invents_reason", "lcs_length", "open_questions", "question_type",
+    "question_types", "reasoned", "threshold_numbers", "type_mix_ok", "unsupported_reasoning",
 ]

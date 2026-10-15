@@ -130,7 +130,7 @@ class ExplainedUnitTests(StoryboardEndpointTestCase):
         self.assertEqual(repair["thinking_level"], "low")
         self.assertIn("c0 IDM_W5_SENTENCE_COPY at c0.semantic_content.sections[0].blocks[2], "
                       "c0.semantic_content.sections[0].blocks[3]", repair["prompt"])
-        self.assertIn("(2 of 4 judged sentences repeat the facts word for word; at most 35% may)", repair["prompt"])
+        self.assertIn("(2 of 4 judged sentences repeat the facts word for word; at most 20% may)", repair["prompt"])
         self.assertIn("c0 IDM_W5_EXPLANATION_MISSING at c0", repair["prompt"])
         component = data["unit"]["components"][0]
         self.assertFalse(component.get("source_locked_fallback"))

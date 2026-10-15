@@ -2549,8 +2549,8 @@
     "op": "generate",
     "model": "test-model",
     "schema": "IdmW4CourseResponseV1",
-    "prompt_sha256": "6ef59d0b88f5126bc915a98b4ffff21c844cc6da4fd781843fa8ff2a5242db2c",
-    "prompt_chars": 10501,
+    "prompt_sha256": "190ff1b34946da284fd8051e68d08e3f4a9d49adb1da355dfbdd1cac03073c83",
+    "prompt_chars": 10690,
     "config": {
      "max_output_tokens": 16000,
      "response_mime_type": "application/json",

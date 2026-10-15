@@ -7,8 +7,13 @@ here work per sentence of a teaching slot (``fidelity.is_teaching_slot``):
 
 * sentence copy (explain, structured): the share of near-verbatim sentences; sentences that carry a definition,
   rule, number or threshold are not judged, they stay exact by design;
-* explanation (explain): at least one explanation device in a sentence the writer did not copy;
+* explanation (explain): at least one explanation device in a sentence the writer did not copy; QLT-7: a labelled
+  example, a clarifying phrase ("nghĩa là", "tức là" ...) or a why sentence, never a generic word ("để", "vì") alone;
+* sentence length (explain, QLT-7): prose sentences of a teaching slot average at most 22 words and none is longer
+  than 40 (table rows, list items, callouts and sentences that state a rule are not measured);
 * new facts (explain): a number, date, amount or capitalised name neither the facts nor the approved plan state;
+* example role (every mode, QLT-7): a drafted example ("Ví dụ minh hoạ: …") about a person of another level than the
+  audience (``example_roles``);
 * example label (explain): "Ví dụ:" before text the facts do not ground becomes "Ví dụ minh hoạ:" (a fix, not a
   finding); every labelled example is counted for the author note.
 
@@ -22,11 +27,12 @@ import math
 import re
 import unicodedata
 from collections.abc import Iterable, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from itertools import pairwise
 from typing import Any, Final
 
 from app.idm.contracts import FidelityMode, IdmUnitBriefV1
+from app.idm.example_roles import AudienceRoles, audience_roles, contradicting_role, example_body
 from app.idm.fidelity import brief_mode, example_label, teaching_slots
 from app.idm.policy import (
     EXPLANATION_DEVICES_EN,
@@ -37,6 +43,9 @@ from app.idm.policy import (
     IDM_SENTENCE_COPY_NGRAM,
     IDM_SENTENCE_COPY_NGRAM_SHARE,
     IDM_SENTENCE_COPY_RUN_SHARE,
+    IDM_SENTENCE_LENGTH_MAX_AVERAGE_WORDS,
+    IDM_SENTENCE_LENGTH_MAX_WORDS,
+    IDM_SENTENCE_LENGTH_MIN_SENTENCES,
     IDM_SENTENCE_MIN_WORDS,
 )
 from app.idm.text import EvidenceIndex, idm_fold, number_tokens
@@ -44,7 +53,11 @@ from app.idm.text import EvidenceIndex, idm_fold, number_tokens
 SENTENCE_COPY_CODE: Final = "IDM_W5_SENTENCE_COPY"
 EXPLANATION_MISSING_CODE: Final = "IDM_W5_EXPLANATION_MISSING"
 NEW_FACT_CODE: Final = "IDM_W5_NEW_FACT"
-FIDELITY_CODES: Final = frozenset({SENTENCE_COPY_CODE, EXPLANATION_MISSING_CODE, NEW_FACT_CODE})
+# QLT-7 (QC run fae66524): long sentences in an explained slot; a drafted example about a person of another level.
+SENTENCE_LENGTH_CODE: Final = "IDM_W5_SENTENCE_LENGTH"
+EXAMPLE_ROLE_CODE: Final = "IDM_W5_EXAMPLE_ROLE"
+FIDELITY_CODES: Final = frozenset({SENTENCE_COPY_CODE, EXPLANATION_MISSING_CODE, NEW_FACT_CODE, SENTENCE_LENGTH_CODE,
+                                   EXAMPLE_ROLE_CODE})
 
 _WORD_RE: Final = re.compile(r"\w+")
 # Sentences end at . ! ? … ; (a colon introduces a definition or a label, it does not end one).
@@ -69,6 +82,14 @@ def _alternation(words: Iterable[str]) -> re.Pattern[str]:
 
 _RULE_RE: Final = _alternation(_RULE_WORDS)
 _DEVICE_RE: Final = _alternation([*EXPLANATION_DEVICES_VI, *EXPLANATION_DEVICES_EN])
+# A why sentence (QLT-7): it says why something matters ("… quan trọng vì …", "… is important because …"), or a
+# heading or sentence that opens with "Vì sao" / "Tại sao" / "Why" and is answered by the section.
+_WHY_RE: Final = re.compile(
+    r"(?<!\w)(?:quan trọng|cần thiết|có ý nghĩa|then chốt|sống còn|có lợi|hữu ích)\s+(?:là\s+)?(?:vì|bởi|nhờ)(?!\w)"
+    r"|^(?:vì sao|tại sao|why)(?!\w)"
+    r"|(?<!\w)(?:matters|is important|is essential|is critical|helps you)\s+because(?!\w)")
+# "Ví dụ:" opening a sentence labels an example (a source example keeps this label, ``label_examples``).
+_EXAMPLE_OPENING_RE: Final = re.compile(r"^(?:ví dụ|for example|example)\s*:")
 # "<term of at most 6 words> là / is …" defines the term (Vietnamese words are syllables: "sứ mệnh của công ty" is 5);
 # "Điều này nghĩa là …" and "Đây là …" define nothing.
 _DEFINITION_RE: Final = re.compile(
@@ -221,13 +242,57 @@ def copy_report(component: Mapping[str, Any], grams: EvidenceGrams) -> CopyRepor
     return CopyReport(judged, tuple(copied), words, count)
 
 
+def explains(text: str) -> bool:
+    """``text`` holds an explanation device: a labelled example, a clarifying phrase ("nghĩa là", "tức là", "vì
+    vậy" …) or a why sentence ("… quan trọng vì …", "Vì sao …?"); a generic word ("để", "giúp", "vì") alone is none."""
+
+    lowered = _nfc_lower(text).lstrip(" \"'(“‘")  # noqa: RUF001 - opening quotes
+    return bool(_DEVICE_RE.search(lowered) or _WHY_RE.search(lowered) or _EXAMPLE_OPENING_RE.match(lowered))
+
+
 def explained(component: Mapping[str, Any], grams: EvidenceGrams) -> bool:
-    """An explanation device ("nghĩa là", "vì", "Ví dụ minh hoạ", a why-question …) in a sentence or heading the
-    writer did not copy from the facts."""
+    """An explanation device (``explains``) in a sentence or heading the writer did not copy from the facts."""
 
     texts = [*headings(component),
              *(sentence for unit in text_units(component) for sentence in sentences_of(unit.text))]
-    return any(_DEVICE_RE.search(_nfc_lower(text)) and not grams.near_verbatim(words_of(text)) for text in texts)
+    return any(explains(text) and not grams.near_verbatim(words_of(text)) for text in texts)
+
+
+@dataclass(frozen=True)
+class LengthReport:
+    """Prose sentences of a slot (paragraph and task text, rules excluded): count, average and longest word counts,
+    and the locations of the sentences over the average bound (one entry per text)."""
+
+    sentences: int
+    average: float
+    longest: int
+    long_locations: tuple[str, ...]
+
+    @property
+    def too_long(self) -> bool:
+        return self.longest > IDM_SENTENCE_LENGTH_MAX_WORDS or (
+            self.sentences >= IDM_SENTENCE_LENGTH_MIN_SENTENCES
+            and self.average > IDM_SENTENCE_LENGTH_MAX_AVERAGE_WORDS)
+
+
+def length_report(component: Mapping[str, Any]) -> LengthReport:
+    """QLT-7: how long the prose sentences of an html slot are. Table rows, list items and callouts (a quoted rule)
+    are not prose; a sentence that states a rule keeps the facts' wording and is not measured either."""
+
+    counts: list[int] = []
+    long_locations: list[str] = []
+    for unit in text_units(component):
+        if unit.kind not in {"paragraph", "task"}:
+            continue
+        for sentence in sentences_of(unit.text):
+            words = len(words_of(sentence))
+            if not words or _RULE_RE.search(_nfc_lower(sentence)):
+                continue
+            counts.append(words)
+            if words > IDM_SENTENCE_LENGTH_MAX_AVERAGE_WORDS and unit.location not in long_locations:
+                long_locations.append(unit.location)
+    average = sum(counts) / len(counts) if counts else 0.0
+    return LengthReport(len(counts), average, max(counts, default=0), tuple(long_locations))
 
 
 def is_labelled_example(text: str) -> bool:
@@ -300,12 +365,15 @@ class FidelityChecker:
     keep_only: frozenset[int]
     slot_grams: Mapping[int, EvidenceGrams]
     known: KnownFacts
+    # QLT-7: the roles of the course audience; a drafted example about a person of another level is a finding.
+    roles: AudienceRoles = field(default_factory=lambda: AudienceRoles(frozenset(), ()))
 
     @classmethod
     def build(cls, brief: IdmUnitBriefV1, fact_text: Mapping[str, str], evidence: EvidenceIndex, *,
               plan_texts: Iterable[str], locale: str) -> FidelityChecker:
         """``fact_text``: the unit's source facts; ``evidence``: everything the writer was given; ``plan_texts``:
-        the approved plan (titles, purpose, support briefs), whose numbers and names may be repeated."""
+        the approved plan (titles, purpose, server-written support briefs), whose numbers and names may be
+        repeated."""
 
         teaching = frozenset(teaching_slots(brief))
         everything = list(fact_text.values())
@@ -318,7 +386,8 @@ class FidelityChecker:
         keep_only = frozenset(index for index in teaching if brief.components[index].treatments
                               and {item.treatment for item in brief.components[index].treatments} == {"keep"})
         return cls(brief_mode(brief), locale, teaching, keep_only, grams,
-                   KnownFacts.of((), plan_texts=plan_texts, evidence=evidence))
+                   KnownFacts.of((), plan_texts=plan_texts, evidence=evidence),
+                   audience_roles(brief.target_audience, brief.purpose_profile, locale))
 
     def report(self, index: int, component: Mapping[str, Any]) -> CopyReport:
         return copy_report(component, self.slot_grams[index])
@@ -347,12 +416,22 @@ class FidelityChecker:
 
         return [unit.location for unit in text_units(component) if self.known.states_new_fact(unit.text)]
 
-    def findings(self, components: Sequence[Any]) -> list[tuple[str, int]]:
-        """(code, slot) of every content-mode finding of the unit's teaching html slots."""
+    def role_locations(self, component: Mapping[str, Any]) -> list[str]:
+        """Locations of drafted examples whose main person is of another level than the audience (QLT-7)."""
 
-        if self.mode == "keep":
-            return []
+        return [unit.location for unit in text_units(component)
+                if (body := example_body(unit.text)) is not None and contradicting_role(self.roles, body)]
+
+    def findings(self, components: Sequence[Any]) -> list[tuple[str, int]]:
+        """(code, slot) of every content-mode finding of the unit's teaching html slots, and of every html slot whose
+        drafted example is about a person of another level than the audience (any mode)."""
+
         found: list[tuple[str, int]] = []
+        for index, component in enumerate(components):
+            if isinstance(component, dict) and component.get("type") == "html" and self.role_locations(component):
+                found.append((EXAMPLE_ROLE_CODE, index))
+        if self.mode == "keep":
+            return found
         for index in sorted(self.teaching):
             component = components[index] if index < len(components) else None
             if not isinstance(component, dict) or component.get("type") != "html":
@@ -362,9 +441,11 @@ class FidelityChecker:
             if self.mode == "explain":
                 if not explained(component, self.slot_grams[index]):
                     found.append((EXPLANATION_MISSING_CODE, index))
+                if length_report(component).too_long:
+                    found.append((SENTENCE_LENGTH_CODE, index))
                 if self.new_fact_locations(component):
                     found.append((NEW_FACT_CODE, index))
-        return found
+        return sorted(found, key=lambda item: item[1])
 
     def from_facts(self, index: int, text: str) -> bool:
         """Every judged sentence of ``text`` repeats the slot's facts: an example the source gives."""
@@ -431,15 +512,17 @@ class FidelityChecker:
             component = components[index] if index < len(components) else None
             if isinstance(component, dict) and component.get("type") == "html":
                 report = self.report(index, component)
+                lengths = length_report(component)
                 slots[f"c{index}"] = {"judged": report.judged, "copied": len(report.copied),
                                       "avg_words": round(report.words / report.sentences, 1) if report.sentences
-                                      else 0.0}
+                                      else 0.0,
+                                      "prose_avg_words": round(lengths.average, 1), "prose_max_words": lengths.longest}
         return {"mode": self.mode, "slots": slots, "examples": sum(self.drafted_examples(components).values())}
 
 
 __all__ = [
-    "EXPLANATION_MISSING_CODE", "FIDELITY_CODES", "NEW_FACT_CODE", "SENTENCE_COPY_CODE",
-    "CopyReport", "EvidenceGrams", "FidelityChecker", "KnownFacts", "TextUnit", "carries_exact_claim", "copy_report",
-    "explained",
-    "is_labelled_example", "sentences_of", "text_units", "words_of",
+    "EXAMPLE_ROLE_CODE", "EXPLANATION_MISSING_CODE", "FIDELITY_CODES", "NEW_FACT_CODE", "SENTENCE_COPY_CODE",
+    "SENTENCE_LENGTH_CODE", "CopyReport", "EvidenceGrams", "FidelityChecker", "KnownFacts", "LengthReport", "TextUnit",
+    "carries_exact_claim", "copy_report", "explained", "explains", "is_labelled_example", "length_report",
+    "sentences_of", "text_units", "words_of",
 ]

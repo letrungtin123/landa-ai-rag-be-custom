@@ -185,10 +185,17 @@ IDM_WORKSHEET_MIN_GROUNDED_SHARE: Final = 0.5
 IDM_WORKSHEET_MIN_LIST_ITEMS: Final = 2
 
 # --- Single-choice hygiene (QC course 364564, N2/N3) ------------------------------------------
-# The correct option was the longest in 8 of 9 questions. Longer than every other option by more
-# than this factor (characters), it is a length cue learners can guess from: a review note, never
-# a rejection (a precise correct answer is often a little longer).
+# The correct option was the longest in 8 of 9 questions (and in 10 of 13 in QC run fae66524, QLT-7, where only the
+# two keys over 1.25x the longest other option were flagged). A key longer than this factor times the AVERAGE length
+# of the distractors (characters), or longer than the longest distractor by the second factor (with 3+ options), is a
+# length cue learners can guess from: one targeted repair that balances the lengths, then a review note, never a
+# rejection (a precise correct answer is often a little longer). Measured on the 13 questions of fae66524 (key / mean
+# distractor, key / longest distractor): 1.38/1.31, 1.32/1.27, 1.27/1.20 and 1.23/1.204 are cues (4, the old rule
+# found 2); the next one, 1.20/1.11, is not.
 IDM_MCQ_LENGTH_CUE_RATIO: Final = 1.25
+IDM_MCQ_LENGTH_CUE_LONGEST_RATIO: Final = 1.2
+# The length the repair aims for: the key at most this factor times the average distractor (inside the cue bound).
+IDM_MCQ_LENGTH_TARGET_RATIO: Final = 1.1
 # Answer leak: an option whose word 4-grams (accent-folded) mostly appear in the html shown before
 # the question in the same unit copies it ("ví dụ đạt chuẩn" -> correct option, "ví dụ không đạt
 # chuẩn" -> distractor; QC c4.l2.u1 was a near-verbatim copy, ~1.0). A rule fragment shared with a
@@ -236,6 +243,23 @@ IDM_ANSWER_STEM_PASSAGE_MIN_WORDS: Final = 6
 # with the key's criteria and 15 with Bậc 02's; the case of a well-formed ladder question of run 8de1c76b (An
 # Phát, Bậc 01) shares 9 with its key's row and at most 4 with another.
 IDM_ANSWER_CONTESTED_MIN_WORDS: Final = 4
+# QC run fae66524 (QLT-7): c1.l1.u2's case "đạt chứng nhận ISO 9001 và chứng chỉ CE" was keyed "Bậc 01" while the
+# table row of Bậc 02 says "đạt chứng chỉ quốc tế như ISO, CE hoặc FDA"; the case was written to share more words
+# with Bậc 01 (9) than with Bậc 02 (8), so the word count above did not fire. A case also contests its key when it
+# literally meets a criterion only another label's row states: at least this many distinctive codes of that row
+# (ISO, CE: all-capital tokens no other row has) in the case, not negated ("chưa có ISO"), or one code and this many
+# distinctive content-word pairs, or the pairs alone. On a numbered ladder ("Bậc 01" ... "Bậc 06") only a HIGHER rung
+# contests: a higher rung's case meets the lower rungs' criteria by design.
+IDM_ANSWER_CONTESTED_MIN_CODES: Final = 2
+IDM_ANSWER_CONTESTED_MIN_PAIRS: Final = 3
+# Answer leak through the unit's own worked example (QC run fae66524, c2.l3.u1): the worksheet's "Ví dụ minh hoạ"
+# filled the field with "Cung cấp video hướng dẫn cá nhân hóa và gửi quà tri ân bất ngờ" and the key read "Chủ động
+# gửi hướng dẫn cá nhân hóa và dịch vụ tri ân bất ngờ …": 10 of the example's 15 words in order (0.67), every
+# distractor at most 0.13. A key that holds at least this share of one example passage (in order) while no distractor
+# holds more than the second share gives the answer away. Passages under ``IDM_ANSWER_STEM_PASSAGE_MIN_WORDS`` words
+# are too short to tell.
+IDM_ANSWER_EXAMPLE_MIN_SHARE: Final = 0.6
+IDM_ANSWER_EXAMPLE_MAX_DISTRACTOR_SHARE: Final = 0.35
 
 # --- FAQ value and callout grounding (QC course 364564, N9/N11) --------------------------------
 # 3 of 5 FAQs only repeated the table taught just above them. An FAQ answer restates the html before
@@ -279,6 +303,22 @@ IDM_FAQ_SOURCE_COPY_MIN_WORDS: Final = 8
 IDM_FAQ_SOURCE_COPY_LCS_SHARE: Final = 0.6
 IDM_FAQ_SOURCE_COPY_NGRAM: Final = 5
 IDM_FAQ_SOURCE_COPY_NGRAM_SHARE: Final = 0.6
+# QLT-7 (QC run fae66524: an FAQ in 11 of 19 units, the QC target 25-40%): a question of the unit's practice is no
+# reason for an FAQ on its own, and an FAQ whose only reason is a W1 issue or gap (a confusion the AI infers) is kept
+# in at most this many units per lesson.
+IDM_FAQ_WEAK_SIGNAL_UNITS_PER_LESSON: Final = 1
+# An FAQ question that asks an open SME question again (c1.l3.u1: "Doanh nghiệp có cần triển khai đồng loạt toàn bộ
+# 9 công cụ di sản theo đúng thứ tự PDCA không?" against the open "Thứ tự triển khai 9 công cụ này có bắt buộc tuần
+# tự theo PDCA không …?": 8 of its 15 content words): at least this many shared content words, and at least this
+# share of the FAQ question's own. The other 24 FAQ questions of the run shared at most 3 words (0.22) with any open
+# SME question of their unit.
+IDM_FAQ_OPEN_QUESTION_MIN_SHARED_WORDS: Final = 4
+IDM_FAQ_OPEN_QUESTION_MIN_SHARE: Final = 0.5
+# An FAQ answer sentence that gives a reason ("vì", "nhằm", "giúp", "để" …) is marked inferred for the SME when no
+# basis fact holds most of its content words: on the 25 answers of the run the whole-answer measure alone marked 3,
+# with this one 14 (the QC read most "vì sao" answers as inference). The invented-reason check (a reason for a
+# threshold its facts do not explain) flags only c4.l3.u1's "… tối thiểu 30% …" item of the run.
+IDM_FAQ_REASON_SENTENCE_MIN_SUPPORT: Final = 0.5
 
 # --- Methodology word lists (folded: lower case, no diacritics, d for đ) ----------------
 GENERIC_TITLES: Final = frozenset({
@@ -354,22 +394,31 @@ IDM_SENTENCE_COPY_NGRAM_SHARE: Final = 0.6
 IDM_SENTENCE_COPY_RUN_SHARE: Final = 0.7
 # A slot with fewer judged sentences (definitions, rules and numbers excluded) is too short to tell.
 IDM_SENTENCE_COPY_MIN_SENTENCES: Final = 3
-# Highest share of near-verbatim judged sentences per teaching slot: an explained slot may quote at most about a
-# third (the QC target is <= 10% on average); an organised slot stays close to today's tolerance. The keep mode has
-# no copy check.
-IDM_SENTENCE_COPY_MAX_SHARE_EXPLAIN: Final = 0.35
+# Highest share of near-verbatim judged sentences per teaching slot. QC run fae66524 (QLT-7) still had 14% of html
+# sentences near-verbatim at 0.35 (the QC target is <= 10% on average): an explained slot now quotes at most one in
+# five (4 of the run's 9 teaching slots were over it: 0.27-0.33); an organised slot stays close to today's tolerance.
+# The keep mode has no copy check.
+IDM_SENTENCE_COPY_MAX_SHARE_EXPLAIN: Final = 0.2
 IDM_SENTENCE_COPY_MAX_SHARE_STRUCTURED: Final = 0.6
+# Sentence length of an explained teaching slot (QLT-7): the run averaged 24 words per html sentence (the source 13,
+# the QC target <= 20) and 30 per prose sentence, with sentences of up to 57 words. Prose sentences (paragraph and
+# task text; not table rows, list items, callouts or sentences that state a rule) average at most this many words
+# when there are at least ``IDM_SENTENCE_LENGTH_MIN_SENTENCES`` of them, and none is longer than the maximum.
+IDM_SENTENCE_LENGTH_MAX_AVERAGE_WORDS: Final = 22
+IDM_SENTENCE_LENGTH_MAX_WORDS: Final = 40
+IDM_SENTENCE_LENGTH_MIN_SENTENCES: Final = 2
 # Explanation devices (NFC, lower case, with diacritics: "vì" must not match "ví"). A teaching slot of an explained
-# unit uses at least one of them in a sentence it did not copy from the facts.
+# unit uses at least one of them in a sentence it did not copy from the facts. QLT-7: generic words alone ("để",
+# "giúp", "vì", "nên", "so với") made the check pass on every slot; only a labelled example, a clarifying phrase or a
+# why sentence (``fidelity_checks``) counts now.
 EXPLANATION_DEVICES_VI: Final = (
-    "ví dụ minh hoạ", "ví dụ minh họa", "ví dụ", "chẳng hạn", "nghĩa là", "tức là", "nói cách khác", "hiểu đơn giản",
-    "vì", "bởi vì", "do đó", "vì vậy", "nhờ đó", "nhờ vậy", "để", "giúp", "lý do", "vì sao", "tại sao", "so với",
-    "khác với", "giống như", "hãy hình dung", "dễ nhầm",
+    "ví dụ minh hoạ", "ví dụ minh họa", "chẳng hạn", "nghĩa là", "tức là", "nói cách khác", "điều này có nghĩa",
+    "có nghĩa là", "hiểu đơn giản", "vì vậy", "do đó", "nhờ đó", "nhờ vậy", "bởi vì", "lý do", "dễ nhầm",
+    "hãy hình dung",
 )
 EXPLANATION_DEVICES_EN: Final = (
-    "illustrative example", "for example", "for instance", "such as", "this means", "that is", "in other words",
-    "because", "so that", "which helps", "helps", "why", "the reason", "compared with", "unlike", "imagine",
-    "a common mistake", "a common confusion",
+    "illustrative example", "for example", "for instance", "this means", "in other words", "that is why",
+    "as a result", "because of this", "the reason", "a common mistake", "a common confusion", "imagine",
 )
 # The label that marks an example the AI drafted (owner decision 2026-10-14); the author note lists every one.
 EXAMPLE_LABEL_VI: Final = "Ví dụ minh hoạ:"

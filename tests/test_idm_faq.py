@@ -236,7 +236,8 @@ class FaqPlanTests(unittest.TestCase):
 
     def test_evidence_of_the_golden_faq_unit(self) -> None:
         evidence = faq_evidence(self.lesson.units[1], self.lesson, self.scope)
-        self.assertEqual(evidence[0], FaqCandidate("common_mistake", tuple(keys(6, 2, 4)), "distractor"))
+        # QLT-7: the unit's own question feeds the plan but never opens the gate alone.
+        self.assertEqual(evidence[0], FaqCandidate("common_mistake", tuple(keys(6, 2, 4)), "distractor", "material"))
         self.assertIn(FaqCandidate("common_mistake", (key(8, 2), key(8, 3)), "source"), evidence)
         self.assertIn(FaqCandidate("what_if", (key(8, 3),), "source"), evidence)
         # The decision block of unit 1 (cb_0009) gives a "why" on its rule facts.

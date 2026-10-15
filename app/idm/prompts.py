@@ -328,7 +328,8 @@ TASK: Week 4 (course level) - group Must Dos into Modules and Lessons and order 
 - Reference/Job Aid blocks go into lessons of kind "job_aid" (primary_must_do_id null, no course blocks): at the
   end of the module that uses them, or one final job_aid lesson at the end of the course when several modules use
   them. Learning lessons never contain reference blocks.
-- Titles in {locale_name(locale)}: {titles}
+- Titles in {locale_name(locale)}: {titles} Write every title in sentence case: a capital for the first word (and
+  after a colon) only; acronyms, codes and names keep the case the facts give them ("BiC", "ERA5.0", "Made-in-World").
 - Also write: course_title (a learner-facing name that reflects AUTHOR_COURSE_INTENT and the course purpose: keep
   the author's course name when it already names the course well; never a name that changes the purpose),
   course_summary ({summary}), assessment_strategy (where knowledge checks, practices and end-of-module practices
@@ -408,9 +409,10 @@ Return the lessons in exactly the order and with exactly the lesson_key values o
    improvement (what to fix). Never just "Correct/Incorrect".
 5. FORMAT last, simplest that works, ONLY from ALLOWED_COMPONENTS:
    short principle -> html; compare concepts -> html table; relationships/structure/process map -> la_diagram
-   (only when the facts state the relations); annotated or worked example -> html; a common mistake, a condition
-   or exception the facts state, or the misconception behind a question's wrong options -> la_faq (only then: the
-   server removes an la_faq whose unit has none of these; never an FAQ that only recalls facts); ordering steps ->
+   (only when the facts state the relations); annotated or worked example -> html; a decision or policy, a condition
+   or exception, or a common mistake the facts state -> la_faq (only then: the server removes an la_faq whose unit
+   has none of these; the wrong options of the unit's own question are no reason on their own, and a lesson keeps at
+   most one la_faq that rests only on a likely confusion; never an FAQ that only recalls facts); ordering steps ->
    la_sortable (only with source order); terminology to memorise ->
    la_crossword (at least 3 source definitions with short terms); knowledge check of a Must Know -> problem
    (single choice); decision in a short situation -> problem as a scenario question{scenario_clause}; producing
@@ -434,10 +436,12 @@ Return the lessons in exactly the order and with exactly the lesson_key values o
    the problem that checks it in the same unit.
    component_index is the 1-based position inside the unit; unit_index is 1-based inside the lesson.
    Unit titles name what the unit actually teaches (never "Tổng quan 5 chuyển dịch" over a unit about something
-   else). When an objective this module serves names an enumerated framework ("5 chuyển dịch", "6 trụ cột",
-   "3 giai đoạn"), the first lesson that serves it opens with ONE orientation unit (segment context_explain, an
-   html component) whose title names the framework with its number ("Bản đồ 5 chuyển dịch") and whose html lists
-   every item of it; later units and lessons teach the items one by one.
+   else). Lesson, unit and component titles are in sentence case (a capital for the first word only; acronyms,
+   codes and names as the facts write them). When an objective this module serves names an enumerated framework
+   ("5 chuyển dịch", "6 trụ cột", "3 giai đoạn"), the first lesson that serves it opens with ONE orientation unit
+   (segment context_explain, an html component) whose title names the framework with its number
+   ("Bản đồ 5 chuyển dịch") and whose html lists every item of it; later units and lessons teach the items one by
+   one.
 7. For every component write the storyboard development notes in {locale_name(locale)} (author_review):
    purpose (which Must Do / practice / support it serves - required), example_scenario (the example or situation
    used; start with "[AI soạn — cần SME xác nhận]" / "[AI-drafted — SME to confirm]" when you drafted it),
@@ -504,11 +508,13 @@ Writing rules (learner-facing, {locale_name(locale)}):
   Must Do. Teach what the practice needs (detail_level).
 - Context building stays under 20% of the unit text.
 - Practice slots of type problem, la_sortable or la_crossword contain context, task, the input the learner works
-  with, exactly one correct answer, and feedback that teaches. Single-choice: 3-4 options, plausible distractors
-  that are wrong by the stated criterion, no "all/none of the above", correct option not always first, every
-  option of comparable length and detail (the correct one never clearly the longest), and the correct option never
-  reuses the wording of the example, quotation or template shown before the question (it applies the criterion to
-  the question's own case); the
+  with, exactly one correct answer, and feedback that teaches. Single-choice: 3-4 options; each distractor is a
+  plausible near-miss a learner of TARGET_AUDIENCE could choose, wrong by the stated criterion: a common mistake,
+  the old practice the facts reject, a criterion only half met or a step in the wrong order (never an obviously wrong,
+  extreme or absurd option); no "all/none of the above", correct option not always first, every option of comparable
+  length and detail (the correct one never the longest by more than a few words), and the correct option never
+  reuses the wording of the example, quotation, worked example or template shown before the question (it applies
+  the criterion to the question's own case, which is not the worked example's case); the
   explanation states the criterion and why EACH option is right or wrong ("A - ...; B - ...; C - ...", every
   option named by its letter); each reason must agree with that option's own text and with the answer key
   (never call a distractor that meets the criterion wrong, or the reverse). Never reveal the answer before the
@@ -533,15 +539,18 @@ Writing rules (learner-facing, {locale_name(locale)}):
 - Never invent rules, thresholds, criteria, labels or consequences the facts do not state, not even as the
   labels of a template or the edges of a diagram.
 - The facts keep marks of the PDF page: never copy them. No "Row N:" labels, no word cut at a line end
-  ("Best-in" is "Best-in-Class"; drop a cut "(KPI /"), no Title Case Copied From A Slide (write headings and labels
-  in sentence case, keep acronyms and names), no word written twice in a row.
+  ("Best-in" is "Best-in-Class"; drop a cut "(KPI /"), no Title Case Copied From A Slide (write slot titles,
+  headings and labels in sentence case, keep acronyms and names), no word written twice in a row.
 - Every slot title and section heading names what that slot or section actually teaches. When UNIT_BRIEF or a
   slot title names an enumerated framework ("5 chuyển dịch", "6 trụ cột", "3 giai đoạn"), the html lists every
   item of it, by the name the facts use, in one bullets, steps or table block. A support item that starts with
-  "Liệt kê đủ" / "List all" names every item of that framework (taught in later units): list all of them, one
-  short line each, without teaching them here.
+  "Liệt kê đủ" / "List all" names every item of that framework (taught in later units): list all of them, each with
+  one short plain line on what it changes or is about (the support item that starts with "Ý chính của từng" / "Main
+  idea of each" gives it, in the same order), without teaching them in depth here; the slot still follows the
+  CONTENT MODE for the framework as a whole (why it matters to the learner, a short example).
 - Use drafted scenarios/examples only where the brief marks them ai_drafted (a practice with scenario_origin
-  ai_drafted, or a slot with "examples": "ai_drafted"); they never add rules, numbers or names.
+  ai_drafted, or a slot with "examples": "ai_drafted"); they never add rules, numbers or names, and their main person
+  has the learner's own role (TARGET_AUDIENCE), never one of another level (no team lead in a course for executives).
 - LESSON_CONTEXT_FACTS are read-only background from earlier units; use them for consistency and for the
   correctness criteria, do not re-teach them.
 - No file names, page or slide numbers, citations, internal IDs, "theo tài liệu nguồn", emails or URLs; never a
@@ -725,19 +734,21 @@ UNIT_RULE_TEXT: Final[dict[str, str]] = {
                                   "agreement with that option's text and the answer key",
     "IDM_W5_FEEDBACK_NOT_TEACHING": "feedback of at least 60 characters that names the criterion; never only "
                                     "Correct/Incorrect",
-    "IDM_W5_ANSWER_LENGTH_CUE": "the correct option is much longer than every other option, so learners can pick "
-                                "it by length: give the distractors the same level of detail (each still wrong by "
-                                "the criterion) or shorten the correct option, keep the answer key, and keep the "
-                                "explanation's reason for every option",
-    "IDM_W5_ANSWER_LEAK": "an option of this question copies or restates the example, quotation, list item, table "
-                          "row or template shown before it (or the question's case copies the example that names "
-                          "the answer): rewrite THAT option (and its part of the explanation) in new words or about "
-                          "a different case so the learner must apply the criterion, and give every distractor the "
-                          "same footing in what was taught; keep the earlier html as it is",
-    "IDM_W5_ANSWER_CONTESTED": "the question's case also meets the criteria this unit's html table, list or FAQ "
-                               "answers give for another option, so more than one option is defensible: change the "
-                               "case (or the key) so it meets the criteria of exactly one option and contradicts no "
-                               "FAQ answer of this unit; keep the explanation's reason for every option",
+    "IDM_W5_ANSWER_LENGTH_CUE": "the correct option is clearly the longest, so learners can pick it by length: "
+                                "balance the lengths (shorten the correct option, or give the distractors the same "
+                                "level of plausible detail, each still wrong by the criterion), keep the answer key, "
+                                "and keep the explanation's reason for every option",
+    "IDM_W5_ANSWER_LEAK": "an option of this question copies or restates the example, worked example, quotation, "
+                          "list item, table row or template shown before it (or the question's case copies the "
+                          "example that names the answer): rewrite THAT option (and its part of the explanation) in "
+                          "new words or about a different case so the learner must apply the criterion, and give "
+                          "every distractor the same footing in what was taught; keep the earlier html as it is",
+    "IDM_W5_ANSWER_CONTESTED": "the question's case also meets the criteria this unit's html table, list, FAQ "
+                               "answers or the table rows of SOURCE_FACTS give for another option (for example a code "
+                               "or condition only that option's row states), so more than one option is defensible: "
+                               "change the case (or the key) so it meets the criteria of exactly one option and "
+                               "contradicts no FAQ answer of this unit; keep the explanation's reason for every "
+                               "option",
     "IDM_W5_VERBATIM_COPY": "rewrite for the learner instead of copying the source text",
     # QLT-5 C: the content mode checks of a teaching html slot (``app.idm.fidelity_checks``).
     "IDM_W5_SENTENCE_COPY": "too many sentences repeat the facts word for word: rewrite the listed sentences in your "
@@ -746,6 +757,12 @@ UNIT_RULE_TEXT: Final[dict[str, str]] = {
     "IDM_W5_EXPLANATION_MISSING": "this teaching slot only states the facts: add the explanation the CONTENT MODE asks "
                                   "for (the main idea in plain words, why it matters to the learner, a short example; "
                                   "a drafted example starts with its illustrative-example label) without adding facts",
+    "IDM_W5_SENTENCE_LENGTH": "the listed texts hold sentences that are too long: split each into short sentences of "
+                              "one idea each (about 15-20 words); keep their meaning and every exact rule, definition "
+                              "and number; add no fact",
+    "IDM_W5_EXAMPLE_ROLE": "the listed drafted example is about a person of another level than TARGET_AUDIENCE: make "
+                           "its main person someone in the learner's own role, keep the rest of the example; add no "
+                           "name, number or rule",
     "IDM_W5_NEW_FACT": "the listed text states a number, date, amount or a person, company or product name the facts "
                        "do not state: remove it or use what the facts say (a drafted example uses roles, never names "
                        "or new numbers)",
@@ -765,6 +782,12 @@ UNIT_RULE_TEXT: Final[dict[str, str]] = {
     "IDM_W5_FAQ_NEW_FACT": "the listed items state a number, date, amount or a person, company or product name their "
                            "facts do not state: remove it or use what the facts say; explaining in your own words "
                            "stays allowed",
+    "IDM_W5_FAQ_OPEN_QUESTION": "the listed items ask or answer a question the SME has not settled (OPEN_QUESTIONS): "
+                                "replace each with another why, what-if or common-mistake question the planned facts "
+                                "answer",
+    "IDM_W5_FAQ_INVENTED_REASON": "the listed items give a reason for a number or threshold that their facts do not "
+                                  "explain: ask instead what the facts do say about it (what it requires, what happens "
+                                  "below it) or another question; never invent why",
     "IDM_W5_FAQ_TITLE_MISMATCH": "the la_faq title names what its questions are about: retitle it from its questions",
     "IDM_W5_CALLOUT_UNGROUNDED": "a warning block is shown as a quotation/callout: quote or closely restate what "
                                  "SOURCE_FACTS state, or make it a paragraph block; never a rule, threshold or "

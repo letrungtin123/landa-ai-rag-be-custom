@@ -305,8 +305,14 @@ class WriterRuleTests(unittest.TestCase):
         self.assertIn('start it with "Ví dụ minh hoạ:"', explain)
         self.assertIn("why it matters to this learner", explain)
         self.assertIn("a common confusion or mistake, only when the facts support one", explain)
-        self.assertIn("on average at most 20 words per sentence", explain)
+        # QLT-7: short sentences, one idea each; a generic word alone explains nothing; one in five may be copied.
+        self.assertIn("one idea per sentence, on average at most 20 words, never more than 35", explain)
         self.assertIn('"nghĩa là …"', explain)
+        self.assertIn('a generic word ("để", "giúp", "vì", "nên") alone explains nothing', explain)
+        self.assertIn("at most one in five of a slot's sentences may repeat the facts", explain)
+        # QLT-7: no fixed roles; the generic role rule without an audience.
+        self.assertNotIn("trưởng nhóm)", explain)
+        self.assertIn("the learner's own role as TARGET_AUDIENCE describes it", explain)
         english = writer_fidelity_rules("explain", "en")
         self.assertIn('"Illustrative example:"', english)
         keep = unit_writer_prompt("vi", **WRITER_ARGS, fidelity_rules=writer_fidelity_rules("keep", "vi"))

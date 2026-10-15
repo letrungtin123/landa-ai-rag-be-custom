@@ -13,8 +13,8 @@ feedback cannot be kept per option. After every writer or repair answer, before 
 * every option letter the explanation uses is rewritten to the option's new letter, and an
   explanation made of one "X - ..." segment per option is re-ordered A, B, C ...
 
-``answer_length_cue`` is the non-blocking review check: the correct option is far longer than
-every other option, so a learner can guess it by length.
+``answer_length_cue``: the correct option is clearly the longest, so a learner can guess it by length (one targeted
+repair, then a review note).
 """
 
 from __future__ import annotations
@@ -27,7 +27,7 @@ from collections.abc import Mapping, Sequence
 from typing import Any, Final
 
 from app.idm.contracts import IdmLessonDesignV1
-from app.idm.policy import IDM_MCQ_LENGTH_CUE_RATIO
+from app.idm.policy import IDM_MCQ_LENGTH_CUE_LONGEST_RATIO, IDM_MCQ_LENGTH_CUE_RATIO
 
 OPTION_LETTERS: Final = "ABCDEF"
 SHUFFLED_CODE: Final = "w5_problem_options_shuffled"
@@ -317,17 +317,34 @@ def option_lengths(component: Mapping[str, Any]) -> tuple[int, int] | None:
     return lengths[correct[0]], max(length for index, length in enumerate(lengths) if index != correct[0])
 
 
-def answer_length_cue(component: Mapping[str, Any]) -> bool:
-    """The only correct option is far longer than every other option (N2): the W5 repair rewrites the options to
-    comparable lengths once, and a cue the repair leaves is a review note (QC run 8de1c76b, Q4)."""
+def option_length_stats(component: Mapping[str, Any]) -> tuple[int, float, int] | None:
+    """(length of the only correct option, average length of the distractors, length of the longest distractor) in
+    characters, or ``None`` (fewer than 3 options or not exactly one correct)."""
 
+    choices = [choice for choice in component.get("choices") or [] if isinstance(choice, dict)]
     lengths = option_lengths(component)
-    return lengths is not None and lengths[0] > IDM_MCQ_LENGTH_CUE_RATIO * lengths[1]
+    if lengths is None:
+        return None
+    others = [len(" ".join(str(choice.get("text") or "").split())) for choice in choices
+              if choice.get("correct") is not True]
+    return lengths[0], sum(others) / len(others), lengths[1]
+
+
+def answer_length_cue(component: Mapping[str, Any]) -> bool:
+    """The only correct option is clearly the longest (N2; QC run fae66524, QLT-7: the key was the longest option in 10
+    of 13 questions): longer than ``IDM_MCQ_LENGTH_CUE_RATIO`` x the average distractor, or than
+    ``IDM_MCQ_LENGTH_CUE_LONGEST_RATIO`` x the longest one. The W5 repair balances the lengths once (a targeted
+    repair), and a cue the repair leaves is a review note (QC run 8de1c76b, Q4)."""
+
+    stats = option_length_stats(component)
+    return stats is not None and (stats[0] > IDM_MCQ_LENGTH_CUE_RATIO * stats[1]
+                                  or stats[0] > IDM_MCQ_LENGTH_CUE_LONGEST_RATIO * stats[2])
 
 
 __all__ = [
     "ANSWER_LENGTH_CUE_CODE", "BALANCED_CODE", "LABELS_STRIPPED_CODE", "OPTION_LETTERS", "RELABELLED_CODE",
     "SHUFFLED_CODE", "answer_length_cue", "balanced_order", "encode_key_letters", "labelled_letters",
-    "normalize_single_choice", "option_lengths", "option_order", "practice_key_shift", "question_ordinal",
+    "normalize_single_choice", "option_length_stats", "option_lengths", "option_order", "practice_key_shift",
+    "question_ordinal",
     "relabel_explanation",
 ]

@@ -35,6 +35,7 @@ from app.idm.contracts import (
     Treatment,
     UnitSegment,
 )
+from app.idm.example_roles import AudienceRoles, role_rule
 from app.idm.policy import (
     AI_DRAFTED_MARKER_EN,
     AI_DRAFTED_MARKER_VI,
@@ -179,8 +180,9 @@ def module_fidelity_rules(mode: FidelityMode, locale: str) -> str:
     return ("CONTENT MODE explain: every teaching html component (role explain, show, clarify or summary) lists at "
             "least one support item of kind example, worked_example, non_example (a comparison or contrast) or "
             "explain_principle (why it matters to the learner). An example the source does not give may be drafted "
-            f'by you: start its brief with "{marker}"; it shows the idea in a work situation of TARGET_AUDIENCE and '
-            "never adds a number, rule, threshold or a person, company or product name.\n")
+            f'by you: start its brief with "{marker}"; it shows the idea in a work situation of TARGET_AUDIENCE, about '
+            "a person in the learner's own role (never a role of another level, such as a team lead in a course for "
+            "executives), and never adds a number, rule, threshold or a person, company or product name.\n")
 
 
 def _example_brief(name: str, locale: str) -> str:
@@ -235,8 +237,9 @@ def example_label(locale: str) -> str:
     return EXAMPLE_LABEL_VI if locale == "vi" else EXAMPLE_LABEL_EN
 
 
-def writer_fidelity_rules(mode: FidelityMode, locale: str) -> str:
-    """The content-mode rules of the W5 writer (one bullet of its writing rules)."""
+def writer_fidelity_rules(mode: FidelityMode, locale: str, roles: AudienceRoles | None = None) -> str:
+    """The content-mode rules of the W5 writer (one bullet of its writing rules). ``roles``: the roles a drafted
+    example may give its main person (QLT-7, ``example_roles.audience_roles``); the generic rule without them."""
 
     if mode == "keep":
         return ("- CONTENT MODE keep: the wording of the facts is the content (rules, procedures, approved text). Keep "
@@ -251,22 +254,29 @@ def writer_fidelity_rules(mode: FidelityMode, locale: str) -> str:
                 "ai_drafted.\n")
     vi = locale == "vi"
     means = '"nghĩa là …", "tức là …"' if vi else '"this means …", "in other words …"'
-    connectives = ('"nghĩa là", "tức là", "nói cách khác", "vì", "để", "ví dụ"' if vi
-                   else '"this means", "in other words", "because", "so that", "for example"')
-    roles = ("một nhân viên mới, một khách hàng, trưởng nhóm" if vi else "a new employee, a customer, a team lead")
+    # QLT-7: generic words ("để", "giúp", "vì") alone explain nothing; the W5 check counts only these devices.
+    clarifiers = ('"nghĩa là", "tức là", "nói cách khác", "điều này có nghĩa là", "vì vậy", "nhờ đó"' if vi
+                  else '"this means", "in other words", "that is why", "as a result"')
+    generic = '"để", "giúp", "vì", "nên"' if vi else '"to", "helps", "because", "so"'
+    # QLT-7 (QC run fae66524): the fixed roles "một nhân viên mới, một khách hàng, trưởng nhóm" put a team lead into
+    # 11 of 17 examples of a course for CEOs; the roles now come from the audience.
+    roles_text = role_rule(roles or AudienceRoles(frozenset(), ()))
     return (
         '- CONTENT MODE explain: teach, do not transcribe. Every teaching html slot (marked "examples": "ai_drafted" '
         "in UNIT_BRIEF) follows this pattern for its main idea(s):\n"
-        "  1. the main idea in plain words, in your own sentences (on average at most 20 words per sentence);\n"
+        "  1. the main idea in plain words, in your own short sentences: one idea per sentence, on average at most 20 "
+        "words, never more than 35 (split a long sentence in two);\n"
         "  2. why it matters to this learner: what it changes in their work (COURSE_PURPOSE, TARGET_AUDIENCE);\n"
         "  3. a short example or situation: one from SOURCE_FACTS when they give one; otherwise draft one and start "
-        f'it with "{example_label(locale)}". A drafted example uses roles ({roles}), never a person, company or '
+        f'it with "{example_label(locale)}". The main person of a drafted example has {roles_text}; never a role of '
+        "another level (no team lead or junior staff in a course for executives), never a person, company or "
         "product name, a number, percentage, amount, date, threshold or rule the facts do not state;\n"
         "  4. a common confusion or mistake, only when the facts support one.\n"
         "  Definitions, rules, steps, numbers and thresholds keep the exact wording of the facts, each followed by a "
         f"sentence that explains it in plain words ({means}). Never paste a source paragraph as it is: at most "
-        "about a third of a slot's sentences may repeat the facts word for word, not counting the exact "
-        f"definitions, rules and numbers. Explain with plain connectives ({connectives}).\n")
+        "one in five of a slot's sentences may repeat the facts word for word, not counting the exact definitions, "
+        f"rules and numbers. Explain with a labelled example, a clarifying phrase ({clarifiers}) or a sentence that "
+        f"says why; a generic word ({generic}) alone explains nothing.\n")
 
 
 def slot_marks(brief: IdmUnitBriefV1, index: int) -> dict[str, str]:

@@ -116,7 +116,8 @@ class AnswerLeakTests(StoryboardEndpointTestCase):
         self.assertIn('{"code":"IDM_W5_ANSWER_LEAK","path":"components[1]"}', provider.calls[1]["prompt"])
         # The repair targets the copying option, never the worksheet shown before it (package A report).
         self.assertIn("c1 IDM_W5_ANSWER_LEAK at c1: an option of this question copies or restates the example, "
-                      "quotation, list item, table row or template shown before it", provider.calls[1]["prompt"])
+                      "worked example, quotation, list item, table row or template shown before it",
+                      provider.calls[1]["prompt"])
         self.assertIn("rewrite THAT option", provider.calls[1]["prompt"])
         self.assertIn("Đã tự sửa: IDM_W5_ANSWER_LEAK.", quality.author_note)
         self.assertNotIn("còn cảnh báo", quality.author_note)
@@ -150,10 +151,12 @@ class LengthCueTests(StoryboardEndpointTestCase):
         quality = self.assert_envelope(data, "provider_validated", "validated", "provider")
         self.assertEqual(provider.names, [WRITER, REPAIR, JUDGE])
         self.assertEqual(provider.calls[1]["thinking_level"], "low")
-        self.assertIn("c0 IDM_W5_ANSWER_LENGTH_CUE at c0.choices: the correct option is much longer than every other "
-                      "option", provider.calls[1]["prompt"])
-        self.assertIn("(the correct option has 60 characters, the longest other option 45)",
-                      provider.calls[1]["prompt"])
+        self.assertIn("c0 IDM_W5_ANSWER_LENGTH_CUE at c0.choices: the correct option is clearly the longest, so "
+                      "learners can pick it by length: balance the lengths", provider.calls[1]["prompt"])
+        # QLT-7: the measured lengths and the length to aim for (1.1 x the average distractor).
+        self.assertIn("(the correct option has 60 characters, the other options 42 on average and 45 at most: bring "
+                      "the correct option to about 47 characters or less, or lengthen the distractors with plausible "
+                      "detail)", provider.calls[1]["prompt"])
         self.assertEqual(quality.deterministic_codes, ["IDM_W5_ANSWER_LENGTH_CUE"])
         self.assertIn("Cần xem (IDM_W5_ANSWER_LENGTH_CUE, khối 1 (Quiz)): đáp án đúng dài hơn hẳn",
                       quality.author_note)

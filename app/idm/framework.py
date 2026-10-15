@@ -16,6 +16,7 @@ from dataclasses import dataclass
 from typing import Any, Final
 
 from app.idm.text import idm_fold
+from app.idm.titles import TitleCaser
 
 _MIN_ITEMS: Final = 2
 _MAX_ITEMS: Final = 12
@@ -239,6 +240,68 @@ def framework_support_lines(briefs: Iterable[str]) -> list[str]:
     return lines
 
 
+# QC run fae66524 (QLT-7): the orientation unit "Bản đồ 5 chuyển dịch tư duy BiC 5.0" listed five bare names ("SHIFT 1:
+# THINK BIG" ...) because the support brief only carried names, while each heading fact also says what the item
+# changes ("SHIFT 1: THINK BIG — Từ Tư Duy "Tồn Tại" Sang "Khát Vọng Lớn""). A second server-written brief carries
+# that clause of every item, in sentence case, so the writer can say in one plain line what each item is about.
+FRAMEWORK_DETAIL_LEAD: Final[Mapping[str, str]] = {"vi": "Ý chính của từng", "en": "Main idea of each"}
+_DETAIL_WORD_LIMITS: Final = (None, 10, 6)
+
+
+def is_framework_brief(brief: str) -> bool:
+    """A support brief the server wrote from the facts (``Liệt kê đủ …``, ``Ý chính của từng …``)."""
+
+    return any(brief.startswith(lead + " ") for lead in (*FRAMEWORK_SUPPORT_LEAD.values(),
+                                                          *FRAMEWORK_DETAIL_LEAD.values()))
+
+
+def _details(fact_groups: Iterable[Sequence[str]], labels: Sequence[str]) -> dict[str, str]:
+    """folded label ("shift 1") -> the dash clause of its fact ("Từ Tư Duy …"), for the labels given."""
+
+    wanted = set(labels)
+    found: dict[str, str] = {}
+    for texts in fact_groups:
+        for text in texts:
+            match = _ITEM_RE.match(without_row_label(unicodedata.normalize("NFC", text)))
+            if match is None:
+                continue
+            label = f"{idm_fold(match.group('stem'))} {int(match.group('number'))}"
+            parts = _DISPLAY_END_RE.split(match.group("rest"), maxsplit=1)
+            if label in wanted and label not in found and len(parts) == _MIN_ITEMS and parts[1].strip():
+                found[label] = " ".join(parts[1].split())
+    return found
+
+
+def unit_framework_detail(titles: Sequence[str], unit_fact_groups: Sequence[Sequence[str]],
+                          shard_fact_groups: Sequence[Sequence[str]], locale: str) -> str | None:
+    """The second support brief of an orientation unit: what each item of the framework is about, from the dash
+    clause of its fact, in sentence case and within the 300-character bound (each clause shortened to 10, then 6
+    words); ``None`` unless ``unit_framework_brief`` applies and every item has such a clause."""
+
+    found = framework_promise(titles)
+    if found is None:
+        return None
+    count, noun, _phrase = found
+    if _numbered(unit_fact_groups, count, noun):
+        return None
+    items = _numbered(shard_fact_groups, count, noun, from_one=True)
+    details = _details(shard_fact_groups, [label for label, _name, _display in items])
+    if len(items) != count or len(details) != count:
+        return None
+    caser = TitleCaser()
+    lead = f"{FRAMEWORK_DETAIL_LEAD['vi' if locale == 'vi' else 'en']} {noun}: "
+    for limit in _DETAIL_WORD_LIMITS:
+        # Numbered in the order of the "Liệt kê đủ" brief, whose labels they follow.
+        lines = []
+        for position, (label, _name, _display) in enumerate(items, start=1):
+            words = caser.title(details[label]).split()
+            lines.append(f"({position}) " + " ".join(words[:limit] if limit else words))
+        brief = lead + _SUPPORT_ITEM_SEPARATOR.join(lines)
+        if len(brief) <= _SUPPORT_BRIEF_MAX_CHARS:
+            return brief
+    return None
+
+
 def unit_framework_brief(titles: Sequence[str], unit_fact_groups: Sequence[Sequence[str]],
                          shard_fact_groups: Sequence[Sequence[str]], locale: str) -> str | None:
     """The framework support brief a unit needs: its titles promise "N <items>", its own facts do not number
@@ -330,7 +393,8 @@ def framework_listed(promise: FrameworkPromise, html_components: Sequence[dict[s
 
 
 __all__ = [
-    "FRAMEWORK_SUPPORT_LEAD", "ROW_LABEL_RE", "FrameworkPromise", "build_promise", "framework_coverage",
-    "framework_listed", "framework_promise", "framework_support_brief", "framework_support_lines", "has_list_of",
-    "numbered_items", "stem_names_noun", "unit_framework_brief", "with_framework_list", "without_row_label",
+    "FRAMEWORK_DETAIL_LEAD", "FRAMEWORK_SUPPORT_LEAD", "ROW_LABEL_RE", "FrameworkPromise", "build_promise",
+    "framework_coverage", "framework_listed", "framework_promise", "framework_support_brief", "framework_support_lines",
+    "has_list_of", "is_framework_brief", "numbered_items", "stem_names_noun", "unit_framework_brief",
+    "unit_framework_detail", "with_framework_list", "without_row_label",
 ]

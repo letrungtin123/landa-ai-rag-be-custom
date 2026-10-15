@@ -5,9 +5,11 @@ Measured on 100 FAQ items of 6 real runs (plan 2026-10-13 §2.3): 58% recalled a
 anything to clarify. After the W4 answer is accepted the server decides, per unit:
 
 * gate: an la_faq stays only when its unit has something to clarify: a decision or policy block, a condition or
-  exception the source states, a common-mistake block, a W1 issue or gap that marks a likely confusion, or a question
-  whose wrong options carry misconceptions. Otherwise the slot is dropped, its blocks join the unit's teaching
-  component and the lesson note says why in plain words (``IDM_W4_AUTOFIX_FAQ_DROPPED``);
+  exception the source states, a common-mistake block (strong signals), or a W1 issue or gap that marks a likely
+  confusion (a weak signal: QLT-7 keeps at most one such FAQ per lesson). The wrong options of the unit's question feed
+  the plan but are no reason on their own (QC run fae66524: an FAQ in 11 of 19 units, 3 of them on that alone; the QC
+  target is 25-40%). Otherwise the slot is dropped, its blocks join the unit's teaching component and the lesson note
+  says why in plain words (``IDM_W4_AUTOFIX_FAQ_DROPPED``);
 * plan: a kept la_faq gets up to three items, each with a question type (why, what if, common mistake first; how to
   apply or comparison only to reach two items), the facts its answer is built on and the origin of its point (a
   mistake or condition the source states, the misconception behind a question's wrong option, or a confusion inferred
@@ -20,7 +22,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Final
+from typing import Final, Literal
 
 from app.idm.contracts import (
     FaqItemOrigin,
@@ -40,6 +42,7 @@ from app.idm.policy import (
     IDM_FAQ_ANCHOR_MAX_FACTS,
     IDM_FAQ_MIN_ITEMS,
     IDM_FAQ_PLAN_MAX_ITEMS,
+    IDM_FAQ_WEAK_SIGNAL_UNITS_PER_LESSON,
 )
 from app.idm.signals import states_rule
 from app.idm.text import sanitize_author_text
@@ -62,6 +65,10 @@ _MAX_CONDITION_ITEMS: Final = 2
 # Pass 1 takes one item of each clarifying type, in this order; ties go to the origin the source backs best.
 _TYPE_ORDER: Final[tuple[FaqQuestionType, ...]] = ("common_mistake", "what_if", "why")
 _ORIGIN_RANK: Final[dict[FaqItemOrigin, int]] = {"source": 0, "distractor": 1, "ai_drafted": 2}
+# What a candidate says about the gate (QLT-7): "strong" opens it (a decision or policy block, a condition or exception,
+# a common-mistake block), "weak" opens it in at most one unit per lesson (a W1 issue or gap), "material" never opens
+# it alone (the wrong options of the unit's own question).
+Signal = Literal["strong", "weak", "material"]
 
 
 @dataclass(frozen=True)
@@ -69,6 +76,7 @@ class FaqCandidate:
     question_type: FaqQuestionType
     anchors: tuple[str, ...]
     origin: FaqItemOrigin
+    signal: Signal = "strong"
 
     def plan(self) -> IdmFaqItemPlanV1:
         return IdmFaqItemPlanV1(question_type=self.question_type, anchor_fact_keys=list(self.anchors),
@@ -111,7 +119,7 @@ def faq_evidence(unit: IdmUnitDesignV1, lesson: IdmLessonDesignV1, scope: Module
         keys = keys or [key for block_id in component.block_ids if block_id in scope.blocks
                         for key in _statements(scope.blocks[block_id], scope)]
         if keys:
-            found.append(FaqCandidate("common_mistake", _anchors(keys), "distractor"))
+            found.append(FaqCandidate("common_mistake", _anchors(keys), "distractor", "material"))
     for block in _unit_blocks(unit, scope):
         statements = _statements(block, scope)
         if not statements:
@@ -128,7 +136,7 @@ def faq_evidence(unit: IdmUnitDesignV1, lesson: IdmLessonDesignV1, scope: Module
             # A confusion inferred from the facts the issue names (else the block's statements); never a new rule.
             confused = [key for issue in block.issues if issue.type in _CONFUSION_ISSUES for key in issue.fact_keys
                         if key in statements]
-            found.append(FaqCandidate("common_mistake", _anchors(confused or statements), "ai_drafted"))
+            found.append(FaqCandidate("common_mistake", _anchors(confused or statements), "ai_drafted", "weak"))
     return list(dict.fromkeys(found))
 
 
@@ -209,10 +217,12 @@ def _without_faq(unit: IdmUnitDesignV1, allowed: frozenset[str], title: str) -> 
 def _dropped_note(titles: Sequence[str], locale: str) -> str:
     named = ", ".join(f'"{title}"' for title in titles)
     if locale == "vi":
-        return (f"Đã bỏ phần hỏi đáp của {named}: nội dung chưa có điều kiện, ngoại lệ, lỗi hay gặp hay câu hỏi luyện "
-                "tập cần làm rõ, nên phần hỏi đáp sẽ chỉ nhắc lại bài học.")
-    return (f"The FAQ of {named} was left out: the content has no condition, exception, common mistake or practice "
-            "question to clarify, so it would only repeat the lesson.")
+        return (f"Đã bỏ phần hỏi đáp của {named}: tài liệu chưa nêu quyết định, điều kiện, ngoại lệ hay lỗi hay gặp "
+                "cần làm rõ (một câu hỏi luyện tập thôi là chưa đủ; khi chỉ có chỗ có thể gây nhầm, mỗi bài giữ tối đa "
+                "một phần hỏi đáp), nên phần hỏi đáp sẽ chỉ nhắc lại bài học.")
+    return (f"The FAQ of {named} was left out: the source states no decision, condition, exception or common mistake "
+            "to clarify (a practice question alone is not enough; where only a likely confusion exists, a lesson keeps "
+            "at most one FAQ), so it would only repeat the lesson.")
 
 
 @dataclass(frozen=True)
@@ -226,8 +236,17 @@ def _with_plan(component: IdmComponentDesignV1, items: list[IdmFaqItemPlanV1]) -
     return component.model_copy(update={"faq_items": items})
 
 
+def gate_signal(evidence: Sequence[FaqCandidate]) -> Signal | None:
+    """The strongest signal of a unit's evidence that can open the gate: "strong", "weak" or None (QLT-7)."""
+
+    signals = {item.signal for item in evidence}
+    return "strong" if "strong" in signals else "weak" if "weak" in signals else None
+
+
 def gate_and_plan_faq(lessons: Sequence[IdmLessonDesignV1], scope: ModuleScope) -> FaqPlanResult:
-    """Drop every la_faq whose unit has nothing to clarify and plan the items of the others."""
+    """Drop every la_faq whose unit has nothing to clarify (QLT-7: a practice question alone is not enough, and at
+    most ``IDM_FAQ_WEAK_SIGNAL_UNITS_PER_LESSON`` FAQs per lesson stand on a W1 issue or gap alone) and plan the items
+    of the others."""
 
     allowed = scope.allowed_types
     result: list[IdmLessonDesignV1] = []
@@ -235,12 +254,17 @@ def gate_and_plan_faq(lessons: Sequence[IdmLessonDesignV1], scope: ModuleScope) 
     for lesson in lessons:
         units: list[IdmUnitDesignV1] = []
         left_out: list[str] = []
+        weak_left = IDM_FAQ_WEAK_SIGNAL_UNITS_PER_LESSON
         for unit in lesson.units:
             if not any(component.type == FAQ_TYPE for component in unit.components):
                 units.append(unit)
                 continue
             evidence = faq_evidence(unit, lesson, scope)
-            if not evidence:
+            signal = gate_signal(evidence)
+            keep = signal == "strong" or (signal == "weak" and weak_left > 0)
+            if keep and signal == "weak":
+                weak_left -= 1
+            if not keep:
                 lean = _without_faq(unit, allowed, unit.title)
                 if lean is not None:
                     units.append(lean)
@@ -260,6 +284,6 @@ def gate_and_plan_faq(lessons: Sequence[IdmLessonDesignV1], scope: ModuleScope) 
 
 
 __all__ = [
-    "DEEP_TYPES", "FAQ_DROPPED_CODE", "FAQ_PLANNED_CODE", "FAQ_TYPE", "FaqCandidate", "FaqPlanResult", "faq_evidence",
-    "gate_and_plan_faq", "plan_faq_items",
+    "DEEP_TYPES", "FAQ_DROPPED_CODE", "FAQ_PLANNED_CODE", "FAQ_TYPE", "FaqCandidate", "FaqPlanResult", "Signal",
+    "faq_evidence", "gate_and_plan_faq", "gate_signal", "plan_faq_items",
 ]

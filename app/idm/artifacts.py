@@ -78,7 +78,7 @@ def _title_word(word: str) -> bool:
             and core.isalpha())
 
 
-def _names_in(words: list[str]) -> set[int]:
+def name_positions(words: list[str]) -> set[int]:
     """Positions of a run's words that belong to a personal or place name (lower-case words of the run)."""
 
     kept: set[int] = set()
@@ -106,7 +106,7 @@ def sentence_case_vi(text: str) -> str:
     def flush() -> None:
         vietnamese = sum(_letters_vietnamese(parts[index]) for index in run)
         if len(run) >= _TITLE_RUN_MIN_WORDS and 2 * vietnamese > len(run):
-            kept = _names_in([parts[index].strip(_PUNCTUATION).lower() for index in run])
+            kept = name_positions([parts[index].strip(_PUNCTUATION).lower() for index in run])
             for position, index in enumerate(run):
                 word = parts[index]
                 prefix = "".join(parts[:index])
@@ -243,4 +243,7 @@ def cut_fragments(semantic: Any) -> int:
     return count
 
 
-__all__ = ["ROW_LABEL_ANY_RE", "clean_question", "clean_semantic", "clean_text", "cut_fragments", "sentence_case_vi"]
+__all__ = [
+    "ROW_LABEL_ANY_RE", "clean_question", "clean_semantic", "clean_text", "cut_fragments", "name_positions",
+    "sentence_case_vi",
+]

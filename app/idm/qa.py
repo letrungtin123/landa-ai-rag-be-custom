@@ -8,7 +8,7 @@ from collections.abc import Collection, Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any, Final, Literal
 
-from app.idm.answer_checks import contested_option, quoted_key, unit_teaching
+from app.idm.answer_checks import contested_option, quoted_key, restates_example, unit_teaching
 from app.idm.artifacts import cut_fragments
 from app.idm.contracts import (
     IdmFindingCountsV1,
@@ -20,11 +20,20 @@ from app.idm.contracts import (
     JudgeCriterion,
     JudgeSeverity,
 )
-from app.idm.faq_checks import FAQ_NEW_FACT_CODE, FAQ_RESTATES_SOURCE_CODE, FAQ_TYPE_MIX_CODE, FaqChecker
+from app.idm.faq_checks import (
+    FAQ_INVENTED_REASON_CODE,
+    FAQ_NEW_FACT_CODE,
+    FAQ_OPEN_QUESTION_CODE,
+    FAQ_RESTATES_SOURCE_CODE,
+    FAQ_TYPE_MIX_CODE,
+    FaqChecker,
+)
 from app.idm.fidelity_checks import (
+    EXAMPLE_ROLE_CODE,
     EXPLANATION_MISSING_CODE,
     NEW_FACT_CODE,
     SENTENCE_COPY_CODE,
+    SENTENCE_LENGTH_CODE,
     FidelityChecker,
 )
 from app.idm.framework import FrameworkPromise, framework_listed
@@ -301,6 +310,7 @@ def deterministic_slot_findings(
     unit: dict[str, Any], brief: IdmUnitBriefV1, owned_text_by_slot: Sequence[str],
     evidence: EvidenceIndex | None = None, framework: FrameworkPromise | None = None, *,
     fidelity: FidelityChecker | None = None, faq_check: FaqChecker | None = None,
+    fact_rows: Sequence[tuple[str, str]] = (),
 ) -> list[SlotFinding]:
     """IDM checks on top of the shared staged validator (spec §7.7.2(b)).
 
@@ -309,7 +319,8 @@ def deterministic_slot_findings(
     teaching html must list every item (reported on its first html slot). With ``fidelity`` (QLT-5 C), the
     teaching html slots follow the unit's content mode (``fidelity_checks``); the slot-level verbatim check then
     only runs in the structured mode, as before. With ``faq_check`` (QLT-5 D), an la_faq slot mixes its question types,
-    does not copy a source fact and states no number or name its basis facts do not (``faq_checks``).
+    does not copy a source fact and states no number or name its basis facts do not (``faq_checks``). ``fact_rows``
+    (QLT-7): the table rows of the facts the writer was given, read with the html rows for a contested key.
     """
 
     slot_copy_check = fidelity is None or fidelity.mode == "structured"
@@ -356,10 +367,11 @@ def deterministic_slot_findings(
             if correct:
                 answer = idm_fold(str(correct[0].get("text") or ""))
                 html = idm_fold(preceding_html)
-                teaching = unit_teaching([item for item in components[:index] if item.get("type") == "html"], faq)
+                teaching = unit_teaching([item for item in components[:index] if item.get("type") == "html"], faq,
+                                         fact_rows)
                 if ((len(answer) >= ANSWER_LEAK_MIN_CHARS and answer in html and ("dap an" in html or "answer" in html))
                         or copied_options(component, preceding_html) or reworded_key(component, preceding_html)
-                        or quoted_key(component, teaching)):
+                        or quoted_key(component, teaching) or restates_example(component, teaching)):
                     findings.append(SlotFinding(ANSWER_LEAK_CODE, index))
                 if contested_option(component, teaching) is not None:
                     findings.append(SlotFinding(ANSWER_CONTESTED_CODE, index))
@@ -438,14 +450,14 @@ def advisory_slot_findings(unit: dict[str, Any], exempt: Collection[int] = ()) -
 
 def final_unit_findings(unit: dict[str, Any], brief: IdmUnitBriefV1, owned_text_by_slot: Sequence[str],
                         evidence: EvidenceIndex | None, fallback_slots: Collection[int], *,
-                        framework: FrameworkPromise | None = None,
-                        fidelity: FidelityChecker | None = None, faq: FaqChecker | None = None) -> list[SlotFinding]:
+                        framework: FrameworkPromise | None = None, fidelity: FidelityChecker | None = None,
+                        faq: FaqChecker | None = None, fact_rows: Sequence[tuple[str, str]] = ()) -> list[SlotFinding]:
     """What the returned unit still has (QC course 364564, N8): the IDM checks of its provider slots plus the
     review-only notes. A code seen before a repair is not in it unless the final unit still fails it."""
 
     exempt = set(fallback_slots)
     found = [item for item in deterministic_slot_findings(unit, brief, owned_text_by_slot, evidence, framework,
-                                                          fidelity=fidelity, faq_check=faq)
+                                                          fidelity=fidelity, faq_check=faq, fact_rows=fact_rows)
              if item.component_index not in exempt]
     return [*found, *advisory_slot_findings(unit, exempt)]
 
@@ -607,6 +619,7 @@ def build_unit_author_note(
     faq_items_copied: int = 0,
     faq_items_recall: int = 0,
     faq_inferred: Mapping[int, int] | None = None,
+    faq_items_open: int = 0,
 ) -> str:
     """Template note for the unit ``implementation_notes``; no IDs, no ``<``/``>``.
 
@@ -620,7 +633,8 @@ def build_unit_author_note(
     ``drafted_examples`` (QLT-5 C): the examples labelled "Ví dụ minh hoạ" per slot; the author checks each one.
     ``faq_items_copied``/``faq_items_recall`` (QLT-5 D): FAQ items dropped because they copied a source sentence or only
     asked for a fact again; ``faq_inferred``: per FAQ slot, the answers that explain beyond the words of their facts
-    (the SME checks that they add no rule).
+    (the SME checks that they add no rule); ``faq_items_open`` (QLT-7): FAQ items dropped because they answered an
+    open SME question.
     """
 
     vi = locale == "vi"
@@ -672,6 +686,9 @@ def build_unit_author_note(
     if faq_items_recall:
         parts.append(f"Đã bỏ {faq_items_recall} câu hỏi đáp chỉ hỏi lại kiến thức đã học." if vi
                      else f"{faq_items_recall} FAQ item(s) that only asked for a fact again were removed.")
+    if faq_items_open:
+        parts.append(f"Đã bỏ {faq_items_open} câu hỏi đáp trả lời câu hỏi còn chờ SME xác nhận." if vi
+                     else f"{faq_items_open} FAQ item(s) that answered a question still open for the SME were removed.")
     if faq_items_invalid:
         parts.append(f"Đã bỏ {faq_items_invalid} câu hỏi đáp hệ thống không lưu được (ký tự góc nhọn, câu hỏi trùng)."
                      if vi else f"{faq_items_invalid} FAQ item(s) the course editor cannot store (angle brackets, "
@@ -739,6 +756,13 @@ _PLAIN_HINT_VI: Final = {
     FAQ_RESTATES_SOURCE_CODE: "câu trả lời hỏi đáp gần như chép nguyên câu tài liệu — nên giải thích bằng lời của mình",
     FAQ_NEW_FACT_CODE: "câu hỏi đáp có số liệu hoặc tên riêng không có trong tài liệu — cần kiểm tra và bỏ nếu không "
                        "đúng",
+    # QLT-7 (QC run fae66524).
+    SENTENCE_LENGTH_CODE: "nhiều câu quá dài — nên tách thành các câu ngắn, mỗi câu một ý",
+    EXAMPLE_ROLE_CODE: "ví dụ minh hoạ kể về một người không thuộc đối tượng học (ví dụ trưởng nhóm trong khoá học cho "
+                       "lãnh đạo) — nên đổi thành người đúng vai trò của học viên",
+    FAQ_OPEN_QUESTION_CODE: "câu hỏi đáp trả lời một câu hỏi còn chờ SME xác nhận — chỉ giữ khi SME đã trả lời",
+    FAQ_INVENTED_REASON_CODE: "câu hỏi đáp tự đưa ra lý do cho một con số hoặc ngưỡng mà tài liệu không giải thích — "
+                              "cần SME xác nhận hoặc bỏ",
 }
 _PLAIN_HINT_EN: Final = {
     SENTENCE_COPY_CODE: "many sentences copy the source almost word for word — rewrite them in plain words and explain "
@@ -749,6 +773,13 @@ _PLAIN_HINT_EN: Final = {
     FAQ_RESTATES_SOURCE_CODE: "an FAQ answer nearly copies a source sentence — explain it in your own words",
     FAQ_NEW_FACT_CODE: "an FAQ item states a number or a name that is not in the source — check it and remove it if it "
                        "is wrong",
+    SENTENCE_LENGTH_CODE: "many sentences are too long — split them into short sentences, one idea each",
+    EXAMPLE_ROLE_CODE: "an illustrative example is about someone outside the audience (a team lead in a course for "
+                       "executives) — give it a person in the learners' own role",
+    FAQ_OPEN_QUESTION_CODE: "an FAQ item answers a question the SME has not settled yet — keep it only once the SME "
+                            "answers it",
+    FAQ_INVENTED_REASON_CODE: "an FAQ item gives its own reason for a number or threshold the source does not "
+                              "explain — the SME should confirm it or remove it",
 }
 
 

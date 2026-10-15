@@ -31,7 +31,7 @@ from app.idm.contracts import (
 )
 from app.idm.faq_plan import FAQ_DROPPED_CODE, FAQ_PLANNED_CODE, gate_and_plan_faq
 from app.idm.fidelity import TEACHING_SUPPORT_CODE, module_fidelity_rules, plan_teaching_supports, purpose_mode
-from app.idm.framework import framework_promise, unit_framework_brief
+from app.idm.framework import framework_promise, unit_framework_brief, unit_framework_detail
 from app.idm.limits import answer_limits
 from app.idm.mcq import encode_key_letters
 from app.idm.module_autofix import (
@@ -80,6 +80,7 @@ from app.idm.runtime import (
     repair_thinking,
 )
 from app.idm.text import idm_fold, produces_output, sanitize_author_text, single_line
+from app.idm.titles import TitleCaser, sentence_case_lessons
 from app.idm.validation import IdmIssue, errors
 from app.lesson_author_orchestration_v2 import (
     ArchitectureComponentAuthorReviewV2,
@@ -397,17 +398,23 @@ def attach_framework_items(lessons: Sequence[IdmLessonDesignV1], scope: ModuleSc
         for unit in lesson.units:
             target = next((index for index, component in enumerate(unit.components)
                            if component.type == "html" and component.role != "practice"), None)
-            brief = None if target is None else unit_framework_brief(
-                [unit.title, unit.components[target].title],
-                [scope.block_texts([block_id]) for block_id in unit.block_ids], shard_groups, scope.locale)
+            titles = [] if target is None else [unit.title, unit.components[target].title]
+            unit_groups = [scope.block_texts([block_id]) for block_id in unit.block_ids]
+            brief = None if target is None else unit_framework_brief(titles, unit_groups, shard_groups, scope.locale)
             if target is None or brief is None:
                 units.append(unit)
                 continue
             component = unit.components[target]
-            item = IdmSupportItemV1(kind="explain_concept", brief=brief, block_id=component.block_ids[0])
-            support = [entry for entry in component.support_items if entry.brief != brief][:MAX_SUPPORT_ITEMS - 1]
+            items = [IdmSupportItemV1(kind="explain_concept", brief=brief, block_id=component.block_ids[0])]
+            # QLT-7: what each item is about (its "từ … sang …" clause), so the orientation unit explains the
+            # framework instead of listing bare names (QC run fae66524, c2.l1.u1).
+            detail = unit_framework_detail(titles, unit_groups, shard_groups, scope.locale)
+            if detail is not None:
+                items.append(IdmSupportItemV1(kind="explain_concept", brief=detail, block_id=component.block_ids[0]))
+            support = [entry for entry in component.support_items
+                       if entry.brief not in {item.brief for item in items}][:MAX_SUPPORT_ITEMS - len(items)]
             components = list(unit.components)
-            components[target] = component.model_copy(update={"support_items": [item, *support]})
+            components[target] = component.model_copy(update={"support_items": [*items, *support]})
             units.append(unit.model_copy(update={"components": components}))
             attached += 1
         result.append(lesson.model_copy(update={"units": units}))
@@ -754,6 +761,15 @@ async def run_idm_module_design(
                                              mode, scope.locale)
     if supports:
         runtime.adjustments[TEACHING_SUPPORT_CODE] += supports
+    # QLT-7: lesson, unit and component titles in sentence case (a lesson keeps its W4 title when only the case
+    # differs), before the design is hashed and projected, so both name every title alike.
+    caser = TitleCaser.from_texts([*scope.fact_text.values(), *(block.name for block in scope.blocks.values()),
+                                   *(block.summary for block in scope.blocks.values()),
+                                   *scope.must_do_statement.values()])
+    final, retitled = sentence_case_lessons(final, caser, locale=scope.locale,
+                                            plan_titles={item.lesson_key: item.title for item in scope.lesson_plans})
+    if retitled:
+        runtime.adjustments["IDM_W4_TITLES_SENTENCE_CASE"] += retitled
     if plan.shard_index == 0:
         # The chapter's practice questions get their key letters in turn (QC run 8de1c76b, Q4); a later shard does
         # not know its lessons' place in the chapter and keeps the plain per-unit letters.

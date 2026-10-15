@@ -554,8 +554,19 @@ class IdmFaqPracticeNoteV1(IdmModel):
 
 
 class IdmFaqMaterialV1(IdmModel):
+    """``open_questions`` (QLT-7, contract 3): the SME questions of the lesson's Hold items and held practices, never to
+    be answered by the FAQ; absent when there is none, so a brief without them reads and hashes as before."""
+
     blocks: list[IdmFaqBlockNoteV1] = Field(max_length=24)
     practices: list[IdmFaqPracticeNoteV1] = Field(max_length=3)
+    open_questions: list[SmeQuestion] = Field(default_factory=list, max_length=8)
+
+    @model_serializer(mode="wrap")
+    def _serialize(self, handler: SerializerFunctionWrapHandler) -> Any:
+        data = handler(self)
+        if isinstance(data, dict) and not data.get("open_questions"):
+            data.pop("open_questions", None)
+        return data
 
 
 class IdmUnitBriefV1(IdmModel):

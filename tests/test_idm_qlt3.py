@@ -440,6 +440,10 @@ SHIFT_HEADS = [
 ]
 SHIFT_BRIEF = ("Liệt kê đủ 5 chuyển dịch: SHIFT 1: THINK BIG; SHIFT 2: THINK DIFFERENT; SHIFT 3: THINK CUSTOMER; "
                "SHIFT 4: THINK SYSTEM; SHIFT 5: THINK ECOSYSTEM")
+# QLT-7 (QC run fae66524, c2.l1.u1): what each shift changes, from the dash clause of its heading, in sentence case.
+SHIFT_DETAIL = ('Ý chính của từng chuyển dịch: (1) Từ tư duy "tồn tại" sang "khát vọng lớn"; (2) Từ Benchmark nội địa '
+                'sang chuẩn Best-in-Class; (3) Từ tiêu chuẩn kỹ thuật sang "Customer Delight"; (4) Thoát bẫy "chữa '
+                'cháy" sang vận hành xuất sắc; (5) Từ "tự sở hữu hữu hạn" sang "siêu kết nối ERA5.0"')
 
 
 def shift_scope() -> ModuleScope:
@@ -487,7 +491,7 @@ class FrameworkOrientationTests(StoryboardEndpointTestCase):
         self.assertEqual(attached, 1)
         support = lessons[0].units[0].components[0].support_items
         self.assertEqual([(item.kind, item.brief, item.block_id) for item in support],
-                         [("explain_concept", SHIFT_BRIEF, "cb_0015")])
+                         [("explain_concept", SHIFT_BRIEF, "cb_0015"), ("explain_concept", SHIFT_DETAIL, "cb_0015")])
         self.assertEqual(framework_support_lines([support[0].brief]), [head.split(" — ")[0] for head in SHIFT_HEADS])
         # A unit whose own facts number the items, or whose title promises nothing, is left as it is.
         self.assertEqual(lessons[0].units[1].components[0].support_items, [])

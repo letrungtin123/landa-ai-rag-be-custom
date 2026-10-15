@@ -7,6 +7,7 @@ QLT-6: a document the author keeps as it is (``preserve_source``) is only segmen
 from __future__ import annotations
 
 import asyncio
+import dataclasses
 import time
 from typing import Any, Final
 
@@ -35,6 +36,7 @@ from app.idm.preserve_design import is_preserve_context, run_preserve_course_des
 from app.idm.purpose import resolve_purpose
 from app.idm.runtime import IdmRuntime, IdmStageError, idm_tail_reserve, log_stage
 from app.idm.signals import IdmCapacityError, SectionPlan, compute_fact_signals, plan_idm_sections
+from app.idm.titles import TitleCaser, sentence_case_plan
 from app.lesson_author_orchestration_v2_provider import SourceSnapshotFactV2
 
 _MS: Final = 1000
@@ -127,6 +129,15 @@ async def run_idm_course_design(
         block_chars=block_chars, purpose=purpose,
     )
     purpose = purpose.model_copy(update={"template_gaps": list(architecture.template_gaps)})
+    # QLT-7: course, chapter and lesson titles in sentence case, keeping the proper names the facts and the plan write.
+    caser = TitleCaser.from_texts([*(fact.fact_text for fact in facts), *(block.name for block in blueprint.blocks),
+                                   *(block.summary for block in blueprint.blocks),
+                                   *(item.statement for item in objectives), *(item.statement for item in must_dos)])
+    titled, retitled = sentence_case_plan(architecture.plan, caser, locale=context.locale,
+                                          author_title=context.course_title_hint)
+    if retitled:
+        runtime.adjustments["IDM_W4_TITLES_SENTENCE_CASE"] += retitled
+        architecture = dataclasses.replace(architecture, plan=titled)
     stage_origins: dict[str, StageOrigin] = {
         "w1_map": w1_origin, "w1_reduce": reduce_origin, "w2": blueprint.origin, "w4": architecture.origin,
     }

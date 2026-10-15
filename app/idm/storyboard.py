@@ -21,12 +21,14 @@ from typing import Any, Final, Protocol
 
 from pydantic import BaseModel, ValidationError
 
-from app.idm.answer_checks import contested_option, unit_teaching
+from app.idm.answer_checks import contested_option, fact_table_rows, unit_teaching
 from app.idm.artifacts import clean_question, clean_semantic
 from app.idm.budget import judge_repair_fits, repair_thinking_for, writer_thinking
 from app.idm.contracts import IdmUnitBriefV1, brief_hash_of
 from app.idm.diagram import idm_diagram_relationships
 from app.idm.faq_checks import (
+    FAQ_INVENTED_REASON_CODE,
+    FAQ_OPEN_QUESTION_CODE,
     FAQ_RESTATES_SOURCE_CODE,
     FAQ_TYPE_MIX_CODE,
     FAQ_VALUE_CODES,
@@ -38,12 +40,21 @@ from app.idm.faq_checks import (
 )
 from app.idm.fidelity import brief_mode, budget_words, slot_marks, writer_fidelity_rules
 from app.idm.fidelity_checks import (
+    EXAMPLE_ROLE_CODE,
     FIDELITY_CODES,
     NEW_FACT_CODE,
     SENTENCE_COPY_CODE,
+    SENTENCE_LENGTH_CODE,
     FidelityChecker,
+    length_report,
 )
-from app.idm.framework import build_promise, framework_coverage, framework_support_lines, with_framework_list
+from app.idm.framework import (
+    build_promise,
+    framework_coverage,
+    framework_support_lines,
+    is_framework_brief,
+    with_framework_list,
+)
 from app.idm.html_rules import (
     DENSITY_CODE,
     HtmlRuleViolation,
@@ -55,7 +66,7 @@ from app.idm.mcq import (
     ANSWER_LENGTH_CUE_CODE,
     OPTION_LETTERS,
     normalize_single_choice,
-    option_lengths,
+    option_length_stats,
     practice_key_shift,
     question_ordinal,
 )
@@ -70,6 +81,9 @@ from app.idm.policy import (
     FAQ_COMPONENT_TYPE,
     FAQ_DEEP_TYPES,
     IDM_FAQ_MIN_ITEMS,
+    IDM_MCQ_LENGTH_TARGET_RATIO,
+    IDM_SENTENCE_LENGTH_MAX_AVERAGE_WORDS,
+    IDM_SENTENCE_LENGTH_MAX_WORDS,
     IDM_UNIT_WRITER_MAX_OUTPUT_TOKENS,
     MAX_GENERATED_WORDS,
     MIN_GENERATED_WORDS,
@@ -130,6 +144,7 @@ from app.idm.runtime import (
     repair_thinking,
 )
 from app.idm.text import evidence_index
+from app.idm.titles import TitleCaser
 from app.idm.worksheet import COMPACTED_CODE as WORKSHEET_COMPACTED_CODE
 from app.idm.worksheet import compact_worksheet, worksheet_fallback_html
 from app.instructional_density import INSTRUCTIONAL_DENSITY_POLICY_VERSION
@@ -389,8 +404,14 @@ class IdmUnitWriter:
         # QLT-5 C: the content mode of the unit and its checks of the teaching html slots. Names and numbers of the
         # approved plan's titles may be repeated; drafted plan text (support briefs, scenarios) adds none.
         self.mode = brief_mode(brief)
+        # QLT-7: the server-written framework briefs (item names and descriptions taken from the facts) are plan text
+        # too: the orientation unit of run fae66524 listed "SHIFT 4", "SHIFT 5" from them and got IDM_W5_NEW_FACT.
+        server_briefs = [item.brief for slot in brief.components for item in slot.support_items
+                         if is_framework_brief(item.brief)]
+        # The audience is plan text as well: a drafted example now names the learner's role from it ("một CEO").
         plan_texts = [brief.course_title, brief.module_title, brief.lesson_title, brief.lesson_objective,
-                      brief.unit_purpose, contract.unit_title, *(slot.title for slot in brief.components)]
+                      brief.unit_purpose, contract.unit_title, *(slot.title for slot in brief.components),
+                      *server_briefs, brief.target_audience]
         self.fidelity = FidelityChecker.build(brief, self.text_by_id, self.evidence, locale=runtime.locale,
                                               plan_texts=plan_texts)
         # QLT-5 D: the FAQ plan and the facts each FAQ answer is grounded in (its anchors, not the whole lesson).
@@ -398,6 +419,12 @@ class IdmUnitWriter:
             brief, {**{item.fact_key: item.fact_text for item in brief.lesson_context_facts}, **self.text_by_id},
             plan_texts=[*plan_texts, *brief.lesson_practice_sentences])
         self.has_faq = any(slot.type == FAQ_COMPONENT_TYPE for slot in brief.components)
+        # QLT-7: the table rows of the facts (a contested key is read against them too) and the sentence case of the
+        # slot titles, keeping the proper names the facts and the plan write.
+        given = [*(fact.fact_text for fact in contract.source_facts),
+                 *(item.fact_text for item in brief.lesson_context_facts)]
+        self.fact_rows = fact_table_rows(given)
+        self.titles = TitleCaser.from_texts([*given, *plan_texts])
         # A unit or html slot title that names "N <items>" promises an overview of all N items (QC 364564, N5). The
         # items come from the unit's facts or, for an orientation unit whose blocks only introduce the framework,
         # from the server-written support item W4 attached with the names of every item (QC run 8de1c76b, Q3).
@@ -422,6 +449,8 @@ class IdmUnitWriter:
         # recall question allowed.
         self.faq_items_copied = 0
         self.faq_items_recall = 0
+        # QLT-7: FAQ items dropped because they answered an open SME question.
+        self.faq_items_open = 0
         # FAQ items dropped because Node's workspace schema rejects them (not a grounding problem).
         self.faq_items_invalid = 0
         # Ungrounded callouts turned into plain paragraphs after the repair could not ground them (N9).
@@ -451,8 +480,11 @@ class IdmUnitWriter:
             **slot_marks(brief, index),
             **({"faq_items": [item.model_dump(mode="json") for item in slot.faq_items]} if slot.faq_items else {}),
         } for index, slot in enumerate(brief.components)]
-        material = ({"faq_material": brief.faq_material.model_dump(mode="json")}
-                    if brief.faq_material is not None else {})
+        material: dict[str, Any] = ({"faq_material": brief.faq_material.model_dump(mode="json")}
+                                    if brief.faq_material is not None else {})
+        # QLT-7: the open SME questions the FAQ must leave unanswered, listed apart from the material.
+        if self.has_faq and self.faq.open_questions:
+            material["open_questions"] = list(self.faq.open_questions)
         return unit_writer_prompt(
             self.runtime.locale, course_title=brief.course_title, audience=brief.target_audience,
             lesson_title=brief.lesson_title, lesson_objective=brief.lesson_objective,
@@ -467,7 +499,8 @@ class IdmUnitWriter:
                                        max_chars=self.budget.get("max_visible_chars"),
                                        min_chars=self.min_html_chars, explain=self.mode == "explain")
             if any(slot.type == "html" for slot in brief.components) else "",
-            course_purpose=brief_purpose(brief), fidelity_rules=writer_fidelity_rules(self.mode, self.runtime.locale),
+            course_purpose=brief_purpose(brief),
+            fidelity_rules=writer_fidelity_rules(self.mode, self.runtime.locale, self.fidelity.roles),
             faq_rules=faq_writer_rules(self.mode) if self.has_faq else "",
         )
 
@@ -508,13 +541,11 @@ class IdmUnitWriter:
                     elif code == FRAMEWORK_INCOMPLETE_CODE:
                         lines.append(self.framework_rule_line(slot, unit))
                     elif code == ANSWER_LENGTH_CUE_CODE and isinstance(component, dict):
-                        measured = option_lengths(component)
-                        lines.append(rule_line(slot, code, f"{slot}.choices") + (
-                            f" (the correct option has {measured[0]} characters, the longest other option "
-                            f"{measured[1]})" if measured else ""))
+                        lines.append(self.length_cue_line(slot, component))
                     elif code == ANSWER_CONTESTED_CODE and isinstance(component, dict):
                         lines.append(self.contested_rule_line(slot, index, component, unit))
-                    elif code in {SENTENCE_COPY_CODE, NEW_FACT_CODE} and isinstance(component, dict):
+                    elif (code in {SENTENCE_COPY_CODE, NEW_FACT_CODE, SENTENCE_LENGTH_CODE, EXAMPLE_ROLE_CODE}
+                          and isinstance(component, dict)):
                         lines.append(self.fidelity_rule_line(slot, index, component, code))
                     else:
                         field = _FIELD_OF_PATH_RE.sub("", locations.get((code, index), ""))
@@ -535,6 +566,8 @@ class IdmUnitWriter:
                     "what-if or common-mistake question(s))" + hint)
         found = (restated_faq_items(component, html_before(unit or {}, index)) if code == FAQ_RESTATES_HTML_CODE
                  else self.faq.restated(component) if code == FAQ_RESTATES_SOURCE_CODE
+                 else self.faq.open_items(component) if code == FAQ_OPEN_QUESTION_CODE
+                 else self.faq.invented_reasons(index, component) if code == FAQ_INVENTED_REASON_CODE
                  else self.faq.with_new_facts(index, component))
         items = ", ".join(f"{slot}.items[{item}]" for item in found)
         return rule_line(slot, code, items or slot) + hint
@@ -568,25 +601,50 @@ class IdmUnitWriter:
         faq = [entry for item in components if item.get("type") == "la_faq"
                for entry in item.get("items") or [] if isinstance(entry, dict)]
         rival = contested_option(component, unit_teaching(
-            [item for item in components[:index] if item.get("type") == "html"], faq))
+            [item for item in components[:index] if item.get("type") == "html"], faq, self.fact_rows))
         letter = f" option {OPTION_LETTERS[rival]}" if rival is not None and rival < len(OPTION_LETTERS) else ""
         return rule_line(slot, ANSWER_CONTESTED_CODE, f"{slot}.question") + (
             f" (the case also meets the criteria the unit gives for{letter or ' another option'})")
 
     def fidelity_rule_line(self, slot: str, index: int, component: dict[str, Any], code: str) -> str:
-        """Targeted repair of a content-mode finding: the locations and, for a copy, the server-measured share."""
+        """Targeted repair of a content-mode finding: the locations and, for a copy or long sentences, the
+        server-measured numbers; for a drafted example of another level, the roles of the audience (QLT-7)."""
 
         if code == SENTENCE_COPY_CODE:
             report = self.fidelity.report(index, component)
             limit = self.fidelity.copy_limit(index) or 0.0
             locations = list(dict.fromkeys(report.copied))[:_MAX_HINT_LOCATIONS]
             measured = (f" ({len(report.copied)} of {report.judged} judged sentences repeat the facts word for word; "
-                        f"at most {int(limit * 100)}% may)")
+                        f"at most {round(limit * 100)}% may)")
+        elif code == SENTENCE_LENGTH_CODE:
+            lengths = length_report(component)
+            locations = list(lengths.long_locations)[:_MAX_HINT_LOCATIONS]
+            measured = (f" ({lengths.sentences} prose sentences of {lengths.average:.1f} words on average, the longest "
+                        f"{lengths.longest}; at most {IDM_SENTENCE_LENGTH_MAX_AVERAGE_WORDS} on average and "
+                        f"{IDM_SENTENCE_LENGTH_MAX_WORDS} for any sentence)")
+        elif code == EXAMPLE_ROLE_CODE:
+            locations = self.fidelity.role_locations(component)[:_MAX_HINT_LOCATIONS]
+            roles = self.fidelity.roles.phrases
+            measured = f" (roles of TARGET_AUDIENCE: {', '.join(roles)})" if roles else ""
         else:
             locations = self.fidelity.new_fact_locations(component)[:_MAX_HINT_LOCATIONS]
             measured = ""
         where = ", ".join(f"{slot}.{location}" for location in locations)
         return rule_line(slot, code, where or slot) + measured
+
+    def length_cue_line(self, slot: str, component: dict[str, Any]) -> str:
+        """The server-measured option lengths and the length to aim for (QLT-7): the key at most
+        ``IDM_MCQ_LENGTH_TARGET_RATIO`` x the average distractor."""
+
+        stats = option_length_stats(component)
+        line = rule_line(slot, ANSWER_LENGTH_CUE_CODE, f"{slot}.choices")
+        if stats is None:
+            return line
+        key, mean, longest = stats
+        target = round(IDM_MCQ_LENGTH_TARGET_RATIO * mean)
+        return line + (f" (the correct option has {key} characters, the other options {round(mean)} on average and "
+                       f"{longest} at most: bring the correct option to about {target} characters or less, or "
+                       "lengthen the distractors with plausible detail)")
 
     def fact_hint(self, index: int) -> str:
         brief_slot = self.brief.components[index] if index < len(self.brief.components) else None
@@ -609,6 +667,11 @@ class IdmUnitWriter:
             component = {**component, "covered_source_fact_ids": []}
             self.runtime.adjustments["w5_supporting_claim_cleared"] += 1
         plan_type = plan["type"] if plan is not None else None
+        # QLT-7: the slot title in sentence case (Vietnamese), keeping acronyms and the facts' proper names.
+        if (self.runtime.locale == "vi" and isinstance(component, dict) and isinstance(component.get("title"), str)
+                and (titled := self.titles.title(component["title"])) != component["title"]):
+            component = {**component, "title": titled}
+            self.runtime.adjustments["w5_title_sentence_case"] += 1
         # PDF marks in learner text (QC run ab8d67e1, R5): "Row N:" labels and a repeated word go first.
         artefacts: Counter[str] = Counter()
         if plan_type in {"problem", "la_faq"} and isinstance(component, dict):
@@ -718,7 +781,8 @@ class IdmUnitWriter:
         exempt = {*draft.fallback_slots, *draft.review_slots}
         idm = [(item.code, item.component_index)
                for item in deterministic_slot_findings(draft.unit, self.brief, self.owned_text, self.evidence,
-                                                       self.framework, fidelity=self.fidelity, faq_check=self.faq)
+                                                       self.framework, fidelity=self.fidelity, faq_check=self.faq,
+                                                       fact_rows=self.fact_rows)
                if item.component_index not in exempt]
         return finding, idm
 
@@ -879,8 +943,11 @@ class IdmUnitWriter:
             return None
         restated = set(restated_faq_items(component, html_before(draft.unit, index)))
         copied = set(self.faq.restated(component)) - restated
-        new_facts = set(self.faq.with_new_facts(index, component)) - restated - copied
-        drop = restated | copied | new_facts
+        # QLT-7: an item that answers an open SME question, or invents a reason for a threshold, goes too.
+        unresolved = set(self.faq.open_items(component)) - restated - copied
+        new_facts = (set(self.faq.with_new_facts(index, component)) | set(self.faq.invented_reasons(index, component))
+                     ) - restated - copied - unresolved
+        drop = restated | copied | new_facts | unresolved
         types = question_types(component)
         kept = [position for position in range(len(items)) if position not in drop]
         kept_types = [types[position] for position in kept]
@@ -895,10 +962,12 @@ class IdmUnitWriter:
         self.faq_items_restated += len(restated)
         self.faq_items_copied += len(copied)
         self.faq_items_recall += len(recall)
+        self.faq_items_open += len(unresolved)
         self.codes.append(FAQ_ITEMS_DROPPED_CODE)
         for key, count in (("w5_faq_items_dropped", len(new_facts)), ("w5_faq_items_restated_dropped", len(restated)),
                            ("w5_faq_items_copied_dropped", len(copied)),
-                           ("w5_faq_items_recall_dropped", len(recall))):
+                           ("w5_faq_items_recall_dropped", len(recall)),
+                           ("w5_faq_items_open_question_dropped", len(unresolved))):
             if count:
                 self.runtime.adjustments[key] += count
         return _Draft({**draft.unit, "components": components}, list(draft.fallback_slots), draft.repair_applied,
@@ -1216,7 +1285,8 @@ async def run_idm_unit(
     # N8: "still warns" is recomputed on the returned unit; codes settled on the way are listed apart.
     remaining = [] if whole_fallback else final_unit_findings(draft.unit, brief, writer.owned_text, writer.evidence,
                                                               draft.fallback_slots, framework=writer.framework,
-                                                              fidelity=writer.fidelity, faq=writer.faq)
+                                                              fidelity=writer.fidelity, faq=writer.faq,
+                                                              fact_rows=writer.fact_rows)
     components = draft.unit.get("components", [])
     # Labelled examples of provider slots only: a source-locked slot carries none.
     drafted = {} if whole_fallback else {index: count for index, count in writer.fidelity.drafted_examples(
@@ -1234,7 +1304,7 @@ async def run_idm_unit(
         faq_items_restated=writer.faq_items_restated, callouts_to_prose=writer.callouts_converted,
         framework_list_inserted=writer.framework_inserted, worksheet_compacted=writer.worksheet_compacted,
         drafted_examples=drafted, faq_items_copied=writer.faq_items_copied, faq_items_recall=writer.faq_items_recall,
-        faq_inferred=inferred)
+        faq_inferred=inferred, faq_items_open=writer.faq_items_open)
     quality = build_unit_quality(mode=deps.judge_mode, judge=judge, repair_applied=draft.repair_applied,
                                  deterministic_codes=[*writer.codes, *(item.code for item in remaining)],
                                  author_note=note)
@@ -1249,6 +1319,7 @@ async def run_idm_unit(
         "failure_codes": sorted(set(writer.failure_codes)), "faq_items_dropped": writer.faq_items_dropped,
         "faq_items_invalid": writer.faq_items_invalid, "faq_items_restated": writer.faq_items_restated,
         "faq_items_copied": writer.faq_items_copied, "faq_items_recall": writer.faq_items_recall,
+        "faq_items_open": writer.faq_items_open,
         "faq": {} if whole_fallback else writer.faq.metrics(components),
         "callouts_to_prose": writer.callouts_converted, "framework_list_inserted": writer.framework_inserted,
         "slot_reasons": {str(index): codes for index, codes in sorted(draft.reasons.items())},
