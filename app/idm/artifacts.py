@@ -27,6 +27,17 @@ from app.idm.text import idm_fold
 
 # A "Row N:" label anywhere in a text (the facts carry it at the start; a writer may glue two rows).
 ROW_LABEL_ANY_RE: Final = re.compile(r"(?<!\w)row\s+\d{1,3}\s*:\s*", re.IGNORECASE)
+# A reference to the PDF reader's row label in author text ("Nội dung đầy đủ của Row 1 … và Row 3 …").
+_ROW_REFERENCE_RE: Final = re.compile(r"(?<!\w)row\s+(\d{1,3})(?!\w)", re.IGNORECASE)
+
+
+def plain_row_refs(text: str) -> str:
+    """Author text (SME questions, W1 notes) names a table row as the reader does, not by the PDF reader's label
+    (QLT-8, QC run 0a11aa9e: two SME questions asked about "Row 1 … Row 3"): "dòng 1" in Vietnamese text, "row 1"."""
+
+    vietnamese = "đ" in text.lower() or any(unicodedata.category(char) == "Mn"
+                                            for char in unicodedata.normalize("NFD", text))
+    return _ROW_REFERENCE_RE.sub(lambda match: f"{'dòng' if vietnamese else 'row'} {match.group(1)}", text)
 _REPEAT_RE: Final = re.compile(r"(?<![\w-])([^\W\d_]{2,})(\s+)(\1)(?![\w-])", re.IGNORECASE)
 # Vietnamese words whose doubling is a word of its own ("luôn luôn" always, "dần dần" gradually, "chung chung" vague).
 _REDUPLICATIONS: Final = frozenset({
@@ -245,5 +256,5 @@ def cut_fragments(semantic: Any) -> int:
 
 __all__ = [
     "ROW_LABEL_ANY_RE", "clean_question", "clean_semantic", "clean_text", "cut_fragments", "name_positions",
-    "sentence_case_vi",
+    "plain_row_refs", "sentence_case_vi",
 ]

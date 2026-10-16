@@ -20,6 +20,13 @@ QC run fae66524 (QLT-7) added two more:
   table-row facts ("Row 3: Bậc 02 | Vietnam Quality | … (ISO, CE, FDA)"): c1.l1.u2 keyed "Bậc 01" for a case "đạt
   chứng nhận ISO 9001 và chứng chỉ CE" (``contested_option``, ``fact_table_rows``).
 
+QC run 0a11aa9e (QLT-8) added the keys that join several shown items, which the one-passage measures never see:
+
+* a key that strings together the items of ONE list or table shown before it (c1.l1.u1: the five list heads in one
+  sentence, ``restates_list``);
+* a key that joins several passages of the worked example (c2.l5.u1: three rows of the worksheet example,
+  ``restates_joined_example``).
+
 Pure functions on the writer's payload; thresholds and their calibration live in ``app.idm.policy``.
 """
 
@@ -34,8 +41,14 @@ from app.idm.policy import (
     IDM_ANSWER_CONTESTED_MIN_CODES,
     IDM_ANSWER_CONTESTED_MIN_PAIRS,
     IDM_ANSWER_CONTESTED_MIN_WORDS,
+    IDM_ANSWER_EXAMPLE_BAG_MIN_MARGIN,
+    IDM_ANSWER_EXAMPLE_BAG_MIN_SHARE,
     IDM_ANSWER_EXAMPLE_MAX_DISTRACTOR_SHARE,
     IDM_ANSWER_EXAMPLE_MIN_SHARE,
+    IDM_ANSWER_JOINED_MIN_ITEMS,
+    IDM_ANSWER_JOINED_MIN_KEY_PAIRS,
+    IDM_ANSWER_LIST_MIN_MARGIN,
+    IDM_ANSWER_LIST_MIN_SHARE,
     IDM_ANSWER_QUOTE_MIN_KEY_WORDS,
     IDM_ANSWER_QUOTE_MIN_MARGIN,
     IDM_ANSWER_QUOTE_MIN_SHARE,
@@ -74,6 +87,8 @@ _NUMBERED_LABEL_RE: Final = re.compile(r"^\s*[^\W\d_]+(?:\s+[^\W\d_]+)?\s+0?\d{1
 _MIN_HEAD_CHARS: Final = 3
 # A label is looked for at the start of an option (its first words), never in its reason.
 _HEAD_SEARCH_CHARS: Final = 60
+# A key that applies a label opens with it, after at most this many words ("Thuộc Bậc 02 …", "Cấp 2 …").
+_LABEL_OPENING_WORDS: Final = 2
 _MIN_OPTIONS: Final = 2
 _LIST_KINDS: Final = frozenset({"bullets", "steps"})
 _TEXT_KINDS: Final = frozenset({"paragraph", "task", "warning"})
@@ -89,6 +104,8 @@ class UnitTeaching:
     faq_sentences: tuple[str, ...]
     examples: tuple[str, ...] = ()
     fact_rows: tuple[tuple[str, str], ...] = ()
+    # QLT-8: the items of each list or table block before the question, block by block ("label value" per table row).
+    lists: tuple[tuple[str, ...], ...] = ()
 
 
 def _sections(component: Mapping[str, Any]) -> Iterable[Mapping[str, Any]]:
@@ -164,26 +181,32 @@ def unit_teaching(html_before: Sequence[Mapping[str, Any]], faq: Sequence[Mappin
 
     passages: list[str] = []
     rows: list[tuple[str, str]] = []
+    lists: list[tuple[str, ...]] = []
     for component in html_before:
         for block in _blocks(component):
             kind = block.get("kind")
             if kind in _TEXT_KINDS:
                 passages.extend(_block_texts(block))
             elif kind in _LIST_KINDS:
-                for item in block.get("items") or []:
-                    passages.append(str(item))
-                    label, separator, value = str(item).partition(":")
+                items = [str(item) for item in block.get("items") or []]
+                lists.append(tuple(items))
+                for item in items:
+                    passages.append(item)
+                    label, separator, value = item.partition(":")
                     if separator and value.strip():
                         rows.append((label, value))
             elif kind == "table":
+                cells: list[str] = []
                 for row in block.get("rows") or []:
                     if isinstance(row, dict):
                         label, value = str(row.get("label") or ""), str(row.get("value") or "")
                         passages.append(f"{label}: {value}")
                         rows.append((label, value))
+                        cells.append(f"{label} {value}")
+                lists.append(tuple(cells))
     sentences = [part for item in faq for part in _SENTENCE_RE.split(str(item.get("answer") or "")) if part.strip()]
     return UnitTeaching(tuple(passages), tuple(rows), tuple(sentences), tuple(example_passages(html_before)),
-                        tuple(fact_rows))
+                        tuple(fact_rows), tuple(lists))
 
 
 def _tokens(text: str) -> list[str]:
@@ -293,6 +316,65 @@ def restates_example(component: Mapping[str, Any], teaching: UnitTeaching) -> bo
     return False
 
 
+def _labelled_key(texts: Sequence[str], key: int, teaching: UnitTeaching) -> bool:
+    """A key that OPENS with a taught label applies its rule to the case by design ("Cấp 2: thông báo trưởng nhóm vì
+    …", "Bậc 02 (Vietnam Quality), vì …"). A key that names labels further in strings them together (QLT-8 c1.l1.u1:
+    "Xây dựng sản phẩm đồng nghĩa với chất lượng đỉnh cao, uy tín tuyệt đối, …") and is measured."""
+
+    if sum(bool(_NUMBERED_LABEL_RE.match(text)) for text in texts) >= _MIN_OPTIONS:
+        return True
+    heads = {head for label, _value in [*teaching.rows, *teaching.fact_rows]
+             if len(head := _head(label)) >= _MIN_HEAD_CHARS}
+    opening = idm_fold(texts[key])
+    return any(re.match(rf"^\W*(?:\w+\W+){{0,{_LABEL_OPENING_WORDS}}}{re.escape(head)}(?!\w)", opening)
+               for head in heads)
+
+
+def _joined(texts: Sequence[str], key: int, parts: Sequence[str]) -> tuple[float, float, int]:
+    """The key's share of its content-word pairs found in ``parts`` read as one text, the best distractor's share, and
+    how many of the parts the key draws on."""
+
+    pairs = [content_pairs(text) for text in texts]
+    part_pairs = [content_pairs(part) for part in parts]
+    whole: set[tuple[str, str]] = set().union(*part_pairs) if part_pairs else set()
+
+    def share(index: int) -> float:
+        return len(pairs[index] & whole) / len(pairs[index]) if pairs[index] else 0.0
+
+    others = max((share(index) for index in range(len(texts)) if index != key), default=0.0)
+    return share(key), others, sum(bool(pairs[key] & items) for items in part_pairs)
+
+
+def restates_list(component: Mapping[str, Any], teaching: UnitTeaching) -> bool:
+    """The key strings together several items of ONE list or table shown before the question (QLT-8, c1.l1.u1 of run
+    0a11aa9e: the five heads of the list in one sentence). The one-passage measure (``quoted_key``) reads each item
+    alone and never sees it."""
+
+    texts, key = _choices(component)
+    if (key is None or len(texts) < _MIN_OPTIONS or _labelled_key(texts, key, teaching)
+            or len(content_pairs(texts[key])) < IDM_ANSWER_JOINED_MIN_KEY_PAIRS):
+        return False
+    for items in teaching.lists:
+        mine, others, touched = _joined(texts, key, items)
+        if (touched >= IDM_ANSWER_JOINED_MIN_ITEMS and mine >= IDM_ANSWER_LIST_MIN_SHARE
+                and mine - others >= IDM_ANSWER_LIST_MIN_MARGIN):
+            return True
+    return False
+
+
+def restates_joined_example(component: Mapping[str, Any], teaching: UnitTeaching) -> bool:
+    """The key joins several passages of the worked example shown before it (QLT-8, c2.l5.u1 of run 0a11aa9e: three
+    filled rows of the worksheet example in one option). ``restates_example`` reads one passage at a time."""
+
+    texts, key = _choices(component)
+    if (key is None or len(texts) < _MIN_OPTIONS or not teaching.examples or _labelled_key(texts, key, teaching)
+            or len(content_pairs(texts[key])) < IDM_ANSWER_JOINED_MIN_KEY_PAIRS):
+        return False
+    mine, others, touched = _joined(texts, key, teaching.examples)
+    return (touched >= IDM_ANSWER_JOINED_MIN_ITEMS and mine >= IDM_ANSWER_EXAMPLE_BAG_MIN_SHARE
+            and mine - others >= IDM_ANSWER_EXAMPLE_BAG_MIN_MARGIN)
+
+
 def _rung(head: str) -> tuple[str, int] | None:
     match = _RUNG_RE.match(head)
     return (match.group("stem"), int(match.group("number"))) if match else None
@@ -380,5 +462,5 @@ def contested_option(component: Mapping[str, Any], teaching: UnitTeaching) -> in
 
 __all__ = [
     "UnitTeaching", "contested_option", "example_passages", "fact_table_rows", "labelled_options", "quoted_key",
-    "restates_example", "unit_teaching",
+    "restates_example", "restates_joined_example", "restates_list", "unit_teaching",
 ]

@@ -16,7 +16,9 @@ import time
 import unittest
 from collections.abc import Awaitable, Callable
 from typing import Any
+from unittest import mock
 
+from app.idm import faq_plan
 from app.idm.contracts import IdmCourseDesignV1, IdmCourseSkeletonRequestV1, IdmShardDesignV1
 from app.idm.course_design import run_idm_course_design
 from app.idm.module_design import run_idm_module_design
@@ -121,18 +123,22 @@ def module_response(module_key: str) -> dict[str, Any]:
 
 
 @functools.cache
-def _shard_json(chapter_index: int) -> str:
+def _shard_json(chapter_index: int, faq_floor: bool) -> str:
     design, skeleton = golden_design()
     context, plan, facts = gm.module_context(design, skeleton, chapter_index, g.source_facts())
     response = module_response(design.modules[chapter_index].module_key)
     provider = g.FakeIdmProvider({"IdmW3W4ModuleResponseV1": [response]})
-    result = _run_sync(lambda: run_idm_module_design(context=context, skeleton=skeleton, plan=plan, facts=facts,
-                                                     runtime=make_runtime(provider)))
+    # The golden unit fixtures (their writer answers name every slot) predate the QLT-8 FAQ floor, which adds an la_faq
+    # to a unit of chapter 1; tests/test_idm_qlt8.py checks the floor on the same design.
+    share = faq_plan.IDM_FAQ_MIN_UNIT_SHARE if faq_floor else 0.0
+    with mock.patch.object(faq_plan, "IDM_FAQ_MIN_UNIT_SHARE", share):
+        result = _run_sync(lambda: run_idm_module_design(context=context, skeleton=skeleton, plan=plan, facts=facts,
+                                                         runtime=make_runtime(provider)))
     return json.dumps(result["shard"]["idm_design"], ensure_ascii=False)
 
 
-def golden_shard(chapter_index: int) -> IdmShardDesignV1:
-    return IdmShardDesignV1.model_validate_json(_shard_json(chapter_index))
+def golden_shard(chapter_index: int, *, faq_floor: bool = False) -> IdmShardDesignV1:
+    return IdmShardDesignV1.model_validate_json(_shard_json(chapter_index, faq_floor))
 
 
 def rehash_contract(contract: dict[str, Any]) -> dict[str, Any]:

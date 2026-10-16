@@ -17,7 +17,7 @@ from typing import Any, Final
 
 from pydantic import ValidationError
 
-from app.idm.artifacts import ROW_LABEL_ANY_RE
+from app.idm.artifacts import ROW_LABEL_ANY_RE, plain_row_refs
 from app.idm.contracts import (
     IdmLessonDesignV1,
     IdmLessonPlanV1,
@@ -29,7 +29,7 @@ from app.idm.contracts import (
     StageOrigin,
     design_hash_of,
 )
-from app.idm.faq_plan import FAQ_DROPPED_CODE, FAQ_PLANNED_CODE, gate_and_plan_faq
+from app.idm.faq_plan import FAQ_ADDED_CODE, FAQ_DROPPED_CODE, FAQ_PLANNED_CODE, gate_and_plan_faq
 from app.idm.fidelity import TEACHING_SUPPORT_CODE, module_fidelity_rules, plan_teaching_supports, purpose_mode
 from app.idm.framework import framework_promise, unit_framework_brief, unit_framework_detail
 from app.idm.limits import answer_limits
@@ -307,7 +307,8 @@ def normalize_lesson(
                         "context_input": single_line(practice.context_input, 300),
                         "learner_action": single_line(practice.learner_action, 200),
                         "result": single_line(practice.result, 200),
-                        "hold_question": single_line(practice.hold_question, 400) if practice.hold_question else None,
+                        "hold_question": single_line(plain_row_refs(practice.hold_question), 400)
+                        if practice.hold_question else None,
                         "feedback_focus": clean_feedback(practice.feedback_focus),
                     }
                 )
@@ -750,7 +751,7 @@ async def run_idm_module_design(
     # QLT-5 D: an FAQ only where its unit has something to clarify, and a plan for each of its items.
     faq = gate_and_plan_faq(final, scope)
     final = faq.lessons
-    for code, count in ((FAQ_DROPPED_CODE, faq.dropped), (FAQ_PLANNED_CODE, faq.planned)):
+    for code, count in ((FAQ_DROPPED_CODE, faq.dropped), (FAQ_PLANNED_CODE, faq.planned), (FAQ_ADDED_CODE, faq.added)):
         if count:
             runtime.adjustments[code] += count
     final, attached = attach_framework_items(final, scope)

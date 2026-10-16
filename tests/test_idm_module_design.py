@@ -725,7 +725,8 @@ class RunModuleDesignTests(unittest.IsolatedAsyncioTestCase):
                 self.assertIn("Chưa có bài luyện tập", shard["lessons"][1]["learning_activities"][0])
             else:
                 self.assertIsNone(practice["hold_question"])
-                self.assertEqual(types, [("html", None), ("problem", practice["practice_id"])])
+                # QLT-8: without a held practice the floor gives the lesson's question unit an FAQ.
+                self.assertEqual(types, [("html", None), ("problem", practice["practice_id"]), ("la_faq", None)])
                 self.assertEqual(shard["assessment_obligations"], [])
                 self.assertEqual(shard["lessons"][1]["learning_activities"], [practice["sentence"]])
             ChapterBlueprintShardV2.model_validate({k: v for k, v in shard.items() if k != "idm_design"})
@@ -767,8 +768,9 @@ class RunModuleDesignTests(unittest.IsolatedAsyncioTestCase):
         lesson = shard["idm_design"]["lessons"][0]
         self.assertEqual(shard["idm_design"]["stage_origin"], "partial_fallback")
         self.assertFalse(lesson["practice_tasks"][0]["hold"])
+        # QLT-8: the module's only FAQ is the one the floor adds after the worksheet's question.
         self.assertEqual([(c["type"], c["role"]) for c in lesson["units"][-1]["components"]],
-                         [("html", "practice"), ("problem", "practice")])
+                         [("html", "practice"), ("problem", "practice"), ("la_faq", "clarify")])
         self.assertEqual(shard["assessment_obligations"], [])
         self.assertEqual(shard["lessons"][0]["learning_activities"], [lesson["practice_tasks"][0]["sentence"]])
         ChapterBlueprintShardV2.model_validate({k: v for k, v in shard.items() if k != "idm_design"})

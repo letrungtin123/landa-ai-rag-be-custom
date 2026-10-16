@@ -21,6 +21,7 @@ from typing import Any, Final, Protocol
 
 from pydantic import BaseModel, ValidationError
 
+from app.idm.acronyms import KNOWN_ABBREVIATIONS, AcronymGuide, abbreviations, explained, learner_texts, with_expansion
 from app.idm.answer_checks import contested_option, fact_table_rows, unit_teaching
 from app.idm.artifacts import clean_question, clean_semantic
 from app.idm.budget import judge_repair_fits, repair_thinking_for, writer_thinking
@@ -65,9 +66,11 @@ from app.idm.html_rules import (
 from app.idm.mcq import (
     ANSWER_LENGTH_CUE_CODE,
     OPTION_LETTERS,
+    QUESTION_INCOMPLETE_CODE,
     normalize_single_choice,
     option_length_stats,
     practice_key_shift,
+    question_complete,
     question_ordinal,
 )
 from app.idm.node_acceptance import (
@@ -112,6 +115,13 @@ from app.idm.qa import (
     FAQ_TITLE_MISMATCH_CODE,
     FRAMEWORK_INCOMPLETE_CODE,
     FRAMEWORK_LIST_INSERTED_CODE,
+    REVIEW_REASON_EVIDENCE,
+    REVIEW_REASON_FALLBACK,
+    REVIEW_REASON_JUDGE,
+    REVIEW_REASON_KEPT_SLOTS,
+    REVIEW_REASON_SCENARIO,
+    REVIEW_REASON_SERVER_EDIT,
+    REVIEW_REASON_STEP_INCOMPLETE,
     SOURCE_ARTIFACT_CODE,
     WORKSHEET_INCOMPLETE_CODE,
     JudgeMode,
@@ -183,10 +193,11 @@ _REVIEW_ONLY_CODES: Final = frozenset({*FIDELITY_CODES, *FAQ_VALUE_CODES})
 # Findings a deterministic step settles when the repair does not (a list inserted, an FAQ item dropped, a callout
 # turned into prose, a review note): their repair alone is a targeted one, a scoped rewrite at low thinking. QC run
 # ab8d67e1 (R3): two leak repairs at medium thinking were cut by the unit deadline.
+# QLT-8: a question cut before it asks anything is one targeted repair too (the whole stem is rewritten).
 _TARGETED_REPAIR_CODES: Final = frozenset({FRAMEWORK_INCOMPLETE_CODE, ANSWER_LENGTH_CUE_CODE, ANSWER_LEAK_CODE,
                                            ANSWER_CONTESTED_CODE, FAQ_RESTATES_HTML_CODE, FAQ_TITLE_MISMATCH_CODE,
-                                           CALLOUT_UNGROUNDED_CODE, SOURCE_ARTIFACT_CODE, *FIDELITY_CODES,
-                                           *FAQ_VALUE_CODES})
+                                           CALLOUT_UNGROUNDED_CODE, SOURCE_ARTIFACT_CODE, QUESTION_INCOMPLETE_CODE,
+                                           *FIDELITY_CODES, *FAQ_VALUE_CODES})
 # A non-targeted repair that would not finish before the unit deadline is not started (R3).
 REPAIR_SKIPPED_CODE: Final = "IDM_W5_REPAIR_SKIPPED_BUDGET"
 # FAQ findings settled by dropping the items concerned while the slot keeps two items.
@@ -425,6 +436,9 @@ class IdmUnitWriter:
                  *(item.fact_text for item in brief.lesson_context_facts)]
         self.fact_rows = fact_table_rows(given)
         self.titles = TitleCaser.from_texts([*given, *plan_texts])
+        # QLT-8: the full forms the facts give ("SPD (Standard Product Dev)") and the server's short list.
+        self.acronyms = AcronymGuide.build(given, runtime.locale)
+        self.acronyms_explained = 0
         # A unit or html slot title that names "N <items>" promises an overview of all N items (QC 364564, N5). The
         # items come from the unit's facts or, for an orientation unit whose blocks only introduce the framework,
         # from the server-written support item W4 attached with the names of every item (QC run 8de1c76b, Q3).
@@ -1068,6 +1082,73 @@ class IdmUnitWriter:
             self.failure_codes.append(error.code)
         return draft, False
 
+    def keep_whole_questions(self, before: _Draft, after: _Draft) -> _Draft:
+        """A question a repair cut short gets its pre-repair version back (QLT-8, run 0a11aa9e c1.l2.u4: the leak
+        repair ended the stem at "… với các tiêu chí của 5 trục chuyển dịch" and the cut stem reached the course); the
+        finding that started the repair is then settled as before (review note or fallback)."""
+
+        old = before.unit.get("components", [])
+        new = list(after.unit.get("components", []))
+        restored = 0
+        for index, component in enumerate(new):
+            previous = old[index] if index < len(old) else None
+            if (isinstance(component, dict) and component.get("type") == "problem" and isinstance(previous, dict)
+                    and question_complete(previous.get("question"))
+                    and not question_complete(component.get("question"))):
+                new[index] = previous
+                restored += 1
+        if not restored:
+            return after
+        self.runtime.adjustments["w5_cut_question_reverted"] += restored
+        return _Draft({**after.unit, "components": new}, list(after.fallback_slots), after.repair_applied,
+                      list(after.review_slots), dict(after.reasons))
+
+    def explain_acronyms(self, draft: _Draft) -> tuple[_Draft, list[str]]:
+        """QLT-8: the full form in brackets at the first use of each abbreviation in the unit's provider html, when the
+        facts or the server's short list give it and the slot keeps every rule it met; and the abbreviations nobody
+        explains, for the author note (``app.idm.acronyms``)."""
+
+        components = list(draft.unit.get("components", []))
+        texts = [text for component in components if isinstance(component, dict)
+                 for text in learner_texts(component)]
+        unexplained: list[str] = []
+        for token in abbreviations(texts):
+            full = self.acronyms.expansion(token)
+            if token in KNOWN_ABBREVIATIONS or explained(token, full, texts):
+                continue
+            if full is None:
+                if self.acronyms.worth_noting(token):
+                    unexplained.append(token)
+                continue
+            for index, component in enumerate(components):
+                if (index in draft.fallback_slots or not isinstance(component, dict)
+                        or component.get("type") != "html"):
+                    continue
+                expanded = with_expansion(component, token, full)
+                if expanded is None:
+                    continue
+                candidate = _Draft({**draft.unit, "components": [*components[:index], expanded,
+                                                                 *components[index + 1:]]},
+                                   list(draft.fallback_slots), draft.repair_applied, list(draft.review_slots),
+                                   dict(draft.reasons))
+                if not self.html_violations(expanded) and self.keeps_findings(draft, candidate, index):
+                    components[index] = expanded
+                    draft = candidate
+                    self.acronyms_explained += 1
+                    self.runtime.adjustments["w5_acronym_explained"] += 1
+                break
+        return draft, unexplained
+
+    def keeps_findings(self, before: _Draft, after: _Draft, index: int) -> bool:
+        """``after`` fails no shared, Node or IDM rule of slot ``index`` that ``before`` passed."""
+
+        old_finding, old_idm = self.problems(before)
+        new_finding, new_idm = self.problems(after)
+        if new_finding is not None and (old_finding is None or (new_finding.code, new_finding.path)
+                                        != (old_finding.code, old_finding.path)):
+            return False
+        return {code for code, slot in new_idm if slot == index} <= {code for code, slot in old_idm if slot == index}
+
     async def settle(self, draft: _Draft) -> _Draft | None:
         """Repair once, then replace failing slots with the source-locked fallback.
 
@@ -1121,6 +1202,8 @@ class IdmUnitWriter:
         # repairs started at medium with ~36 s left and were cut by the 120 s unit deadline).
         targeted = finding is None and {code for code, _index in issues} <= _TARGETED_REPAIR_CODES
         draft, repaired = await self.budgeted_repair(draft, issues, locations, targeted=targeted)
+        if repaired:
+            draft = self.keep_whole_questions(original, draft)
         if repaired and notes_only and any(self.problems(draft)):
             self.runtime.adjustments["w5_note_repair_reverted"] += 1
             draft = original
@@ -1257,6 +1340,9 @@ async def run_idm_unit(
                     draft, judge = await _judge_and_repair(writer, draft, deps.judge_mode)
             except TimeoutError:
                 judge = JudgeOutcome("skipped_budget")
+    unexplained_acronyms: list[str] = []
+    if draft is not None:
+        draft, unexplained_acronyms = writer.explain_acronyms(draft)
     if draft is not None and (rejected := writer.node_acceptance(draft)):
         # Unreachable while settle() applies the same rules; never hand Node a unit it rejects.
         _log_node_rejection(writer, "final", rejected)
@@ -1277,11 +1363,17 @@ async def run_idm_unit(
     # repair or judge call (reserved upper-bound accounting) is a reviewable structured draft.
     provider_lane = usage_source == "provider" and not whole_fallback and not draft.fallback_slots
     # A callout turned into a paragraph still states what the facts do not (N9): the SME confirms it.
-    reviewable = (not provider_lane or bool(draft.review_slots) or writer.callouts_converted > 0
-                  or writer.framework_inserted > 0
-                  or deps.evidence_review_required
-                  or blocking_count(judge.findings) > 0
-                  or (ai_drafted and _q5(judge) != "pass"))
+    # QLT-8: each reason is named in the note (QC run 0a11aa9e: 3 units marked for review without one).
+    review_reasons = [reason for reason, applies in (
+        (REVIEW_REASON_FALLBACK, not whole_fallback and bool(draft.fallback_slots)),
+        (REVIEW_REASON_STEP_INCOMPLETE, not whole_fallback and usage_source != "provider"),
+        (REVIEW_REASON_KEPT_SLOTS, bool(draft.review_slots)),
+        (REVIEW_REASON_SERVER_EDIT, writer.callouts_converted > 0 or writer.framework_inserted > 0),
+        (REVIEW_REASON_EVIDENCE, deps.evidence_review_required),
+        (REVIEW_REASON_JUDGE, blocking_count(judge.findings) > 0),
+        (REVIEW_REASON_SCENARIO, ai_drafted and _q5(judge) != "pass"),
+    ) if applies]
+    reviewable = not provider_lane or bool(review_reasons)
     # N8: "still warns" is recomputed on the returned unit; codes settled on the way are listed apart.
     remaining = [] if whole_fallback else final_unit_findings(draft.unit, brief, writer.owned_text, writer.evidence,
                                                               draft.fallback_slots, framework=writer.framework,
@@ -1304,7 +1396,9 @@ async def run_idm_unit(
         faq_items_restated=writer.faq_items_restated, callouts_to_prose=writer.callouts_converted,
         framework_list_inserted=writer.framework_inserted, worksheet_compacted=writer.worksheet_compacted,
         drafted_examples=drafted, faq_items_copied=writer.faq_items_copied, faq_items_recall=writer.faq_items_recall,
-        faq_inferred=inferred, faq_items_open=writer.faq_items_open)
+        faq_inferred=inferred, faq_items_open=writer.faq_items_open,
+        review_reasons=review_reasons if reviewable and not whole_fallback else (),
+        unexplained_acronyms=unexplained_acronyms)
     quality = build_unit_quality(mode=deps.judge_mode, judge=judge, repair_applied=draft.repair_applied,
                                  deterministic_codes=[*writer.codes, *(item.code for item in remaining)],
                                  author_note=note)
@@ -1322,6 +1416,8 @@ async def run_idm_unit(
         "faq_items_open": writer.faq_items_open,
         "faq": {} if whole_fallback else writer.faq.metrics(components),
         "callouts_to_prose": writer.callouts_converted, "framework_list_inserted": writer.framework_inserted,
+        "acronyms_explained": writer.acronyms_explained, "acronyms_unexplained": len(unexplained_acronyms),
+        "review_reasons": review_reasons if reviewable else [],
         "slot_reasons": {str(index): codes for index, codes in sorted(draft.reasons.items())},
         "node_acceptance": writer.acceptance_seen[:_MAX_LOGGED_DETAILS],
         "fidelity": {"mode": writer.mode} if whole_fallback else writer.fidelity.metrics(components),

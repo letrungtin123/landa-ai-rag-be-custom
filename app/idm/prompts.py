@@ -508,13 +508,17 @@ Writing rules (learner-facing, {locale_name(locale)}):
   Must Do. Teach what the practice needs (detail_level).
 - Context building stays under 20% of the unit text.
 - Practice slots of type problem, la_sortable or la_crossword contain context, task, the input the learner works
-  with, exactly one correct answer, and feedback that teaches. Single-choice: 3-4 options; each distractor is a
+  with, exactly one correct answer, and feedback that teaches. Single-choice: 4 options (3 only when the criterion
+  leaves just two plausible mistakes); each distractor is a
   plausible near-miss a learner of TARGET_AUDIENCE could choose, wrong by the stated criterion: a common mistake,
   the old practice the facts reject, a criterion only half met or a step in the wrong order (never an obviously wrong,
   extreme or absurd option); no "all/none of the above", correct option not always first, every option of comparable
-  length and detail (the correct one never the longest by more than a few words), and the correct option never
-  reuses the wording of the example, quotation, worked example or template shown before the question (it applies
-  the criterion to the question's own case, which is not the worked example's case); the
+  length and detail (the correct one is not the longest option: at least one distractor is as long or longer), and the
+  correct option never reuses the wording of the example, quotation, worked example or template shown before the
+  question, nor strings together the items of a list or table shown before it (it applies the criterion to the
+  question's own case); the question's case is not the worked example's case: other facts decide it and its answer
+  is not the worked example's answer. The question field holds the whole case and ends with the question sentence
+  itself ("…?"); the
   explanation states the criterion and why EACH option is right or wrong ("A - ...; B - ...; C - ...", every
   option named by its letter); each reason must agree with that option's own text and with the answer key
   (never call a distractor that meets the criterion wrong, or the reverse). Never reveal the answer before the
@@ -528,8 +532,10 @@ Writing rules (learner-facing, {locale_name(locale)}):
   fill, value = the guiding question or what a good entry contains) or as "steps"; a section with a short worked
   example of one or two filled entries (illustrative when the practice is ai_drafted; it never adds a rule); and a
   final "Tự kiểm tra" / "Self-check" section with one "bullets" block whose items are the criteria, each taken
-  only from the practice criteria facts. Do not reveal the answer of the problem slot that follows it; that problem
-  asks the learner to judge a sample entry against the same criteria (exactly one option meets them). A worksheet
+  only from the practice criteria facts. The worked example meets every self-check item of its own worksheet (when an
+  item asks for a measurable KPI, the example's KPI has a number). Do not reveal the answer of the problem slot that
+  follows it; that problem asks the learner to judge a sample entry against the same criteria (exactly one option
+  meets them). A worksheet
   has the same length budget as any html slot, so keep it lean: one template row per field (its value one guiding
   question of at most 15 words), a worked example of at most two filled entries and at most 6 self-check items;
   a worksheet still over the budget loses its worked example.
@@ -551,6 +557,12 @@ Writing rules (learner-facing, {locale_name(locale)}):
 - Use drafted scenarios/examples only where the brief marks them ai_drafted (a practice with scenario_origin
   ai_drafted, or a slot with "examples": "ai_drafted"); they never add rules, numbers or names, and their main person
   has the learner's own role (TARGET_AUDIENCE), never one of another level (no team lead in a course for executives).
+  Vary how examples and cases open (not every one "Một CEO …": "Giả sử bạn …", "Tại một doanh nghiệp …", "Ban điều
+  hành của …").
+- The course is self-paced e-learning: no classroom instructions (no "trước khi rời lớp/học phần", "thảo luận nhóm
+  tại lớp", "giảng viên sẽ …").
+- An abbreviation the learner may not know gets its full form in brackets the first time this unit uses it, only as
+  SOURCE_FACTS write it; never invent a full form.
 - LESSON_CONTEXT_FACTS are read-only background from earlier units; use them for consistency and for the
   correctness criteria, do not re-teach them.
 - No file names, page or slide numbers, citations, internal IDs, "theo tài liệu nguồn", emails or URLs; never a
@@ -739,16 +751,20 @@ UNIT_RULE_TEXT: Final[dict[str, str]] = {
                                 "level of plausible detail, each still wrong by the criterion), keep the answer key, "
                                 "and keep the explanation's reason for every option",
     "IDM_W5_ANSWER_LEAK": "an option of this question copies or restates the example, worked example, quotation, "
-                          "list item, table row or template shown before it (or the question's case copies the "
-                          "example that names the answer): rewrite THAT option (and its part of the explanation) in "
-                          "new words or about a different case so the learner must apply the criterion, and give "
-                          "every distractor the same footing in what was taught; keep the earlier html as it is",
+                          "list item, table row or template shown before it, or strings several items of one list, "
+                          "table or worked example together (or the question's case copies the example that names "
+                          "the answer): rewrite THAT option (and its part of the explanation) in new words or about a "
+                          "different case so the learner must apply the criterion, and give every distractor the same "
+                          "footing in what was taught; keep the earlier html as it is",
     "IDM_W5_ANSWER_CONTESTED": "the question's case also meets the criteria this unit's html table, list, FAQ "
                                "answers or the table rows of SOURCE_FACTS give for another option (for example a code "
                                "or condition only that option's row states), so more than one option is defensible: "
-                               "change the case (or the key) so it meets the criteria of exactly one option and "
-                               "contradicts no FAQ answer of this unit; keep the explanation's reason for every "
-                               "option",
+                               "rewrite the case itself (its facts, not only its wording) so it meets the criteria of "
+                               "exactly one option and contradicts no FAQ answer of this unit, keep the whole question "
+                               "ending with its question sentence, and keep the explanation's reason for every option",
+    "IDM_W5_QUESTION_INCOMPLETE": "the question stops before it asks anything: write the whole case and end the "
+                                  "question with the question sentence itself (ending with \"?\"); keep the options, "
+                                  "the answer key and the explanation consistent with it",
     "IDM_W5_VERBATIM_COPY": "rewrite for the learner instead of copying the source text",
     # QLT-5 C: the content mode checks of a teaching html slot (``app.idm.fidelity_checks``).
     "IDM_W5_SENTENCE_COPY": "too many sentences repeat the facts word for word: rewrite the listed sentences in your "
@@ -774,11 +790,11 @@ UNIT_RULE_TEXT: Final[dict[str, str]] = {
                                 "LESSON_CONTEXT_FACTS answer",
     # QLT-5 D: the FAQ checks (``app.idm.faq_checks``); an answer explains, it is never asked to restate.
     "IDM_W5_FAQ_RESTATES_SOURCE": "the listed answers repeat a source sentence almost word for word: rewrite each in "
-                                  "2-4 sentences of your own that explain why, what happens if, or what goes wrong, "
-                                  "based on its facts; add no number, rule or name",
+                                  "2-3 sentences (at most about 60 words) of your own that explain why, what happens "
+                                  "if, or what goes wrong, based on its facts; add no number, rule or name",
     "IDM_W5_FAQ_TYPE_MIX": "the questions mostly ask for facts again: keep at most one recall question and make at "
                            "least one a why, what-if or common-mistake question on the planned facts, each answered in "
-                           "2-4 explaining sentences",
+                           "2-3 explaining sentences (at most about 60 words)",
     "IDM_W5_FAQ_NEW_FACT": "the listed items state a number, date, amount or a person, company or product name their "
                            "facts do not state: remove it or use what the facts say; explaining in your own words "
                            "stays allowed",
@@ -800,7 +816,8 @@ UNIT_RULE_TEXT: Final[dict[str, str]] = {
                                    "criteria taken from the facts",
     "IDM_W6_Q1": "a learner can do the practice using only what this lesson taught",
     "IDM_W6_Q2": "rewrite for the learner; do not paste the source (exact rules and definitions may stay)",
-    "IDM_W6_Q3": "context, task, input, one correct answer and feedback are present and consistent",
+    "IDM_W6_Q3": "context, task, input, one correct answer and feedback are present and consistent; the question ends "
+                 "with its question sentence; a worksheet's worked example meets every one of its self-check items",
     "IDM_W6_Q4": "feedback names the criterion and explains why each option is right or wrong; the explanation "
                  "of each option agrees with that option's text and with the answer key",
     "IDM_W6_Q5": "the correct answer follows from the source facts; no invented rule, threshold or exception",
@@ -886,9 +903,11 @@ another unit of the lesson is never a finding here.
  Q1_support_sufficient: a learner could do this unit's practice using only what this lesson taught (a unit
    without a practice slot: its teaching achieves PLAN.purpose).
  Q2_not_copied: rewritten for the learner, not pasted source (exact rules/definitions are allowed).
- Q3_practice_complete: context, task, input, one correct answer and feedback are present and consistent. A
-   worksheet (html slot with role practice) has no single answer: check its task, template, worked example and
-   self-check criteria, and the problem that checks it.
+ Q3_practice_complete: context, task, input, one correct answer and feedback are present and consistent; a
+   question whose text stops before it asks anything is critical. A worksheet (html slot with role practice) has no
+   single answer: check its task, template, worked example and self-check criteria, and the problem that checks it;
+   a worked example that breaks one of its own worksheet's self-check criteria (a KPI without a number when the
+   criteria ask for a measurable one) is major.
  Q4_feedback_teaches: feedback names the criterion and explains why each option is right or wrong; the
    explanation of EACH option agrees with that option's own text and with the answer key (an explanation that
    calls a correct-by-the-criterion option wrong, or a wrong option right, is major).
@@ -896,7 +915,8 @@ another unit of the lesson is never a finding here.
    a quotation or callout states only what SOURCE_FACTS say. Exactly one option is correct by the criteria this
    unit teaches: a question whose case also meets the criteria the unit's tables, lists or FAQ answers give for
    another option, or whose key contradicts an FAQ answer of this unit, is major; so is a correct option that
-   restates the example, quotation or template shown right before the question.
+   restates the example, quotation or template shown right before the question, or strings together the items of a
+   list shown before it, and a case that repeats the worked example so its answer is the example's answer.
  Q6_alignment: the practice matches the Must Do action type and Bloom level in the plan.
  Q3, Q4 and Q6 grade this unit's own practice: when PLAN.has_practice_slot is false return not_applicable for
    them. not_applicable is never allowed for any other criterion except Q11, Q12 and Q13 as stated below.

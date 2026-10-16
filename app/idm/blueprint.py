@@ -7,6 +7,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any, Final
 
+from app.idm.artifacts import plain_row_refs
 from app.idm.content_map import FactIndex
 from app.idm.contracts import (
     Classification,
@@ -165,7 +166,7 @@ def _normalize_row(row: IdmBlueprintRowV1) -> IdmBlueprintRowV1:
         "detail_level": single_line(row.detail_level, 300),
         "rationale": single_line(row.rationale, 300),
         "hold_reason": single_line(row.hold_reason, 300) if row.hold_reason else None,
-        "sme_question": single_line(row.sme_question, 400) if row.sme_question else None,
+        "sme_question": single_line(plain_row_refs(row.sme_question), 400) if row.sme_question else None,
         "must_do_ids": list(dict.fromkeys(row.must_do_ids)),
     })
 

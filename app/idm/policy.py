@@ -260,6 +260,25 @@ IDM_ANSWER_CONTESTED_MIN_PAIRS: Final = 3
 # are too short to tell.
 IDM_ANSWER_EXAMPLE_MIN_SHARE: Final = 0.6
 IDM_ANSWER_EXAMPLE_MAX_DISTRACTOR_SHARE: Final = 0.35
+# QLT-8 (QC run 0a11aa9e): two keys gave themselves away by joining SEVERAL items the unit had just shown, which the
+# one-passage measures above never see. c1.l1.u1's key "… chất lượng đỉnh cao, uy tín tuyệt đối, giá trị gia tăng lớn,
+# đổi mới liên tục và chuẩn mực toàn cầu" strings the heads of the five-item list together: 0.72 of its content-word
+# pairs come from that one list block, the best distractor 0.21. c2.l5.u1's key "… ký hợp đồng cố vấn chuyên gia bên
+# ngoài, thuê nền tảng AI/Cloud sẵn có và bắt tay với đối tác phân phối" joins three rows of the worksheet's worked
+# example: 0.38 of its pairs come from the example's passages, the best distractor 0.16. Measured on the 100 questions
+# of 12 runs (2026-10-09 .. 2026-10-15): with the list or table read whole, a key must hold at least the first share,
+# beat every distractor by the margin and touch at least two of the block's items (a key that restates ONE item is
+# the one-passage measure's case; a criterion named by a key of an application question is one item); with the worked
+# example read whole, the second share and margin over at least two of its passages. Keys that open with a taught
+# label apply its rule by design and are not measured. In the corpus only the two keys above and one more pass the
+# bounds: fae66524 c4.l1.u2, a worksheet check whose key copies three lines of the template (0.60 against 0.19).
+IDM_ANSWER_LIST_MIN_SHARE: Final = 0.6
+IDM_ANSWER_LIST_MIN_MARGIN: Final = 0.35
+IDM_ANSWER_EXAMPLE_BAG_MIN_SHARE: Final = 0.35
+IDM_ANSWER_EXAMPLE_BAG_MIN_MARGIN: Final = 0.2
+# Items of the block (or example passages) the key must draw on, and the content-word pairs a key needs to be measured.
+IDM_ANSWER_JOINED_MIN_ITEMS: Final = 2
+IDM_ANSWER_JOINED_MIN_KEY_PAIRS: Final = 4
 
 # --- FAQ value and callout grounding (QC course 364564, N9/N11) --------------------------------
 # 3 of 5 FAQs only repeated the table taught just above them. An FAQ answer restates the html before
@@ -307,6 +326,13 @@ IDM_FAQ_SOURCE_COPY_NGRAM_SHARE: Final = 0.6
 # reason for an FAQ on its own, and an FAQ whose only reason is a W1 issue or gap (a confusion the AI infers) is kept
 # in at most this many units per lesson.
 IDM_FAQ_WEAK_SIGNAL_UNITS_PER_LESSON: Final = 1
+# QLT-8 (QC run 0a11aa9e: an FAQ in 2 of 23 units, the QC target 25-40%): the W4 designer now places very few FAQs, so
+# after the gate the server adds one to the learning units with the most to clarify until at least this share of a
+# module's learning units has one: a strong signal first, then a W1 issue or gap, then the misconceptions behind the
+# wrong options of the unit's own question; a unit whose lesson Must Do is a decision first; at most one added FAQ per
+# lesson, lessons without an FAQ first. On the run's design this gives 6 of 23 units (26%).
+IDM_FAQ_MIN_UNIT_SHARE: Final = 0.25
+IDM_FAQ_FLOOR_PER_LESSON: Final = 1
 # An FAQ question that asks an open SME question again (c1.l3.u1: "Doanh nghiệp có cần triển khai đồng loạt toàn bộ
 # 9 công cụ di sản theo đúng thứ tự PDCA không?" against the open "Thứ tự triển khai 9 công cụ này có bắt buộc tuần
 # tự theo PDCA không …?": 8 of its 15 content words): at least this many shared content words, and at least this

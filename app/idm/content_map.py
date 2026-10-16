@@ -10,6 +10,7 @@ from collections.abc import Collection, Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any, Final, Literal
 
+from app.idm.artifacts import plain_row_refs
 from app.idm.author_brief import author_audience
 from app.idm.contracts import (
     IdmAudienceV1,
@@ -213,12 +214,13 @@ def normalize_w1_section(
             "name": single_line(block.name, 180),
             "summary": single_line(block.summary, 300),
             "fact_keys": index.sort(block.fact_keys),
+            # QLT-8: author text names a table row "dòng N", never by the PDF reader's "Row N" label.
             "issues": [issue.model_copy(update={
-                "note": single_line(issue.note, 500),
+                "note": single_line(plain_row_refs(issue.note), 500),
                 "fact_keys": [key for key in issue.fact_keys if key in allowed],
             }) for issue in block.issues],
-            "gaps": [gap.model_copy(update={"note": single_line(gap.note, 500)}) for gap in block.gaps],
-            "sme_questions": [single_line(question, 400) for question in block.sme_questions],
+            "gaps": [gap.model_copy(update={"note": single_line(plain_row_refs(gap.note), 500)}) for gap in block.gaps],
+            "sme_questions": [single_line(plain_row_refs(question), 400) for question in block.sme_questions],
         }))
     blocks.sort(key=lambda block: index.order[block.fact_keys[0]])
     return blocks, list(response.noise)
@@ -654,7 +656,7 @@ def apply_w1_reduce(
                 "issues": [*block.issues, IdmIssueV1(type="conflict", note=single_line(conflict.note, 500),
                                                      fact_keys=[])][:_MAX_BLOCK_ISSUES],
                 "sme_questions": list(dict.fromkeys(
-                    [*block.sme_questions, single_line(conflict.sme_question, 400)]))[:_MAX_BLOCK_SME],
+                    [*block.sme_questions, single_line(plain_row_refs(conflict.sme_question), 400)]))[:_MAX_BLOCK_SME],
             })
     links: dict[tuple[str, str], IdmBlockLoLinkV1] = {}
     rank = {"direct": 0, "supporting": 1, "context": 2, "unknown": 3, "unrelated": 4}

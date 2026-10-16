@@ -13,13 +13,18 @@ anything to clarify. After the W4 answer is accepted the server decides, per uni
 * plan: a kept la_faq gets up to three items, each with a question type (why, what if, common mistake first; how to
   apply or comparison only to reach two items), the facts its answer is built on and the origin of its point (a
   mistake or condition the source states, the misconception behind a question's wrong option, or a confusion inferred
-  from the facts). The W5 writer follows the plan and the W5 checks ground each answer in its anchor facts.
+  from the facts). The W5 writer follows the plan and the W5 checks ground each answer in its anchor facts;
+* floor (QLT-8, QC run 0a11aa9e: an FAQ in 2 of 23 units, the W4 designer had placed only 3): when fewer than
+  ``IDM_FAQ_MIN_UNIT_SHARE`` of a module's learning units keep an FAQ, the server adds one to the units with the most to
+  clarify (strong signal, then W1 issue or gap, then the misconceptions behind the wrong options of the unit's own
+  question; a decision Must Do first), at most ``IDM_FAQ_FLOOR_PER_LESSON`` per lesson, lessons without an FAQ first.
 
 Everything here is deterministic and server-owned; the W4 provider never writes the plan.
 """
 
 from __future__ import annotations
 
+import math
 from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Final, Literal
@@ -40,18 +45,28 @@ from app.idm.policy import (
     IDM_COMPONENT_MAX_BLOCKS,
     IDM_CRITERIA_LABEL_MAX_WORDS,
     IDM_FAQ_ANCHOR_MAX_FACTS,
+    IDM_FAQ_FLOOR_PER_LESSON,
     IDM_FAQ_MIN_ITEMS,
+    IDM_FAQ_MIN_UNIT_SHARE,
     IDM_FAQ_PLAN_MAX_ITEMS,
     IDM_FAQ_WEAK_SIGNAL_UNITS_PER_LESSON,
 )
 from app.idm.signals import states_rule
 from app.idm.text import sanitize_author_text
 from app.instructional_quality import source_clarification_signals
+from app.lesson_author_orchestration_v2 import ArchitectureComponentAuthorReviewV2
 
 FAQ_DROPPED_CODE: Final = "IDM_W4_AUTOFIX_FAQ_DROPPED"
 FAQ_PLANNED_CODE: Final = "IDM_W4_FAQ_ITEMS_PLANNED"
+FAQ_ADDED_CODE: Final = "IDM_W4_FAQ_FLOOR_ADDED"
 FAQ_TYPE: Final = FAQ_COMPONENT_TYPE
 _HTML: Final = "html"
+_PROBLEM: Final = "problem"
+_JOB_AID: Final = "job_aid"
+_MAX_COMPONENTS: Final = 4
+_TITLE_MAX_CHARS: Final = 180
+# Floor ranks: a strong signal, a W1 issue or gap, the wrong options of the unit's own question.
+_FLOOR_RANK: Final[dict[str, int]] = {"strong": 0, "weak": 1, "material": 2}
 # The question types that clarify; an FAQ needs at least one of them.
 DEEP_TYPES: Final = FAQ_DEEP_TYPES
 # W1 findings that mark a likely confusion of the learner (not a quality note about the source such as a duplicate or
@@ -230,6 +245,8 @@ class FaqPlanResult:
     lessons: list[IdmLessonDesignV1]
     dropped: int
     planned: int
+    # QLT-8: FAQs the floor added.
+    added: int = 0
 
 
 def _with_plan(component: IdmComponentDesignV1, items: list[IdmFaqItemPlanV1]) -> IdmComponentDesignV1:
@@ -280,10 +297,115 @@ def gate_and_plan_faq(lessons: Sequence[IdmLessonDesignV1], scope: ModuleScope) 
         if left_out:
             notes = sanitize_author_text(f"{notes}\n{_dropped_note(left_out, scope.locale)}", 2000)
         result.append(lesson.model_copy(update={"units": units, "notes": notes}))
-    return FaqPlanResult(result, dropped, planned)
+    floored, added = faq_floor(result, scope)
+    return FaqPlanResult(floored, dropped, planned + added, added)
+
+
+# --- the floor (QLT-8) --------------------------------------------------------------------------------------------
+def _has_faq(unit: IdmUnitDesignV1) -> bool:
+    return any(component.type == FAQ_TYPE for component in unit.components)
+
+
+def floor_signal(evidence: Sequence[FaqCandidate], unit: IdmUnitDesignV1) -> str | None:
+    """What a unit offers an added FAQ: the gate's signal, or the misconceptions behind the wrong options of its own
+    question ("material"); None when it has nothing to clarify."""
+
+    signal = gate_signal(evidence)
+    if signal is not None:
+        return signal
+    has_question = any(component.type == _PROBLEM for component in unit.components)
+    return "material" if has_question and any(item.signal == "material" for item in evidence) else None
+
+
+def _faq_blocks(unit: IdmUnitDesignV1, items: Sequence[IdmFaqItemPlanV1], scope: ModuleScope) -> list[str]:
+    """The unit's blocks that hold the planned anchor facts first, then the others (at most the component bound)."""
+
+    anchors = {key for item in items for key in item.anchor_fact_keys}
+    holding = [block_id for block_id in unit.block_ids if block_id in scope.blocks
+               and anchors & set(scope.blocks[block_id].fact_keys)]
+    rest = [block_id for block_id in unit.block_ids if block_id not in holding]
+    return [*holding, *rest][:IDM_COMPONENT_MAX_BLOCKS]
+
+
+def _added_faq(unit: IdmUnitDesignV1, items: list[IdmFaqItemPlanV1], scope: ModuleScope) -> IdmComponentDesignV1:
+    vi = scope.locale == "vi"
+    title = (f"Hỏi đáp: {unit.title}" if vi else f"FAQ: {unit.title}")[:_TITLE_MAX_CHARS]
+    review = ArchitectureComponentAuthorReviewV2(
+        purpose=("Phần hỏi đáp do hệ thống thêm để làm rõ chỗ người học dễ nhầm hoặc hay thắc mắc sau phần này; mỗi "
+                 "câu bám vào tài liệu." if vi else "FAQ added by the system to clarify what learners are likely to "
+                                                    "confuse or ask after this part; each answer stays on the source."),
+        example_scenario=None, visual_asset=None,
+        user_behavior_navigation=("Người học mở từng câu hỏi để đọc phần giải thích." if vi
+                                  else "The learner opens each question to read the explanation."))
+    return IdmComponentDesignV1(
+        component_index=len(unit.components) + 1, type=FAQ_TYPE, role="clarify", title=title,
+        rationale=("Làm rõ chỗ người học dễ nhầm sau phần này." if vi
+                   else "Clarifies what learners are likely to confuse after this part."),
+        block_ids=_faq_blocks(unit, items, scope), practice_id=None, support_items=[], author_review=review,
+        faq_items=items)
+
+
+def _added_note(titles: Sequence[str], locale: str) -> str:
+    named = ", ".join(f'"{title}"' for title in titles)
+    if locale == "vi":
+        return (f"Đã thêm phần hỏi đáp cho {named} để làm rõ chỗ người học dễ nhầm (lỗi hay gặp, điều kiện, lý do của "
+                "phương án sai trong câu hỏi luyện tập).")
+    return (f"An FAQ was added to {named} to clarify what learners are likely to confuse (common mistakes, conditions, "
+            "why the wrong options of the practice question are wrong).")
+
+
+def faq_floor(lessons: Sequence[IdmLessonDesignV1], scope: ModuleScope) -> tuple[list[IdmLessonDesignV1], int]:
+    """Add an la_faq to the learning units with the most to clarify until ``IDM_FAQ_MIN_UNIT_SHARE`` of the module's
+    learning units have one (QLT-8). A unit takes one only when its type is allowed, it has room for a fourth component
+    and its lesson holds no held practice (an assessment obligation takes the slot after the components)."""
+
+    result = list(lessons)
+    learning = [(lesson_index, unit_index) for lesson_index, lesson in enumerate(result)
+                for unit_index, unit in enumerate(lesson.units) if unit.segment != _JOB_AID]
+    target = math.ceil(IDM_FAQ_MIN_UNIT_SHARE * len(learning))
+    have = sum(_has_faq(result[lesson_index].units[unit_index]) for lesson_index, unit_index in learning)
+    if FAQ_TYPE not in scope.allowed_types or have >= target:
+        return result, 0
+    kinds = {plan.lesson_key: scope.must_do_kind.get(plan.primary_must_do_id or "") for plan in scope.lesson_plans}
+    candidates: list[tuple[tuple[int, int, int, int, int], int, int, list[IdmFaqItemPlanV1]]] = []
+    for lesson_index, unit_index in learning:
+        lesson = result[lesson_index]
+        unit = lesson.units[unit_index]
+        if (_has_faq(unit) or len(unit.components) >= _MAX_COMPONENTS
+                or any(practice.hold for practice in lesson.practice_tasks)):
+            continue
+        evidence = faq_evidence(unit, lesson, scope)
+        signal = floor_signal(evidence, unit)
+        if signal is None:
+            continue
+        items = plan_faq_items(evidence, _fillers(unit, scope))
+        if len(items) < IDM_FAQ_MIN_ITEMS:
+            continue
+        lesson_has_faq = any(_has_faq(other) for other in lesson.units)
+        rank = (int(lesson_has_faq), _FLOOR_RANK[signal], 0 if kinds.get(lesson.lesson_key) == "decide" else 1,
+                lesson_index, unit_index)
+        candidates.append((rank, lesson_index, unit_index, items))
+    added: dict[int, list[str]] = {}
+    for _rank, lesson_index, unit_index, items in sorted(candidates, key=lambda candidate: candidate[0]):
+        if have >= target:
+            break
+        if len(added.get(lesson_index, [])) >= IDM_FAQ_FLOOR_PER_LESSON:
+            continue
+        lesson = result[lesson_index]
+        unit = lesson.units[unit_index]
+        grown = unit.model_copy(update={"components": [*unit.components, _added_faq(unit, items, scope)]})
+        units = [grown if position == unit_index else other for position, other in enumerate(lesson.units)]
+        result[lesson_index] = lesson.model_copy(update={"units": units})
+        added.setdefault(lesson_index, []).append(unit.title)
+        have += 1
+    for lesson_index, titles in added.items():
+        lesson = result[lesson_index]
+        notes = sanitize_author_text(f"{lesson.notes}\n{_added_note(titles, scope.locale)}", 2000)
+        result[lesson_index] = lesson.model_copy(update={"notes": notes})
+    return result, sum(len(titles) for titles in added.values())
 
 
 __all__ = [
-    "DEEP_TYPES", "FAQ_DROPPED_CODE", "FAQ_PLANNED_CODE", "FAQ_TYPE", "FaqCandidate", "FaqPlanResult", "Signal",
-    "faq_evidence", "gate_and_plan_faq", "gate_signal", "plan_faq_items",
+    "DEEP_TYPES", "FAQ_ADDED_CODE", "FAQ_DROPPED_CODE", "FAQ_PLANNED_CODE", "FAQ_TYPE", "FaqCandidate", "FaqPlanResult",
+    "Signal", "faq_evidence", "faq_floor", "floor_signal", "gate_and_plan_faq", "gate_signal", "plan_faq_items",
 ]

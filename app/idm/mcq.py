@@ -341,10 +341,36 @@ def answer_length_cue(component: Mapping[str, Any]) -> bool:
                                   or stats[0] > IDM_MCQ_LENGTH_CUE_LONGEST_RATIO * stats[2])
 
 
+QUESTION_INCOMPLETE_CODE: Final = "IDM_W5_QUESTION_INCOMPLETE"
+# The end of a question: a question mark, or a colon or full stop after an instruction to choose ("Chọn phương án
+# đúng.", "Choose the best option:"), closing quotes and brackets allowed.
+_QUESTION_END_RE: Final = re.compile(r"[?？]\s*[\"'”’)\]]*\s*$")  # noqa: RUF001 - quotes
+_INSTRUCTION_END_RE: Final = re.compile(r"[:.]\s*[\"'”’)\]]*\s*$")  # noqa: RUF001 - quotes
+_INSTRUCTION_RE: Final = re.compile(
+    r"(?<!\w)(?:hãy chọn|chọn|xác định|cho biết|phương án nào|đáp án nào|choose|select|identify|which)(?!\w)",
+    re.IGNORECASE)
+# The instruction sits in the question's last sentence.
+_LAST_SENTENCE_RE: Final = re.compile(r"(?<=[.!?])\s+(?=\S)")
+
+
+def question_complete(question: Any) -> bool:
+    """The question ends with what the learner is asked (QLT-8, run 0a11aa9e c1.l2.u4: a repair cut the stem after
+    "Sau khi đối chiếu hiện trạng trên với các tiêu chí của 5 trục chuyển dịch", leaving a case without a question).
+    99 of the 100 stems of 12 runs end with "?"; an instruction ending with ":" or "." counts too."""
+
+    text = " ".join(str(question or "").split())
+    if not text:
+        return False
+    if _QUESTION_END_RE.search(text):
+        return True
+    last = _LAST_SENTENCE_RE.split(text)[-1]
+    return bool(_INSTRUCTION_END_RE.search(text) and _INSTRUCTION_RE.search(last))
+
+
 __all__ = [
-    "ANSWER_LENGTH_CUE_CODE", "BALANCED_CODE", "LABELS_STRIPPED_CODE", "OPTION_LETTERS", "RELABELLED_CODE",
-    "SHUFFLED_CODE", "answer_length_cue", "balanced_order", "encode_key_letters", "labelled_letters",
-    "normalize_single_choice", "option_length_stats", "option_lengths", "option_order", "practice_key_shift",
-    "question_ordinal",
+    "ANSWER_LENGTH_CUE_CODE", "BALANCED_CODE", "LABELS_STRIPPED_CODE", "OPTION_LETTERS", "QUESTION_INCOMPLETE_CODE",
+    "RELABELLED_CODE", "SHUFFLED_CODE", "answer_length_cue", "balanced_order", "encode_key_letters",
+    "labelled_letters", "normalize_single_choice", "option_length_stats", "option_lengths", "option_order",
+    "practice_key_shift", "question_complete", "question_ordinal",
     "relabel_explanation",
 ]
