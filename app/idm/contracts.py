@@ -436,17 +436,22 @@ class IdmFaqItemPlanV1(IdmModel):
 
 
 def _without_empty_faq_items(data: Any) -> Any:
-    """A slot without an FAQ plan serialises as before QLT-5 D (no ``faq_items`` key), so the hashes of designs and
-    briefs that hold no FAQ plan do not change."""
+    """A slot without an FAQ plan serialises as before QLT-5 D (no ``faq_items`` key), and a slot without a key
+    letter as before QLT-9 (no ``key_letter`` key), so the hashes of designs and briefs that hold neither do not
+    change."""
 
-    if isinstance(data, dict) and not data.get("faq_items"):
-        data.pop("faq_items", None)
+    if isinstance(data, dict):
+        if not data.get("faq_items"):
+            data.pop("faq_items", None)
+        if data.get("key_letter") is None:
+            data.pop("key_letter", None)
     return data
 
 
 # ``faq_items`` (QLT-5 D) is the server's plan of an la_faq slot (``app.idm.faq_plan``): left out of the provider schema
-# (the W4 writer never answers it) and out of the JSON form when empty. A comment, not a docstring: the docstring is
-# the schema description the provider reads.
+# (the W4 writer never answers it) and out of the JSON form when empty. ``key_letter`` (QLT-9) is the server's letter
+# (0 = A) of a single-choice key (``app.idm.mcq.encode_key_letters``), same rules. A comment, not a docstring: the
+# docstring is the schema description the provider reads.
 class IdmComponentDesignV1(IdmModel):
     component_index: int = Field(ge=1, le=4)
     type: IdmComponentType
@@ -458,6 +463,7 @@ class IdmComponentDesignV1(IdmModel):
     support_items: list[IdmSupportItemV1] = Field(default_factory=list, max_length=6)
     author_review: ArchitectureComponentAuthorReviewV2
     faq_items: SkipJsonSchema[list[IdmFaqItemPlanV1]] = Field(default_factory=list, max_length=6)
+    key_letter: SkipJsonSchema[int | None] = Field(default=None, ge=0, le=3)
 
     @model_serializer(mode="wrap")
     def _serialize(self, handler: SerializerFunctionWrapHandler) -> Any:
@@ -512,7 +518,8 @@ class IdmContextFactV1(IdmModel):
 
 
 class IdmBriefComponentV1(IdmModel):
-    """``faq_items``: the W4 plan of an la_faq slot (QLT-5 D); absent for every other slot and in older briefs."""
+    """``faq_items``: the W4 plan of an la_faq slot (QLT-5 D); ``key_letter``: the W4 letter (0 = A) of a problem
+    slot's key (QLT-9). Each is absent for every other slot and in older briefs."""
 
     component_plan_id: ComponentPlanId
     type: IdmComponentType
@@ -524,6 +531,7 @@ class IdmBriefComponentV1(IdmModel):
     owned_fact_keys: list[FactKey] = Field(max_length=32768)
     supporting_fact_keys: list[FactKey] = Field(max_length=32768)
     faq_items: list[IdmFaqItemPlanV1] = Field(default_factory=list, max_length=6)
+    key_letter: int | None = Field(default=None, ge=0, le=3)
 
     @model_serializer(mode="wrap")
     def _serialize(self, handler: SerializerFunctionWrapHandler) -> Any:

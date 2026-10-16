@@ -87,6 +87,8 @@ def build_unit_request(
             # QLT-5 D: the W4 plan of an la_faq slot (only when there is one).
             **({"faq_items": [item.model_dump(mode="json") for item in component.faq_items]}
                if component.faq_items else {}),
+            # QLT-9: the W4 letter of a single-choice key (only when there is one).
+            **({"key_letter": component.key_letter} if component.key_letter is not None else {}),
         } for component, plan in zip(unit.components, plans, strict=True)],
         "lesson_context_facts": [{"fact_key": key, "fact_text": fact_by_key[key].fact_text}
                                  for key in context_keys][:80],

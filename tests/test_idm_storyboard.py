@@ -145,11 +145,15 @@ def served(body: dict[str, Any], writer: dict[str, Any], index: int) -> dict[str
 
 
 def served_ordinal(body: dict[str, Any], index: int) -> int:
-    """The key letter ordinal of a problem slot: its place in the course plus the W4 shift of its practice (Q4)."""
+    """The key letter ordinal of a problem slot: the W4 letter of the slot (QLT-9), else its place in the course plus
+    the W4 shift of its practice (Q4)."""
 
+    slot = body["unit_contract"]["idm_unit_brief"]["components"][index]
+    if slot.get("key_letter") is not None:
+        return int(slot["key_letter"])
     ordinal = question_ordinal(body["unit_contract"]["unit_path"])
     assert ordinal is not None
-    practice = body["unit_contract"]["idm_unit_brief"]["components"][index]["practice"]
+    practice = slot["practice"]
     return ordinal + (practice_key_shift(practice["practice_id"]) if practice else 0)
 
 

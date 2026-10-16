@@ -575,7 +575,7 @@
        ],
        "practice_tasks": [
         {
-         "practice_id": "pt_4",
+         "practice_id": "pt_1",
          "sentence": "Cho một khiếu nại có yếu tố pháp lý, người học quyết định tự xử lý hay escalate để bảo vệ khách hàng và công ty",
          "context_input": "Một tình huống khiếu nại cụ thể",
          "learner_action": "Chọn cách xử lý",
@@ -648,14 +648,15 @@
            "block_ids": [
             "cb_0011"
            ],
-           "practice_id": "pt_4",
+           "practice_id": "pt_1",
            "support_items": [],
            "author_review": {
             "purpose": "Phục vụ practice cho Must Do của mục.",
             "example_scenario": "[AI soạn — cần SME xác nhận] Một tình huống khiếu nại cụ thể",
             "visual_asset": null,
             "user_behavior_navigation": "Đọc, chọn rồi xem phản hồi."
-           }
+           },
+           "key_letter": 2
           },
           {
            "component_index": 2,
@@ -710,7 +711,7 @@
      ],
      "lesson_index_offset": 2,
      "stage_origin": "provider",
-     "design_hash": "39ce5fa32e873a9b6d31b4abd0d5686fabf1da330b077715cdfb01889f3e183c"
+     "design_hash": "5378dda9e44cce4f1d4a79b291ac2df4aa3d192ebd4ee9c0850e8f67e1738f84"
     }
    },
    "usage": {

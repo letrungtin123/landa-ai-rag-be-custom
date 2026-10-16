@@ -1,7 +1,8 @@
 """QLT-9: the fixes found by the QC of run ffaf7318 (8.57/10) and the owner's rule for answer keys.
 
 1. Owner 2026-10-16: the correct options of a course's questions are shuffled, never all B or C and never the A B C D
-   cycle the run had: blocks of four seeded permutations, no letter twice in a row.
+   cycle the run had: blocks of four seeded permutations, no letter twice in a row; W4 gives every single-choice
+   question its letter, knowledge checks included (run c0030787), and the letter reaches the unit in its brief.
 2. A key that rewrites the worked example's rows in other words keeps their words (c3.l2.u2); a key that applies one
    table row's criterion is no joined list, whatever words every row opens with (c3.l1.u1).
 3. An over-long worksheet keeps its worked example as long as it can (3 of 5 lost it).
@@ -23,7 +24,7 @@ from typing import Any
 from app.idm.answer_checks import restates_joined_example, restates_list, unit_teaching
 from app.idm.contracts import IdmUnitBriefV1
 from app.idm.faq_checks import faq_writer_rules
-from app.idm.mcq import OPTION_LETTERS, encode_key_letters, key_letters, practice_key_shift, question_ordinal
+from app.idm.mcq import assign_key_letters, key_letters, normalize_single_choice
 from app.idm.module_design import attach_purpose_framework
 from app.idm.prompts import example_opening, unit_writer_prompt
 from app.idm.qa import (
@@ -37,7 +38,7 @@ from app.idm.qa import (
 from app.idm.worksheet import compact_worksheet
 from tests.idm_test_support import golden_shard
 from tests.test_idm_module_design import scope_of
-from tests.test_idm_storyboard import severity_body
+from tests.test_idm_storyboard import severity_body, severity_writer
 
 
 def _html(*sections: tuple[str, list[dict[str, Any]]]) -> dict[str, Any]:
@@ -49,20 +50,6 @@ def _html(*sections: tuple[str, list[dict[str, Any]]]) -> dict[str, Any]:
 def _question(key: str, *distractors: str) -> dict[str, Any]:
     return {"type": "problem", "question": "Phương án nào thể hiện đúng tư duy kết nối mọi thứ?",
             "choices": [{"text": key, "correct": True}, *({"text": text, "correct": False} for text in distractors)]}
-
-
-def _letters(lessons: Any) -> list[str]:
-    """The served key letter of every practice question of a chapter's lessons, in course order."""
-
-    found = []
-    for lesson_number, lesson in enumerate(lessons, start=1):
-        for unit_number, unit in enumerate(lesson.units, start=1):
-            for component in unit.components:
-                if component.type == "problem" and component.practice_id is not None:
-                    ordinal = question_ordinal(f"chapter_1.lesson_{lesson_number}.unit_{unit_number}")
-                    assert ordinal is not None
-                    found.append(OPTION_LETTERS[(ordinal + practice_key_shift(component.practice_id)) % 4])
-    return found
 
 
 class KeyLetterTests(unittest.TestCase):
@@ -82,15 +69,38 @@ class KeyLetterTests(unittest.TestCase):
         self.assertNotIn((0, 1, 2, 3, 0, 1, 2, 3), orders)
         self.assertEqual(key_letters("abc", 3, 5), key_letters("abc", 0, 8)[3:])
 
-    def test_w4_encodes_the_seeded_letters_into_the_practice_ids(self) -> None:
+    def test_w4_gives_every_question_of_the_shard_its_letter(self) -> None:
+        # Run c0030787: 6 of 17 questions were knowledge checks without a practice id, so they kept the old cycle.
         lessons = golden_shard(0).lessons
-        encoded, _renumbered = encode_key_letters(lessons, 0, 0, seed="snapshot-1")
-        served = _letters(encoded)
-        self.assertTrue(served)
-        self.assertEqual(served, [OPTION_LETTERS[letter] for letter in key_letters("snapshot-1", 0, len(served))])
-        # Without a seed the old cycle from the first letter stays (a design written before QLT-9).
-        plain, _ = encode_key_letters(lessons, 0, 0)
-        self.assertEqual(_letters(plain), [OPTION_LETTERS[index % 4] for index in range(len(_letters(plain)))])
+        # A knowledge check without a practice, as in run c0030787 (the golden questions all have one).
+        check = lessons[0].units[0].components[0].model_copy(update={"type": "problem", "practice_id": None})
+        lessons = [lessons[0].model_copy(update={"units": [
+            lessons[0].units[0].model_copy(update={"components": [check, *lessons[0].units[0].components[1:]]}),
+            *lessons[0].units[1:]]}), *lessons[1:]]
+        keyed, count = assign_key_letters(lessons, "snapshot-1", 2)
+        components = [component for lesson in keyed for unit in lesson.units for component in unit.components]
+        problems = [component for component in components if component.type == "problem"]
+        self.assertEqual(count, len(problems))
+        self.assertIsNone(problems[0].practice_id)
+        self.assertEqual([component.key_letter for component in problems], key_letters("snapshot-1", 2, count))
+        self.assertTrue(all(component.key_letter is None for component in components if component.type != "problem"))
+        # The letter travels with the component: in its JSON form and in the design hash, absent where there is none.
+        dumped = keyed[0].model_dump(mode="json")
+        slots = [component for unit in dumped["units"] for component in unit["components"]]
+        self.assertTrue(all(("key_letter" in slot) == (slot["type"] == "problem") for slot in slots))
+
+    def test_a_brief_with_the_letter_serves_the_key_there(self) -> None:
+        body = severity_body()
+        brief = body["unit_contract"]["idm_unit_brief"]
+        problem = next(index for index, slot in enumerate(brief["components"]) if slot["type"] == "problem")
+        brief["components"][problem]["key_letter"] = 3
+        parsed = IdmUnitBriefV1.model_validate(brief)
+        self.assertEqual(parsed.components[problem].key_letter, 3)
+        self.assertEqual(parsed.components[0].model_dump(mode="json").get("key_letter", "absent"), "absent")
+        writer = severity_writer(body)
+        served = normalize_single_choice(writer["components"][f"c{problem}"],
+                                         brief["components"][problem]["component_plan_id"], 3)[0]
+        self.assertTrue(served["choices"][3 % len(served["choices"])]["correct"])
 
 
 class JoinedExampleTests(unittest.TestCase):

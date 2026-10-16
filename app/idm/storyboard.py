@@ -67,6 +67,7 @@ from app.idm.mcq import (
     ANSWER_LENGTH_CUE_CODE,
     OPTION_LETTERS,
     QUESTION_INCOMPLETE_CODE,
+    free_key_letter,
     normalize_single_choice,
     option_length_stats,
     practice_key_shift,
@@ -698,11 +699,17 @@ class IdmUnitWriter:
             component = clean_question(component, self.evidence.pairs, artefacts)
             self.count_artefacts(artefacts)
         if plan_type == "problem" and isinstance(component, dict):
-            # The key's letter follows the question's place in the course, so keys spread over A-D (Q4).
+            # The key's letter: the one W4 gave the slot (QLT-9, balanced and shuffled over the course); for a design
+            # written before it, the question's place in the course plus the shift encoded in its practice id (Q4),
+            # or, for a question without a practice, a letter seeded by the source and the unit.
             ordinal = question_ordinal(self.contract.unit_path)
             slot = self.brief.components[index] if index < len(self.brief.components) else None
-            if ordinal is not None and slot is not None and slot.practice is not None:
+            if slot is not None and slot.key_letter is not None:
+                ordinal = slot.key_letter
+            elif ordinal is not None and slot is not None and slot.practice is not None:
                 ordinal += practice_key_shift(slot.practice.practice_id)
+            elif ordinal is not None:
+                ordinal = free_key_letter(self.contract.source_snapshot_hash, self.contract.unit_path)
             normalized, codes = normalize_single_choice(component, str(self.plans[index]["component_plan_id"]),
                                                         ordinal)
             self.runtime.adjustments.update(codes)

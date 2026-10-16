@@ -134,26 +134,47 @@ def key_letters(seed: str, start: int, count: int) -> list[int]:
     return letters[start:start + count]
 
 
+def free_key_letter(seed: str, unit_path: str) -> int:
+    """The key letter (0 = A) of a question whose design carries no ``key_letter`` and no practice shift (a knowledge
+    check of a design written before QLT-9, or of a later shard): drawn from the source and the unit's place, so it
+    follows no cycle (QLT-9, run c0030787: 6 of 17 questions kept the ``question_ordinal`` cycle)."""
+
+    draw = hashlib.sha256(f"{seed}:free-key:{unit_path}".encode()).digest()[:_DRAW_BYTES]
+    return int.from_bytes(draw, "big") % _KEY_CYCLE
+
+
+def assign_key_letters(lessons: Sequence[IdmLessonDesignV1], seed: str, first_question: int,
+                       ) -> tuple[list[IdmLessonDesignV1], int]:
+    """QLT-9 (owner 2026-10-16: "đáp án đúng phải xáo trộn ngẫu nhiên", never all B or C): every single-choice
+    component of the shard gets ``key_letter``, its key's letter, from ``key_letters(seed, first_question, …)`` in
+    course order: blocks of four that use each letter once, never the same letter twice in a row. The letter travels
+    with the component to its unit brief (Node copies it), so a knowledge check is placed like a practice question.
+    Returns the lessons and how many components got a letter."""
+
+    total = sum(1 for lesson in lessons for unit in lesson.units for component in unit.components
+                if component.type == "problem")
+    letters = iter(key_letters(seed, first_question, total))
+    result = [lesson.model_copy(update={"units": [unit.model_copy(update={"components": [
+        component.model_copy(update={"key_letter": next(letters)}) if component.type == "problem" else component
+        for component in unit.components]}) for unit in lesson.units]}) for lesson in lessons]
+    return result, total
+
+
 def encode_key_letters(lessons: Sequence[IdmLessonDesignV1], chapter_order: int, first_letter: int,
-                       seed: str | None = None) -> tuple[list[IdmLessonDesignV1], int]:
-    """W4 lays out the keys of a chapter's practice questions in course order (Q4): with ``seed`` (the design's
-    source snapshot, QLT-9) the k-th question of the chapter takes ``key_letters(seed, first_letter, …)[k]`` (a
-    balanced random order), without it A, B, C, D, A ... from ``first_letter``.
+                       ) -> tuple[list[IdmLessonDesignV1], int]:
+    """W4 lays out the keys of a chapter's practice questions A, B, C, D, A ... in course order (Q4; the layout of
+    designs written before QLT-9, which ``assign_key_letters`` replaces).
 
     A unit is written alone and only knows its place in the course, so ``question_ordinal`` alone revisits a
     letter when lessons put their question in different units. W4 sees every lesson of the chapter: it gives the
     practice of the k-th practice question the id whose ``practice_key_shift`` moves that question's
-    ``question_ordinal`` letter to the chosen letter. The id is internal (``pt_1``-``pt_9``, never shown to
+    ``question_ordinal`` letter to ``first_letter + k``. The id is internal (``pt_1``-``pt_9``, never shown to
     learners); only the numbering of a lesson's practices changes. Lessons whose ids cannot be chosen keep
     theirs. Returns the lessons and how many practices were renumbered.
     """
 
-    questions = sum(1 for lesson in lessons for unit in lesson.units for component in unit.components
-                    if component.type == "problem" and component.practice_id is not None)
-    letters = (key_letters(seed, first_letter, questions) if seed is not None
-               else [first_letter + index for index in range(questions)])
     renumbered = 0
-    position = 0
+    position = first_letter
     result: list[IdmLessonDesignV1] = []
     for lesson_number, lesson in enumerate(lessons, start=1):
         shifts: dict[str, int] = {}
@@ -163,8 +184,7 @@ def encode_key_letters(lessons: Sequence[IdmLessonDesignV1], chapter_order: int,
                 if component.type != "problem" or practice_id is None or practice_id in shifts:
                     continue
                 base = question_ordinal(f"chapter_{chapter_order + 1}.lesson_{lesson_number}.unit_{unit_number}")
-                target = letters[position] if position < len(letters) else first_letter + position
-                shifts[practice_id] = (target - (base or 0)) % _KEY_CYCLE
+                shifts[practice_id] = (position - (base or 0)) % _KEY_CYCLE
                 position += 1
         mapping = _practice_numbers(shifts, [practice.practice_id for practice in lesson.practice_tasks])
         if mapping is None or all(old == new for old, new in mapping.items()):
@@ -403,8 +423,10 @@ __all__ = [
     "RELABELLED_CODE",
     "SHUFFLED_CODE",
     "answer_length_cue",
+    "assign_key_letters",
     "balanced_order",
     "encode_key_letters",
+    "free_key_letter",
     "key_letters",
     "labelled_letters",
     "normalize_single_choice",

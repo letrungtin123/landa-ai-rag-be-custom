@@ -33,7 +33,7 @@ from app.idm.faq_plan import FAQ_ADDED_CODE, FAQ_DROPPED_CODE, FAQ_PLANNED_CODE,
 from app.idm.fidelity import TEACHING_SUPPORT_CODE, module_fidelity_rules, plan_teaching_supports, purpose_mode
 from app.idm.framework import framework_promise, unit_framework_brief, unit_framework_detail
 from app.idm.limits import answer_limits
-from app.idm.mcq import encode_key_letters
+from app.idm.mcq import assign_key_letters
 from app.idm.module_autofix import (
     QUESTION_ONLY_BLOCK_CODE,
     TAUGHT_BEFORE_QUESTION_CODE,
@@ -830,14 +830,13 @@ async def run_idm_module_design(
                                             plan_titles={item.lesson_key: item.title for item in scope.lesson_plans})
     if retitled:
         runtime.adjustments["IDM_W4_TITLES_SENTENCE_CASE"] += retitled
-    if plan.shard_index == 0:
-        # The chapter's practice questions get their key letters (QC run 8de1c76b, Q4) in a balanced random order
-        # seeded by the source (QLT-9: no A B C D cycle); a later shard does not know its lessons' place in the
-        # chapter and keeps the plain per-unit letters.
-        final, renumbered = encode_key_letters(final, plan.order, context.lesson_index_offset,
-                                               seed=skeleton.source_snapshot_hash)
-        if renumbered:
-            runtime.adjustments["IDM_W4_KEY_LETTERS_ENCODED"] += renumbered
+    # Every single-choice key gets its letter (QC run 8de1c76b, Q4) in a balanced random order seeded by the source
+    # (QLT-9, owner 2026-10-16: no A B C D cycle, never all B or C). Shards design in parallel and do not know how many
+    # questions came before them: a shard starts where one question per lesson before it would end. Replayed on 5
+    # stored courses, each letter keys 17-33% of the questions (starting each shard on a block of its own: 8-35%).
+    final, keyed = assign_key_letters(final, skeleton.source_snapshot_hash, context.lesson_index_offset)
+    if keyed:
+        runtime.adjustments["IDM_W4_KEY_LETTERS_ASSIGNED"] += keyed
     gaps = framework_orientation_gaps(final, scope)
     if gaps:
         codes["IDM_W4_FRAMEWORK_ORIENTATION_MISSING"] += sum(len(phrases) for phrases in gaps.values())
