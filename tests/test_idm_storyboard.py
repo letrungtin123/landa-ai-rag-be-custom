@@ -359,10 +359,10 @@ class UnitEndpointTests(StoryboardEndpointTestCase):
                 self.assertTrue(components[1]["source_locked_fallback"])
                 self.assertIn("1 khối dùng bản dự phòng", quality.author_note)
                 # QC course 234653 (D16): the note says why the slot fell back.
-                self.assertIn("Lý do: khối 2 (Quiz) — IDM_W5_PRACTICE_INCOMPLETE.", quality.author_note)
-                repair_code = {"invalid": "IDM_W5_REPAIR_INVALID", "provider": "AI_PROVIDER_UNAVAILABLE"}.get(name)
-                if repair_code:
-                    self.assertIn(f"Sửa tự động không thành công: {repair_code}.", quality.author_note)
+                self.assertIn("Lý do: khối 2 (Quiz): bài luyện tập thiếu phần.", quality.author_note)
+                repair_text = {"invalid": "lần sửa của AI sai định dạng", "provider": "AI không phản hồi"}.get(name)
+                if repair_text:
+                    self.assertIn(f"Sửa tự động không thành công: {repair_text}.", quality.author_note)
                 self.assertEqual(data["attempt_trace"][-2 if name != "provider" else -1]["failure_code"],
                                  "IDM_W5_SLOT_FALLBACK")
                 # A transient provider failure also blocks the judge call of the same task.
@@ -384,7 +384,7 @@ class UnitEndpointTests(StoryboardEndpointTestCase):
         self.assertEqual(data["unit"]["components"][0]["explanation"], ONE_OPTION)
         self.assertFalse(any(c.get("source_locked_fallback") for c in data["unit"]["components"]))
         self.assertEqual(quality.deterministic_codes, ["IDM_W5_PRACTICE_INCOMPLETE"])
-        self.assertIn("Kiểm tra tự động còn cảnh báo: IDM_W5_PRACTICE_INCOMPLETE.", quality.author_note)
+        self.assertIn("Kiểm tra tự động còn cảnh báo: bài luyện tập thiếu phần.", quality.author_note)
         self.assertNotIn("fallback", [e["outcome"] for e in data["attempt_trace"]])
 
     async def test_fallback_only_makes_no_provider_call(self) -> None:
@@ -404,7 +404,7 @@ class UnitEndpointTests(StoryboardEndpointTestCase):
         self.assertEqual((status, provider.names), (200, [WRITER]))
         quality = self.assert_envelope(data, "structured_fallback", "review_required", "reserved_upper_bound")
         self.assertEqual(quality.author_note, "Cả bài dùng bản dự phòng dựng từ tài liệu — cần biên tập. "
-                                              "Lý do: AI_PROVIDER_UNAVAILABLE.")
+                                              "Lý do: AI không phản hồi.")
         self.assertEqual([(e["outcome"], e["failure_code"]) for e in data["attempt_trace"]],
                          [("failed", "AI_PROVIDER_UNAVAILABLE"), ("fallback", "IDM_W5_UNIT_FALLBACK")])
 
@@ -463,7 +463,8 @@ class UnitEndpointTests(StoryboardEndpointTestCase):
                 faq = data["unit"]["components"][1]
                 self.assertNotIn("source_locked_fallback", faq)
                 self.assertEqual([item["answer"] for item in faq["items"]], [grounded, UNGROUNDED_ANSWER])
-                self.assertIn("Giữ bản AI để tác giả rà soát: khối 2 (Hỏi đáp) — IDM_W5_FAQ_NEW_FACT.",
+                self.assertIn("Giữ bản AI để tác giả rà soát: khối 2 (Hỏi đáp): hỏi đáp có số liệu hoặc tên "
+                              "ngoài tài liệu.",
                               quality.author_note)
                 self.assertIn("Cần xem khối 2 (Hỏi đáp): câu hỏi đáp có số liệu hoặc tên riêng không có trong tài liệu",
                               quality.author_note)
@@ -494,7 +495,7 @@ class UnitEndpointTests(StoryboardEndpointTestCase):
         self.assertIn("c0 IDM_W5_WORKSHEET_INCOMPLETE at c0: a worksheet slot needs a task block",
                       provider.calls[1]["prompt"])
         self.assertNotIn("source_locked_fallback", data["unit"]["components"][0])
-        self.assertIn("Giữ bản AI để tác giả rà soát: khối 1 (Lý thuyết) — IDM_W5_WORKSHEET_INCOMPLETE.",
+        self.assertIn("Giữ bản AI để tác giả rà soát: khối 1 (Lý thuyết): phiếu thực hành thiếu phần.",
                       quality.author_note)
 
     async def test_brief_mismatch_is_422_without_provider_call(self) -> None:
@@ -517,7 +518,7 @@ class JudgeEndpointTests(StoryboardEndpointTestCase):
         quality = self.assert_envelope(data, "provider_validated", "review_required", "provider")
         self.assertEqual(provider.names, [WRITER, JUDGE])
         self.assertEqual((quality.judge_status, quality.finding_counts.major), ("review_required", 1))
-        self.assertIn("1 vấn đề cần xem — phản hồi chưa giải thích từng lựa chọn (Q4)", quality.author_note)
+        self.assertIn("1 vấn đề cần xem — phản hồi chưa giải thích từng lựa chọn", quality.author_note)
 
     async def test_repair_mode_accepts_only_a_real_improvement(self) -> None:
         body = escalate_body()

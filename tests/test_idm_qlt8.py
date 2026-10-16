@@ -269,7 +269,7 @@ class UnitFlowTests(StoryboardEndpointTestCase):
         self.assertIn("c1 IDM_W5_QUESTION_INCOMPLETE at c1: the question stops before it asks anything",
                       provider.calls[1]["prompt"])
         self.assertEqual(data["unit"]["components"][1]["question"], whole)
-        self.assertIn("Đã tự sửa: IDM_W5_QUESTION_INCOMPLETE.", quality.author_note)
+        self.assertIn("Đã tự sửa: câu hỏi bị cụt.", quality.author_note)
 
     async def test_a_repair_that_cuts_the_question_keeps_the_earlier_question(self) -> None:
         body = severity_body()
@@ -292,7 +292,7 @@ class UnitFlowTests(StoryboardEndpointTestCase):
         self.assertEqual(served["question"], whole)
         self.assertIn("Thiệt hại tài chính dưới 50 triệu đồng hoặc khách hàng phàn nàn lần thứ hai",
                       [choice["text"] for choice in served["choices"]])
-        self.assertIn("Giữ bản AI để tác giả rà soát: khối 2 (Quiz) — IDM_W5_ANSWER_LEAK", quality.author_note)
+        self.assertIn("Giữ bản AI để tác giả rà soát: khối 2 (Quiz): phương án lộ đáp án", quality.author_note)
         self.assertTrue(quality.author_note.startswith("Cần tác giả xem lại vì: có khối AI viết chưa đạt hết kiểm tra"))
 
     async def test_abbreviations_get_their_full_form_or_a_note(self) -> None:

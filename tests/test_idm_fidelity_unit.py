@@ -124,7 +124,7 @@ class ExplainedUnitTests(StoryboardEndpointTestCase):
         provider = FakeGenerate(**{WRITER: [writer], REPAIR: [slot_repair(writer, 0)], JUDGE: [judge()]})
         status, data, _ = await self.post(body, provider)
         self.assertEqual(status, 200)
-        quality = self.assert_envelope(data, "provider_validated", "review_required", "provider")
+        quality = self.assert_envelope(data, "provider_validated", "validated", "provider")
         self.assertEqual(provider.names, [WRITER, REPAIR, JUDGE])
         repair = provider.calls[1]
         self.assertEqual(repair["thinking_level"], "low")
@@ -137,7 +137,8 @@ class ExplainedUnitTests(StoryboardEndpointTestCase):
         self.assertEqual(html_texts(component)[-2:], COPIED)
         self.assertEqual(set(quality.deterministic_codes), {"IDM_W5_EXPLANATION_MISSING", "IDM_W5_SENTENCE_COPY"})
         self.assertIn("Giữ bản AI để tác giả rà soát: khối 1 (Lý thuyết)", quality.author_note)
-        self.assertIn("Cần xem khối 1 (Lý thuyết): nhiều câu gần như chép nguyên văn tài liệu", quality.author_note)
+        self.assertIn("Nên biên tập khối 1 (Lý thuyết): nhiều câu gần như chép nguyên văn tài liệu",
+                      quality.author_note)
         self.assertNotIn("bản dự phòng", quality.author_note)
         self.assertNotIn("fallback", [event["outcome"] for event in data["attempt_trace"]])
 
@@ -152,7 +153,7 @@ class ExplainedUnitTests(StoryboardEndpointTestCase):
         self.assertEqual(status, 200)
         quality = self.assert_envelope(data, "provider_validated", "validated", "provider")
         self.assertTrue(quality.repair_applied)
-        self.assertIn("Đã tự sửa: IDM_W5_EXPLANATION_MISSING, IDM_W5_SENTENCE_COPY.", quality.author_note)
+        self.assertIn("Đã tự sửa: thiếu phần giảng giải, câu chép gần nguyên văn tài liệu.", quality.author_note)
 
     async def test_invented_names_and_numbers_are_repaired_or_kept_for_review(self) -> None:
         body = explain_body()
@@ -187,7 +188,7 @@ class ExplainedUnitTests(StoryboardEndpointTestCase):
         with self.assertLogs("app.idm", "INFO") as logs:
             status, data, _ = await self.post(body, provider)
         self.assertEqual(status, 200)
-        quality = self.assert_envelope(data, "provider_validated", "review_required", "provider")
+        quality = self.assert_envelope(data, "provider_validated", "validated", "provider")
         component = data["unit"]["components"][0]
         self.assertFalse(component.get("source_locked_fallback"))
         self.assertNotIn("Hiện trạng", json.dumps(component, ensure_ascii=False))

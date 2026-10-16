@@ -97,6 +97,7 @@ from app.idm.policy import (
 )
 from app.idm.prompts import (
     COMPACT_UNIT,
+    example_opening,
     html_slot_rules,
     html_violation_line,
     repair_suffix,
@@ -115,6 +116,7 @@ from app.idm.qa import (
     FAQ_TITLE_MISMATCH_CODE,
     FRAMEWORK_INCOMPLETE_CODE,
     FRAMEWORK_LIST_INSERTED_CODE,
+    NOTICE_REASONS,
     REVIEW_REASON_EVIDENCE,
     REVIEW_REASON_FALLBACK,
     REVIEW_REASON_JUDGE,
@@ -122,7 +124,9 @@ from app.idm.qa import (
     REVIEW_REASON_SCENARIO,
     REVIEW_REASON_SERVER_EDIT,
     REVIEW_REASON_STEP_INCOMPLETE,
+    REVIEW_REASON_STYLE,
     SOURCE_ARTIFACT_CODE,
+    STYLE_CODES,
     WORKSHEET_INCOMPLETE_CODE,
     JudgeMode,
     JudgeOutcome,
@@ -451,8 +455,9 @@ class IdmUnitWriter:
         self.framework = build_promise([contract.unit_title, *(slot.title for slot in teaching)],
                                        [self.framework_support, *blocks.values()])
         self.framework_inserted = 0
-        # The worksheet left out its worked example to fit the budget (Q2).
+        # The worksheet was shortened to fit the budget (Q2); QLT-9: whether its worked example stayed.
         self.worksheet_compacted = False
+        self.worksheet_example_kept = False
         self.codes: list[str] = []
         # Provider, time-budget and repair failures behind a fallback (codes only, never provider text).
         self.failure_codes: list[str] = []
@@ -516,6 +521,7 @@ class IdmUnitWriter:
             course_purpose=brief_purpose(brief),
             fidelity_rules=writer_fidelity_rules(self.mode, self.runtime.locale, self.fidelity.roles),
             faq_rules=faq_writer_rules(self.mode) if self.has_faq else "",
+            example_opening=example_opening(self.contract.unit_path, self.runtime.locale),
         )
 
     def html_violations(self, component: Any) -> list[HtmlRuleViolation]:
@@ -988,26 +994,36 @@ class IdmUnitWriter:
                       list(draft.review_slots), dict(draft.reasons))
 
     def compact_worksheet(self, draft: _Draft, index: int) -> _Draft | None:
-        """An over-budget worksheet without its worked example (then with one-sentence guidance cells), when that
-        fits every html rule and Node's budget and the worksheet stays complete (QC run 8de1c76b, Q2)."""
+        """An over-budget worksheet made shorter, its worked example kept as long as possible (QLT-9: shorter
+        guidance cells, then two example entries, then without other sections, only then without the example), when
+        that fits every html rule and Node's budget and the worksheet stays complete (QC run 8de1c76b, Q2)."""
 
         components = list(draft.unit.get("components", []))
         component = components[index] if 0 <= index < len(components) else None
         if not isinstance(component, dict) or not self.is_worksheet(index):
             return None
-        compacted = compact_worksheet(component, lambda value: not self.html_violations(value))
+
+        def with_slot(value: dict[str, Any]) -> _Draft:
+            return _Draft({**draft.unit, "components": [*components[:index], value, *components[index + 1:]]},
+                          list(draft.fallback_slots), draft.repair_applied, list(draft.review_slots),
+                          dict(draft.reasons))
+
+        def fits(value: dict[str, Any]) -> bool:
+            if self.html_violations(value):
+                return False
+            finding, idm = self.problems(with_slot(value))
+            return _slot_of(finding) != index and not any(slot == index for _code, slot in idm)
+
+        compacted = compact_worksheet(component, fits)
         if compacted is None:
             return None
-        components[index] = compacted
-        candidate = _Draft({**draft.unit, "components": components}, list(draft.fallback_slots),
-                           draft.repair_applied, list(draft.review_slots), dict(draft.reasons))
-        finding, idm = self.problems(candidate)
-        if _slot_of(finding) == index or any(slot == index for _code, slot in idm):
-            return None
+        value, keeps_example = compacted
         self.worksheet_compacted = True
+        self.worksheet_example_kept = keeps_example
         self.codes.append(WORKSHEET_COMPACTED_CODE)
-        self.runtime.adjustments["w5_worksheet_compacted"] += 1
-        return candidate
+        self.runtime.adjustments["w5_worksheet_compacted_example_kept" if keeps_example
+                                 else "w5_worksheet_compacted"] += 1
+        return with_slot(value)
 
     def insert_framework_list(self, draft: _Draft, index: int) -> _Draft | None:
         """The teaching html with one more section listing every promised item by name (QC run 8de1c76b, Q3), when
@@ -1363,16 +1379,23 @@ async def run_idm_unit(
     # repair or judge call (reserved upper-bound accounting) is a reviewable structured draft.
     provider_lane = usage_source == "provider" and not whole_fallback and not draft.fallback_slots
     # A callout turned into a paragraph still states what the facts do not (N9): the SME confirms it.
-    # QLT-8: each reason is named in the note (QC run 0a11aa9e: 3 units marked for review without one).
-    review_reasons = [reason for reason, applies in (
+    # QLT-8: each reason is named in the note (QC run 0a11aa9e: 3 units marked for review without one). QLT-9 (QC run
+    # ffaf7318: 14 of 18 units marked): slots kept with wording findings only and source pages with images or tables are
+    # notices ("Lưu ý"), not a review mark.
+    style_only = bool(draft.review_slots) and all(set(draft.reasons.get(index, ())) <= STYLE_CODES
+                                                  for index in draft.review_slots)
+    reasons = [reason for reason, applies in (
         (REVIEW_REASON_FALLBACK, not whole_fallback and bool(draft.fallback_slots)),
         (REVIEW_REASON_STEP_INCOMPLETE, not whole_fallback and usage_source != "provider"),
-        (REVIEW_REASON_KEPT_SLOTS, bool(draft.review_slots)),
+        (REVIEW_REASON_KEPT_SLOTS, bool(draft.review_slots) and not style_only),
+        (REVIEW_REASON_STYLE, style_only),
         (REVIEW_REASON_SERVER_EDIT, writer.callouts_converted > 0 or writer.framework_inserted > 0),
         (REVIEW_REASON_EVIDENCE, deps.evidence_review_required),
         (REVIEW_REASON_JUDGE, blocking_count(judge.findings) > 0),
         (REVIEW_REASON_SCENARIO, ai_drafted and _q5(judge) != "pass"),
     ) if applies]
+    review_reasons = [reason for reason in reasons if reason not in NOTICE_REASONS]
+    notices = [reason for reason in reasons if reason in NOTICE_REASONS]
     reviewable = not provider_lane or bool(review_reasons)
     # N8: "still warns" is recomputed on the returned unit; codes settled on the way are listed apart.
     remaining = [] if whole_fallback else final_unit_findings(draft.unit, brief, writer.owned_text, writer.evidence,
@@ -1395,10 +1418,11 @@ async def run_idm_unit(
         faq_items_invalid=writer.faq_items_invalid, remaining=remaining, fixed_codes=fixed,
         faq_items_restated=writer.faq_items_restated, callouts_to_prose=writer.callouts_converted,
         framework_list_inserted=writer.framework_inserted, worksheet_compacted=writer.worksheet_compacted,
+        worksheet_example_kept=writer.worksheet_example_kept,
         drafted_examples=drafted, faq_items_copied=writer.faq_items_copied, faq_items_recall=writer.faq_items_recall,
         faq_inferred=inferred, faq_items_open=writer.faq_items_open,
         review_reasons=review_reasons if reviewable and not whole_fallback else (),
-        unexplained_acronyms=unexplained_acronyms)
+        unexplained_acronyms=unexplained_acronyms, notices=() if whole_fallback else notices)
     quality = build_unit_quality(mode=deps.judge_mode, judge=judge, repair_applied=draft.repair_applied,
                                  deterministic_codes=[*writer.codes, *(item.code for item in remaining)],
                                  author_note=note)
@@ -1417,7 +1441,7 @@ async def run_idm_unit(
         "faq": {} if whole_fallback else writer.faq.metrics(components),
         "callouts_to_prose": writer.callouts_converted, "framework_list_inserted": writer.framework_inserted,
         "acronyms_explained": writer.acronyms_explained, "acronyms_unexplained": len(unexplained_acronyms),
-        "review_reasons": review_reasons if reviewable else [],
+        "review_reasons": review_reasons if reviewable else [], "notices": notices,
         "slot_reasons": {str(index): codes for index, codes in sorted(draft.reasons.items())},
         "node_acceptance": writer.acceptance_seen[:_MAX_LOGGED_DETAILS],
         "fidelity": {"mode": writer.mode} if whole_fallback else writer.fidelity.metrics(components),

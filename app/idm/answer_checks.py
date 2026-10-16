@@ -33,6 +33,7 @@ Pure functions on the writer's payload; thresholds and their calibration live in
 from __future__ import annotations
 
 import re
+from collections import Counter
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any, Final
@@ -45,6 +46,9 @@ from app.idm.policy import (
     IDM_ANSWER_EXAMPLE_BAG_MIN_SHARE,
     IDM_ANSWER_EXAMPLE_MAX_DISTRACTOR_SHARE,
     IDM_ANSWER_EXAMPLE_MIN_SHARE,
+    IDM_ANSWER_EXAMPLE_WORDS_MIN_KEY_WORDS,
+    IDM_ANSWER_EXAMPLE_WORDS_MIN_MARGIN,
+    IDM_ANSWER_EXAMPLE_WORDS_MIN_SHARE,
     IDM_ANSWER_JOINED_MIN_ITEMS,
     IDM_ANSWER_JOINED_MIN_KEY_PAIRS,
     IDM_ANSWER_LIST_MIN_MARGIN,
@@ -336,13 +340,18 @@ def _joined(texts: Sequence[str], key: int, parts: Sequence[str]) -> tuple[float
 
     pairs = [content_pairs(text) for text in texts]
     part_pairs = [content_pairs(part) for part in parts]
-    whole: set[tuple[str, str]] = set().union(*part_pairs) if part_pairs else set()
+    # The pairs most parts share are the frame of a table, not its content: "Yêu cầu:" and "Nguy cơ cần chặn:" open
+    # every row, and a key that applies one row's criterion is no joined list (QLT-9, ffaf7318 c3.l1.u1).
+    counts = Counter(pair for items in part_pairs for pair in items)
+    boilerplate = {pair for pair, count in counts.items() if len(part_pairs) > _MIN_OPTIONS
+                   and count * 2 > len(part_pairs)}
+    whole: set[tuple[str, str]] = set().union(*part_pairs) - boilerplate if part_pairs else set()
 
     def share(index: int) -> float:
         return len(pairs[index] & whole) / len(pairs[index]) if pairs[index] else 0.0
 
     others = max((share(index) for index in range(len(texts)) if index != key), default=0.0)
-    return share(key), others, sum(bool(pairs[key] & items) for items in part_pairs)
+    return share(key), others, sum(bool(pairs[key] & items & whole) for items in part_pairs)
 
 
 def restates_list(component: Mapping[str, Any], teaching: UnitTeaching) -> bool:
@@ -371,8 +380,20 @@ def restates_joined_example(component: Mapping[str, Any], teaching: UnitTeaching
             or len(content_pairs(texts[key])) < IDM_ANSWER_JOINED_MIN_KEY_PAIRS):
         return False
     mine, others, touched = _joined(texts, key, teaching.examples)
-    return (touched >= IDM_ANSWER_JOINED_MIN_ITEMS and mine >= IDM_ANSWER_EXAMPLE_BAG_MIN_SHARE
-            and mine - others >= IDM_ANSWER_EXAMPLE_BAG_MIN_MARGIN)
+    if (touched >= IDM_ANSWER_JOINED_MIN_ITEMS and mine >= IDM_ANSWER_EXAMPLE_BAG_MIN_SHARE
+            and mine - others >= IDM_ANSWER_EXAMPLE_BAG_MIN_MARGIN):
+        return True
+    # QLT-9: the same rows rewritten in other words keep the example's words, not its word pairs (ffaf7318 c3.l2.u2).
+    words = [set(content_words(text)) for text in texts]
+    if len(words[key]) < IDM_ANSWER_EXAMPLE_WORDS_MIN_KEY_WORDS:
+        return False
+    passages = [set(content_words(passage)) for passage in teaching.examples]
+    shown: set[str] = set().union(*passages)
+    shares = [len(option & shown) / len(option) if option else 0.0 for option in words]
+    best_other = max((share for index, share in enumerate(shares) if index != key), default=0.0)
+    return (sum(bool(words[key] & passage) for passage in passages) >= IDM_ANSWER_JOINED_MIN_ITEMS
+            and shares[key] >= IDM_ANSWER_EXAMPLE_WORDS_MIN_SHARE
+            and shares[key] - best_other >= IDM_ANSWER_EXAMPLE_WORDS_MIN_MARGIN)
 
 
 def _rung(head: str) -> tuple[str, int] | None:

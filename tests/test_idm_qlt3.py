@@ -558,7 +558,7 @@ class FrameworkOrientationTests(StoryboardEndpointTestCase):
         status, data, _ = await self.post(body, provider)
         self.assertEqual(status, 200)
         quality = IdmUnitQualityV1.model_validate(data["unit"]["idm_quality"])
-        self.assertIn("Cần xem (IDM_W5_FRAMEWORK_INCOMPLETE", quality.author_note)
+        self.assertIn("Cần xem khối 1 (Lý thuyết): tiêu đề nêu một khung", quality.author_note)
         self.assertEqual(len(data["unit"]["components"][0]["semantic_content"]["sections"]), 1)
 
 
@@ -792,7 +792,7 @@ class SingleChoiceTests(StoryboardEndpointTestCase):
         self.assertEqual(status, 200)
         self.assertIn('{"code":"IDM_W5_ANSWER_LEAK","path":"components[1]"}', provider.calls[1]["prompt"])
         quality = IdmUnitQualityV1.model_validate(data["unit"]["idm_quality"])
-        self.assertIn("IDM_W5_ANSWER_LEAK", quality.author_note.split("Đã tự sửa: ")[1])
+        self.assertIn("phương án lộ đáp án", quality.author_note.split("Đã tự sửa: ")[1])
 
     async def test_a_length_cue_the_repair_fixes_is_settled(self) -> None:
         body = escalate_body()
@@ -805,7 +805,7 @@ class SingleChoiceTests(StoryboardEndpointTestCase):
         self.assertEqual(status, 200)
         self.assertEqual(provider.names, [WRITER, REPAIR, JUDGE])
         quality = self.assert_envelope(data, "provider_validated", "validated", "provider")
-        self.assertIn("Đã tự sửa: IDM_W5_ANSWER_LENGTH_CUE.", quality.author_note)
+        self.assertIn("Đã tự sửa: đáp án đúng dài hơn hẳn.", quality.author_note)
         self.assertNotIn("Cần xem (IDM_W5_ANSWER_LENGTH_CUE", quality.author_note)
 
     async def test_a_note_repair_that_breaks_the_question_is_dropped(self) -> None:
@@ -820,7 +820,7 @@ class SingleChoiceTests(StoryboardEndpointTestCase):
         quality = self.assert_envelope(data, "provider_validated", "validated", "provider")
         self.assertEqual(data["unit"]["components"][0]["explanation"],
                          served(body, writer, 0)["explanation"])
-        self.assertIn("Cần xem (IDM_W5_ANSWER_LENGTH_CUE", quality.author_note)
+        self.assertIn("Nên biên tập khối 1 (Quiz): đáp án đúng dài hơn hẳn", quality.author_note)
 
 
 class CourseNoteTests(unittest.TestCase):

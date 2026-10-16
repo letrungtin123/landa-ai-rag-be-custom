@@ -8,6 +8,7 @@ text and server-measured numbers, never source text or the rejected answer.
 
 from __future__ import annotations
 
+import hashlib
 import json
 from collections.abc import Iterable, Sequence
 from typing import Any, Final, Literal
@@ -437,8 +438,9 @@ Return the lessons in exactly the order and with exactly the lesson_key values o
    component_index is the 1-based position inside the unit; unit_index is 1-based inside the lesson.
    Unit titles name what the unit actually teaches (never "Tổng quan 5 chuyển dịch" over a unit about something
    else). Lesson, unit and component titles are in sentence case (a capital for the first word only; acronyms,
-   codes and names as the facts write them). When an objective this module serves names an enumerated framework
-   ("5 chuyển dịch", "6 trụ cột", "3 giai đoạn"), the first lesson that serves it opens with ONE orientation unit
+   codes and names as the facts write them). When an objective this module serves, or COURSE_PURPOSE, names an
+   enumerated framework whose items this module's blocks hold ("5 chuyển dịch", "6 trụ cột", "3 giai đoạn"), the
+   first lesson that serves it opens with ONE orientation unit
    (segment context_explain, an html component) whose title names the framework with its number
    ("Bản đồ 5 chuyển dịch") and whose html lists every item of it; later units and lessons teach the items one by
    one.
@@ -486,11 +488,15 @@ def unit_writer_prompt(
     course_purpose: dict[str, Any] | None = None,
     fidelity_rules: str = "",
     faq_rules: str = "",
+    example_opening: str = "",
 ) -> str:
     """``fidelity_rules``: ``app.idm.fidelity.writer_fidelity_rules`` (the content mode; default structured);
-    ``faq_rules``: ``app.idm.faq_checks.faq_writer_rules`` for a unit with an la_faq slot (QLT-5 D), else empty."""
+    ``faq_rules``: ``app.idm.faq_checks.faq_writer_rules`` for a unit with an la_faq slot (QLT-5 D), else empty;
+    ``example_opening`` (QLT-9): how this unit opens its first drafted example or case (``example_opening``)."""
 
     content_mode = fidelity_rules or writer_fidelity_rules(DEFAULT_MODE, locale)
+    opening_line = (f'; in this unit the first drafted example or case opens with "{example_opening}" (still about the '
+                    "learner's own role)" if example_opening else "")
     purpose_line = ("- Keep the unit on COURSE_PURPOSE (what the course is for and for whom): choose the wording, "
                     "emphasis and examples that serve it; it never adds facts.\n" if course_purpose else "")
     return preamble(locale) + f"""
@@ -517,7 +523,8 @@ Writing rules (learner-facing, {locale_name(locale)}):
   correct option never reuses the wording of the example, quotation, worked example or template shown before the
   question, nor strings together the items of a list or table shown before it (it applies the criterion to the
   question's own case); the question's case is not the worked example's case: other facts decide it and its answer
-  is not the worked example's answer. The question field holds the whole case and ends with the question sentence
+  is not the worked example's answer; the case never names the cause, rule or criterion the key is about (the
+  learner finds it from the case's facts). The question field holds the whole case and ends with the question sentence
   itself ("…?"); the
   explanation states the criterion and why EACH option is right or wrong ("A - ...; B - ...; C - ...", every
   option named by its letter); each reason must agree with that option's own text and with the answer key
@@ -558,7 +565,7 @@ Writing rules (learner-facing, {locale_name(locale)}):
   ai_drafted, or a slot with "examples": "ai_drafted"); they never add rules, numbers or names, and their main person
   has the learner's own role (TARGET_AUDIENCE), never one of another level (no team lead in a course for executives).
   Vary how examples and cases open (not every one "Một CEO …": "Giả sử bạn …", "Tại một doanh nghiệp …", "Ban điều
-  hành của …").
+  hành của …"){opening_line}.
 - The course is self-paced e-learning: no classroom instructions (no "trước khi rời lớp/học phần", "thảo luận nhóm
   tại lớp", "giảng viên sẽ …").
 - An abbreviation the learner may not know gets its full form in brackets the first time this unit uses it, only as
@@ -628,6 +635,24 @@ HTML SLOT FORMAT (type "html"). The server renders the HTML itself and rejects a
   Group parallel points into one bullets block instead of many short paragraphs.
 - No FAQ section and no question-and-answer pairs inside html (questions belong to la_faq or problem slots).{length}
 """
+
+
+# QLT-9 (QC run ffaf7318: 12 of 14 drafted examples opened "Một CEO …"): each unit is written alone, so the server
+# gives it one opening, chosen from the unit's place in the course.
+_EXAMPLE_OPENINGS: Final[dict[str, tuple[str, ...]]] = {
+    "vi": ("Giả sử bạn …", "Tại một doanh nghiệp …", "Ban điều hành của một công ty …", "Hãy hình dung …",
+           "Trong quý vừa qua, …", "Một CEO …"),
+    "en": ("Suppose you …", "At a company …", "The leadership team of a company …", "Imagine …", "Last quarter, …",
+           "A CEO …"),
+}
+
+
+def example_opening(unit_path: str, locale: Locale) -> str:
+    """The opening of this unit's first drafted example or case (reproducible per unit)."""
+
+    openings = _EXAMPLE_OPENINGS["vi" if locale == "vi" else "en"]
+    draw = int.from_bytes(hashlib.sha256(f"opening:{unit_path}".encode()).digest()[:4], "big")
+    return openings[draw % len(openings)]
 
 
 # Short, server-owned rule text per validator code for repair prompts (never provider text).

@@ -413,7 +413,7 @@ class UnitFaqTests(StoryboardEndpointTestCase):
         self.assertIn("(2 recall question(s), 0 why, what-if or common-mistake question(s)) Plan: items[0]",
                       provider.calls[1]["prompt"])
         self.assertEqual(quality.deterministic_codes, [FAQ_TYPE_MIX_CODE])
-        self.assertIn("Đã tự sửa: IDM_W5_FAQ_TYPE_MIX.", quality.author_note)
+        self.assertIn("Đã tự sửa: hỏi đáp chỉ hỏi lại kiến thức.", quality.author_note)
 
     async def test_extra_recall_items_are_dropped_when_a_clarifying_one_stays(self) -> None:
         body = escalate_body()
@@ -447,9 +447,10 @@ class UnitFaqTests(StoryboardEndpointTestCase):
         # Still copied after the repair, with too few items to drop it: kept for review, never the source FAQ.
         provider = FakeGenerate(**{WRITER: [copied], REPAIR: [slot_repair(copied, 1)], JUDGE: [judge()]})
         status, data, _ = await self.post(body, provider)
-        quality = self.assert_envelope(data, "provider_validated", "review_required", "provider")
+        # QLT-9: a wording finding the repair left is a notice to polish, not a review mark.
+        quality = self.assert_envelope(data, "provider_validated", "validated", "provider")
         self.assertNotIn("source_locked_fallback", data["unit"]["components"][1])
-        self.assertIn("Cần xem khối 2 (Hỏi đáp): câu trả lời hỏi đáp gần như chép nguyên câu tài liệu",
+        self.assertIn("Nên biên tập khối 2 (Hỏi đáp): câu trả lời hỏi đáp gần như chép nguyên câu tài liệu",
                       quality.author_note)
 
     async def test_the_judge_faq_criterion_is_stored_under_not_copied(self) -> None:
@@ -460,7 +461,7 @@ class UnitFaqTests(StoryboardEndpointTestCase):
         self.assertEqual(status, 200)
         quality = self.assert_envelope(data, "provider_validated", "review_required", "provider")
         self.assertEqual(quality.criteria["Q2_not_copied"], "major")
-        self.assertIn("phần hỏi đáp chỉ nhắc lại nội dung, chưa giải thích vì sao hay lỗi hay gặp (Q13)",
+        self.assertIn("phần hỏi đáp chỉ nhắc lại nội dung, chưa giải thích vì sao hay lỗi hay gặp",
                       quality.author_note)
 
 

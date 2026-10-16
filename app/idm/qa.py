@@ -242,9 +242,13 @@ def restated_faq_items(component: dict[str, Any], preceding_html: str) -> list[i
             and ngram_overlap(answer, preceding_html, IDM_FAQ_RESTATE_NGRAM) >= IDM_FAQ_RESTATE_MIN_SHARE]
 
 
-def faq_title_mismatch(component: dict[str, Any]) -> bool:
+def faq_title_mismatch(component: dict[str, Any], taught: str = "") -> bool:
     """The FAQ title's key words (content words that are not FAQ boilerplate) are mostly absent from its
-    questions and answers ("… trong họp giao ban" over items about something else; QC 364564, N11)."""
+    questions and answers ("… trong họp giao ban" over items about something else; QC 364564, N11).
+
+    ``taught`` (QLT-9): the unit's html before the FAQ. A title that names the unit's topic in the unit's words
+    ("Giải đáp về đối sánh nội địa …" over items about "đối thủ trong nước", QC run ffaf7318: 2 of 2 findings were
+    false alarms) matches; only a title about something neither the items nor the unit speak of does not."""
 
     items = component.get("items")
     key = set(content_words(str(component.get("title") or ""))) - FAQ_TITLE_GENERIC_WORDS
@@ -252,6 +256,7 @@ def faq_title_mismatch(component: dict[str, Any]) -> bool:
         return False
     said = {word for item in items if isinstance(item, dict)
             for word in content_words(f"{item.get('question') or ''} {item.get('answer') or ''}")}
+    said |= set(content_words(taught))
     return len(key & said) < IDM_FAQ_TITLE_MIN_SHARED_SHARE * len(key)
 
 
@@ -368,7 +373,7 @@ def deterministic_slot_findings(
                 findings.extend(SlotFinding(code, index) for code in faq_check.findings(index, component))
             if restated_faq_items(component, preceding_html):
                 findings.append(SlotFinding(FAQ_RESTATES_HTML_CODE, index))
-            if faq_title_mismatch(component):
+            if faq_title_mismatch(component, preceding_html):
                 findings.append(SlotFinding(FAQ_TITLE_MISMATCH_CODE, index))
         elif kind == "problem":
             explanation = " ".join(str(component.get("explanation") or "").split())
@@ -596,9 +601,105 @@ _SAFE_NOTE_CODE_RE: Final = re.compile(r"^[A-Z][A-Z0-9_]{2,95}$")
 _MAX_NOTE_CODES: Final = 6
 
 
-def _codes(values: Sequence[str]) -> str:
-    return ", ".join(list(dict.fromkeys(code for code in values if _SAFE_NOTE_CODE_RE.fullmatch(code)))[
-        :_MAX_NOTE_CODES])
+# QLT-9 (QC run ffaf7318: the notes still carried machine codes): what each code means, in a few plain words. The codes
+# stay in ``deterministic_codes`` for the tools; the author reads words.
+_CODE_TEXT_VI: Final[dict[str, str]] = {
+    ANSWER_LEAK_CODE: "phương án lộ đáp án",
+    ANSWER_LENGTH_CUE_CODE: "đáp án đúng dài hơn hẳn",
+    ANSWER_CONTESTED_CODE: "đáp án có thể tranh cãi",
+    QUESTION_INCOMPLETE_CODE: "câu hỏi bị cụt",
+    "IDM_W5_PRACTICE_INCOMPLETE": "bài luyện tập thiếu phần",
+    "IDM_W5_FEEDBACK_NOT_TEACHING": "lời giải chưa giảng giải",
+    SENTENCE_COPY_CODE: "câu chép gần nguyên văn tài liệu",
+    SENTENCE_LENGTH_CODE: "câu quá dài",
+    EXPLANATION_MISSING_CODE: "thiếu phần giảng giải",
+    EXAMPLE_ROLE_CODE: "ví dụ chưa đúng vai trò người học",
+    NEW_FACT_CODE: "số liệu hoặc tên riêng không có trong tài liệu",
+    "IDM_W5_VERBATIM_COPY": "đoạn chép nguyên văn",
+    FAQ_RESTATES_HTML_CODE: "hỏi đáp nhắc lại bài",
+    FAQ_RESTATES_SOURCE_CODE: "hỏi đáp chép tài liệu",
+    FAQ_TYPE_MIX_CODE: "hỏi đáp chỉ hỏi lại kiến thức",
+    FAQ_NEW_FACT_CODE: "hỏi đáp có số liệu hoặc tên ngoài tài liệu",
+    FAQ_OPEN_QUESTION_CODE: "hỏi đáp trả lời câu còn chờ SME",
+    FAQ_INVENTED_REASON_CODE: "hỏi đáp tự đặt lý do",
+    FAQ_TITLE_MISMATCH_CODE: "tiêu đề hỏi đáp chưa khớp",
+    FAQ_ITEMS_DROPPED_CODE: "bỏ bớt câu hỏi đáp",
+    CALLOUT_UNGROUNDED_CODE: "khung trích dẫn không có trong tài liệu",
+    CALLOUT_TO_PROSE_CODE: "đổi khung trích dẫn thành đoạn văn",
+    FRAMEWORK_INCOMPLETE_CODE: "chưa liệt kê đủ thành phần của khung",
+    FRAMEWORK_LIST_INSERTED_CODE: "chèn danh sách thành phần",
+    SOURCE_ARTIFACT_CODE: "chữ bị cắt như trong PDF",
+    WORKSHEET_INCOMPLETE_CODE: "phiếu thực hành thiếu phần",
+    "IDM_W5_WORKSHEET_COMPACTED": "rút gọn phiếu thực hành",
+    "HTML_INSTRUCTIONAL_DENSITY_EXCEEDED": "phần lý thuyết dài quá giới hạn",
+    "IDM_W5_REPAIR_INVALID": "lần sửa của AI sai định dạng",
+    "IDM_W5_REPAIR_SKIPPED_BUDGET": "không đủ thời gian để sửa",
+    "IDM_DEADLINE_EXCEEDED": "hết thời gian",
+    "IDM_W5_INSTANCE_INVALID": "AI trả lời sai định dạng",
+    "IDM_RESPONSE_TRUNCATED": "câu trả lời của AI bị cắt",
+    "IDM_W5_FALLBACK_ONLY": "lần chạy lại không dùng AI",
+}
+_CODE_TEXT_EN: Final[dict[str, str]] = {
+    ANSWER_LEAK_CODE: "an option gives the answer away",
+    ANSWER_LENGTH_CUE_CODE: "the correct option is much longer",
+    ANSWER_CONTESTED_CODE: "a contestable answer",
+    QUESTION_INCOMPLETE_CODE: "a cut question",
+    "IDM_W5_PRACTICE_INCOMPLETE": "an incomplete practice",
+    "IDM_W5_FEEDBACK_NOT_TEACHING": "feedback that does not teach",
+    SENTENCE_COPY_CODE: "sentences copied from the source",
+    SENTENCE_LENGTH_CODE: "sentences that are too long",
+    EXPLANATION_MISSING_CODE: "no explanation",
+    EXAMPLE_ROLE_CODE: "an example about another role",
+    NEW_FACT_CODE: "a number or name the source does not state",
+    "IDM_W5_VERBATIM_COPY": "a copied passage",
+    FAQ_RESTATES_HTML_CODE: "FAQ that repeats the lesson",
+    FAQ_RESTATES_SOURCE_CODE: "FAQ that copies the source",
+    FAQ_TYPE_MIX_CODE: "FAQ that only asks for facts",
+    FAQ_NEW_FACT_CODE: "FAQ with a number or name outside the source",
+    FAQ_OPEN_QUESTION_CODE: "FAQ answering an open SME question",
+    FAQ_INVENTED_REASON_CODE: "FAQ with its own reason",
+    FAQ_TITLE_MISMATCH_CODE: "an FAQ title that does not match",
+    FAQ_ITEMS_DROPPED_CODE: "FAQ items removed",
+    CALLOUT_UNGROUNDED_CODE: "a callout not in the source",
+    CALLOUT_TO_PROSE_CODE: "a callout turned into a paragraph",
+    FRAMEWORK_INCOMPLETE_CODE: "a framework not listed in full",
+    FRAMEWORK_LIST_INSERTED_CODE: "a list of items added",
+    SOURCE_ARTIFACT_CODE: "text cut as in the PDF",
+    WORKSHEET_INCOMPLETE_CODE: "an incomplete worksheet",
+    "IDM_W5_WORKSHEET_COMPACTED": "a shortened worksheet",
+    "HTML_INSTRUCTIONAL_DENSITY_EXCEEDED": "theory over its length",
+    "IDM_W5_REPAIR_INVALID": "an AI repair in the wrong format",
+    "IDM_W5_REPAIR_SKIPPED_BUDGET": "no time left to repair",
+    "IDM_DEADLINE_EXCEEDED": "out of time",
+    "IDM_W5_INSTANCE_INVALID": "an AI answer in the wrong format",
+    "IDM_RESPONSE_TRUNCATED": "a cut AI answer",
+    "IDM_W5_FALLBACK_ONLY": "a rerun without AI",
+}
+# A code without its own words, by family.
+_CODE_FAMILY_VI: Final = (("HTML_", "lỗi định dạng phần lý thuyết"), ("DIAGRAM_", "lỗi sơ đồ"),
+                          ("FAQ_", "lỗi phần hỏi đáp"), ("IDM_W6_", "kiểm tra chất lượng tự động"),
+                          ("IDM_PROVIDER", "AI không phản hồi"), ("AI_PROVIDER", "AI không phản hồi"),
+                          ("IDM_BUDGET", "hết hạn mức gọi AI"))
+_CODE_FAMILY_EN: Final = (("HTML_", "a theory format problem"), ("DIAGRAM_", "a diagram problem"),
+                          ("FAQ_", "an FAQ problem"), ("IDM_W6_", "the automatic review"),
+                          ("IDM_PROVIDER", "the AI did not answer"), ("AI_PROVIDER", "the AI did not answer"),
+                          ("IDM_BUDGET", "the AI budget ran out"))
+
+
+def _code_text(code: str, vi: bool) -> str:
+    texts = _CODE_TEXT_VI if vi else _CODE_TEXT_EN
+    if code in texts:
+        return texts[code]
+    family = next((text for prefix, text in (_CODE_FAMILY_VI if vi else _CODE_FAMILY_EN) if code.startswith(prefix)),
+                  None)
+    return family or ("một kiểm tra tự động khác" if vi else "another automatic check")
+
+
+def _codes(values: Sequence[str], vi: bool = True) -> str:
+    """The plain words of ``values`` (QLT-9), without repeats."""
+
+    codes = [code for code in dict.fromkeys(values) if _SAFE_NOTE_CODE_RE.fullmatch(code)][:_MAX_NOTE_CODES]
+    return ", ".join(dict.fromkeys(_code_text(code, vi) for code in codes))
 
 
 def _slot_reasons(slots: Sequence[int], reasons: Mapping[int, Sequence[str]], slot_types: Sequence[str],
@@ -608,8 +709,8 @@ def _slot_reasons(slots: Sequence[int], reasons: Mapping[int, Sequence[str]], sl
     for index in sorted(slots):
         kind = slot_types[index] if 0 <= index < len(slot_types) else ""
         label = f" ({labels[kind]})" if kind in labels else ""
-        codes = _codes(reasons.get(index, ()))
-        parts.append(f"{'khối' if vi else 'block'} {index + 1}{label}" + (f" — {codes}" if codes else ""))
+        codes = _codes(reasons.get(index, ()), vi)
+        parts.append(f"{'khối' if vi else 'block'} {index + 1}{label}" + (f": {codes}" if codes else ""))
     return "; ".join(parts)
 
 
@@ -633,6 +734,7 @@ def build_unit_author_note(
     callouts_to_prose: int = 0,
     framework_list_inserted: int = 0,
     worksheet_compacted: bool = False,
+    worksheet_example_kept: bool = False,
     drafted_examples: Mapping[int, int] | None = None,
     faq_items_copied: int = 0,
     faq_items_recall: int = 0,
@@ -640,6 +742,7 @@ def build_unit_author_note(
     faq_items_open: int = 0,
     review_reasons: Sequence[str] = (),
     unexplained_acronyms: Sequence[str] = (),
+    notices: Sequence[str] = (),
 ) -> str:
     """Template note for the unit ``implementation_notes``; no IDs, no ``<``/``>``.
 
@@ -658,7 +761,8 @@ def build_unit_author_note(
 
     ``review_reasons`` (QLT-8): why the unit is marked for review (``REVIEW_REASON_*``), stated first in plain words;
     ``unexplained_acronyms``: abbreviations the learner text uses whose full form neither the facts nor the server's
-    short list give, for the SME to spell out.
+    short list give, for the SME to spell out. ``notices`` (QLT-9): what the author should know about a unit that is
+    not marked for review (``NOTICE_REASONS``), stated as "Lưu ý".
     """
 
     vi = locale == "vi"
@@ -668,13 +772,15 @@ def build_unit_author_note(
     parts: list[str] = []
     if line := _review_reasons_line(review_reasons, vi):
         parts.append(line)
+    if line := _notices_line(notices, vi):
+        parts.append(line)
     if judge.status in {"pass", "review_required", "reject"}:
         if problems:
-            described = "; ".join(f"{labels[finding.criterion]} ({finding.criterion.split('_')[0]})"
-                                  for finding in problems[:4])
+            described = "; ".join(dict.fromkeys(labels[finding.criterion] for finding in problems[:4]))
             parts.append(f"QA tự động: {len(problems)} vấn đề cần xem — {described}." if vi
                          else f"Automatic QA: {len(problems)} issue(s) to review — {described}.")
-        else:
+        elif not review_reasons:
+            # QLT-9: never "no major issue" on a unit marked for review.
             parts.append("QA tự động: không phát hiện vấn đề lớn." if vi
                          else "Automatic QA: no major issue found.")
     elif judge.status == "skipped_budget":
@@ -682,7 +788,7 @@ def build_unit_author_note(
     elif judge.status == "failed":
         parts.append("QA tự động: không chạy được, cần rà soát thủ công." if vi
                      else "Automatic QA: unavailable, review manually.")
-    failures = _codes([*failure_codes, *deterministic_codes])
+    failures = _codes([*failure_codes, *deterministic_codes], vi)
     if whole_fallback:
         parts.append(("Cả bài dùng bản dự phòng dựng từ tài liệu — cần biên tập." if vi
                       else "The whole lesson uses the source-based fallback — edit it.")
@@ -690,13 +796,13 @@ def build_unit_author_note(
     elif fallback_slots:
         parts.append(f"{len(fallback_slots)} khối dùng bản dự phòng dựng từ tài liệu — cần biên tập." if vi
                      else f"{len(fallback_slots)} block(s) use the source-based fallback — edit them.")
-        explained = [index for index in fallback_slots if _codes(reasons.get(index, ()))]
+        explained = [index for index in fallback_slots if _codes(reasons.get(index, ()), vi)]
         if explained:
             parts.append(("Lý do: " if vi else "Reason: ") + _slot_reasons(explained, reasons, slot_types, vi) + ".")
     if review_slots and not whole_fallback:
         parts.append(("Giữ bản AI để tác giả rà soát: " if vi else "AI draft kept for author review: ")
                      + _slot_reasons(review_slots, reasons, slot_types, vi) + ".")
-    repair_failures = _codes(failure_codes)
+    repair_failures = _codes(failure_codes, vi)
     if repair_failures and not whole_fallback and (fallback_slots or review_slots):
         parts.append(f"Sửa tự động không thành công: {repair_failures}." if vi
                      else f"Automatic repair did not succeed: {repair_failures}.")
@@ -729,7 +835,12 @@ def build_unit_author_note(
                      "lý thuyết — tác giả nên biên tập cho liền mạch." if vi
                      else f"A list of the framework's {framework_list_inserted} items (names from the source) was "
                           "inserted into the theory block — edit it into the text.")
-    if worksheet_compacted:
+    if worksheet_compacted and worksheet_example_kept:
+        parts.append("Phiếu thực hành dài hơn giới hạn nên đã rút gọn gợi ý trong bảng (ví dụ mẫu vẫn giữ, có thể "
+                     "còn hai dòng) — tác giả có thể bổ sung lại gợi ý." if vi
+                     else "The worksheet was over its length budget, so the guidance in its table was shortened (the "
+                          "worked example stays, possibly with two entries) — the author may add the guidance back.")
+    elif worksheet_compacted:
         parts.append("Phiếu thực hành dài hơn giới hạn nên đã bỏ phần ví dụ mẫu (hoặc rút gọn gợi ý trong bảng) — "
                      "tác giả có thể bổ sung lại một ví dụ ngắn." if vi
                      else "The worksheet was over its length budget, so its worked example (or the extra guidance in "
@@ -856,6 +967,17 @@ REVIEW_REASON_SERVER_EDIT: Final = "server_edit"
 REVIEW_REASON_EVIDENCE: Final = "evidence"
 REVIEW_REASON_JUDGE: Final = "judge"
 REVIEW_REASON_SCENARIO: Final = "ai_scenario"
+# QLT-9 (QC run ffaf7318: 14 of 18 units marked, so the mark meant little): reasons that are a notice ("Lưu ý"), not a
+# review mark: the source pages with images or tables, and AI slots kept with style findings only (long or copied
+# sentences, an FAQ title, an FAQ that recalls) - the content is correct, the author may polish it.
+REVIEW_REASON_STYLE: Final = "style_kept"
+NOTICE_REASONS: Final = frozenset({REVIEW_REASON_EVIDENCE, REVIEW_REASON_STYLE})
+# Findings about the wording, not the correctness: a slot kept with only these is a notice ("Nên biên tập").
+STYLE_CODES: Final = frozenset({
+    SENTENCE_COPY_CODE, SENTENCE_LENGTH_CODE, "IDM_W5_VERBATIM_COPY", EXPLANATION_MISSING_CODE, EXAMPLE_ROLE_CODE,
+    FAQ_TITLE_MISMATCH_CODE, FAQ_TYPE_MIX_CODE, FAQ_RESTATES_HTML_CODE, FAQ_RESTATES_SOURCE_CODE,
+    ANSWER_LENGTH_CUE_CODE,
+})
 _REVIEW_REASON_VI: Final = {
     REVIEW_REASON_FALLBACK: "có khối dùng bản dự phòng dựng từ tài liệu",
     REVIEW_REASON_KEPT_SLOTS: "có khối AI viết chưa đạt hết kiểm tra tự động (chi tiết bên dưới)",
@@ -865,6 +987,7 @@ _REVIEW_REASON_VI: Final = {
                             "chiếu với tài liệu gốc",
     REVIEW_REASON_JUDGE: "kiểm tra tự động phát hiện vấn đề lớn (chi tiết bên dưới)",
     REVIEW_REASON_SCENARIO: "câu hỏi dùng tình huống do AI soạn, SME cần xác nhận tình huống và đáp án",
+    REVIEW_REASON_STYLE: "có khối AI còn câu dài hoặc câu gần chép tài liệu, nên biên tập lại (chi tiết bên dưới)",
 }
 _REVIEW_REASON_EN: Final = {
     REVIEW_REASON_FALLBACK: "some blocks use the source-based fallback",
@@ -876,6 +999,7 @@ _REVIEW_REASON_EN: Final = {
     REVIEW_REASON_JUDGE: "the automatic review found a major issue (details below)",
     REVIEW_REASON_SCENARIO: "the question uses an AI-drafted scenario; the SME should confirm the scenario and the "
                             "answer",
+    REVIEW_REASON_STYLE: "some AI blocks keep long or copied sentences; polish them (details below)",
 }
 _MAX_NOTE_ACRONYMS: Final = 8
 
@@ -886,6 +1010,12 @@ def _review_reasons_line(reasons: Sequence[str], vi: bool) -> str:
     if not described:
         return ""
     return ("Cần tác giả xem lại vì: " if vi else "Needs the author's review because: ") + "; ".join(described) + "."
+
+
+def _notices_line(notices: Sequence[str], vi: bool) -> str:
+    texts = _REVIEW_REASON_VI if vi else _REVIEW_REASON_EN
+    described = [texts[reason] for reason in dict.fromkeys(notices) if reason in texts]
+    return (("Lưu ý: " if vi else "Note: ") + "; ".join(described) + ".") if described else ""
 
 
 def _acronyms_line(acronyms: Sequence[str], vi: bool) -> str:
@@ -901,7 +1031,7 @@ def _check_lines(vi: bool, deterministic_codes: Sequence[str], remaining: Sequen
     warns on the returned unit."""
 
     lines: list[str] = []
-    fixed = _codes(sorted(set(fixed_codes)))
+    fixed = _codes(sorted(set(fixed_codes)), vi)
     if fixed:
         lines.append(f"Đã tự sửa: {fixed}." if vi else f"Automatically fixed: {fixed}.")
     still = list(deterministic_codes) if remaining is None else [item.code for item in remaining]
@@ -915,15 +1045,15 @@ def _check_lines(vi: bool, deterministic_codes: Sequence[str], remaining: Sequen
         where = ", ".join(f"{'khối' if vi else 'block'} {index + 1}"
                           + (f" ({labels[slot_types[index]]})" if index < len(slot_types)
                              and slot_types[index] in labels else "") for index in slots)
-        if code in plain:
-            lines.append(f"Cần xem {where}: {hint}." if vi else f"Review {where}: {hint}.")
+        # QLT-9: plain words only, the code stays in ``deterministic_codes``; a wording finding is to polish.
+        if code in STYLE_CODES:
+            lines.append(f"Nên biên tập {where}: {hint}." if vi else f"Polish {where}: {hint}.")
         else:
-            lines.append(f"Cần xem ({code}, {where}): {hint}." if vi else f"Review ({code}, {where}): {hint}.")
-    warn = sorted({code for code in still if remaining is None or (code not in hints and code not in plain)})[
-        :_MAX_NOTE_CODES]
+            lines.append(f"Cần xem {where}: {hint}." if vi else f"Review {where}: {hint}.")
+    warn = _codes(sorted({code for code in still if remaining is None or (code not in hints and code not in plain)}),
+                  vi)
     if warn:
-        lines.append("Kiểm tra tự động còn cảnh báo: " + ", ".join(warn) + "." if vi
-                     else "Automatic checks still warn: " + ", ".join(warn) + ".")
+        lines.append(f"Kiểm tra tự động còn cảnh báo: {warn}." if vi else f"Automatic checks still warn: {warn}.")
     return lines
 
 
@@ -971,17 +1101,15 @@ def blocking_count(findings: Sequence[IdmJudgeFindingV1]) -> int:
 
 __all__ = [
     "ANSWER_CONTESTED_CODE", "ANSWER_LEAK_CODE", "CALLOUT_KIND", "CALLOUT_TO_PROSE_CODE", "CALLOUT_UNGROUNDED_CODE",
-    "CRITERIA", "EXPLAINED_CRITERION", "FAQ_ITEMS_DROPPED_CODE", "FAQ_RESTATES_HTML_CODE", "FAQ_TITLE_MISMATCH_CODE",
-    "FAQ_VALUE_CRITERION",
-    "FRAMEWORK_INCOMPLETE_CODE", "FRAMEWORK_LIST_INSERTED_CODE", "JUDGE_CRITERIA", "NOT_APPLICABLE",
-    "PRACTICE_CRITERIA", "PURPOSE_CRITERION", "REVIEW_REASON_EVIDENCE", "REVIEW_REASON_FALLBACK", "REVIEW_REASON_JUDGE",
-    "REVIEW_REASON_KEPT_SLOTS", "REVIEW_REASON_SCENARIO", "REVIEW_REASON_SERVER_EDIT", "REVIEW_REASON_STEP_INCOMPLETE",
-    "SOURCE_ARTIFACT_CODE", "TITLE_CRITERION", "WORKSHEET_INCOMPLETE_CODE",
-    "JudgeOutcome",
-    "SlotFinding", "advisory_slot_findings", "blocking_count",
-    "build_unit_author_note", "build_unit_quality", "callouts_as_paragraphs", "copied_options",
-    "deterministic_slot_findings", "faq_title_mismatch", "final_unit_findings",
-    "has_practice_slot", "html_before", "learner_view", "repair_targets", "restated_faq_items", "reworded_key",
-    "run_judge",
-    "settle_applicability", "settled_codes", "unexplained_options", "ungrounded_callouts", "worksheet_complete",
+    "CRITERIA", "EXPLAINED_CRITERION", "FAQ_ITEMS_DROPPED_CODE", "FAQ_RESTATES_HTML_CODE",
+    "FAQ_TITLE_MISMATCH_CODE", "FAQ_VALUE_CRITERION", "FRAMEWORK_INCOMPLETE_CODE", "FRAMEWORK_LIST_INSERTED_CODE",
+    "JUDGE_CRITERIA", "NOTICE_REASONS", "NOT_APPLICABLE", "PRACTICE_CRITERIA", "PURPOSE_CRITERION",
+    "REVIEW_REASON_EVIDENCE", "REVIEW_REASON_FALLBACK", "REVIEW_REASON_JUDGE", "REVIEW_REASON_KEPT_SLOTS",
+    "REVIEW_REASON_SCENARIO", "REVIEW_REASON_SERVER_EDIT", "REVIEW_REASON_STEP_INCOMPLETE", "REVIEW_REASON_STYLE",
+    "SOURCE_ARTIFACT_CODE", "TITLE_CRITERION", "WORKSHEET_INCOMPLETE_CODE", "JudgeOutcome", "SlotFinding",
+    "advisory_slot_findings", "blocking_count", "build_unit_author_note", "build_unit_quality",
+    "callouts_as_paragraphs", "copied_options", "deterministic_slot_findings", "faq_title_mismatch",
+    "final_unit_findings", "has_practice_slot", "html_before", "learner_view", "repair_targets",
+    "restated_faq_items", "reworded_key", "run_judge", "settle_applicability", "settled_codes",
+    "unexplained_options", "ungrounded_callouts", "worksheet_complete",
 ]

@@ -594,13 +594,13 @@ class UnitTests(StoryboardEndpointTestCase):
         self.assertIn("(roles of TARGET_AUDIENCE: một CEO, một nhà sáng lập, một lãnh đạo cấp cao)",
                       provider.calls[1]["prompt"])
         self.assertIn(CEO_DRAFT, html_texts(data["unit"]["components"][0]))
-        self.assertIn("Đã tự sửa: IDM_W5_EXAMPLE_ROLE.", quality.author_note)
+        self.assertIn("Đã tự sửa: ví dụ chưa đúng vai trò người học.", quality.author_note)
         # Left as it was by the repair: kept for the author with a plain note, never the source copy.
         provider = FakeGenerate(**{WRITER: [writer], REPAIR: [slot_repair(writer, 0)], JUDGE: [judge()]})
         status, data, _ = await self.post(body, provider)
-        quality = self.assert_envelope(data, "provider_validated", "review_required", "provider")
+        quality = self.assert_envelope(data, "provider_validated", "validated", "provider")
         self.assertNotIn("source_locked_fallback", data["unit"]["components"][0])
-        self.assertIn("Cần xem khối 1 (Lý thuyết): ví dụ minh hoạ kể về một người không thuộc đối tượng học",
+        self.assertIn("Nên biên tập khối 1 (Lý thuyết): ví dụ minh hoạ kể về một người không thuộc đối tượng học",
                       quality.author_note)
 
     async def test_long_sentences_get_a_targeted_repair_with_the_measured_numbers(self) -> None:
@@ -622,7 +622,7 @@ class UnitTests(StoryboardEndpointTestCase):
                       "sentences that are too long", provider.calls[1]["prompt"])
         self.assertIn("(6 prose sentences of 17.8 words on average, the longest 54; at most 22 on average and 40 for "
                       "any sentence)", provider.calls[1]["prompt"])
-        self.assertIn("Đã tự sửa: IDM_W5_SENTENCE_LENGTH.", quality.author_note)
+        self.assertIn("Đã tự sửa: câu quá dài.", quality.author_note)
 
     async def test_an_faq_item_that_answers_an_open_sme_question_is_dropped(self) -> None:
         body = escalate_body()

@@ -430,7 +430,7 @@
      "deterministic_codes": [
       "IDM_W5_ANSWER_LENGTH_CUE"
      ],
-     "author_note": "QA tự động: không phát hiện vấn đề lớn. Đã tự sửa: IDM_W5_ANSWER_LENGTH_CUE. Tình huống minh hoạ do AI soạn, cần SME xác nhận tính thực tế."
+     "author_note": "QA tự động: không phát hiện vấn đề lớn. Đã tự sửa: đáp án đúng dài hơn hẳn. Tình huống minh hoạ do AI soạn, cần SME xác nhận tính thực tế."
     }
    },
    "usage": {
@@ -515,8 +515,8 @@
     "op": "generate",
     "model": "gemini-3.8-flash",
     "schema": "StagedInstancePayloadUnit",
-    "prompt_sha256": "6d44a11abbb91a8bd0f41f65b2ab07ef9e8b1040ccb09d7aea3932796112c302",
-    "prompt_chars": 14805,
+    "prompt_sha256": "383ec1e682e9fb6b969a6388b0bb00e113365651ca5795f3fb14141a16226eb5",
+    "prompt_chars": 15190,
     "config": {
      "max_output_tokens": 16000,
      "response_mime_type": "application/json",
@@ -533,8 +533,8 @@
     "op": "generate",
     "model": "gemini-3.8-flash",
     "schema": "StagedMultiRepair",
-    "prompt_sha256": "54eab4f91b0df87b09f8000c529f6d79ef3bd387d9fddd396e1f49be5d9b82f2",
-    "prompt_chars": 15700,
+    "prompt_sha256": "9707524b1d0059c51bfb6a9c2f7c9aceeb8438951e6cf64681c47e35e6a85620",
+    "prompt_chars": 16085,
     "config": {
      "max_output_tokens": 16000,
      "response_mime_type": "application/json",

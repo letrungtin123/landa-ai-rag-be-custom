@@ -475,7 +475,7 @@ class ExampleLabelTests(unittest.TestCase):
         note = build_unit_author_note(locale="vi", judge=Judge("pass"), deterministic_codes=[SENTENCE_COPY_CODE],
                                       fallback_slots=[], ai_drafted=False, slot_types=["html"], review_slots=[],
                                       remaining=[SlotFinding(SENTENCE_COPY_CODE, 0), SlotFinding(NEW_FACT_CODE, 0)])
-        self.assertIn("Cần xem khối 1 (Lý thuyết): nhiều câu gần như chép nguyên văn tài liệu", note)
+        self.assertIn("Nên biên tập khối 1 (Lý thuyết): nhiều câu gần như chép nguyên văn tài liệu", note)
         self.assertIn("Cần xem khối 1 (Lý thuyết): có số liệu hoặc tên riêng không có trong tài liệu", note)
         self.assertNotIn("IDM_W5_SENTENCE_COPY", note)
         self.assertNotIn("Kiểm tra tự động còn cảnh báo", note)
@@ -504,7 +504,7 @@ class QaIntegrationTests(unittest.TestCase):
         self.assertEqual(criteria_summary(findings), {"Q2_not_copied": "major"})
         note = build_unit_author_note(locale="vi", judge=Judge("review_required", findings), deterministic_codes=[],
                                       fallback_slots=[], ai_drafted=False, remaining=[])
-        self.assertIn("phần lý thuyết chưa được giảng giải cho người học (Q12)", note)
+        self.assertIn("phần lý thuyết chưa được giảng giải cho người học", note)
 
     def test_course_note_says_how_the_content_is_written(self) -> None:
         self.assertIn('ví dụ do AI soạn được ghi "Ví dụ minh hoạ" và cần kiểm tra', fidelity_note_line("explain", "vi"))

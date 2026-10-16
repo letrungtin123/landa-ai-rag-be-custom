@@ -417,7 +417,7 @@
      "criteria": {},
      "repair_applied": false,
      "deterministic_codes": [],
-     "author_note": "Cả bài dùng bản dự phòng dựng từ tài liệu — cần biên tập. Lý do: IDM_W5_FALLBACK_ONLY."
+     "author_note": "Cả bài dùng bản dự phòng dựng từ tài liệu — cần biên tập. Lý do: lần chạy lại không dùng AI."
     }
    },
    "usage": {

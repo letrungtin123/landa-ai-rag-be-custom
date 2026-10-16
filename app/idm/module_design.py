@@ -422,6 +422,59 @@ def attach_framework_items(lessons: Sequence[IdmLessonDesignV1], scope: ModuleSc
     return result, attached
 
 
+# "5 bước chuyển dịch tư duy" names the framework "chuyển dịch"; "bước" only counts its items.
+_COUNTED_FRAMEWORK_RE: Final = re.compile(r"(?<!\w)(\d{1,2})\s+(?:bước|steps?)\s+(\w+(?:\s+\w+)?)", re.IGNORECASE)
+
+
+def _purpose_phrases(texts: Sequence[str]) -> list[str]:
+    """The "N <items>" phrases a course purpose names, the counted framework first ("5 chuyển dịch" for "5 bước
+    chuyển dịch")."""
+
+    phrases = [f"{match.group(1)} {match.group(2)}" for text in texts for match in _COUNTED_FRAMEWORK_RE.finditer(text)]
+    promise = framework_promise(texts)
+    return [*phrases, *([promise[2]] if promise is not None else [])]
+
+
+def attach_purpose_framework(lessons: Sequence[IdmLessonDesignV1], scope: ModuleScope, purpose_texts: Sequence[str],
+                             ) -> tuple[list[IdmLessonDesignV1], bool]:
+    """QLT-9 (QC run ffaf7318: the purpose named "5 bước chuyển dịch tư duy cốt lõi" and no unit presented the five
+    together): when the course purpose names a framework whose items this module's facts number, and no unit of the
+    module already presents it, the module's first teaching html gets the framework's support items (the item names
+    and what each changes), so its writer lists them all. Nothing is moved and no fact changes owner."""
+
+    result = list(lessons)
+    shard_groups = [scope.block_texts([block_id]) for plan in scope.lesson_plans for block_id in plan.block_ids]
+    for phrase in _purpose_phrases(purpose_texts):
+        brief = unit_framework_brief([phrase], [], shard_groups, scope.locale)
+        if brief is None:
+            continue
+        lead = brief.split(":", 1)[0]
+        if any(item.brief.split(":", 1)[0] == lead for lesson in result for unit in lesson.units
+               for component in unit.components for item in component.support_items):
+            return result, False
+        for lesson_index, lesson in enumerate(result):
+            for unit_index, unit in enumerate(lesson.units):
+                target = next((index for index, component in enumerate(unit.components)
+                               if component.type == "html" and component.role != "practice"), None)
+                if target is None:
+                    continue
+                component = unit.components[target]
+                items = [IdmSupportItemV1(kind="explain_concept", brief=brief, block_id=component.block_ids[0])]
+                detail = unit_framework_detail([phrase], [], shard_groups, scope.locale)
+                if detail is not None:
+                    items.append(IdmSupportItemV1(kind="explain_concept", brief=detail,
+                                                  block_id=component.block_ids[0]))
+                support = component.support_items[:MAX_SUPPORT_ITEMS - len(items)]
+                components = list(unit.components)
+                components[target] = component.model_copy(update={"support_items": [*items, *support]})
+                units = list(lesson.units)
+                units[unit_index] = unit.model_copy(update={"components": components})
+                result[lesson_index] = lesson.model_copy(update={"units": units})
+                return result, True
+        return result, False
+    return result, False
+
+
 def _taught_before_questions(lessons: Sequence[IdmLessonDesignV1], scope: ModuleScope, runtime: IdmRuntime,
                              codes: Counter[str]) -> list[IdmLessonDesignV1]:
     """Blocks only a question used join the unit's teaching html (``module_autofix.teach_before_questions``); a
@@ -757,6 +810,12 @@ async def run_idm_module_design(
     final, attached = attach_framework_items(final, scope)
     if attached:
         runtime.adjustments["IDM_W4_FRAMEWORK_ITEMS_ATTACHED"] += attached
+    # QLT-9: a framework the course purpose names is presented whole in the module that numbers its items.
+    project = context.project_context
+    final, purposed = attach_purpose_framework(final, scope, [text for text in (
+        project.course_purpose, project.course_description) if text])
+    if purposed:
+        runtime.adjustments["IDM_W4_PURPOSE_FRAMEWORK_ATTACHED"] += 1
     # Explain mode: every teaching html plans an example, a comparison or why it matters (AI-drafted when needed).
     final, supports = plan_teaching_supports(final, {block_id: block.name for block_id, block in scope.blocks.items()},
                                              mode, scope.locale)
@@ -772,9 +831,11 @@ async def run_idm_module_design(
     if retitled:
         runtime.adjustments["IDM_W4_TITLES_SENTENCE_CASE"] += retitled
     if plan.shard_index == 0:
-        # The chapter's practice questions get their key letters in turn (QC run 8de1c76b, Q4); a later shard does
-        # not know its lessons' place in the chapter and keeps the plain per-unit letters.
-        final, renumbered = encode_key_letters(final, plan.order, context.lesson_index_offset)
+        # The chapter's practice questions get their key letters (QC run 8de1c76b, Q4) in a balanced random order
+        # seeded by the source (QLT-9: no A B C D cycle); a later shard does not know its lessons' place in the
+        # chapter and keeps the plain per-unit letters.
+        final, renumbered = encode_key_letters(final, plan.order, context.lesson_index_offset,
+                                               seed=skeleton.source_snapshot_hash)
         if renumbered:
             runtime.adjustments["IDM_W4_KEY_LETTERS_ENCODED"] += renumbered
     gaps = framework_orientation_gaps(final, scope)

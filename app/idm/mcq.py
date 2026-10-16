@@ -114,20 +114,46 @@ def practice_key_shift(practice_id: str | None) -> int:
     return int(match.group(1)) - 1 if match else 0
 
 
+def key_letters(seed: str, start: int, count: int) -> list[int]:
+    """The key letters (0 = A) of questions ``start`` .. ``start + count - 1`` of a course (QLT-8 QC, owner
+    2026-10-16: "đáp án đúng phải xáo trộn ngẫu nhiên"; run ffaf7318 keyed its 10 questions A B C D A B C D A B, a
+    pattern learners can follow). Blocks of four, each a seeded permutation of A-D (``option_order``), so every letter
+    keys a quarter of the questions; a block never opens with the letter the previous one closed with, so no two
+    consecutive questions share a letter. Same seed, same letters: a rerun of the design keeps its keys."""
+
+    letters: list[int] = []
+    previous: int | None = None
+    block = 0
+    while len(letters) < start + count:
+        order = option_order(f"{seed}:keys:{block}", _KEY_CYCLE)
+        if order[0] == previous:
+            order = [*order[1:], order[0]]
+        letters.extend(order)
+        previous = order[-1]
+        block += 1
+    return letters[start:start + count]
+
+
 def encode_key_letters(lessons: Sequence[IdmLessonDesignV1], chapter_order: int, first_letter: int,
-                       ) -> tuple[list[IdmLessonDesignV1], int]:
-    """W4 lays out the keys of a chapter's practice questions A, B, C, D, A ... in course order (Q4).
+                       seed: str | None = None) -> tuple[list[IdmLessonDesignV1], int]:
+    """W4 lays out the keys of a chapter's practice questions in course order (Q4): with ``seed`` (the design's
+    source snapshot, QLT-9) the k-th question of the chapter takes ``key_letters(seed, first_letter, …)[k]`` (a
+    balanced random order), without it A, B, C, D, A ... from ``first_letter``.
 
     A unit is written alone and only knows its place in the course, so ``question_ordinal`` alone revisits a
     letter when lessons put their question in different units. W4 sees every lesson of the chapter: it gives the
     practice of the k-th practice question the id whose ``practice_key_shift`` moves that question's
-    ``question_ordinal`` letter to ``first_letter + k``. The id is internal (``pt_1``-``pt_9``, never shown to
+    ``question_ordinal`` letter to the chosen letter. The id is internal (``pt_1``-``pt_9``, never shown to
     learners); only the numbering of a lesson's practices changes. Lessons whose ids cannot be chosen keep
     theirs. Returns the lessons and how many practices were renumbered.
     """
 
+    questions = sum(1 for lesson in lessons for unit in lesson.units for component in unit.components
+                    if component.type == "problem" and component.practice_id is not None)
+    letters = (key_letters(seed, first_letter, questions) if seed is not None
+               else [first_letter + index for index in range(questions)])
     renumbered = 0
-    position = first_letter
+    position = 0
     result: list[IdmLessonDesignV1] = []
     for lesson_number, lesson in enumerate(lessons, start=1):
         shifts: dict[str, int] = {}
@@ -137,7 +163,8 @@ def encode_key_letters(lessons: Sequence[IdmLessonDesignV1], chapter_order: int,
                 if component.type != "problem" or practice_id is None or practice_id in shifts:
                     continue
                 base = question_ordinal(f"chapter_{chapter_order + 1}.lesson_{lesson_number}.unit_{unit_number}")
-                shifts[practice_id] = (position - (base or 0)) % _KEY_CYCLE
+                target = letters[position] if position < len(letters) else first_letter + position
+                shifts[practice_id] = (target - (base or 0)) % _KEY_CYCLE
                 position += 1
         mapping = _practice_numbers(shifts, [practice.practice_id for practice in lesson.practice_tasks])
         if mapping is None or all(old == new for old, new in mapping.items()):
@@ -368,9 +395,24 @@ def question_complete(question: Any) -> bool:
 
 
 __all__ = [
-    "ANSWER_LENGTH_CUE_CODE", "BALANCED_CODE", "LABELS_STRIPPED_CODE", "OPTION_LETTERS", "QUESTION_INCOMPLETE_CODE",
-    "RELABELLED_CODE", "SHUFFLED_CODE", "answer_length_cue", "balanced_order", "encode_key_letters",
-    "labelled_letters", "normalize_single_choice", "option_length_stats", "option_lengths", "option_order",
-    "practice_key_shift", "question_complete", "question_ordinal",
+    "ANSWER_LENGTH_CUE_CODE",
+    "BALANCED_CODE",
+    "LABELS_STRIPPED_CODE",
+    "OPTION_LETTERS",
+    "QUESTION_INCOMPLETE_CODE",
+    "RELABELLED_CODE",
+    "SHUFFLED_CODE",
+    "answer_length_cue",
+    "balanced_order",
+    "encode_key_letters",
+    "key_letters",
+    "labelled_letters",
+    "normalize_single_choice",
+    "option_length_stats",
+    "option_lengths",
+    "option_order",
+    "practice_key_shift",
+    "question_complete",
+    "question_ordinal",
     "relabel_explanation",
 ]

@@ -6,10 +6,10 @@ lists and headings, nine cells torn apart, every "[ … ]" placeholder in one pa
 Node's acceptance rule too (``idmUnitOutputBudget``), so a larger worksheet budget needs both sides
 (reported, not changed here). Instead:
 
-* :func:`compact_worksheet` brings an over-long worksheet within the budget by leaving out, in order, the
-  sections that are neither the task, the template nor the self-check list (the worked example), then the
-  second and later sentences of the template's guidance cells. The task, every template field and the
-  self-check list stay, so the worksheet stays complete (``qa.worksheet_complete``).
+* :func:`compact_worksheet` brings an over-long worksheet within the budget: first the second and later sentences of
+  the template's guidance cells go, then the worked example is cut to two filled entries, then the other optional
+  sections go, and only then the worked example (QLT-9). The task, every template field and the self-check list
+  stay, so the worksheet stays complete (``qa.worksheet_complete``).
 * :func:`worksheet_fallback_html` is the fallback of a worksheet slot: the form's fields as one table
   (field, guiding question, what to write) built from the source lines in their order, the source
   introduction and closing lines as paragraphs, and a self-check list from the placeholders. It returns
@@ -26,7 +26,7 @@ import unicodedata
 from collections.abc import Callable, Sequence
 from typing import Any, Final
 
-from app.idm.text import trim_at_boundary
+from app.idm.text import idm_fold, trim_at_boundary
 from app.instructional_quality import TABLE_ROW_RE
 
 COMPACTED_CODE: Final = "IDM_W5_WORKSHEET_COMPACTED"
@@ -44,6 +44,11 @@ _MIN_ROWS: Final = 2
 _MAX_GROUP: Final = 6
 _GUIDANCE_CELL_CHARS: Final = 160
 _TEMPLATE_KINDS: Final = frozenset({"table", "steps"})
+# The worked example (QLT-9): its heading names an example, or a text opens with an example label.
+_EXAMPLE_HEADING_WORDS: Final = ("vi du", "example", "mau hoan thanh", "bai mau", "tham khao")
+_EXAMPLE_OPENING_RE: Final = re.compile(r"^\s*(?:ví dụ|illustrative example|worked example|example)\b", re.IGNORECASE)
+_TEXT_BLOCKS: Final = frozenset({"paragraph", "task", "warning"})
+_EXAMPLE_ENTRIES: Final = 2
 _TEXT: Final[dict[str, dict[str, str]]] = {
     "vi": {"task": "Nhiệm vụ", "how": "Điền từng ô dưới đây trên bản của bạn, rồi tự kiểm tra theo danh sách cuối "
                                       "phiếu.",
@@ -93,8 +98,39 @@ def _short_rows(section: dict[str, Any]) -> dict[str, Any]:
     return {**section, "blocks": blocks}
 
 
-def compact_worksheet(component: dict[str, Any], fits: Callable[[dict[str, Any]], bool]) -> dict[str, Any] | None:
-    """The first compaction of a worksheet html slot that ``fits`` (the slot's html rules), or ``None``."""
+def _is_example(section: dict[str, Any]) -> bool:
+    """The worked example: a heading that names an example, or a text that opens with an example label."""
+
+    if any(word in idm_fold(str(section.get("heading") or "")) for word in _EXAMPLE_HEADING_WORDS):
+        return True
+    return any(block.get("kind") in _TEXT_BLOCKS and _EXAMPLE_OPENING_RE.match(str(block.get("text") or ""))
+               for block in _blocks(section))
+
+
+def _two_entries(section: dict[str, Any]) -> dict[str, Any]:
+    """The worked example cut to its first ``_EXAMPLE_ENTRIES`` filled rows or items."""
+
+    blocks = []
+    for block in _blocks(section):
+        rows, items = block.get("rows"), block.get("items")
+        if isinstance(rows, list) and len(rows) > _EXAMPLE_ENTRIES:
+            blocks.append({**block, "rows": rows[:_EXAMPLE_ENTRIES]})
+        elif isinstance(items, list) and len(items) > _EXAMPLE_ENTRIES:
+            blocks.append({**block, "items": items[:_EXAMPLE_ENTRIES]})
+        else:
+            blocks.append(block)
+    return {**section, "blocks": blocks}
+
+
+def compact_worksheet(component: dict[str, Any], fits: Callable[[dict[str, Any]], bool],
+                      ) -> tuple[dict[str, Any], bool] | None:
+    """The first compaction of a worksheet html slot that ``fits`` (the slot's html rules) and whether it keeps the
+    worked example, or ``None``.
+
+    QLT-9 (QC run ffaf7318: 3 of 5 worksheets lost their worked example at 569, 600 and 846 words against 540): the
+    example goes last. In order: one-sentence guidance cells; then the example cut to two filled entries; then
+    without the other optional sections (an introduction), the example kept; only then without the example, as before.
+    """
 
     semantic = component.get("semantic_content")
     sections = semantic.get("sections") if isinstance(semantic, dict) else None
@@ -102,13 +138,19 @@ def compact_worksheet(component: dict[str, Any], fits: Callable[[dict[str, Any]]
         return None
     sections = [section for section in sections if isinstance(section, dict)]
     keep = _essential(sections)
+    example = {index for index, section in enumerate(sections) if index not in keep and _is_example(section)}
+    short = [_short_rows(section) for section in sections]
+    trimmed = [_two_entries(section) if index in example else section for index, section in enumerate(short)]
+    with_example = [section for index, section in enumerate(trimmed) if index in keep or index in example]
     kept = [section for index, section in enumerate(sections) if index in keep]
-    for candidate in (kept, [_short_rows(section) for section in kept]):
-        if not candidate or candidate == sections:
+    candidates = [(short, True), (trimmed, True), (with_example, True), (kept, False),
+                  ([_short_rows(section) for section in kept], False)]
+    for candidate, keeps_example in candidates:
+        if not candidate or candidate == sections or (keeps_example and not example):
             continue
         compacted = {**component, "semantic_content": {**semantic, "sections": candidate}}
         if fits(compacted):
-            return compacted
+            return compacted, keeps_example
     return None
 
 

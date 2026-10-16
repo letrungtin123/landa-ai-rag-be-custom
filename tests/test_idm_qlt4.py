@@ -388,7 +388,7 @@ class UnitBudgetTests(unittest.IsolatedAsyncioTestCase):
             result = await self.run_unit(provider, body)
         self.assertEqual(provider.names, [WRITER])
         self.assertEqual(budget_lines(logs.output)[-1]["thinking"], "skipped")
-        self.assertIn("IDM_W5_REPAIR_SKIPPED_BUDGET", result["unit"]["idm_quality"]["author_note"])
+        self.assertIn("không đủ thời gian để sửa", result["unit"]["idm_quality"]["author_note"])
 
     async def test_a_judge_repair_needs_room_for_the_second_judge(self) -> None:
         body = severity_body()
@@ -496,7 +496,7 @@ class AnswerCheckTests(StoryboardEndpointTestCase):
         self.assertIn("c1 IDM_W5_ANSWER_CONTESTED at c1.question", repair["prompt"])
         self.assertIn("(the case also meets the criteria the unit gives for option ", repair["prompt"])
         quality = self.assert_envelope(data, "provider_validated", "validated", "provider")
-        self.assertIn("Đã tự sửa: IDM_W5_ANSWER_CONTESTED.", quality.author_note)
+        self.assertIn("Đã tự sửa: đáp án có thể tranh cãi.", quality.author_note)
 
     async def test_a_contested_key_the_repair_keeps_is_left_for_the_author(self) -> None:
         body = severity_body()
@@ -508,7 +508,7 @@ class AnswerCheckTests(StoryboardEndpointTestCase):
         self.assertEqual(status, 200)
         quality = IdmUnitQualityV1.model_validate(data["unit"]["idm_quality"])
         self.assertEqual(data["quality_state"], "review_required")
-        self.assertIn("Cần xem (IDM_W5_ANSWER_CONTESTED, khối 2 (Quiz)): tình huống của câu hỏi cũng khớp tiêu chí",
+        self.assertIn("Cần xem khối 2 (Quiz): tình huống của câu hỏi cũng khớp tiêu chí",
                       quality.author_note)
 
     def test_the_judge_checks_one_answer_against_the_unit(self) -> None:
@@ -594,7 +594,7 @@ class SourceArtefactTests(StoryboardEndpointTestCase):
         self.assertIn("c0 IDM_W5_SOURCE_ARTIFACT at c0: a list item, row label or table cell ends cut",
                       provider.calls[1]["prompt"])
         quality = IdmUnitQualityV1.model_validate(data["unit"]["idm_quality"])
-        self.assertIn("Cần xem (IDM_W5_SOURCE_ARTIFACT, khối 1 (Lý thuyết))", quality.author_note)
+        self.assertIn("Cần xem khối 1 (Lý thuyết)", quality.author_note)
 
 
 class SupportingClaimTests(StoryboardEndpointTestCase):

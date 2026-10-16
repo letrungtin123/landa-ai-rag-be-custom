@@ -492,7 +492,9 @@ def faq_writer_rules(mode: FidelityMode) -> str:
         "them; these are unresolved. Never ask or answer any of them, not even in other words or inside another "
         "item.\n"
         "  * When this unit has a problem slot, base the common_mistake items on its own distractors: the belief "
-        "behind a wrong option and why the criterion rules it out, consistent with the answer key.\n"
+        "behind a wrong option and why the criterion rules it out, consistent with the answer key. An answer never "
+        "places a case in another level, group or label than the unit's question and table do, and never states a "
+        "classification rule the facts do not.\n"
         + keep +
         "- The la_faq title names what its questions are about.\n")
 

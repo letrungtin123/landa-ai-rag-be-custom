@@ -279,6 +279,16 @@ IDM_ANSWER_EXAMPLE_BAG_MIN_MARGIN: Final = 0.2
 # Items of the block (or example passages) the key must draw on, and the content-word pairs a key needs to be measured.
 IDM_ANSWER_JOINED_MIN_ITEMS: Final = 2
 IDM_ANSWER_JOINED_MIN_KEY_PAIRS: Final = 4
+# QLT-9 (QC run ffaf7318): c3.l2.u2's key rewrote three rows of the worksheet example in other words ("liên minh với nền
+# tảng Cloud có sẵn …" for "Thuê nền tảng Cloud và AI có sẵn …"), so its word PAIRS barely matched (0.32 against 0.18).
+# Read as single content words the key holds 0.64 of its words from the example, the best distractor 0.43. On the 110
+# questions of 13 runs a key holding at least this share of its words from the worked example (and the margin over
+# every distractor, at least two passages touched, keys of at least the word count) is a leak in all 6 cases: the two
+# keys above, 0a11aa9e c1.l2.u2, fae66524 c2.l1.u2 and c2.l4.u1, 6bdb51e3 c5.l1.u2. Read against the lists the same
+# measure also flags application keys that name one criterion, so lists stay on word pairs.
+IDM_ANSWER_EXAMPLE_WORDS_MIN_SHARE: Final = 0.5
+IDM_ANSWER_EXAMPLE_WORDS_MIN_MARGIN: Final = 0.15
+IDM_ANSWER_EXAMPLE_WORDS_MIN_KEY_WORDS: Final = 8
 
 # --- FAQ value and callout grounding (QC course 364564, N9/N11) --------------------------------
 # 3 of 5 FAQs only repeated the table taught just above them. An FAQ answer restates the html before

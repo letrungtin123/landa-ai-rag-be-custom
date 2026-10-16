@@ -119,7 +119,7 @@ class AnswerLeakTests(StoryboardEndpointTestCase):
                       "worked example, quotation, list item, table row or template shown before it",
                       provider.calls[1]["prompt"])
         self.assertIn("rewrite THAT option", provider.calls[1]["prompt"])
-        self.assertIn("Đã tự sửa: IDM_W5_ANSWER_LEAK.", quality.author_note)
+        self.assertIn("Đã tự sửa: phương án lộ đáp án.", quality.author_note)
         self.assertNotIn("còn cảnh báo", quality.author_note)
         self.assertEqual(quality.deterministic_codes, ["IDM_W5_ANSWER_LEAK"])
 
@@ -131,8 +131,8 @@ class AnswerLeakTests(StoryboardEndpointTestCase):
         self.assertEqual(status, 200)
         quality = self.assert_envelope(data, "provider_validated", "review_required", "provider")
         self.assertNotIn("source_locked_fallback", data["unit"]["components"][1])
-        self.assertIn("Giữ bản AI để tác giả rà soát: khối 2 (Quiz) — IDM_W5_ANSWER_LEAK.", quality.author_note)
-        self.assertIn("Cần xem (IDM_W5_ANSWER_LEAK, khối 2 (Quiz)): một phương án gần như chép lại ví dụ",
+        self.assertIn("Giữ bản AI để tác giả rà soát: khối 2 (Quiz): phương án lộ đáp án.", quality.author_note)
+        self.assertIn("Cần xem khối 2 (Quiz): một phương án gần như chép lại ví dụ",
                       quality.author_note)
         self.assertNotIn("Đã tự sửa", quality.author_note)
 
@@ -158,7 +158,7 @@ class LengthCueTests(StoryboardEndpointTestCase):
                       "the correct option to about 47 characters or less, or lengthen the distractors with plausible "
                       "detail)", provider.calls[1]["prompt"])
         self.assertEqual(quality.deterministic_codes, ["IDM_W5_ANSWER_LENGTH_CUE"])
-        self.assertIn("Cần xem (IDM_W5_ANSWER_LENGTH_CUE, khối 1 (Quiz)): đáp án đúng dài hơn hẳn",
+        self.assertIn("Nên biên tập khối 1 (Quiz): đáp án đúng dài hơn hẳn",
                       quality.author_note)
         self.assertNotIn("còn cảnh báo", quality.author_note)
 
@@ -181,7 +181,7 @@ class FinalCodeTests(StoryboardEndpointTestCase):
         self.assertEqual(provider.names, [WRITER, REPAIR, JUDGE])
         self.assertEqual(quality.deterministic_codes, ["HTML_SOURCE_LOCATOR", "IDM_W5_PRACTICE_INCOMPLETE"])
         self.assertEqual(quality.author_note, "QA tự động: không phát hiện vấn đề lớn. "
-                                              "Đã tự sửa: HTML_SOURCE_LOCATOR, IDM_W5_PRACTICE_INCOMPLETE. "
+                                              "Đã tự sửa: lỗi định dạng phần lý thuyết, bài luyện tập thiếu phần. "
                                               "Tình huống minh hoạ do AI soạn, cần SME xác nhận tính thực tế.")
 
     async def test_english_note_lists_fixed_codes(self) -> None:
@@ -193,7 +193,7 @@ class FinalCodeTests(StoryboardEndpointTestCase):
         status, data, _ = await self.post(body, provider)
         self.assertEqual(status, 200)
         quality = self.assert_envelope(data, "provider_validated", "validated", "provider")
-        self.assertIn("Automatically fixed: IDM_W5_PRACTICE_INCOMPLETE.", quality.author_note)
+        self.assertIn("Automatically fixed: an incomplete practice.", quality.author_note)
         self.assertNotIn("still warn", quality.author_note)
 
 
@@ -254,7 +254,7 @@ class JudgeScopeTests(StoryboardEndpointTestCase):
         quality = self.assert_envelope(data, "provider_validated", "review_required", "provider")
         self.assertEqual((quality.judge_status, quality.criteria["Q9_traceability"]), ("review_required", "major"))
         self.assertNotIn("Q10_title_matches", quality.criteria)
-        self.assertIn("tiêu đề không khớp nội dung được dạy (Q10)", quality.author_note)
+        self.assertIn("tiêu đề không khớp nội dung được dạy", quality.author_note)
 
 
 class JudgeAggregationTests(unittest.TestCase):
@@ -275,9 +275,8 @@ class JudgeAggregationTests(unittest.TestCase):
         outcome = JudgeOutcome("review_required", [finding("Q10_title_matches", "major")])
         notes = [build_unit_author_note(locale=locale, judge=outcome, deterministic_codes=[], fallback_slots=[],
                                         ai_drafted=False) for locale in ("vi", "en")]
-        self.assertEqual(notes, ["QA tự động: 1 vấn đề cần xem — tiêu đề không khớp nội dung được dạy (Q10).",
-                                 "Automatic QA: 1 issue(s) to review — a title does not match what the unit teaches "
-                                 "(Q10)."])
+        self.assertEqual(notes, ["QA tự động: 1 vấn đề cần xem — tiêu đề không khớp nội dung được dạy.",
+                                 "Automatic QA: 1 issue(s) to review — a title does not match what the unit teaches."])
 
 
 QC_MINDSET_OPTIONS = ("Mindset cần bỏ: chỉ làm đúng việc được giao",
@@ -332,7 +331,7 @@ class ExplanationCoverageTests(StoryboardEndpointTestCase):
         self.assertEqual(provider.names, [WRITER, REPAIR, JUDGE])
         self.assertIn("c0 IDM_W5_PRACTICE_INCOMPLETE at c0: exactly one correct choice, and an explanation that names "
                       "EVERY option by its letter", provider.calls[1]["prompt"])
-        self.assertIn("Đã tự sửa: IDM_W5_PRACTICE_INCOMPLETE.", quality.author_note)
+        self.assertIn("Đã tự sửa: bài luyện tập thiếu phần.", quality.author_note)
 
 
 # --- N9: callouts must restate the facts -----------------------------------------------------------
@@ -374,7 +373,7 @@ class CalloutGroundingTests(StoryboardEndpointTestCase):
         self.assertIn("c0 IDM_W5_CALLOUT_UNGROUNDED at c0.semantic_content.sections[0].blocks[2]: a warning block is "
                       "shown as a quotation/callout", provider.calls[1]["prompt"])
         self.assertNotIn(INVENTED_CALLOUT, provider.calls[1]["prompt"].split("REPAIR_REQUIREMENTS")[1])
-        self.assertIn("Đã tự sửa: IDM_W5_CALLOUT_UNGROUNDED.", quality.author_note)
+        self.assertIn("Đã tự sửa: khung trích dẫn không có trong tài liệu.", quality.author_note)
         self.assertIn('A "warning" block is shown to the learner as a quotation/callout', provider.calls[0]["prompt"])
 
     async def test_callout_still_invented_after_the_repair_becomes_a_paragraph_for_review(self) -> None:
@@ -473,9 +472,9 @@ class FaqValueTests(StoryboardEndpointTestCase):
         provider = FakeGenerate(**{WRITER: [writer], REPAIR: [slot_repair(writer, 2)], JUDGE: [judge()]})
         status, data, _ = await self.post(body, provider)
         self.assertEqual(status, 200)
-        quality = self.assert_envelope(data, "provider_validated", "review_required", "provider")
+        quality = self.assert_envelope(data, "provider_validated", "validated", "provider")
         self.assertEqual(len(data["unit"]["components"][2]["items"]), 2)
-        self.assertIn("Cần xem (IDM_W5_FAQ_RESTATES_HTML, khối 3 (Hỏi đáp)): câu hỏi đáp chỉ nhắc lại nội dung vừa "
+        self.assertIn("Nên biên tập khối 3 (Hỏi đáp): câu hỏi đáp chỉ nhắc lại nội dung vừa "
                       "học", quality.author_note)
 
     async def test_mismatched_title_is_repaired(self) -> None:
@@ -489,7 +488,7 @@ class FaqValueTests(StoryboardEndpointTestCase):
         self.assertIn("c2 IDM_W5_FAQ_TITLE_MISMATCH at c2: the la_faq title names what its questions are about",
                       provider.calls[1]["prompt"])
         self.assertEqual(data["unit"]["components"][2]["title"], FAQ_TITLE)
-        self.assertIn("Đã tự sửa: IDM_W5_FAQ_TITLE_MISMATCH.", quality.author_note)
+        self.assertIn("Đã tự sửa: tiêu đề hỏi đáp chưa khớp.", quality.author_note)
 
 
 class CalloutKeptForReviewTests(unittest.IsolatedAsyncioTestCase):
@@ -523,8 +522,9 @@ class CalloutKeptForReviewTests(unittest.IsolatedAsyncioTestCase):
         blocks = result["unit"]["components"][0]["semantic_content"]["sections"][0]["blocks"]
         self.assertEqual((blocks[-1]["kind"], blocks[-1]["text"]), ("warning", INVENTED_CALLOUT))
         note = result["unit"]["idm_quality"]["author_note"]
-        self.assertIn("Giữ bản AI để tác giả rà soát: khối 1 (Lý thuyết) — IDM_W5_CALLOUT_UNGROUNDED.", note)
-        self.assertIn("Cần xem (IDM_W5_CALLOUT_UNGROUNDED, khối 1 (Lý thuyết)): khung trích dẫn/lưu ý nêu điều không "
+        self.assertIn("Giữ bản AI để tác giả rà soát: khối 1 (Lý thuyết): khung trích dẫn không có trong "
+                      "tài liệu.", note)
+        self.assertIn("Cần xem khối 1 (Lý thuyết): khung trích dẫn/lưu ý nêu điều không "
                       "tìm thấy trong tài liệu", note)
 
 
@@ -613,7 +613,7 @@ class FrameworkUnitTests(StoryboardEndpointTestCase):
         # QC run 8de1c76b (Q3): a framework-only repair is a targeted one (low thinking).
         self.assertEqual(provider.calls[1]["thinking_level"], "low")
         self.assertIn('"unit_title":"Ba cấp độ nghiêm trọng"', provider.calls[0]["prompt"])
-        self.assertIn("Đã tự sửa: IDM_W5_FRAMEWORK_INCOMPLETE.", quality.author_note)
+        self.assertIn("Đã tự sửa: chưa liệt kê đủ thành phần của khung.", quality.author_note)
 
     async def test_overview_the_repair_cannot_add_is_listed_from_the_facts(self) -> None:
         # QC run 8de1c76b (Q3): instead of keeping the slot for review, the server lists the three levels by the
