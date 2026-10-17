@@ -131,13 +131,19 @@ class IdmUsageLedger:
     input_tokens: int = 0
     output_tokens: int = 0
     total_tokens: int = 0
+    # The part of input_tokens Google served from its context cache (billed at the cache rate).
+    cached_input_tokens: int = 0
     reserved_output_tokens: int = 0
     calls: int = 0
     complete: bool = True
 
     def as_usage(self) -> dict[str, int]:
-        return {"inputTokens": self.input_tokens, "outputTokens": self.output_tokens,
-                "embeddingTokens": 0, "totalTokens": self.total_tokens}
+        usage = {"inputTokens": self.input_tokens, "outputTokens": self.output_tokens,
+                 "embeddingTokens": 0, "totalTokens": self.total_tokens}
+        # Sent only when non-zero: the wire shape is unchanged without a cache hit.
+        if self.cached_input_tokens:
+            usage["cachedInputTokens"] = min(self.cached_input_tokens, self.input_tokens)
+        return usage
 
 
 @dataclass
@@ -373,6 +379,7 @@ async def idm_generate[ResultT](
     runtime.usage.input_tokens += input_tokens
     runtime.usage.output_tokens += billed_output
     runtime.usage.total_tokens += total_tokens
+    runtime.usage.cached_input_tokens += min(input_tokens, max(0, int(getattr(usage, "cachedInputTokens", 0) or 0)))
     spent_output = max(billed_output, observed.get("provider_output_tokens", 0),
                        observed.get("provider_total_tokens", 0) - observed.get("provider_input_tokens", 0))
     # A response cut at max_output_tokens (thinking tokens count against the cap) is not a schema
