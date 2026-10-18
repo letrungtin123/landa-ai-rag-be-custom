@@ -48,8 +48,6 @@ FILE_SIZE_ALLOWLIST: dict[str, Allowance] = {
     "idm/storyboard.py": Allowance(1_562, "W5 writer, repair, settle and fallback in one IdmUnitWriter class (11 lines "
                                           "of it are the wave-1 recoverable-error observer)",
                                    "wave 2 (2.5): split by W5 step into idm/w5/"),
-    "idm/qa.py": Allowance(1_115, "W6 judge, deterministic unit checks and the author note together",
-                           "wave 2 (2.5): idm/checks/ and the note builder apart"),
     "idm/prompts.py": Allowance(973, "the builders of every IDM stage prompt (spec Appendix A)",
                                 "wave 2 (2.5): one prompt module per stage"),
     "idm/module_design.py": Allowance(889, "W3/W4 module design, salvage and autofix",
