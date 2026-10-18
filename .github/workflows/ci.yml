@@ -106,7 +106,9 @@ jobs:
           .venv-dev/bin/python -m pip check
           .venv-dev/bin/python -m pip install --require-hashes --no-deps -r requirements-dev.lock
 
-      - name: Quality gate (ruff, mypy, pytest --cov-fail-under=82, pip-audit)
+      # The coverage threshold and the checked paths live in scripts/check.sh (kept equal to
+      # scripts/check.ps1 by tests/test_quality_gate_scripts.py).
+      - name: Quality gate (ruff, mypy, pytest with the coverage gate, pip-audit)
         run: sh scripts/check.sh
 
   image:
