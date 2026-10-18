@@ -308,18 +308,25 @@ class IndexRuntimeTests(unittest.TestCase):
 
 
 
+# A step made slow blocks for SLOW_STEP_SECONDS; the loop may be held at most LOOP_HOLD_LIMIT_SECONDS. The writer path
+# still settles a draft on the loop (tens of milliseconds, more under coverage on a loaded machine), so the limit sits
+# well above that and below the slow step.
+SLOW_STEP_SECONDS = 0.4
+LOOP_HOLD_LIMIT_SECONDS = 0.3
+
+
 def slow(func: Callable[..., Any]) -> Callable[..., Any]:
-    """``func`` behind 0.15 s of blocking work: it stands in for a long CPU-bound step, which must run off the loop."""
+    """``func`` behind blocking work: it stands in for a long CPU-bound step, which must run off the event loop."""
 
     def run(*args: Any, **kwargs: Any) -> Any:
-        time.sleep(0.15)
+        time.sleep(SLOW_STEP_SECONDS)
         return func(*args, **kwargs)
 
     return run
 
 
 def loop_blocking_callbacks(scenario: Callable[[], Awaitable[Any]]) -> list[str]:
-    """What asyncio debug mode reports as callbacks that held the event loop over 0.1 s while ``scenario`` ran."""
+    """What asyncio debug mode reports as callbacks that held the event loop too long while ``scenario`` ran."""
 
     records: list[logging.LogRecord] = []
 
@@ -328,7 +335,7 @@ def loop_blocking_callbacks(scenario: Callable[[], Awaitable[Any]]) -> list[str]
             records.append(record)
 
     async def run() -> None:
-        asyncio.get_running_loop().slow_callback_duration = 0.1
+        asyncio.get_running_loop().slow_callback_duration = LOOP_HOLD_LIMIT_SECONDS
         await scenario()
 
     asyncio_logger = logging.getLogger("asyncio")
