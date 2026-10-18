@@ -6,7 +6,6 @@ QLT-6: a document the author keeps as it is (``preserve_source``) is only segmen
 
 from __future__ import annotations
 
-import asyncio
 import dataclasses
 import time
 from typing import Any, Final
@@ -78,7 +77,7 @@ async def run_idm_course_design(
     context = request.project_context
     facts = request.source_facts
     document_names = {item.document_id: item.name for item in context.source_documents}
-    section_plan, index, furniture = await asyncio.to_thread(_prepare, facts, document_names, max_sections)
+    section_plan, index, furniture = await runtime.run_cpu(_prepare, facts, document_names, max_sections)
     log_stage("idm_stage_started", {"correlation_id": runtime.correlation_id, "stage": "idm_course_design",
                                     "section_count": len(section_plan.sections), "fact_count": len(facts)})
 
@@ -141,7 +140,7 @@ async def run_idm_course_design(
     stage_origins: dict[str, StageOrigin] = {
         "w1_map": w1_origin, "w1_reduce": reduce_origin, "w2": blueprint.origin, "w4": architecture.origin,
     }
-    design = await asyncio.to_thread(assemble_idm_course_design, AssemblyInput(
+    design = await runtime.run_cpu(assemble_idm_course_design, AssemblyInput(
         source_snapshot_hash=source_snapshot_hash, context=context,
         snapshot_fact_keys=[fact.fact_key for fact in facts],
         fact_text={fact.fact_key: fact.fact_text for fact in facts},
@@ -151,7 +150,7 @@ async def run_idm_course_design(
         plan=architecture.plan, dispositions=dispositions, stage_origins=stage_origins,
         kept_definitions=blueprint.kept_definitions, purpose=purpose, kept_background=blueprint.kept_background,
     ))
-    skeleton = await asyncio.to_thread(project_course_skeleton, design, architecture.plan)
+    skeleton = await runtime.run_cpu(project_course_skeleton, design, architecture.plan)
 
     fallback_stage_count = sum([
         fallback_sections / max(1, len(section_results)) > IDM_FALLBACK_SECTION_SHARE_FOR_STAGE_FALLBACK,
