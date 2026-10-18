@@ -10,6 +10,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass, field
 from typing import Any, Final
 
+from app.content.instructional_quality import build_source_grounded_single_choice
 from app.idm.contracts import (
     IdmBlueprintRowV1,
     IdmComponentDesignV1,
@@ -34,7 +35,6 @@ from app.idm.policy import (
 )
 from app.idm.runtime import IdmStageError
 from app.idm.text import produces_output, single_line
-from app.instructional_quality import build_source_grounded_single_choice
 from app.lesson_author_orchestration_v2 import (
     ArchitectureComponentAuthorReviewV2,
     ArchitectureMediaBriefV2,

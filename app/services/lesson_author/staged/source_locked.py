@@ -7,7 +7,7 @@ import re
 from copy import deepcopy
 from typing import Any
 
-from app.instructional_quality import (
+from app.content.instructional_quality import (
     build_source_grounded_single_choice,
     clean_source_facts,
     render_source_locked_html,

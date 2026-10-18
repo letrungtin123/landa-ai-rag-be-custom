@@ -15,7 +15,7 @@ from app.instructional_density import (
     instructional_output_budget,
     profile_instructional_texts,
 )
-from app.instructional_quality import (
+from app.content.instructional_quality import (
     build_source_grounded_single_choice,
     clean_source_facts,
     ordered_source_steps,

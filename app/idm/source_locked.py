@@ -26,8 +26,7 @@ import re
 from collections.abc import Iterable
 from typing import Any, Final
 
-from app.idm.text import idm_fold
-from app.instructional_quality import (
+from app.content.instructional_quality import (
     CALLOUT_RE,
     CHECKLIST_ITEM_RE,
     MIN_FAQ_QUESTION_CHARS,
@@ -43,6 +42,7 @@ from app.instructional_quality import (
     source_clarification_signals,
     source_term_definitions,
 )
+from app.idm.text import idm_fold
 
 _BULLET_RE: Final = re.compile(r"^[•●▪◦*-]\s+(.+)$")
 _INLINE_STEP_RE: Final = re.compile(r"(?<!\w)(?:(?:step|bước|buoc)\s*)?\d{1,3}\s*[:.)-]\s+", re.IGNORECASE)

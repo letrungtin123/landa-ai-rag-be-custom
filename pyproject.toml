@@ -40,7 +40,6 @@ module = [
   "app.component_capabilities",
   "app.instructional_density",
   "app.instructional_opportunities",
-  "app.instructional_quality",
   "app.lesson_author_blueprint",
   "app.lesson_author_checkpoint",
   "app.lesson_author_orchestration_v2",

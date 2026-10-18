@@ -10,7 +10,7 @@ from pydantic import ValidationError
 
 from app.component_capabilities import validate_instance_plan
 from app.instructional_density import INSTRUCTIONAL_DENSITY_POLICY_VERSION
-from app.instructional_quality import (
+from app.content.instructional_quality import (
     MIN_FAQ_ANSWER_CHARS,
     MIN_FAQ_QUESTION_CHARS,
     contains_generic_review_language,

@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 from typing import Any, Callable
 
-from app.instructional_quality import (
+from app.content.instructional_quality import (
     build_source_grounded_single_choice,
     clean_source_facts,
     ordered_source_steps,

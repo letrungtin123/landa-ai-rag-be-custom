@@ -6,7 +6,7 @@ from typing import Any, Iterable, Literal
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from app.hashing import canonical_hash as canonical_hash
-from app.instructional_quality import ordered_source_steps
+from app.content.instructional_quality import ordered_source_steps
 
 SOURCE_EVIDENCE_BUNDLE_VERSION = "source-evidence-bundle-v1"
 SOURCE_EVIDENCE_ASSEMBLER_VERSION = "source-evidence-assembler-v1"
