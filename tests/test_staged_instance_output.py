@@ -8,6 +8,7 @@ from unittest.mock import AsyncMock, patch
 import httpx
 from google import genai
 from google.genai import models, types
+from pydantic import SecretStr
 
 from app import main
 from app.api import deps as api_deps
@@ -173,7 +174,7 @@ class StagedInstanceOutputTests(unittest.TestCase):
                                              headers={"X-Landa-AI-Service-Token": "fixture-internal-token"})
             finally:
                 main.app.dependency_overrides.pop(api_deps.get_db, None)
-        with patch.object(main.settings, "service_token", "fixture-internal-token"), patch("app.services.provider.generate_content", provider), \
+        with patch.object(main.settings, "service_token", SecretStr("fixture-internal-token")), patch("app.services.provider.generate_content", provider), \
                 patch("app.services.lesson_author.proposal.lesson_author_proposal", generation), self.assertLogs("app.main", "INFO") as logs:
             result = asyncio.run(send())
         self.assertEqual(result.status_code, 422)

@@ -45,8 +45,8 @@ def require_settings() -> None:
     validate_startup_settings(settings)
     require_configured_service_auth(
         auth_mode=settings.auth_mode,
-        service_token=settings.service_token,
-        hmac_secrets=settings.service_hmac_secrets,
+        service_token=settings.service_token.get_secret_value(),
+        hmac_secrets=settings.service_hmac_secrets.get_secret_value(),
     )
 
 
@@ -57,7 +57,7 @@ schema_guard = schema_infra.SchemaGuard()
 
 def database_config() -> db_infra.DatabaseConfig:
     return db_infra.DatabaseConfig(
-        dsn=settings.database_url,
+        dsn=settings.database_url.get_secret_value(),
         production=settings.is_production,
         pool_min=settings.db_pool_min,
         pool_max=settings.db_pool_max,
@@ -94,10 +94,11 @@ async def startup() -> None:
     except ValueError:
         raise RuntimeError("AI_RAG_STORAGE_ALLOWED_ORIGINS is invalid.") from None
     supabase_client = None
-    if settings.supabase_url and settings.supabase_service_key:
+    service_key = settings.supabase_service_key.get_secret_value()
+    if settings.supabase_url and service_key:
         # Legacy download path for index requests without a signed URL (removed once the
         # backend sends one everywhere and SUPABASE_SERVICE_KEY is dropped from this service).
-        supabase_client = create_client(settings.supabase_url, settings.supabase_service_key)
+        supabase_client = create_client(settings.supabase_url, service_key)
     logger.info(
         "storage_access_configured",
         extra={"event": "storage_access_configured", "legacy_service_key": supabase_client is not None,

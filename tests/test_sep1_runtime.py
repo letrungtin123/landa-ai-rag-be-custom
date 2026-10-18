@@ -16,7 +16,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import asyncpg
 import certifi
 import httpx
-from pydantic import ValidationError
+from pydantic import SecretStr, ValidationError
 
 from app import main
 from app.__main__ import uvicorn_options
@@ -351,7 +351,7 @@ class ReadyPool:
 class EndpointTests(unittest.TestCase):
     def setUp(self) -> None:
         self.patches = [patch.object(main.settings, "auth_mode", "token"),
-                        patch.object(main.settings, "service_token", TOKEN)]
+                        patch.object(main.settings, "service_token", SecretStr(TOKEN))]
         for item in self.patches:
             item.start()
         runtime_service.runtime_state.reset()
@@ -441,7 +441,7 @@ class StartupTests(unittest.TestCase):
         with (
             patch.object(asyncpg, "create_pool", create_pool),
             patch.object(runtime_service, "require_settings", MagicMock()),
-            patch.object(main.settings, "supabase_service_key", ""),
+            patch.object(main.settings, "supabase_service_key", SecretStr("")),
             patch.object(runtime_service.schema_guard, "refresh", refresh),
             patch.object(db_infra, "retry_delay_seconds", lambda *args, **kwargs: 0.01),
             patch.object(gemini_infra.client_pool, "clear"),

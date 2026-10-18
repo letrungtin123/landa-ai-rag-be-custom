@@ -17,7 +17,7 @@ import logging
 import random
 import ssl
 from collections.abc import Awaitable, Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Literal
 from urllib.parse import parse_qs, urlsplit
 
@@ -40,7 +40,8 @@ CONNECT_RETRY_INITIAL_SECONDS = 1.0
 
 @dataclass(frozen=True, slots=True)
 class DatabaseConfig:
-    dsn: str
+    # The DSN carries the password: never part of repr() or a log line.
+    dsn: str = field(repr=False)
     production: bool
     pool_min: int
     pool_max: int

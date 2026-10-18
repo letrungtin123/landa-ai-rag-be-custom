@@ -13,6 +13,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import asyncpg
 import httpx
 from fastapi import HTTPException
+from pydantic import SecretStr
 
 from app import main
 from app.core import metrics
@@ -59,7 +60,7 @@ class AsgiTestCase(unittest.TestCase):
     def setUp(self) -> None:
         self.patches = [
             patch.object(main.settings, "auth_mode", "token"),
-            patch.object(main.settings, "service_token", TOKEN),
+            patch.object(main.settings, "service_token", SecretStr(TOKEN)),
         ]
         for item in self.patches:
             item.start()
@@ -141,7 +142,7 @@ class LifespanTests(unittest.TestCase):
             patch.object(runtime_service, "require_settings", MagicMock()),
             # SEP-1: the legacy storage client exists only while a service key is configured.
             patch.object(main.settings, "supabase_url", "http://127.0.0.1:54321"),
-            patch.object(main.settings, "supabase_service_key", "legacy-service-key"),
+            patch.object(main.settings, "supabase_service_key", SecretStr("legacy-service-key")),
             patch.object(runtime_service.schema_guard, "refresh", AsyncMock()),
             patch.object(gemini_infra.client_pool, "clear") as clear_clients,
             patch.object(runtime_service.concurrency, "shutdown") as shutdown_executors,

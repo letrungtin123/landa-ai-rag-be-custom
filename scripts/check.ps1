@@ -35,6 +35,7 @@ $StrictTests = @(
     "tests/idm_contract_bridge.py",
     "tests/log_support.py",
     "tests/test_handled_exceptions.py",
+    "tests/test_settings_hygiene.py",
     "tests/test_route_snapshots.py",
     "tests/test_repository_sql.py",
     "tests/test_response_models.py"

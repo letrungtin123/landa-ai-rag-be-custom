@@ -9,7 +9,7 @@ from unittest.mock import AsyncMock, patch
 
 import httpx
 from fastapi import HTTPException
-from pydantic import ValidationError
+from pydantic import SecretStr, ValidationError
 
 from app import lesson_quality, main
 from app.api import deps as api_deps
@@ -302,7 +302,7 @@ class ChapterCheckpointTests(unittest.TestCase):
                     return await client.post("/v1/lesson-author/chapter-checkpoint", json=payload)
             finally:
                 main.app.dependency_overrides.pop(api_deps.get_db, None)
-        with patch.object(main.settings, "service_token", "test-only-internal-token"), patch("app.services.provider.generate_content", AsyncMock()) as provider:
+        with patch.object(main.settings, "service_token", SecretStr("test-only-internal-token")), patch("app.services.provider.generate_content", AsyncMock()) as provider:
             response = asyncio.run(request_http())
         self.assertIn(response.status_code, (401, 403))
         provider.assert_not_called()

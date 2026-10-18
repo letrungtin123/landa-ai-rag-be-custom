@@ -15,8 +15,8 @@ async def require_internal_token(request: Request) -> None:
     await verify_internal_auth(
         request,
         auth_mode=settings.auth_mode,
-        service_token=settings.service_token,
-        hmac_secrets=settings.service_hmac_secrets,
+        service_token=settings.service_token.get_secret_value(),
+        hmac_secrets=settings.service_hmac_secrets.get_secret_value(),
         clock_skew_seconds=settings.auth_clock_skew_seconds,
         replay_ttl_seconds=settings.auth_replay_ttl_seconds,
     )

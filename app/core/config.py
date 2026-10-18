@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Literal
 
 from dotenv import load_dotenv
-from pydantic import Field, model_validator
+from pydantic import Field, SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from app.core.logging import log_event
@@ -60,6 +60,10 @@ def load_runtime_environment(
     return loaded
 
 
+# Loaded at import on purpose, before ``Settings()`` below: uvicorn worker processes import
+# ``app.main:app`` directly (no entry hook runs first), several modules read settings into
+# constants at import (provider retry policy, limiter sizes) and tests and scripts import app
+# modules without an entry point. Production (and AI_RAG_ENV=test) never reads a dotenv file.
 _environment = load_runtime_environment()
 
 
@@ -197,7 +201,9 @@ class Settings(BaseSettings):
         le=300_000,
     )
 
-    database_url: str = Field(default="", validation_alias="DATABASE_URL")
+    # Secrets are SecretStr: repr(settings) and validation errors never show them; read them with
+    # get_secret_value() only where they are used.
+    database_url: SecretStr = Field(default=SecretStr(""), validation_alias="DATABASE_URL")
     # Postgres pool (SEP-1). The DSN may also carry sslmode/sslrootcert; these settings win.
     db_pool_min: int = Field(default=1, validation_alias="AI_RAG_DB_POOL_MIN", ge=0, le=64)
     db_pool_max: int = Field(default=8, validation_alias="AI_RAG_DB_POOL_MAX", ge=1, le=128)
@@ -237,7 +243,7 @@ class Settings(BaseSettings):
     )
     supabase_url: str = Field(default="", validation_alias="SUPABASE_URL")
     # Legacy storage access. Without it the backend must send a signed URL with every index request.
-    supabase_service_key: str = Field(default="", validation_alias="SUPABASE_SERVICE_KEY")
+    supabase_service_key: SecretStr = Field(default=SecretStr(""), validation_alias="SUPABASE_SERVICE_KEY")
     # Comma-separated origins (scheme://host[:port]) a signed source URL may point to. Empty: the
     # origin of SUPABASE_URL. Plain http is accepted only for a loopback host.
     storage_allowed_origins: str = Field(default="", validation_alias="AI_RAG_STORAGE_ALLOWED_ORIGINS",
@@ -260,8 +266,8 @@ class Settings(BaseSettings):
     )
 
     auth_mode: AuthMode = Field(default="token_or_hmac", validation_alias="AI_RAG_AUTH_MODE")
-    service_token: str = Field(default="", validation_alias="AI_RAG_SERVICE_TOKEN")
-    service_hmac_secrets: str = Field(default="", validation_alias="AI_RAG_SERVICE_HMAC_SECRETS")
+    service_token: SecretStr = Field(default=SecretStr(""), validation_alias="AI_RAG_SERVICE_TOKEN")
+    service_hmac_secrets: SecretStr = Field(default=SecretStr(""), validation_alias="AI_RAG_SERVICE_HMAC_SECRETS")
     auth_clock_skew_seconds: int = Field(
         default=300,
         validation_alias="AI_RAG_AUTH_CLOCK_SKEW_SECONDS",
@@ -330,13 +336,19 @@ class Settings(BaseSettings):
         le=600,
     )
 
-    chunk_max_chars: int = Field(default=3_200, validation_alias="AI_RAG_CHUNK_MAX_CHARS")
-    chunk_overlap_chars: int = Field(default=350, validation_alias="AI_RAG_CHUNK_OVERLAP_CHARS")
-    embedding_batch_size: int = Field(default=32, validation_alias="AI_RAG_EMBEDDING_BATCH_SIZE")
-    provider_request_timeout_ms: int = Field(default=60_000, validation_alias="AI_RAG_PROVIDER_REQUEST_TIMEOUT_MS")
+    # The bounds of the tuning values below are wide on purpose: they reject a broken value (0, a
+    # negative, a typo with extra digits) at startup without narrowing any value in use.
+    chunk_max_chars: int = Field(default=3_200, validation_alias="AI_RAG_CHUNK_MAX_CHARS", ge=100, le=100_000)
+    chunk_overlap_chars: int = Field(default=350, validation_alias="AI_RAG_CHUNK_OVERLAP_CHARS", ge=0, le=50_000)
+    # The provider call clamps the batch to 1..100 (provider.embedding_batch_size).
+    embedding_batch_size: int = Field(default=32, validation_alias="AI_RAG_EMBEDDING_BATCH_SIZE", ge=1, le=1_000)
+    provider_request_timeout_ms: int = Field(default=60_000, validation_alias="AI_RAG_PROVIDER_REQUEST_TIMEOUT_MS",
+                                             ge=1_000, le=600_000)
     blueprint_provider_request_timeout_ms: int = Field(
         default=300_000,
         validation_alias="AI_RAG_BLUEPRINT_PROVIDER_REQUEST_TIMEOUT_MS",
+        ge=1_000,
+        le=600_000,
     )
     staged_lesson_content_provider_timeout_ms: int = Field(
         default=180_000,
@@ -350,13 +362,18 @@ class Settings(BaseSettings):
         gt=0,
         le=480_000,
     )
+    # The legacy workflows clamp both to 0..2.
     course_workflow_max_repair_attempts: int = Field(
         default=2,
         validation_alias="AI_RAG_COURSE_WORKFLOW_MAX_REPAIR_ATTEMPTS",
+        ge=0,
+        le=10,
     )
     lesson_workflow_max_repair_attempts: int = Field(
         default=2,
         validation_alias="AI_RAG_LESSON_WORKFLOW_MAX_REPAIR_ATTEMPTS",
+        ge=0,
+        le=10,
     )
     semantic_review_mode: Literal["off", "observe", "repair"] = Field(
         default="off",
@@ -384,45 +401,68 @@ class Settings(BaseSettings):
     database_command_timeout_seconds: int = Field(
         default=600,
         validation_alias="AI_RAG_DATABASE_COMMAND_TIMEOUT_SECONDS",
+        ge=1,
+        le=3_600,
     )
-    top_k: int = Field(default=8, validation_alias="AI_RAG_TOP_K")
-    max_context_chars: int = Field(default=18_000, validation_alias="AI_RAG_MAX_CONTEXT_CHARS")
-    lesson_author_top_k: int = Field(default=24, validation_alias="AI_RAG_LESSON_AUTHOR_TOP_K")
+    top_k: int = Field(default=8, validation_alias="AI_RAG_TOP_K", ge=1, le=200)
+    max_context_chars: int = Field(default=18_000, validation_alias="AI_RAG_MAX_CONTEXT_CHARS", ge=1_000,
+                                   le=1_000_000)
+    lesson_author_top_k: int = Field(default=24, validation_alias="AI_RAG_LESSON_AUTHOR_TOP_K", ge=1, le=500)
     lesson_author_max_context_chars: int = Field(
         default=32_000,
         validation_alias="AI_RAG_LESSON_AUTHOR_MAX_CONTEXT_CHARS",
+        ge=1_000,
+        le=2_000_000,
     )
     lesson_author_max_chunks_per_document: int = Field(
         default=12,
         validation_alias="AI_RAG_LESSON_AUTHOR_MAX_CHUNKS_PER_DOCUMENT",
+        ge=1,
+        le=1_000,
     )
     lesson_author_scope_max_chunks: int = Field(
         default=48,
         validation_alias="AI_RAG_LESSON_AUTHOR_SCOPE_MAX_CHUNKS",
+        ge=1,
+        le=5_000,
     )
     source_coverage_canonical_max_chars: int = Field(
         default=1_000_000,
         validation_alias="AI_RAG_SOURCE_COVERAGE_CANONICAL_MAX_CHARS",
+        ge=10_000,
+        le=50_000_000,
     )
     source_map_architect_context_max_chars: int = Field(
         default=48_000,
         validation_alias="AI_RAG_SOURCE_MAP_ARCHITECT_CONTEXT_MAX_CHARS",
+        ge=1_000,
+        le=2_000_000,
     )
     retrieval_candidate_multiplier: int = Field(
         default=4,
         validation_alias="AI_RAG_RETRIEVAL_CANDIDATE_MULTIPLIER",
+        ge=1,
+        le=50,
     )
-    retrieval_min_score: float = Field(default=0.25, validation_alias="AI_RAG_RETRIEVAL_MIN_SCORE")
+    # Similarity thresholds: cosine similarity is -1..1, pg_trgm keyword similarity 0..1.
+    retrieval_min_score: float = Field(default=0.25, validation_alias="AI_RAG_RETRIEVAL_MIN_SCORE", ge=-1.0, le=1.0)
     retrieval_keyword_min_score: float = Field(
         default=0.50,
         validation_alias="AI_RAG_RETRIEVAL_KEYWORD_MIN_SCORE",
+        ge=0.0,
+        le=1.0,
     )
     retrieval_max_chunks_per_document: int = Field(
         default=4,
         validation_alias="AI_RAG_RETRIEVAL_MAX_CHUNKS_PER_DOCUMENT",
+        ge=1,
+        le=200,
     )
-    max_user_message_chars: int = Field(default=20_000, validation_alias="AI_RAG_MAX_USER_MESSAGE_CHARS")
-    generation_temperature: float = Field(default=0.2, validation_alias="AI_RAG_GENERATION_TEMPERATURE")
+    max_user_message_chars: int = Field(default=20_000, validation_alias="AI_RAG_MAX_USER_MESSAGE_CHARS", ge=1,
+                                        le=1_000_000)
+    # Gemini accepts 0.0-2.0.
+    generation_temperature: float = Field(default=0.2, validation_alias="AI_RAG_GENERATION_TEMPERATURE", ge=0.0,
+                                          le=2.0)
     gemini_38_thinking_level: Literal["low", "medium", "high"] = Field(
         default="medium",
         validation_alias="AI_RAG_GEMINI_38_THINKING_LEVEL",
@@ -446,22 +486,24 @@ class Settings(BaseSettings):
 def missing_required_setting_names(value: Settings) -> list[str]:
     # SUPABASE_SERVICE_KEY is optional since SEP-1: documents arrive through backend-signed URLs.
     # SUPABASE_URL is still needed to derive the storage allowlist unless it is configured.
+    service_token = value.service_token.get_secret_value()
+    hmac_secrets = value.service_hmac_secrets.get_secret_value()
     required = {
-        "DATABASE_URL": value.database_url,
-        "SUPABASE_URL": value.supabase_url or value.storage_allowed_origins,
+        "DATABASE_URL": bool(value.database_url.get_secret_value()),
+        "SUPABASE_URL": bool(value.supabase_url or value.storage_allowed_origins),
     }
     if (
         value.auth_mode in {"token", "token_or_hmac"}
-        and not value.service_token
-        and (value.auth_mode == "token" or not value.service_hmac_secrets)
+        and not service_token
+        and (value.auth_mode == "token" or not hmac_secrets)
     ):
-        required["AI_RAG_SERVICE_TOKEN"] = value.service_token
+        required["AI_RAG_SERVICE_TOKEN"] = False
     if (
         value.auth_mode in {"hmac", "token_or_hmac"}
-        and not value.service_hmac_secrets
-        and (value.auth_mode == "hmac" or not value.service_token)
+        and not hmac_secrets
+        and (value.auth_mode == "hmac" or not service_token)
     ):
-        required["AI_RAG_SERVICE_HMAC_SECRETS"] = value.service_hmac_secrets
+        required["AI_RAG_SERVICE_HMAC_SECRETS"] = False
     return sorted(name for name, configured in required.items() if not configured)
 
 

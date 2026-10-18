@@ -32,6 +32,7 @@ from unittest.mock import patch
 import asyncpg
 import httpx
 from fastapi import FastAPI
+from pydantic import SecretStr
 
 from app.core.config import settings
 from app.infra import gemini as gemini_infra
@@ -51,7 +52,7 @@ RETRIEVE_CHUNKS_TARGET = "app.services.retrieval.search.retrieve_chunks"
 # Settings read by the routes under test, pinned so ambient AI_RAG_* variables cannot leak in.
 PINNED_SETTINGS: dict[str, Any] = {
     "auth_mode": "token",
-    "service_token": TOKEN,
+    "service_token": SecretStr(TOKEN),
     "build_sha": "snapshot-sha",
     "top_k": 8,
     "max_context_chars": 18_000,
