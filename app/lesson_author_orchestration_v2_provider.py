@@ -35,7 +35,7 @@ from app.lesson_author_orchestration_v2 import (
     canonical_hash,
 )
 from app.prompt_safety import UNTRUSTED_JSON_CONTEXT_RULE
-from app.source_evidence_bundle import (
+from app.content.source_evidence_bundle import (
     build_degraded_source_evidence_bundle,
     build_source_evidence_bundle,
 )
