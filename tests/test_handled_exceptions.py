@@ -109,9 +109,12 @@ class OrchestrationFallbackTests(unittest.IsolatedAsyncioTestCase):
 
 
 class StoryboardRecoverableErrorTests(unittest.IsolatedAsyncioTestCase):
-    async def test_a_binder_key_error_is_reported_before_it_becomes_an_invalid_answer(self) -> None:
+    def unit_request(self) -> tuple[dict[str, Any], RagLessonAuthorUnitV2Request]:
         body = severity_body()
-        request = RagLessonAuthorUnitV2Request.model_validate(body)
+        return body, RagLessonAuthorUnitV2Request.model_validate(body)
+
+    async def test_a_recoverable_binder_error_is_reported_before_it_becomes_an_invalid_answer(self) -> None:
+        body, request = self.unit_request()
         deps = unit_service._idm_unit_deps(request)
         seen: list[tuple[str, str, str]] = []
 
@@ -120,21 +123,44 @@ class StoryboardRecoverableErrorTests(unittest.IsolatedAsyncioTestCase):
             assert deps.on_recoverable_error is not None
             deps.on_recoverable_error(stage, code, error)  # the service observer logs and counts it
 
-        broken = dataclasses.replace(deps, judge_mode="off", bind_instance_payload=raise_private(KeyError),
+        broken = dataclasses.replace(deps, judge_mode="off", bind_instance_payload=raise_private(ValueError),
                                      on_recoverable_error=observe)
         provider = FakeGenerate(**{WRITER: [severity_writer(body)] * 2})
-        before = counted("idm_w5_bind", "KeyError", "IDM_W5_INSTANCE_INVALID")
+        before = counted("idm_w5_bind", "ValueError", "IDM_W5_INSTANCE_INVALID")
         with self.assertLogs("app.main", "WARNING") as logs:
             result = await run_idm_unit(contract=request.unit_contract, runtime=make_runtime(provider, allowance=None),
                                         deps=broken, fallback_only=False)
         # Unchanged: the answers are invalid and the unit settles on its deterministic content.
         self.assertEqual(result["content_origin"], "structured_fallback")
-        self.assertEqual(seen, [("idm_w5_bind", "IDM_W5_INSTANCE_INVALID", "KeyError")] * len(provider.calls))
+        self.assertEqual(seen, [("idm_w5_bind", "IDM_W5_INSTANCE_INVALID", "ValueError")] * len(provider.calls))
         events = logged_events(logs.records, HANDLED_EXCEPTION_EVENT)
         self.assertEqual({(event["stage"], event["unit_path"]) for event in events},
                          {("idm_w5_bind", request.unit_contract.unit_path)})
-        self.assertEqual(counted("idm_w5_bind", "KeyError", "IDM_W5_INSTANCE_INVALID"), before + len(provider.calls))
+        self.assertEqual(counted("idm_w5_bind", "ValueError", "IDM_W5_INSTANCE_INVALID"), before + len(provider.calls))
         self.assertNotIn("PRIVATE", log_text(logs.records) + json.dumps(result, ensure_ascii=False))
+
+    async def test_a_programming_error_in_the_binder_is_not_an_invalid_answer(self) -> None:
+        # TypeError/KeyError are no longer recoverable answer errors: the unit request fails with
+        # 500 INTERNAL_ERROR and the traceback, instead of a model answer judged invalid.
+        body, request = self.unit_request()
+        deps = dataclasses.replace(unit_service._idm_unit_deps(request), bind_instance_payload=raise_private(KeyError))
+        provider = FakeGenerate(**{WRITER: [severity_writer(body)]})
+        with self.assertRaises(KeyError):
+            await run_idm_unit(contract=request.unit_contract, runtime=make_runtime(provider, allowance=None),
+                               deps=deps, fallback_only=False)
+        main.app.dependency_overrides[api_deps.require_internal_token] = lambda: None
+        self.addCleanup(main.app.dependency_overrides.pop, api_deps.require_internal_token, None)
+        transport = httpx.ASGITransport(app=main.app, raise_app_exceptions=False)
+        with patch("app.services.orchestration_v2.unit.bind_staged_instance_payload", raise_private(TypeError)), \
+                patch("app.services.provider.generate_content", FakeGenerate(**{WRITER: [severity_writer(body)]})), \
+                self.assertLogs("app.core.errors", "ERROR") as logs:
+            async with httpx.AsyncClient(transport=transport, base_url="http://t") as client:
+                reply = await client.post("/v1/lesson-author/orchestration-v2/unit", json=body)
+        self.assertEqual((reply.status_code, reply.json()["detail"]["code"]), (500, "INTERNAL_ERROR"))
+        [line] = [json.loads(text) for text in log_text(logs.records).splitlines()]
+        self.assertEqual((line["event"], line["exception_type"]), ("unhandled_request_error", "TypeError"))
+        self.assertEqual(line["exception_frames"][-1].rsplit(":", 1)[0], "tests.test_handled_exceptions:fail")
+        self.assertNotIn("PRIVATE", log_text(logs.records) + reply.text)
 
 
 class SemanticReviewTests(unittest.IsolatedAsyncioTestCase):
