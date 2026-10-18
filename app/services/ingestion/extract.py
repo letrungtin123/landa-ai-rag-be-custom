@@ -21,7 +21,7 @@ from app.core.document_limits import (
 from app.core.errors import DocumentLimitError
 from app.infra.pdf_layout import column_reading_order
 from app.services.text import clean_text
-from app.source_readiness import collect_pdf_visual_regions
+from app.content.source_readiness import collect_pdf_visual_regions
 
 
 @dataclass

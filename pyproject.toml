@@ -54,7 +54,6 @@ module = [
   "app.source_chapter_policy",
   "app.source_evidence_bundle",
   "app.source_map",
-  "app.source_readiness",
   "app.source_visual_observation",
   "app.workflows.*",
 ]

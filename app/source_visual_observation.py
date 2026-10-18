@@ -5,7 +5,7 @@ import re
 from typing import Any, Iterable
 
 from app.hashing import canonical_hash as _canonical_hash
-from app.source_readiness import build_visual_observation_record
+from app.content.source_readiness import build_visual_observation_record
 
 SHADOW_VISUAL_PIPELINE_VERSION = "source-visual-shadow-v1"
 SHADOW_VISUAL_POLICY_VERSION = "human-review-shadow-v1"
