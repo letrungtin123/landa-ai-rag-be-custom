@@ -3,8 +3,13 @@ from __future__ import annotations
 import asyncio
 import threading
 import unittest
+from types import SimpleNamespace
 from typing import Any
 from unittest.mock import MagicMock, patch
+
+import httpx
+from google import genai
+from google.genai import types as genai_types
 
 from app.__main__ import uvicorn_options
 from app.core import metrics
@@ -15,6 +20,7 @@ from app.core.lifespan import RuntimeState, build_lifespan
 from app.core.logging import correlation_id_var, request_id_var
 from app.core.request_context import DisconnectCancellationMiddleware, RequestContextMiddleware, route_template
 from app.infra.gemini import GeminiClientPool
+from app.services import provider as provider_service
 
 
 def metric_value(name: str, labels: dict[str, str]) -> float:
@@ -357,51 +363,210 @@ class DisconnectCancellationMiddlewareTests(unittest.TestCase):
         self.assertEqual(called, ["/healthz", "/other"])
 
 
+class FakeSdkClient:
+    """``genai.Client`` stand-in: records each call's config and fails a call made after close()."""
+
+    def __init__(self, calls: list[dict[str, Any]], **kwargs: Any) -> None:
+        self.kwargs = kwargs
+        self.closed = 0
+        self.calls = calls
+        self.models = self
+
+    def generate_content(self, *, model: str, contents: str, config: Any) -> Any:
+        if self.closed:
+            raise RuntimeError("client used after close")
+        self.calls.append({"client": self, "model": model, "contents": contents, "config": config})
+        return SimpleNamespace(text="{}", parsed=None, candidates=[], prompt_feedback=None, usage_metadata=None)
+
+    def close(self) -> None:
+        self.closed += 1
+
+
+def fake_factory(calls: list[dict[str, Any]], created: list[FakeSdkClient]) -> Any:
+    def make(**kwargs: Any) -> FakeSdkClient:
+        client = FakeSdkClient(calls, **kwargs)
+        created.append(client)
+        return client
+
+    return make
+
+
+def hold_lease(pool: GeminiClientPool, key: str, inside: threading.Event, release: threading.Event) -> threading.Thread:
+    """A worker thread inside an SDK call on ``key``'s client until ``release`` is set."""
+
+    def run() -> None:
+        with pool.lease(key):
+            inside.set()
+            release.wait(5)
+
+    thread = threading.Thread(target=run)
+    thread.start()
+    if not inside.wait(5):
+        raise AssertionError("lease holder did not start")
+    return thread
+
+
 class GeminiClientPoolTests(unittest.TestCase):
-    def test_reuses_client_per_key_and_timeout_without_storing_raw_key(self) -> None:
-        factory = MagicMock(side_effect=lambda **kwargs: MagicMock(name="client"))
+    def test_reuses_one_client_per_key_without_storing_raw_key(self) -> None:
+        created: list[FakeSdkClient] = []
         pool = GeminiClientPool(max_clients=4)
-        with patch("app.infra.gemini.genai.Client", factory):
-            first = pool.get("secret-key", 1000)
-            second = pool.get("secret-key", 1000)
-            other_timeout = pool.get("secret-key", 2000)
+        with patch("app.infra.gemini.genai.Client", fake_factory([], created)):
+            with pool.lease("secret-key") as first:
+                pass
+            with pool.lease("secret-key") as second:
+                pass
+            with pool.lease("other-key") as other:
+                pass
         self.assertIs(first, second)
-        self.assertIsNot(first, other_timeout)
-        self.assertEqual(factory.call_count, 2)
+        self.assertIsNot(first, other)
+        self.assertEqual(len(created), 2)
+        # The client carries no timeout: every call passes its own deadline.
+        self.assertEqual(created[0].kwargs, {"api_key": "secret-key"})
         self.assertNotIn("secret-key", repr(list(pool._clients)))
 
-    def test_evicts_and_closes_least_recently_used_client(self) -> None:
-        clients: list[MagicMock] = []
+    def test_same_key_reuses_one_client_across_call_timeouts(self) -> None:
+        # IDM passes min(180000, remaining_ms): the last calls of a task each get another timeout.
+        calls: list[dict[str, Any]] = []
+        created: list[FakeSdkClient] = []
+        timeouts = [180_000, 9_731, 4_002, 1_000]
+        with patch("app.infra.gemini.client_pool", GeminiClientPool()), \
+                patch("app.infra.gemini.genai.Client", fake_factory(calls, created)):
+            for timeout_ms in timeouts:
+                asyncio.run(provider_service.generate_content("same-key", "gemini-3.5-flash", "prompt",
+                                                              max_output_tokens=64, request_timeout_ms=timeout_ms))
+        self.assertEqual(len(created), 1)
+        self.assertEqual([call["client"] for call in calls], [created[0]] * len(timeouts))
+        self.assertEqual([call["config"]["http_options"].timeout for call in calls], timeouts)
 
-        def make(**kwargs: Any) -> MagicMock:
-            client = MagicMock(name=f"client{len(clients)}")
-            clients.append(client)
-            return client
+    def test_per_call_deadline_reaches_the_http_request(self) -> None:
+        # The real SDK on an in-memory transport: each request carries its own call's deadline.
+        seen: list[tuple[Any, str | None]] = []
 
+        def handler(request: httpx.Request) -> httpx.Response:
+            seen.append((request.extensions["timeout"]["read"], request.headers.get("x-server-timeout")))
+            return httpx.Response(200, json={"candidates": [{"content": {"parts": [{"text": "ok"}], "role": "model"},
+                                                             "finishReason": "STOP"}]})
+
+        real_client = genai.Client
+        transport = httpx.Client(transport=httpx.MockTransport(handler))
+
+        def make(**kwargs: Any) -> Any:
+            return real_client(**kwargs, http_options=genai_types.HttpOptions(httpx_client=transport))
+
+        with patch("app.infra.gemini.client_pool", GeminiClientPool()), patch("app.infra.gemini.genai.Client", make):
+            for timeout_ms in (180_000, 1_234):
+                text, _usage = asyncio.run(provider_service.generate_content(
+                    "offline-key", "gemini-3.5-flash", "prompt", max_output_tokens=64, request_timeout_ms=timeout_ms))
+                self.assertEqual(text, "ok")
+        transport.close()
+        self.assertEqual(seen, [(180.0, "180"), (1.234, "2")])
+
+    def test_embeddings_carry_the_configured_request_timeout(self) -> None:
+        client = MagicMock()
+        client.models.embed_content.return_value = SimpleNamespace(embeddings=[SimpleNamespace(values=[0.5])])
+        with patch("app.infra.gemini.client_pool", GeminiClientPool()), \
+                patch("app.infra.gemini.genai.Client", MagicMock(return_value=client)), \
+                patch.object(provider_service.settings, "provider_request_timeout_ms", 45_000):
+            asyncio.run(provider_service.embed_text_batch("embed-key", "gemini-embedding-001", ["xin chào"]))
+        config = client.models.embed_content.call_args.kwargs["config"]
+        self.assertEqual(config.http_options.timeout, 45_000)
+
+    def test_eviction_never_closes_a_client_in_use(self) -> None:
+        created: list[FakeSdkClient] = []
         pool = GeminiClientPool(max_clients=1)
-        with patch("app.infra.gemini.genai.Client", MagicMock(side_effect=make)):
-            pool.get("a", 1)
-            pool.get("b", 1)
-        self.assertEqual(len(pool), 1)
-        clients[0].close.assert_called_once()
+        inside, release = threading.Event(), threading.Event()
+        with patch("app.infra.gemini.genai.Client", fake_factory([], created)):
+            holder = hold_lease(pool, "a", inside, release)
+            with pool.lease("b"):
+                pass  # evicts "a" from the cache while a call still holds it
+            self.assertEqual(len(pool), 1)
+            self.assertEqual(created[0].closed, 0)
+            release.set()
+            holder.join(5)
+        self.assertEqual(created[0].closed, 1)  # closed once its last call returned
+        self.assertEqual(created[1].closed, 0)  # "b" is still cached
         pool.clear()
-        clients[1].close.assert_called_once()
-        self.assertEqual(len(pool), 0)
+        self.assertEqual(created[1].closed, 1)
+
+    def test_clear_closes_a_leased_client_only_after_its_call(self) -> None:
+        created: list[FakeSdkClient] = []
+        pool = GeminiClientPool()
+        inside, release = threading.Event(), threading.Event()
+        with patch("app.infra.gemini.genai.Client", fake_factory([], created)):
+            holder = hold_lease(pool, "a", inside, release)
+            pool.clear()
+            self.assertEqual((len(pool), created[0].closed), (0, 0))
+            release.set()
+            holder.join(5)
+        self.assertEqual(created[0].closed, 1)
+
+    def test_concurrent_calls_with_eviction_never_use_a_closed_client(self) -> None:
+        calls: list[dict[str, Any]] = []
+        created: list[FakeSdkClient] = []
+        pool = GeminiClientPool(max_clients=2)
+        failures: list[BaseException] = []
+
+        def worker(index: int) -> None:
+            try:
+                for step in range(40):
+                    with pool.lease(f"key-{(index + step) % 5}") as client:
+                        client.models.generate_content(model="m", contents="p", config={})
+            except BaseException as error:  # collected and asserted below
+                failures.append(error)
+
+        with patch("app.infra.gemini.genai.Client", fake_factory(calls, created)):
+            threads = [threading.Thread(target=worker, args=(index,)) for index in range(8)]
+            for thread in threads:
+                thread.start()
+            for thread in threads:
+                thread.join(10)
+            pool.clear()
+        self.assertEqual(failures, [])
+        self.assertEqual(len(calls), 8 * 40)
+        self.assertEqual({client.closed for client in created}, {1})  # every client closed exactly once
+
+    def test_client_built_by_a_racing_thread_is_closed_unused(self) -> None:
+        created: list[FakeSdkClient] = []
+        barrier = threading.Barrier(2)
+        make = fake_factory([], created)
+
+        def slow_make(**kwargs: Any) -> FakeSdkClient:
+            barrier.wait(5)  # both threads found the cache empty before either stores its client
+            return make(**kwargs)
+
+        pool = GeminiClientPool()
+        leased: list[Any] = []
+
+        def call() -> None:
+            with pool.lease("same") as client:
+                leased.append(client)
+
+        with patch("app.infra.gemini.genai.Client", slow_make):
+            threads = [threading.Thread(target=call) for _ in range(2)]
+            for thread in threads:
+                thread.start()
+            for thread in threads:
+                thread.join(5)
+        self.assertEqual(len(created), 2)
+        self.assertIs(leased[0], leased[1])
+        self.assertEqual(sorted(client.closed for client in created), [0, 1])
+        self.assertEqual(len(pool), 1)
 
     def test_patched_factory_never_receives_stale_cached_client(self) -> None:
         pool = GeminiClientPool()
-        with patch("app.infra.gemini.genai.Client", MagicMock(return_value="first")):
-            self.assertEqual(pool.get("k", 1), "first")
-        with patch("app.infra.gemini.genai.Client", MagicMock(return_value="second")):
-            self.assertEqual(pool.get("k", 1), "second")
+        with patch("app.infra.gemini.genai.Client", MagicMock(return_value="first")), pool.lease("k") as first:
+            self.assertEqual(first, "first")
+        with patch("app.infra.gemini.genai.Client", MagicMock(return_value="second")), pool.lease("k") as second:
+            self.assertEqual(second, "second")
 
     def test_close_failures_are_swallowed(self) -> None:
         client = MagicMock()
         client.close.side_effect = RuntimeError("close failed")
         pool = GeminiClientPool(max_clients=1)
-        with patch("app.infra.gemini.genai.Client", MagicMock(return_value=client)):
-            pool.get("a", 1)
+        with patch("app.infra.gemini.genai.Client", MagicMock(return_value=client)), pool.lease("a"):
+            pass
         pool.clear()
+        client.close.assert_called_once()
 
     def test_rejects_invalid_size(self) -> None:
         with self.assertRaises(ValueError):

@@ -195,13 +195,30 @@ def describe_schema(schema: Any) -> Any:
     return {"sha256": sha256_text(wire), "chars": len(wire)}
 
 
+def request_timeout_ms(config: Any) -> Any:
+    """The per-call deadline of a provider call (``http_options.timeout``), or None."""
+    options = config.get("http_options") if isinstance(config, dict) else getattr(config, "http_options", None)
+    return getattr(options, "timeout", None)
+
+
 def describe_config(config: Any) -> Any:
+    """The provider payload config. ``http_options`` (the per-call transport deadline, never part of the
+    request body) is checked separately by ``fake_genai_client`` and kept out of the snapshot, exactly as
+    when the timeout was a client constructor option."""
     if hasattr(config, "model_dump"):
-        return jsonable(config.model_dump(mode="json", exclude_none=True))
+        dumped = config.model_dump(mode="json", exclude_none=True)
+        dumped.pop("http_options", None)
+        return jsonable(dumped)
     if isinstance(config, dict):
         return {key: describe_schema(value) if key == "response_schema" else jsonable(value)
-                for key, value in sorted(config.items())}
+                for key, value in sorted(config.items()) if key != "http_options"}
     return jsonable(config)
+
+
+def assert_request_deadline(config: Any) -> None:
+    timeout = request_timeout_ms(config)
+    if not isinstance(timeout, int) or isinstance(timeout, bool) or timeout <= 0:
+        raise AssertionError(f"Provider call without a per-request timeout: {timeout!r}")
 
 
 def embedding_vector(text: str) -> list[float]:
@@ -232,6 +249,7 @@ def fake_genai_client(script: list[dict[str, Any]], calls: list[dict[str, Any]])
                 return self._answer(model, contents, config, title)
 
         def _answer(self, model: str, contents: str, config: Any, title: str | None) -> Any:
+            assert_request_deadline(config)
             calls.append({"op": "generate", "model": model, "schema": title, "prompt_sha256": sha256_text(contents),
                           "prompt_chars": len(contents), "config": describe_config(config)})
             position = next((index for index, entry in enumerate(script)
@@ -248,6 +266,7 @@ def fake_genai_client(script: list[dict[str, Any]], calls: list[dict[str, Any]])
             )
 
         def embed_content(self, *, model: str, contents: list[str], config: Any) -> Any:
+            assert_request_deadline(config)
             calls.append({"op": "embed", "model": model, "count": len(contents),
                           "contents_sha256": sha256_text(json.dumps(contents, ensure_ascii=False)),
                           "config": describe_config(config)})

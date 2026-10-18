@@ -311,9 +311,10 @@ async def call_provider_with_timeout(
 
     ``asyncio.wait_for(asyncio.to_thread(...))`` bounds this coroutine, but a
     timeout cannot prove that a synchronous Google client request already
-    running in the worker thread was cancelled at HTTP level.  The provider
-    client's ``HttpOptions(timeout=...)`` remains the request-level bound; do
-    not treat cancellation of this await as hard provider cancellation.
+    running in the worker thread was cancelled at HTTP level.  The request's
+    own ``http_options`` timeout (``gemini_infra.request_http_options``) remains
+    the request-level bound; do not treat cancellation of this await as hard
+    provider cancellation.
 
     A 429 is classified by ``classify_provider_limit``: an exhausted key raises
     ``AI_PROVIDER_QUOTA_EXHAUSTED`` at once, a rate limit raises
@@ -535,12 +536,13 @@ async def embed_text_batch(
     safe_api_key = require_provider_api_key(api_key)
 
     def run() -> Any:
-        client = gemini_infra.gemini_client(safe_api_key, settings.provider_request_timeout_ms)
         config_args: dict[str, Any] = {"outputDimensionality": output_dimensionality}
         if effective_model == "gemini-embedding-001" and task_type:
             config_args["taskType"] = task_type
-        config = types.EmbedContentConfig(**config_args)
-        return client.models.embed_content(model=effective_model, contents=contents, config=config)
+        config = types.EmbedContentConfig(
+            **config_args, http_options=gemini_infra.request_http_options(settings.provider_request_timeout_ms))
+        with gemini_infra.client_pool.lease(safe_api_key) as client:
+            return client.models.embed_content(model=effective_model, contents=contents, config=config)
 
     response = await call_provider_with_timeout(run, effective_model, operation="embed")
     raw_embeddings = getattr(response, "embeddings", None)
@@ -605,8 +607,9 @@ async def generate_content(
     gemini_38 = model_id == "gemini-3.8-flash"
 
     def run() -> Any:
-        client = gemini_infra.gemini_client(safe_api_key, provider_timeout_ms)
-        config: dict[str, Any] = {"max_output_tokens": max_output_tokens}
+        # The deadline travels with the request: the pooled client of this key serves every timeout.
+        config: dict[str, Any] = {"max_output_tokens": max_output_tokens,
+                                  "http_options": gemini_infra.request_http_options(provider_timeout_ms)}
         if gemini_38:
             # Gemini 3.8 rejects legacy sampling parameters. Use its supported
             # reasoning-level contract and deliberately ignore old
@@ -622,7 +625,8 @@ async def generate_content(
             config["response_schema"] = response_schema
         if thinking_config is not None and not gemini_38:
             config["thinking_config"] = thinking_config
-        return client.models.generate_content(model=model, contents=prompt, config=config)
+        with gemini_infra.client_pool.lease(safe_api_key) as client:
+            return client.models.generate_content(model=model, contents=prompt, config=config)
 
     provider_started = perf_counter()
     last_provider_attempt = 0
