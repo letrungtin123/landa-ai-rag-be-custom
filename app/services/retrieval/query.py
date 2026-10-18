@@ -12,7 +12,7 @@ import asyncpg
 from app.core.config import settings
 from app.schemas.chat import RagChatRequest
 from app.services.text import clean_text
-from app.source_structure import strip_source_range_suffix
+from app.content.source_structure import strip_source_range_suffix
 
 SOURCE_RANGE_RE = re.compile(
     r"\b(?:từ|tu|from)\s+(?:slide|slides|trang|page|pages)\s+(\d+)\s+"

@@ -12,7 +12,7 @@ from app.schemas.chat import RagChatRequest
 from app.services.ingestion.extract import ExtractedSection
 from app.services.retrieval.query import decode_json_list, decode_json_object
 from app.source_chapter_policy import resolve_source_chapter_policy
-from app.source_structure import PARSER_VERSION, analyze_source_structure, structure_outline
+from app.content.source_structure import PARSER_VERSION, analyze_source_structure, structure_outline
 
 MAX_SOURCE_STRUCTURE_DOCUMENTS = 40
 MAX_SOURCE_OUTLINE_CHARS = 16000

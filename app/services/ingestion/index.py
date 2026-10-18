@@ -39,7 +39,7 @@ from app.services.ingestion.extract import ExtractedSection, index_document_temp
 from app.services.ingestion.storage import fetch_index_source
 from app.services.provider import http_error_detail, normalize_embedding_model
 from app.services.text import clean_text
-from app.source_structure import analyze_source_structure
+from app.content.source_structure import analyze_source_structure
 
 logger = logging.getLogger(SERVICE_LOGGER_NAME)
 
