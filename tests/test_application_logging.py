@@ -149,13 +149,22 @@ class StructuredEventTests(unittest.TestCase):
             "observed_usage": {"provider_input_tokens": 12, "provider_output_tokens": 7},
             "token_allowance": {"input_tokens": 1_800_000, "output_tokens": 131_072},
             "service_token": "plain-secret-token", "tokens": "plain-secret-string", "api_key": 123,
+            # A container under a token-count key is a count only when every leaf is a number.
+            "token_counts": [1, 2, {"cached": 3, "unknown": None}],
+            "refresh_tokens": {"access": "plain-secret-in-a-dict"},
+            "token_budget": {"input": 10, "note": "plain-secret-mixed"},
+            "tokens_list": ["plain-secret-in-a-list"],
         })
         line = json.loads(stream.getvalue())
         self.assertEqual(line["event"], "idm_call_rejected")
         self.assertEqual((line["spent_output_tokens"], line["max_output_tokens"]), (8107, None))
         self.assertEqual(line["observed_usage"], {"provider_input_tokens": 12, "provider_output_tokens": 7})
         self.assertEqual(line["token_allowance"], {"input_tokens": 1_800_000, "output_tokens": 131_072})
+        self.assertEqual(line["token_counts"], [1, 2, {"cached": 3, "unknown": None}])
         self.assertEqual((line["service_token"], line["tokens"], line["api_key"]), ("<redacted>",) * 3)
+        self.assertEqual(
+            (line["refresh_tokens"], line["token_budget"], line["tokens_list"]), ("<redacted>",) * 3
+        )
         self.assertNotIn("plain-secret", stream.getvalue())
 
     def test_exception_fields_are_a_sanitised_traceback_without_the_message(self) -> None:

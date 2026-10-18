@@ -64,9 +64,22 @@ def redact_secret_like_values(value: object) -> str:
     return text
 
 
+def _is_numeric_tree(value: Any) -> bool:
+    """True for a number or null, or a dict/list/tuple whose every leaf is one."""
+
+    if isinstance(value, (int, float)) or value is None:
+        return True
+    if isinstance(value, dict):
+        return all(_is_numeric_tree(item) for item in value.values())
+    if isinstance(value, (list, tuple)):
+        return all(_is_numeric_tree(item) for item in value)
+    return False
+
+
 def _is_token_count(key: str, value: Any) -> bool:
-    numeric = isinstance(value, (int, float)) or value is None
-    return TOKEN_COUNT_FIELD_PATTERN.search(key) is not None and (numeric or isinstance(value, (dict, list, tuple)))
+    # A container is kept only when it holds nothing but numbers: ``tokens={"access": "<secret>"}``
+    # must be redacted whole, since its inner keys need not look sensitive.
+    return TOKEN_COUNT_FIELD_PATTERN.search(key) is not None and _is_numeric_tree(value)
 
 
 def _safe_value(key: str, value: Any) -> Any:
