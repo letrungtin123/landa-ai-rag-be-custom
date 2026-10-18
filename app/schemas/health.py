@@ -25,3 +25,6 @@ class ServiceMetaResponse(BaseModel):
     capabilities: dict[str, bool]
     database: dict[str, str]
     schema_check: dict[str, Any]
+    # sha256 over the IDM prompt template sources (app.idm.prompt_manifest); changes with every prompt
+    # edit, while contracts.idm_prompt_policy_version stays the contract value.
+    prompt_templates_hash: str

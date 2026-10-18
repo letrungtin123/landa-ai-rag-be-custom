@@ -15,8 +15,10 @@ from supabase import create_client
 from app.core.concurrency import ConcurrencyRuntime
 from app.core.config import settings, validate_startup_settings
 from app.core.lifespan import RuntimeState
-from app.core.logging import SERVICE_LOGGER_NAME
+from app.core.logging import SERVICE_LOGGER_NAME, log_event
 from app.core.security import require_configured_service_auth
+from app.idm.policy import IDM_PROMPT_POLICY_VERSION
+from app.idm.prompt_manifest import prompt_templates_hash
 from app.infra import db as db_infra
 from app.infra import gemini as gemini_infra
 from app.infra import schema_check as schema_infra
@@ -104,6 +106,8 @@ async def startup() -> None:
         extra={"event": "storage_access_configured", "legacy_service_key": supabase_client is not None,
                "allowed_origin_count": len(allowed_origins)},
     )
+    log_event(logger, logging.INFO, "service_prompt_templates", prompt_policy_version=IDM_PROMPT_POLICY_VERSION,
+              prompt_templates_hash=prompt_templates_hash())
     config = database_config()
     logger.info(
         "database_configured",

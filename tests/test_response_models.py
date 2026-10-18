@@ -38,6 +38,7 @@ CASES: list[tuple[str, TypeAdapter[Any], dict[str, Any]]] = [
         "capabilities": {"index_source_download_url": True, "legacy_storage_service_key": False},
         "database": {"state": "idle"},
         "schema_check": {"status": "ok", "code": None, "missing_count": 0, "missing": [], "checked_at": 1.5},
+        "prompt_templates_hash": "c" * 64,
     }),
     ("index_learned", INDEX_DOCUMENT_RESPONSE, {
         "status": "learned", "chunk_count": 2, "structure_source": None, "structure_confidence": 0,

@@ -6,6 +6,7 @@ import re
 from typing import Any
 
 from app.idm.policy import IDM_CONTRACT_VERSION, IDM_PIPELINE_VERSION, IDM_PROMPT_POLICY_VERSION
+from app.idm.prompt_manifest import prompt_templates_hash
 from app.lesson_author_orchestration_v2 import ORCHESTRATION_CONTRACT_VERSION
 from app.lesson_author_orchestration_v2_provider import ORCHESTRATION_V2_PROVIDER_SCHEMA_PROJECTION_VERSION
 
@@ -20,6 +21,8 @@ RAG_INDEX_REQUEST_VERSION = 2
 
 
 BUILD_SHA_PATTERN = re.compile(r"^[0-9A-Za-z._-]{1,64}$")
+
+__all__ = ["API_VERSION", "BUILD_SHA_PATTERN", "SERVICE_NAME", "prompt_templates_hash", "service_contract_versions"]
 
 
 def service_contract_versions() -> dict[str, Any]:

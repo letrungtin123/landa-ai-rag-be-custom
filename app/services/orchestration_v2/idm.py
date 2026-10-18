@@ -12,7 +12,9 @@ from app.core import metrics
 from app.core.config import settings
 from app.core.errors import AppError
 from app.core.handled_exceptions import report_handled_exception
-from app.core.logging import SERVICE_LOGGER_NAME, log_payload
+from app.core.logging import SERVICE_LOGGER_NAME, log_event, log_payload
+from app.idm.policy import IDM_PROMPT_POLICY_VERSION
+from app.idm.prompt_manifest import prompt_templates_hash
 from app.idm.runtime import (
     IDM_LOG_FAMILY,
     RUN_STOPPING_PROVIDER_CODES,
@@ -73,6 +75,11 @@ async def _idm_generate(api_key: str, model: str, prompt: str, **options: Any) -
 
 
 def _idm_runtime(request: RagChatRequest, *, budget_ms: int, allowance: Any | None) -> IdmRuntime:
+    # Ties the content of every IDM request (course design, module, unit) to the prompt templates
+    # that wrote it, also across a deploy in the middle of a run.
+    log_event(logger, logging.INFO, "idm_prompt_templates", family=IDM_LOG_FAMILY,
+              correlation_id=request.correlation_id, prompt_policy_version=IDM_PROMPT_POLICY_VERSION,
+              prompt_templates_hash=prompt_templates_hash())
     return IdmRuntime(
         generate=_idm_generate, api_key=require_provider_api_key(request.api_key), model=request.model,
         locale=request.locale, deadline=monotonic() + budget_ms / 1000, correlation_id=request.correlation_id,

@@ -16,7 +16,13 @@ from app.core.logging import SERVICE_LOGGER_NAME
 from app.repositories import health as health_repository
 from app.schemas.health import HealthResponse, ServiceMetaResponse
 from app.services import runtime as service_runtime
-from app.services.meta import API_VERSION, BUILD_SHA_PATTERN, SERVICE_NAME, service_contract_versions
+from app.services.meta import (
+    API_VERSION,
+    BUILD_SHA_PATTERN,
+    SERVICE_NAME,
+    prompt_templates_hash,
+    service_contract_versions,
+)
 from app.services.runtime import SCHEMA_CHECK_TIMEOUT_SECONDS
 
 logger = logging.getLogger(SERVICE_LOGGER_NAME)
@@ -63,6 +69,7 @@ async def service_meta() -> ServiceMetaResponse:
         },
         "database": {"state": service_runtime.database.state if service_runtime.database is not None else "idle"},
         "schema_check": service_runtime.schema_guard.summary(),
+        "prompt_templates_hash": prompt_templates_hash(),
     })
 
 
