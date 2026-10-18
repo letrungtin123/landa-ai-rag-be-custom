@@ -8,6 +8,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any, Final
 
+from app.contracts.orchestration_v2.blueprint import CourseSkeletonChapterV2, CourseSkeletonV2
 from app.idm.author_brief import author_brief, brief_note_lines
 from app.idm.blueprint import KeptDefinition
 from app.idm.contracts import (
@@ -84,7 +85,6 @@ from app.idm.runtime import (
 )
 from app.idm.text import is_generic_title, must_do_title, objective_title, single_line
 from app.idm.validation import IdmIssue, errors
-from app.lesson_author_orchestration_v2 import CourseSkeletonChapterV2, CourseSkeletonV2
 
 _AI_SUFFIX_VI: Final = " (Đề xuất bởi AI — cần xác nhận)"
 _AI_SUFFIX_EN: Final = " (Proposed by AI — please confirm)"

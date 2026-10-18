@@ -5,10 +5,10 @@ from __future__ import annotations
 import re
 from typing import Any
 
+from app.contracts.orchestration_v2.blueprint import ORCHESTRATION_CONTRACT_VERSION
+from app.contracts.orchestration_v2.provider import ORCHESTRATION_V2_PROVIDER_SCHEMA_PROJECTION_VERSION
 from app.idm.policy import IDM_CONTRACT_VERSION, IDM_PIPELINE_VERSION, IDM_PROMPT_POLICY_VERSION
 from app.idm.prompt_manifest import prompt_templates_hash
-from app.lesson_author_orchestration_v2 import ORCHESTRATION_CONTRACT_VERSION
-from app.lesson_author_orchestration_v2_provider import ORCHESTRATION_V2_PROVIDER_SCHEMA_PROJECTION_VERSION
 
 API_VERSION = "0.1.0"
 

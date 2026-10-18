@@ -19,7 +19,7 @@ $StrictPaths = @(
 # baseline (pyproject overrides) until PRD-3 deletes it.
 $MypyStrictPaths = @(
     "app/services/provider.py", "app/services/chat", "app/services/retrieval", "app/services/ingestion",
-    "app/services/orchestration_v2", "app/content"
+    "app/services/orchestration_v2", "app/content", "app/contracts"
 )
 $StrictTests = @(
     "tests/test_prd0_security.py",
@@ -58,7 +58,7 @@ function Invoke-Gate([string]$Name, [scriptblock]$Command) {
 Push-Location $RepoRoot
 try {
     Invoke-Gate "ruff (strict paths)" { & $Python -m ruff check @StrictPaths @StrictTests }
-    Invoke-Gate "ruff (moved code, F rules)" { & $Python -m ruff check app/services app/content --select F }
+    Invoke-Gate "ruff (moved code, F rules)" { & $Python -m ruff check app/services app/content app/contracts --select F }
     Invoke-Gate "mypy (strict paths)" { & $Python -m mypy @StrictPaths @MypyStrictPaths }
     Invoke-Gate "pytest + coverage" { & $Python -m pytest -q --cov=app --cov-branch --cov-report=term --cov-fail-under=85 }
     Invoke-Gate "pip-audit" { & $Python -m pip_audit -r requirements.lock --disable-pip }

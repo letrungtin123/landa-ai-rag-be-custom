@@ -42,8 +42,6 @@ module = [
   "app.instructional_opportunities",
   "app.lesson_author_blueprint",
   "app.lesson_author_checkpoint",
-  "app.lesson_author_orchestration_v2",
-  "app.lesson_author_orchestration_v2_provider",
   "app.lesson_author_provider_schema",
   "app.lesson_content_observation",
   "app.lesson_prompt_policy",

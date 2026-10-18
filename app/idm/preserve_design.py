@@ -25,6 +25,12 @@ import time
 from collections.abc import Sequence
 from typing import Any, Final
 
+from app.contracts.orchestration_v2.blueprint import (
+    ArchitectureComponentAuthorReviewV2,
+    ChapterBlueprintShardV2,
+    CourseSkeletonV2,
+)
+from app.contracts.orchestration_v2.provider import ChapterShardPlanV2, SourceSnapshotFactV2
 from app.idm.architecture import block_scope_key, project_course_skeleton
 from app.idm.contracts import (
     IdmAudienceV1,
@@ -60,12 +66,6 @@ from app.idm.preserve_outline import Outline, build_outline
 from app.idm.preserve_segment import Segmentation, segment_document, segmentation_log
 from app.idm.runtime import IdmRuntime, IdmStageError, log_stage
 from app.idm.text import single_line
-from app.lesson_author_orchestration_v2 import (
-    ArchitectureComponentAuthorReviewV2,
-    ChapterBlueprintShardV2,
-    CourseSkeletonV2,
-)
-from app.lesson_author_orchestration_v2_provider import ChapterShardPlanV2, SourceSnapshotFactV2
 
 PRESERVE_MODE: Final = "preserve_source"
 EMPTY_CODE: Final = "IDM_PRESERVE_SOURCE_EMPTY"

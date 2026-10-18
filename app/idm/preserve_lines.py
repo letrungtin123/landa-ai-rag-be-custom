@@ -21,6 +21,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Final, Literal
 
+from app.contracts.orchestration_v2.provider import SourceSnapshotFactV2
 from app.idm.policy import (
     IDM_HEADING_ALL_CAPS_RATIO,
     IDM_PRESERVE_FURNITURE_MAX_CHARS,
@@ -30,7 +31,6 @@ from app.idm.policy import (
     IDM_PRESERVE_TITLE_MIN_CHARS,
 )
 from app.idm.text import idm_fold
-from app.lesson_author_orchestration_v2_provider import SourceSnapshotFactV2
 
 # ECMAScript WhiteSpace + LineTerminator (what JavaScript ``\s`` and ``String.prototype.trim`` use): TAB to CR,
 # SPACE, NO-BREAK SPACE, OGHAM SPACE MARK, EN QUAD to HAIR SPACE, LINE/PARAGRAPH SEPARATOR, NARROW NO-BREAK SPACE,

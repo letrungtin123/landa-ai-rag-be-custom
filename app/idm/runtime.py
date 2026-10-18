@@ -24,6 +24,7 @@ from typing import Any, Final, Literal, Protocol
 
 from pydantic import BaseModel, ValidationError
 
+from app.contracts.orchestration_v2.provider import _project_orchestration_v2_provider_schema
 from app.core.logging import log_event
 from app.idm.coerce import coerce_provider_answer
 from app.idm.policy import (
@@ -34,7 +35,6 @@ from app.idm.policy import (
     IDM_PROVIDER_CALL_TIMEOUT_MS,
     THINKING_AFTER_TRUNCATION,
 )
-from app.lesson_author_orchestration_v2_provider import _project_orchestration_v2_provider_schema
 
 logger = logging.getLogger("app.idm")
 # Message prefix of the IDM log events (log searches by prefix keep matching).

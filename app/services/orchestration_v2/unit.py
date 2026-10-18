@@ -23,7 +23,7 @@ from app.idm.source_locked import idm_source_faq, idm_source_grounded_single_cho
 from app.idm.storyboard import IdmUnitDeps, run_idm_unit
 from app.content.instructional_quality import source_relationship_pairs
 from app.content.learner_content_purity import build_learner_content_purity_context
-from app.lesson_author_orchestration_v2_provider import (
+from app.contracts.orchestration_v2.provider import (
     UnitGenerationContractV2,
     unit_contract_manifest_v2,
     unit_contract_v5_architecture_v2,

@@ -30,6 +30,7 @@ from dataclasses import dataclass
 from typing import Final, Literal
 
 from app.content.instructional_quality import source_clarification_signals
+from app.contracts.orchestration_v2.blueprint import ArchitectureComponentAuthorReviewV2
 from app.idm.contracts import (
     FaqItemOrigin,
     FaqQuestionType,
@@ -54,7 +55,6 @@ from app.idm.policy import (
 )
 from app.idm.signals import states_rule
 from app.idm.text import sanitize_author_text
-from app.lesson_author_orchestration_v2 import ArchitectureComponentAuthorReviewV2
 
 FAQ_DROPPED_CODE: Final = "IDM_W4_AUTOFIX_FAQ_DROPPED"
 FAQ_PLANNED_CODE: Final = "IDM_W4_FAQ_ITEMS_PLANNED"

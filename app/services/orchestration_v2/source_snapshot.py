@@ -15,8 +15,8 @@ from app.instructional_density import (
     SOURCE_SCOPE_CHUNKS_PER_GROUP,
     partition_chunk_facts_for_density,
 )
-from app.lesson_author_orchestration_v2 import canonical_hash as orchestration_v2_canonical_hash
-from app.lesson_author_orchestration_v2_provider import (
+from app.contracts.orchestration_v2.blueprint import canonical_hash as orchestration_v2_canonical_hash
+from app.contracts.orchestration_v2.provider import (
     SourceOutlineAuthorityV2,
     SourceOutlineChapterV2,
     SourceSnapshotFactV2,

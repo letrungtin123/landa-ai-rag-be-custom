@@ -7,15 +7,15 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, SecretStr, model_validator
 
-from app.idm.contracts import IdmCourseSkeletonRequestV1, IdmModuleContextV1
-from app.lesson_author_orchestration_v2 import CourseSkeletonV2
-from app.lesson_author_orchestration_v2_provider import (
+from app.contracts.orchestration_v2.blueprint import CourseSkeletonV2
+from app.contracts.orchestration_v2.provider import (
     ChapterShardPlanV2,
     SourceOutlineAuthorityV2,
     SourceScopeCatalogEntryV2,
     SourceSnapshotFactV2,
     UnitGenerationContractV2,
 )
+from app.idm.contracts import IdmCourseSkeletonRequestV1, IdmModuleContextV1
 from app.schemas.chat import RagChatRequest
 
 
