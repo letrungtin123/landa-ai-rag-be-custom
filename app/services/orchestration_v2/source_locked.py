@@ -13,7 +13,7 @@ from app.instructional_quality import (
     source_relationship_pairs,
     source_term_definitions,
 )
-from app.learner_content_purity import sanitize_source_fact_for_learner
+from app.content.learner_content_purity import sanitize_source_fact_for_learner
 from app.lesson_author_orchestration_v2_provider import UnitComponentPlanV2, UnitGenerationContractV2
 from app.services.lesson_author.staged.source_locked import (
     _source_locked_faq_answers,

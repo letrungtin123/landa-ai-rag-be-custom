@@ -15,7 +15,7 @@ from pydantic import BaseModel
 
 from app.core.handled_exceptions import report_handled_exception
 from app.core.logging import SERVICE_LOGGER_NAME
-from app.learner_content_purity import build_learner_content_purity_context
+from app.content.learner_content_purity import build_learner_content_purity_context
 from app.lesson_author_checkpoint import ChapterCheckpointUnit, checkpoint_expected_units, select_checkpoint_unit
 from app.lesson_author_provider_schema import staged_provider_response_model
 from app.lesson_content_observation import observe_lesson_content

@@ -22,6 +22,7 @@ import html as html_lib
 from collections.abc import Sequence
 from typing import Final
 
+from app.content.learner_content_purity import sanitize_source_fact_for_learner
 from app.idm.node_acceptance import html_quality_code, instructional_fold
 from app.idm.policy import IDM_PRESERVE_TABLE_MAX_COLUMNS, IDM_PRESERVE_TABLE_MAX_ROWS
 from app.idm.preserve_lines import (
@@ -32,7 +33,6 @@ from app.idm.preserve_lines import (
     normalize_line,
     table_cells,
 )
-from app.learner_content_purity import sanitize_source_fact_for_learner
 
 PRESERVE_TEXT_ADDED: Final = "PRESERVE_TEXT_ADDED"
 PRESERVE_TEXT_MISSING: Final = "PRESERVE_TEXT_MISSING"

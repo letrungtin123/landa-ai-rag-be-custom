@@ -22,7 +22,7 @@ from app.idm.runtime import IDM_LOG_FAMILY, IdmError, IdmStageError
 from app.idm.source_locked import idm_source_faq, idm_source_grounded_single_choice, render_idm_source_locked_html
 from app.idm.storyboard import IdmUnitDeps, run_idm_unit
 from app.instructional_quality import source_relationship_pairs
-from app.learner_content_purity import build_learner_content_purity_context
+from app.content.learner_content_purity import build_learner_content_purity_context
 from app.lesson_author_orchestration_v2_provider import (
     UnitGenerationContractV2,
     unit_contract_manifest_v2,

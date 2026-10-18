@@ -6,7 +6,7 @@ import re
 import unicodedata
 from typing import Any, Iterable
 
-from app.learner_content_purity import (
+from app.content.learner_content_purity import (
     is_provenance_only_source_line,
     sanitize_source_fact_for_learner,
 )
