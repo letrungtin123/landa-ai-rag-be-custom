@@ -148,8 +148,8 @@ async def run_idm_module_design(
             salvage: _Salvage | None = None
             invalid: dict[str, list[IdmIssue]] = {}
             if error.value is not None:
-                parsed, invalid, practices = _parse_rejected_lessons(error.value, scope)
-                salvage = _salvage(parsed, scope, allowed, invalid=invalid)
+                parsed, invalid, practices = await runtime.run_cpu(_parse_rejected_lessons, error.value, scope)
+                salvage = await runtime.run_cpu(_salvage, parsed, scope, allowed, invalid=invalid)
                 seen_practices.update({**practices, **salvage.practices})
                 accepted.update(salvage.accepted)
                 runtime.adjustments.update(salvage.fixes)
@@ -178,7 +178,7 @@ async def run_idm_module_design(
             codes[error.code] += 1
             break
         content_attempts += 1
-        salvage = _salvage(response.lessons, scope, allowed)
+        salvage = await runtime.run_cpu(_salvage, response.lessons, scope, allowed)
         seen_practices.update(salvage.practices)
         accepted.update(salvage.accepted)
         runtime.adjustments.update(salvage.fixes)
@@ -202,7 +202,7 @@ async def run_idm_module_design(
         record_deterministic_fallback(runtime, stage="idm_module", code="IDM_MODULE_LESSON_FALLBACK")
     final = _taught_before_questions(final, scope, runtime, codes)
     # QLT-5 D: an FAQ only where its unit has something to clarify, and a plan for each of its items.
-    faq = gate_and_plan_faq(final, scope)
+    faq = await runtime.run_cpu(gate_and_plan_faq, final, scope)
     final = faq.lessons
     for code, count in ((FAQ_DROPPED_CODE, faq.dropped), (FAQ_PLANNED_CODE, faq.planned), (FAQ_ADDED_CODE, faq.added)):
         if count:

@@ -560,7 +560,8 @@ async def run_idm_unit(
 
     started = time.perf_counter()
     brief = parse_brief(contract)
-    writer = IdmUnitWriter(contract, brief, deps, runtime)
+    # Off the event loop only outside the two deadlines below: a timeout must never leave a thread changing the writer.
+    writer = await runtime.run_cpu(IdmUnitWriter, contract, brief, deps, runtime)
     ai_drafted = any(slot.practice is not None and slot.practice.scenario_origin == "ai_drafted"
                      for slot in brief.components)
     draft: _Draft | None = None
@@ -592,15 +593,15 @@ async def run_idm_unit(
                 judge = JudgeOutcome("skipped_budget")
     unexplained_acronyms: list[str] = []
     if draft is not None:
-        draft, unexplained_acronyms = writer.explain_acronyms(draft)
-    if draft is not None and (rejected := writer.node_acceptance(draft)):
+        draft, unexplained_acronyms = await runtime.run_cpu(writer.explain_acronyms, draft)
+    if draft is not None and (rejected := await runtime.run_cpu(writer.node_acceptance, draft)):
         # Unreachable while settle() applies the same rules; never hand Node a unit it rejects.
         _log_node_rejection(writer, "final", rejected)
         writer.failure_codes.append("IDM_NODE_ACCEPTANCE_REJECTED")
         draft = None
     whole_fallback = draft is None
     if draft is None:
-        draft = _Draft(_whole_fallback(writer), list(range(len(writer.plans))))
+        draft = _Draft(await runtime.run_cpu(_whole_fallback, writer), list(range(len(writer.plans))))
     usage_complete = runtime.usage.complete and runtime.provider_failure_code is None
     if whole_fallback:
         usage: dict[str, int] = {"inputTokens": 0, "outputTokens": 0, "embeddingTokens": 0, "totalTokens": 0}
@@ -632,10 +633,9 @@ async def run_idm_unit(
     notices = [reason for reason in reasons if reason in NOTICE_REASONS]
     reviewable = not provider_lane or bool(review_reasons)
     # N8: "still warns" is recomputed on the returned unit; codes settled on the way are listed apart.
-    remaining = [] if whole_fallback else final_unit_findings(draft.unit, brief, writer.owned_text, writer.evidence,
-                                                              draft.fallback_slots, framework=writer.framework,
-                                                              fidelity=writer.fidelity, faq=writer.faq,
-                                                              fact_rows=writer.fact_rows)
+    remaining = [] if whole_fallback else await runtime.run_cpu(
+        final_unit_findings, draft.unit, brief, writer.owned_text, writer.evidence, draft.fallback_slots,
+        framework=writer.framework, fidelity=writer.fidelity, faq=writer.faq, fact_rows=writer.fact_rows)
     components = draft.unit.get("components", [])
     # Labelled examples of provider slots only: a source-locked slot carries none.
     drafted = {} if whole_fallback else {index: count for index, count in writer.fidelity.drafted_examples(
