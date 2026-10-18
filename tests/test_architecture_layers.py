@@ -5,6 +5,7 @@ import hashlib
 import re
 import unittest
 from pathlib import Path
+from typing import NamedTuple
 
 from fastapi.routing import APIRoute
 
@@ -22,6 +23,88 @@ PURE_MODULE_PATTERNS = (
 )
 MAX_ROUTE_HANDLER_LINES = 30
 EVENT_NAME_PATTERN = re.compile(r"[a-z][a-z0-9_]*")
+
+
+# STD-5 (spec §19): files <= 800 lines and functions <= 120 lines in the code held to the full standard
+# (the strict paths of scripts/check.ps1); code moved verbatim in PRD-2 stays <= 2,500 lines per file.
+STRICT_CODE = ("core/", "infra/", "idm/", "api/", "schemas/", "repositories/", "prompt_safety.py", "__main__.py",
+               "main.py", "services/runtime.py", "services/meta.py", "services/deadlines.py", "services/text.py",
+               "hashing.py")
+MAX_STRICT_FILE_LINES = 800
+MAX_STRICT_FUNCTION_LINES = 120
+MAX_MOVED_FILE_LINES = 2_500
+
+
+class Allowance(NamedTuple):
+    lines: int
+    reason: str
+    target: str
+
+
+# Strict-code offenders when the STD-5 limits were enforced (refactor wave 1, 2026-10-18), at their size then.
+# An entry only shrinks: the test fails when the file or function grows past its size here (lower the number
+# when it shrinks) and when it fits the limit again (remove the entry). New code never gets an entry.
+FILE_SIZE_ALLOWLIST: dict[str, Allowance] = {
+    "idm/storyboard.py": Allowance(1_562, "W5 writer, repair, settle and fallback in one IdmUnitWriter class (11 lines "
+                                          "of it are the wave-1 recoverable-error observer)",
+                                   "wave 2 (2.5): split by W5 step into idm/w5/"),
+    "idm/node_acceptance.py": Allowance(1_125, "Python mirror of every Node revision-0 acceptance rule",
+                                        "wave 2 (2.5): one module per rule family"),
+    "idm/qa.py": Allowance(1_115, "W6 judge, deterministic unit checks and the author note together",
+                           "wave 2 (2.5): idm/checks/ and the note builder apart"),
+    "idm/prompts.py": Allowance(973, "the builders of every IDM stage prompt (spec Appendix A)",
+                                "wave 2 (2.5): one prompt module per stage"),
+    "idm/module_design.py": Allowance(889, "W3/W4 module design, salvage and autofix",
+                                      "wave 2 (2.5): split by stage step"),
+}
+FUNCTION_SIZE_ALLOWLIST: dict[str, Allowance] = {
+    "idm/module_design.py::run_idm_module_design": Allowance(214, "W3/W4 call, repair loop, salvage and assembly",
+                                                             "wave 2 (2.5)"),
+    "idm/qa.py::build_unit_author_note": Allowance(144, "every author-note line of a unit in one builder",
+                                                   "wave 2 (2.5)"),
+    "idm/storyboard.py::run_idm_unit": Allowance(140, "W5 unit flow: fallback-only, writer, judge and settle",
+                                                 "wave 2 (2.5)"),
+    "idm/runtime.py::idm_generate": Allowance(131, "admission, transport, usage ledger, trace and parse of one call",
+                                              "wave 2 (2.5)"),
+    "idm/notes.py::build_course_notes": Allowance(129, "every course-note line in one builder", "wave 2 (2.5)"),
+    "idm/course_design.py::run_idm_course_design": Allowance(127, "W1 map/reduce, W2, W4 and assembly",
+                                                             "wave 2 (2.5)"),
+    "idm/prompts.py::unit_writer_prompt": Allowance(124, "the W5 writer prompt template", "wave 2 (2.5)"),
+}
+
+
+def is_strict_code(name: str) -> bool:
+    return any(name == item or (item.endswith("/") and name.startswith(item)) for item in STRICT_CODE)
+
+
+def function_lengths(name: str, tree: ast.AST) -> dict[str, int]:
+    """``file::Qualified.name`` -> lines from the ``def`` line to the last line, nested functions included."""
+
+    lengths: dict[str, int] = {}
+    stack: list[tuple[ast.AST, str]] = [(tree, "")]
+    while stack:
+        node, prefix = stack.pop()
+        for child in ast.iter_child_nodes(node):
+            if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef)) and child.end_lineno is not None:
+                lengths[f"{name}::{prefix}{child.name}"] = child.end_lineno - child.lineno + 1
+                stack.append((child, f"{prefix}{child.name}."))
+            elif isinstance(child, ast.ClassDef):
+                stack.append((child, f"{prefix}{child.name}."))
+            else:
+                stack.append((child, prefix))
+    return lengths
+
+
+def size_violations(sizes: dict[str, int], limit: int, allowlist: dict[str, Allowance]) -> list[str]:
+    found = [f"{name}: {lines} lines > {limit}" for name, lines in sorted(sizes.items())
+             if lines > limit and name not in allowlist]
+    for name, allowance in sorted(allowlist.items()):
+        lines = sizes.get(name)
+        if lines is None or lines <= limit:
+            found.append(f"{name}: {lines} lines fits the limit (or is gone): remove its allowlist entry")
+        elif lines > allowance.lines:
+            found.append(f"{name}: grew to {lines} lines (allowlisted at {allowance.lines}; {allowance.target})")
+    return found
 
 
 def imported_modules(path: Path) -> list[tuple[str, set[str]]]:
@@ -131,7 +214,37 @@ class ArchitectureLayerTests(unittest.TestCase):
         sizes = {path.relative_to(APP_ROOT).as_posix(): len(path.read_text(encoding="utf-8").splitlines())
                  for path in APP_ROOT.rglob("*.py")}
         self.assertLessEqual(sizes["main.py"], 200)
-        self.assertEqual({name: lines for name, lines in sizes.items() if lines > 2500}, {})
+        self.assertEqual({name: lines for name, lines in sizes.items() if lines > MAX_MOVED_FILE_LINES}, {})
+        # STD-5 on the strict code: <= 800 lines per file; the allowlist only shrinks.
+        strict = {name: lines for name, lines in sizes.items() if is_strict_code(name)}
+        self.assertGreater(len(strict), 80)
+        self.assertEqual(size_violations(strict, MAX_STRICT_FILE_LINES, FILE_SIZE_ALLOWLIST), [])
+
+    def test_size_rules_catch_growth_new_offenders_and_stale_entries(self) -> None:
+        allowlist = {"idm/big.py": Allowance(900, "reason", "wave 2"), "idm/fixed.py": Allowance(850, "r", "wave 2")}
+        sizes = {"idm/big.py": 901, "idm/fixed.py": 700, "idm/new.py": 801, "idm/ok.py": 800}
+        self.assertEqual(size_violations(sizes, 800, allowlist), [
+            "idm/new.py: 801 lines > 800",
+            "idm/big.py: grew to 901 lines (allowlisted at 900; wave 2)",
+            "idm/fixed.py: 700 lines fits the limit (or is gone): remove its allowlist entry",
+        ])
+        self.assertEqual(size_violations({"idm/big.py": 880}, 800, {"idm/big.py": allowlist["idm/big.py"]}), [])
+        tree = ast.parse("def outer():\n    def inner():\n        pass\n    return inner\n\n"
+                         "class Box:\n    async def method(self):\n        return 1\n")
+        self.assertEqual(function_lengths("m.py", tree), {"m.py::outer": 4, "m.py::outer.inner": 2,
+                                                          "m.py::Box.method": 2})
+        self.assertTrue(is_strict_code("idm/qa.py") and is_strict_code("hashing.py"))
+        self.assertFalse(is_strict_code("services/provider.py") or is_strict_code("idm_legacy.py"))
+
+    def test_function_sizes_follow_std5(self) -> None:
+        # STD-5 on the strict code: <= 120 lines per function (def line to last line); the allowlist only shrinks.
+        lengths: dict[str, int] = {}
+        for path in sorted(APP_ROOT.rglob("*.py")):
+            name = path.relative_to(APP_ROOT).as_posix()
+            if is_strict_code(name):
+                lengths.update(function_lengths(name, ast.parse(path.read_text(encoding="utf-8"))))
+        self.assertGreater(len(lengths), 1_000)
+        self.assertEqual(size_violations(lengths, MAX_STRICT_FUNCTION_LINES, FUNCTION_SIZE_ALLOWLIST), [])
 
     def test_logs_are_structured_events(self) -> None:
         # One log style: ``log_event(logger, level, "event_name", **fields)`` (app.core.logging) or
