@@ -41,7 +41,8 @@ $StrictTests = @(
     "tests/test_quality_gate_scripts.py",
     "tests/test_route_snapshots.py",
     "tests/test_repository_sql.py",
-    "tests/test_response_models.py"
+    "tests/test_response_models.py",
+    "tests/test_core_text.py"
 )
 # Every IDM test file is held to the strict lint profile.
 $StrictTests += @(Get-ChildItem -Path (Join-Path $RepoRoot "tests") -Filter "test_idm_*.py" |

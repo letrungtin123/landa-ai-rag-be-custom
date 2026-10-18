@@ -10,6 +10,7 @@ from app.content.learner_content_purity import (
     is_provenance_only_source_line,
     sanitize_source_fact_for_learner,
 )
+from app.core.text import casefold_strip_marks as _fold
 
 TABLE_MARKER_RE = re.compile(r"^\[TABLE\]$", re.IGNORECASE)
 TABLE_ROW_RE = re.compile(r"^Row\s+(\d+)\s*:\s*(.+)$", re.IGNORECASE)
@@ -68,11 +69,6 @@ def faq_answer_is_complete(value: Any) -> bool:
 
     answer = normalize_visible_text(value)
     return len(answer) >= MIN_FAQ_ANSWER_CHARS and not answer[:1].islower()
-
-
-def _fold(value: str) -> str:
-    normalized = unicodedata.normalize("NFD", value.casefold())
-    return "".join(char for char in normalized if unicodedata.category(char) != "Mn")
 
 
 def is_non_instructional_source_line(value: Any, *, preserve_table_numeric: bool = False) -> bool:

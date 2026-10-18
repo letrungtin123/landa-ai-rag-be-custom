@@ -1,8 +1,8 @@
 """Small prompt contracts; no provider, retrieval or acceptance policy here."""
 import re
-import unicodedata
 from typing import Any, Literal
 
+from app.core.text import casefold_strip_marks_and_d
 from app.workflows.contracts import WorkflowFailure
 
 ARCHITECT_POLICY_MAX_CHARS = 12_000
@@ -47,8 +47,7 @@ def _ids(value: Any) -> list[str]:
 
 def instructional_action_intents(text: str) -> list[str]:
     """Conservative EN/VI lexical hints, not a cognitive/psychometric score."""
-    folded = unicodedata.normalize("NFD", text.casefold().replace("đ", "d"))
-    folded = "".join(c for c in folded if unicodedata.category(c) != "Mn")
+    folded = casefold_strip_marks_and_d(text)
     patterns = {
         "calculation": r"\b(?:calculate|compute|tinh toan|tinh diem)\b",
         "analysis": r"\b(?:analyse|analyze|phan tich)\b",

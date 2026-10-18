@@ -2,8 +2,9 @@ from __future__ import annotations
 
 import html
 import re
-import unicodedata
 from typing import Any, Iterable
+
+from app.core.text import casefold_strip_marks_and_d as _fold
 
 LEARNER_CONTENT_PURITY_POLICY_VERSION = "learner-content-purity-2"
 
@@ -75,11 +76,6 @@ _DANGLING_PROVENANCE_ONLY_RE = re.compile(
 def _visible_text(value: Any) -> str:
     text = html.unescape(re.sub(r"<[^>]+>", " ", str(value or "")))
     return re.sub(r"\s+", " ", text).strip()
-
-
-def _fold(value: str) -> str:
-    normalized = unicodedata.normalize("NFD", value.casefold().replace("đ", "d"))
-    return "".join(char for char in normalized if unicodedata.category(char) != "Mn")
 
 
 def _bounded_exact_match(text: str, candidate: str) -> bool:

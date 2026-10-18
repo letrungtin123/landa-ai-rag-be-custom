@@ -24,11 +24,12 @@ from __future__ import annotations
 import copy
 import json
 import re
-import unicodedata
 from collections import Counter
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from typing import Any, Final
+
+from app.core.text import casefold_strip_marks
 
 # --- limits (mirror proposal_validation.SEMANTIC_LEARNING_HTML_LIMITS and flatten_ordered_content) ---
 ORDERED_CONTENT_VERSION: Final = 2
@@ -312,8 +313,7 @@ def _empty(value: Any) -> bool:
 
 
 def _fold(value: str) -> str:
-    text = unicodedata.normalize("NFD", value.casefold())
-    return " ".join("".join(char for char in text if unicodedata.category(char) != "Mn").split())
+    return " ".join(casefold_strip_marks(value).split())
 
 
 def _strings(node: Any) -> Iterable[str]:

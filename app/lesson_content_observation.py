@@ -7,7 +7,6 @@ retrieval, DB write, ownership mutation or repair dispatch occurs here.
 from __future__ import annotations
 
 import re
-import unicodedata
 from collections import Counter, defaultdict
 from dataclasses import dataclass
 from decimal import Decimal
@@ -15,6 +14,7 @@ from hashlib import sha256
 from html import unescape
 from typing import Any
 
+from app.core.text import casefold_strip_marks_and_d
 from app.lesson_prompt_policy import component_instructional_brief, instructional_action_intents
 from app.content.ordered_learning_content import ordered_content_fields
 
@@ -47,9 +47,7 @@ def _ids(value: Any) -> list[str]:
 
 
 def _normalize(text: str) -> str:
-    text = unescape(re.sub(r"<[^>]*>", " ", text)).casefold().replace("đ", "d")
-    text = unicodedata.normalize("NFD", text)
-    return " ".join(re.findall(r"\w+", "".join(c for c in text if unicodedata.category(c) != "Mn")))
+    return " ".join(re.findall(r"\w+", casefold_strip_marks_and_d(unescape(re.sub(r"<[^>]*>", " ", text)))))
 
 
 @dataclass(frozen=True)
