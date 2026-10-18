@@ -16,6 +16,21 @@ from app.source_map import build_source_map
 from tests.test_component_instance_contract import PROFILE
 from tests.test_evidence_scope_allocation_v5 import _manifest, _nodes, _v5_blueprint
 
+# Backend modules the Node half of the registry test imports, under src/modules/ai-chatbot. The backend split
+# that folder into product sub-folders (refactor wave 2); an older checkout still has the flat layout.
+BACKEND_MODULES = {
+    "__REGISTRY__": ("ai-id/lesson-author-component-registry.logic.ts", "lesson-author-component-registry.logic.ts"),
+    "__VALIDATOR__": ("ai-id/lesson-author-blueprint-validator.logic.ts", "lesson-author-blueprint-validator.logic.ts"),
+    "__CHAT_SERVICE__": ("chat/chat.service.ts", "chat.service.ts"),
+}
+
+
+def backend_module(backend: Path, candidates: tuple[str, ...]) -> str:
+    for relative in candidates:
+        if (backend / "src/modules/ai-chatbot" / relative).is_file():
+            return f"./src/modules/ai-chatbot/{relative}"
+    raise AssertionError(f"backend module not found under {backend}: {candidates}")
+
 
 def fixture(texts):
     manifest = _manifest(len(texts), 1)
@@ -237,14 +252,14 @@ class InstructionalOpportunityTests(unittest.TestCase):
         script = """
 import fs from 'node:fs';
 import pg from 'pg';
-import {planSemanticLearningBlocks} from './src/modules/ai-chatbot/lesson-author-component-registry.logic.ts';
-import {validateLessonAuthorBlueprintArchitecture} from './src/modules/ai-chatbot/lesson-author-blueprint-validator.logic.ts';
+import {planSemanticLearningBlocks} from '__REGISTRY__';
+import {validateLessonAuthorBlueprintArchitecture} from '__VALIDATOR__';
 pg.Pool.prototype.query=()=>{throw new Error('TEST_DATABASE_ACCESS_FORBIDDEN')};
 pg.Pool.prototype.connect=()=>{throw new Error('TEST_DATABASE_ACCESS_FORBIDDEN')};
 globalThis.fetch=()=>{throw new Error('TEST_NETWORK_ACCESS_FORBIDDEN')};
 const interval=globalThis.setInterval;
 globalThis.setInterval=(...args)=>{const timer=interval(...args);timer.unref();return timer};
-const {normalizeLessonAuthorBlueprint}=await import('./src/modules/ai-chatbot/chat.service.ts');
+const {normalizeLessonAuthorBlueprint}=await import('__CHAT_SERVICE__');
 const {cases,blueprints}=JSON.parse(fs.readFileSync(0,'utf8'));
 const persisted=blueprints.map(b=>{
  const parsed=normalizeLessonAuthorBlueprint(b,{requireContentArchitecture:true,requirePhaseOneContract:true});
@@ -257,9 +272,12 @@ console.log('RESULT:'+JSON.stringify({persisted,cases:cases.map(input=>({
   restricted:planSemanticLearningBlocks({...input,allowed_component_types:new Set(['html','problem'])}).map(p=>p.type)
 }))}));
 """
+        backend = Path(__file__).resolve().parents[2] / "landa-backend"
+        for placeholder, relative in BACKEND_MODULES.items():
+            script = script.replace(placeholder, backend_module(backend, relative))
         result = subprocess.run([shutil.which("node") or "node", "--import", "tsx", "--input-type=module", "-e", script],
                                 input=json.dumps({"cases": cases, "blueprints": blueprints}), text=True, encoding="utf-8", capture_output=True, timeout=30,
-                                cwd=Path(__file__).resolve().parents[2] / "landa-backend")
+                                cwd=backend)
         self.assertEqual(result.returncode, 0, result.stderr)
         output = json.loads(next(line[7:] for line in result.stdout.splitlines() if line.startswith("RESULT:")))
         for item in output["persisted"]:
