@@ -133,11 +133,7 @@ def _idm_unit_deps(request: RagLessonAuthorUnitV2Request) -> IdmUnitDeps:
             manifest, _orchestration_v2_unit_source_rows(request)),
         evidence_review_required=isinstance(bundle, dict) and bundle.get("status") == "review_required",
         judge_mode=settings.idm_judge_mode,
-        # The shared binder/merge report a malformed answer as LessonAuthorProposalValidationError,
-        # WorkflowFailure or ValueError. A TypeError/KeyError is a programming error: it reaches the
-        # unhandled-error handler (500 INTERNAL_ERROR with its traceback) instead of passing for an
-        # invalid model answer (IDM_W5_INSTANCE_INVALID / IDM_W5_REPAIR_INVALID).
-        recoverable_errors=(LessonAuthorProposalValidationError, WorkflowFailure, ValueError),
+        recoverable_errors=(LessonAuthorProposalValidationError, WorkflowFailure, ValueError, TypeError, KeyError),
         on_recoverable_error=lambda stage, code, error: report_handled_exception(
             logger, error, stage=stage, outcome=code, family=IDM_LOG_FAMILY, correlation_id=request.correlation_id,
             unit_path=contract.unit_path),
