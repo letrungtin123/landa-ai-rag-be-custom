@@ -51,7 +51,6 @@ module = [
   "app.lesson_prompt_policy",
   "app.lesson_quality",
   "app.media_brief",
-  "app.ordered_learning_content",
   "app.semantic_review",
   "app.services.lesson_author.*",
   "app.source_chapter_policy",

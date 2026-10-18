@@ -20,7 +20,7 @@ from app.lesson_author_checkpoint import ChapterCheckpointUnit, checkpoint_expec
 from app.lesson_author_provider_schema import staged_provider_response_model
 from app.lesson_content_observation import observe_lesson_content
 from app.lesson_prompt_policy import instructional_contract_review_signals, lesson_output_language_policy
-from app.ordered_learning_content import ProviderSemanticVersionError, bind_provider_semantic_versions
+from app.content.ordered_learning_content import ProviderSemanticVersionError, bind_provider_semantic_versions
 from app.prompt_safety import untrusted_block
 from app.schemas.common import AiUsage
 from app.schemas.lesson_author import RagLessonAuthorRequest

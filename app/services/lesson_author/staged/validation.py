@@ -17,7 +17,7 @@ from app.instructional_quality import (
     faq_answer_is_complete,
 )
 from app.learner_content_purity import component_learner_text, learner_content_purity_finding
-from app.ordered_learning_content import semantic_shape_diagnostics
+from app.content.ordered_learning_content import semantic_shape_diagnostics
 from app.services.lesson_author.errors import LessonAuthorProposalValidationError
 from app.services.lesson_author.proposal_validation import (
     MIN_STAGED_LESSON_AUTHOR_HTML_TEXT_CHARS,

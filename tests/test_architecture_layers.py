@@ -20,6 +20,8 @@ PURE_MODULE_PATTERNS = (
     "source_*.py", "instructional_*.py", "lesson_quality.py", "semantic_review.py", "workflows/*.py",
     "assessment_*.py", "learner_content_purity.py", "ordered_learning_content.py", "media_brief.py",
     "component_capabilities.py", "lesson_author_*.py", "lesson_content_observation.py", "lesson_prompt_policy.py",
+    # The shared core moved verbatim out of the modules above in refactor wave 2 (their old paths are aliases).
+    "content/*.py",
 )
 MAX_ROUTE_HANDLER_LINES = 30
 EVENT_NAME_PATTERN = re.compile(r"[a-z][a-z0-9_]*")

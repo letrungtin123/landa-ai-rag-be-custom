@@ -8,7 +8,7 @@ from typing import Any
 
 from fastapi import HTTPException
 
-from app.ordered_learning_content import flatten_ordered_content
+from app.content.ordered_learning_content import flatten_ordered_content
 from app.services.lesson_author.errors import LessonAuthorProposalValidationError
 from app.source_structure import strip_source_range_suffix
 from app.workflows.contracts import WorkflowFailure

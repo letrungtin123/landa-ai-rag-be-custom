@@ -3,7 +3,7 @@
 An ``html`` slot is written as ``semantic_content`` (ordered sections of typed blocks) and
 rendered by Node. The shared staged validator stays authoritative
 (``app.services.lesson_author.proposal_validation.semantic_learning_visible_text`` on top of
-``app.ordered_learning_content.flatten_ordered_content``, ``staged_component_payload_code``
+``app.content.ordered_learning_content.flatten_ordered_content``, ``staged_component_payload_code``
 and ``staged_instructional_finding``). It reports only the first failure and only as
 ``HTML_SEMANTIC_INVALID``, while the provider wire schema drops every length and count
 bound, so the model never learns which rule it broke (run e869f43a: every html repair

@@ -16,7 +16,7 @@ from html import unescape
 from typing import Any
 
 from app.lesson_prompt_policy import component_instructional_brief, instructional_action_intents
-from app.ordered_learning_content import ordered_content_fields
+from app.content.ordered_learning_content import ordered_content_fields
 
 VERSION = "lesson-content-observation-3"
 MAX_FACTS = 1200
