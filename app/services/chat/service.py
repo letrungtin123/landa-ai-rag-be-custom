@@ -6,6 +6,7 @@ from typing import Any, Literal
 
 import asyncpg
 
+from app.core import metrics
 from app.core.config import settings
 from app.core.logging import redact_secret_like_values
 from app.prompt_safety import untrusted_block, untrusted_content_rule
@@ -107,12 +108,13 @@ async def _chat(request: RagChatRequest, pool: asyncpg.Pool) -> dict[str, Any]:
             "retrieval": retrieval,
         }
     prompt = build_chat_prompt(request, context, structure_context.get("outline", ""))
-    text, generation_usage = await provider.generate_content(
-        request.api_key,
-        request.model,
-        prompt,
-        max_output_tokens=request.max_output_tokens,
-    )
+    with metrics.provider_stage("chat"):
+        text, generation_usage = await provider.generate_content(
+            request.api_key,
+            request.model,
+            prompt,
+            max_output_tokens=request.max_output_tokens,
+        )
     usage = combine_usage(retrieval_usage, generation_usage)
     text = guard_chat_output(text, request.system_prompt)
     return {"text": text, "usage": usage.model_dump(), "sources": sources, "retrieval": retrieval}

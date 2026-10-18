@@ -21,6 +21,7 @@ PURE_MODULE_PATTERNS = (
     "component_capabilities.py", "lesson_author_*.py", "lesson_content_observation.py", "lesson_prompt_policy.py",
 )
 MAX_ROUTE_HANDLER_LINES = 30
+EVENT_NAME_PATTERN = re.compile(r"[a-z][a-z0-9_]*")
 
 
 def imported_modules(path: Path) -> list[tuple[str, set[str]]]:
@@ -131,6 +132,28 @@ class ArchitectureLayerTests(unittest.TestCase):
                  for path in APP_ROOT.rglob("*.py")}
         self.assertLessEqual(sizes["main.py"], 200)
         self.assertEqual({name: lines for name, lines in sizes.items() if lines > 2500}, {})
+
+    def test_logs_are_structured_events(self) -> None:
+        # One log style: ``log_event(logger, level, "event_name", **fields)`` (app.core.logging) or
+        # ``logger.<level>("event_name", extra={"event": "event_name", ...})``. No JSON or printf
+        # arguments in the message. The frozen V5 pipeline keeps its JSON lines until PRD-3 deletes it.
+        legacy = ("services/lesson_author/",)
+        levels = {"debug", "info", "warning", "error", "exception", "critical"}
+        offenders = []
+        for path in sorted(APP_ROOT.rglob("*.py")):
+            relative = path.relative_to(APP_ROOT).as_posix()
+            if relative.startswith(legacy):
+                continue
+            for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+                if not (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+                        and node.func.attr in levels and isinstance(node.func.value, ast.Name)
+                        and node.func.value.id == "logger"):
+                    continue
+                message = node.args[0] if node.args else None
+                if (len(node.args) != 1 or not isinstance(message, ast.Constant) or not isinstance(message.value, str)
+                        or not EVENT_NAME_PATTERN.fullmatch(message.value)):
+                    offenders.append(f"{relative}:{node.lineno}")
+        self.assertEqual(offenders, [])
 
     def test_route_handlers_stay_thin(self) -> None:
         # Route modules only bind HTTP to services: no handler body grows into business logic.

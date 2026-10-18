@@ -133,13 +133,14 @@ async def _index_document(request: RagIndexRequest, pool: asyncpg.Pool) -> dict[
                        "document_id": request.document_id, "chunk_count": len(chunks)},
             )
 
-            embeddings, embedding_usage = await provider.embed_texts(
-                request.api_key,
-                effective_embedding_model,
-                [chunk["content"] for chunk in chunks],
-                task_type="RETRIEVAL_DOCUMENT",
-                output_dimensionality=request.embedding_dimensions,
-            )
+            with metrics.provider_stage("index_embedding"):
+                embeddings, embedding_usage = await provider.embed_texts(
+                    request.api_key,
+                    effective_embedding_model,
+                    [chunk["content"] for chunk in chunks],
+                    task_type="RETRIEVAL_DOCUMENT",
+                    output_dimensionality=request.embedding_dimensions,
+                )
             if len(embeddings) != len(chunks):
                 raise ValueError("Số lượng embedding không khớp số đoạn kiến thức.")
             logger.info(

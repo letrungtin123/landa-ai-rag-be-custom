@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import logging
 from typing import Any
 
@@ -10,7 +9,7 @@ from fastapi import HTTPException
 from pydantic import ValidationError
 
 from app.core.config import settings
-from app.core.logging import SERVICE_LOGGER_NAME
+from app.core.logging import SERVICE_LOGGER_NAME, log_payload
 from app.idm.course_design import run_idm_course_design
 from app.idm.runtime import IdmError, IdmStageError
 from app.lesson_author_orchestration_v2 import OrchestrationContractError
@@ -27,6 +26,7 @@ from app.schemas.orchestration_v2 import RagLessonAuthorCourseSkeletonV2Request
 from app.services.deadlines import record_fallback
 from app.services.orchestration_v2.common import (
     ORCHESTRATION_V2_PROVIDER_FALLBACK_CODES,
+    V2_LOG_FAMILY,
     _orchestration_v2_generate_content,
 )
 from app.services.orchestration_v2.idm import _idm_http_error, _idm_runtime
@@ -62,10 +62,10 @@ async def _lesson_author_orchestration_v2_course_skeleton(
     """Generate only global structure; chapter content is delegated to bounded shards."""
 
     prompt = skeleton_prompt_v2(request.locale, request.scope_catalog, request.source_authority)
-    logger.info("lesson_author_orchestration_v2 %s", json.dumps({
+    log_payload(logger, logging.INFO, V2_LOG_FAMILY, {
         "event": "provider_schema_projection_ready", "correlation_id": request.correlation_id,
         "generation_stage": "course_skeleton", **COURSE_SKELETON_PROVIDER_SCHEMA_METADATA,
-    }, sort_keys=True))
+    })
     usage = AiUsage()
     last_code = "ARCHITECTURE_SKELETON_INVALID"
     provider_failure_code: str | None = None
@@ -93,12 +93,12 @@ async def _lesson_author_orchestration_v2_course_skeleton(
             # blank 5xx response.
             provider_failure_code = "AI_PROVIDER_UNAVAILABLE"
             last_code = provider_failure_code
-            logger.warning("lesson_author_orchestration_v2 %s", json.dumps({
+            log_payload(logger, logging.WARNING, V2_LOG_FAMILY, {
                 "event": "course_skeleton_provider_fallback",
                 "correlation_id": request.correlation_id,
                 "failure_code": provider_failure_code,
                 "exception_type": type(error).__name__,
-            }, sort_keys=True))
+            })
             break
         usage = combine_usage(usage, attempt_usage)
         try:
@@ -110,35 +110,35 @@ async def _lesson_author_orchestration_v2_course_skeleton(
                 scope_catalog=request.scope_catalog,
                 source_authority=request.source_authority,
             )
-            logger.info("lesson_author_orchestration_v2 %s", json.dumps({
+            log_payload(logger, logging.INFO, V2_LOG_FAMILY, {
                 "event": "course_skeleton_ready", "correlation_id": request.correlation_id,
                 "source_snapshot_hash": request.source_snapshot_hash,
                 "scope_count": len(request.scope_catalog), "chapter_count": len(skeleton.chapters),
                 "provider_attempt": attempt,
-            }, sort_keys=True))
+            })
             return {"contract_version": 2, "skeleton": skeleton.model_dump(mode="json"),
                     "usage": usage.model_dump(), "usage_complete": True,
                     "usage_source": "provider", "content_origin": "provider_validated",
                     "quality_state": "validated"}
         except OrchestrationContractError as error:
             last_code = error.code
-            logger.warning("lesson_author_orchestration_v2 %s", json.dumps({
+            log_payload(logger, logging.WARNING, V2_LOG_FAMILY, {
                 "event": "course_skeleton_validation_failed",
                 "correlation_id": request.correlation_id,
                 "provider_attempt": attempt,
                 "failure_code": last_code,
-            }, sort_keys=True))
+            })
         except ValidationError as error:
             last_code = "ARCHITECTURE_SKELETON_INVALID"
             safe_errors = [{"type": item.get("type"), "loc": list(item.get("loc") or ())}
                            for item in error.errors(include_url=False, include_input=False)[:10]]
-            logger.warning("lesson_author_orchestration_v2 %s", json.dumps({
+            log_payload(logger, logging.WARNING, V2_LOG_FAMILY, {
                 "event": "course_skeleton_validation_failed",
                 "correlation_id": request.correlation_id,
                 "provider_attempt": attempt,
                 "failure_code": last_code,
                 "validation_errors": safe_errors,
-            }, sort_keys=True))
+            })
     fallback = fallback_course_skeleton_draft_v2(
         request.locale, request.scope_catalog, request.source_authority,
     )
@@ -149,7 +149,7 @@ async def _lesson_author_orchestration_v2_course_skeleton(
         scope_catalog=request.scope_catalog,
         source_authority=request.source_authority,
     )
-    logger.warning("lesson_author_orchestration_v2 %s", json.dumps({
+    log_payload(logger, logging.WARNING, V2_LOG_FAMILY, {
         "event": "course_skeleton_deterministic_fallback_ready",
         "correlation_id": request.correlation_id,
         "source_snapshot_hash": request.source_snapshot_hash,
@@ -157,7 +157,7 @@ async def _lesson_author_orchestration_v2_course_skeleton(
         "chapter_count": len(skeleton.chapters),
         "provider_attempts": request.max_attempts,
         "last_failure_code": last_code,
-    }, sort_keys=True))
+    })
     return {"contract_version": 2, "skeleton": skeleton.model_dump(mode="json"),
             "usage": usage.model_dump(), "usage_complete": provider_failure_code is None,
             "usage_source": "reserved_upper_bound" if provider_failure_code else "provider",

@@ -13,6 +13,7 @@ from typing import Any
 
 from app.idm.contracts import brief_hash_of
 from tests.idm_test_support import rehash_contract
+from tests.log_support import event_lines
 from tests.test_idm_storyboard import (
     JUDGE,
     REPAIR,
@@ -196,7 +197,7 @@ class ExplainedUnitTests(StoryboardEndpointTestCase):
         self.assertFalse(quality.repair_applied)
         # Node's rule was seen on the repaired slot; the unit kept the writer's draft for review.
         self.assertTrue(any('"event": "idm_unit_quality"' in line and "HTML_SOURCE_LOCATOR@components[0]" in line
-                            for line in logs.output))
+                            for line in event_lines(logs.records)))
 
     async def test_the_same_slot_in_keep_mode_has_no_copy_or_explanation_check(self) -> None:
         body = severity_body()

@@ -16,12 +16,15 @@ import math
 import re
 import time
 from collections import Counter
-from collections.abc import Awaitable, Callable
+from collections.abc import AsyncIterator, Awaitable, Callable
+from contextlib import asynccontextmanager
+from contextvars import ContextVar
 from dataclasses import dataclass, field
 from typing import Any, Final, Literal, Protocol
 
 from pydantic import BaseModel, ValidationError
 
+from app.core.logging import log_event
 from app.idm.coerce import coerce_provider_answer
 from app.idm.policy import (
     IDM_CALL_HEADROOM_SECONDS,
@@ -34,6 +37,11 @@ from app.idm.policy import (
 from app.lesson_author_orchestration_v2_provider import _project_orchestration_v2_provider_schema
 
 logger = logging.getLogger("app.idm")
+# Message prefix of the IDM log events (log searches by prefix keep matching).
+IDM_LOG_FAMILY: Final = "lesson_author_idm"
+# The ``stage`` of the provider call in flight (``idm_generate``): the injected transport reads it to
+# label its metrics and logs without the stage being part of the ``GenerateFn`` contract.
+_PROVIDER_STAGE: ContextVar[str | None] = ContextVar("idm_provider_stage", default=None)
 
 ThinkingLevel = Literal["low", "medium", "high"]
 InvocationKind = Literal["writer", "evaluator", "repair"]
@@ -348,7 +356,7 @@ async def idm_generate[ResultT](
                           if runtime.rate_limit_max_wait_ms > 0 else None)
     try:
         try:
-            async with asyncio.timeout(outer_seconds):
+            async with asyncio.timeout(outer_seconds), _provider_stage_scope(stage):
                 text, usage = await runtime.generate(
                     runtime.api_key, runtime.model, prompt,
                     max_output_tokens=output_cap, json_mode=True,
@@ -480,7 +488,22 @@ def record_deterministic_fallback(runtime: IdmRuntime, *, stage: str, code: str)
     })
 
 
-def log_stage(event: str, payload: dict[str, Any]) -> None:
-    """One JSON line per stage event; payloads carry counts and codes only."""
+def current_provider_stage() -> str | None:
+    """The IDM stage of the provider call in flight (``None`` outside ``idm_generate``)."""
 
-    logger.info("lesson_author_idm %s", json.dumps({"event": event, **payload}, sort_keys=True, default=str))
+    return _PROVIDER_STAGE.get()
+
+
+@asynccontextmanager
+async def _provider_stage_scope(stage: str) -> AsyncIterator[None]:
+    token = _PROVIDER_STAGE.set(stage)
+    try:
+        yield
+    finally:
+        _PROVIDER_STAGE.reset(token)
+
+
+def log_stage(event: str, payload: dict[str, Any]) -> None:
+    """One structured log line per stage event; payloads carry counts and codes only."""
+
+    log_event(logger, logging.INFO, event, family=IDM_LOG_FAMILY, **payload)

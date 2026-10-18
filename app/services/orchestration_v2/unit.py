@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-import json
 import logging
 import re
 from copy import deepcopy
@@ -13,8 +12,9 @@ from typing import Any, Literal, cast
 from google.genai import types
 from pydantic import BaseModel, ValidationError
 
+from app.core import metrics
 from app.core.config import settings
-from app.core.logging import SERVICE_LOGGER_NAME
+from app.core.logging import SERVICE_LOGGER_NAME, log_payload
 from app.idm.diagram import idm_source_step_diagram
 from app.idm.preserve_unit import is_preserve_unit, run_preserve_unit
 from app.idm.runtime import IdmError, IdmStageError
@@ -55,7 +55,7 @@ from app.services.lesson_author.staged.validation import (
     merge_staged_component_payload_delta,
     validate_staged_unit_content,
 )
-from app.services.orchestration_v2.common import _orchestration_v2_http_error
+from app.services.orchestration_v2.common import V2_LOG_FAMILY, _orchestration_v2_http_error
 from app.services.orchestration_v2.idm import _idm_http_error, _idm_runtime
 from app.services.orchestration_v2.source_locked import (
     build_orchestration_v2_source_locked_components,
@@ -99,7 +99,9 @@ async def lesson_author_orchestration_v2_unit(
         except ValidationError as error:
             raise _idm_http_error(IdmStageError("IDM_STAGE_OUTPUT_INVALID")) from error
     else:
-        result = await _lesson_author_orchestration_v2_unit(request=request)
+        # The V2 unit writer without an IDM brief (staged writer + optional semantic review).
+        with metrics.provider_stage("v2_unit_legacy"):
+            result = await _lesson_author_orchestration_v2_unit(request=request)
     record_fallback("unit", result)
     return result
 
@@ -288,7 +290,7 @@ async def _lesson_author_orchestration_v2_unit_legacy(
                    StagedUnitFinding("Deterministic unit fallback is unavailable.",
                                      "UNIT_FALLBACK_UNAVAILABLE", "unit", False))
         if finding is not None:
-            logger.error("lesson_author_orchestration_v2 %s", json.dumps({
+            log_payload(logger, logging.ERROR, V2_LOG_FAMILY, {
                 "event": "unit_deterministic_fallback_rejected",
                 "correlation_id": request.correlation_id,
                 "chapter_key": contract.chapter_key,
@@ -297,7 +299,7 @@ async def _lesson_author_orchestration_v2_unit_legacy(
                 "validation_finding": finding.diagnostic() if isinstance(finding, StagedUnitFinding) else {
                     "code": "UNIT_FALLBACK_INVALID", "path": "unit", "repairable": False,
                 },
-            }, sort_keys=True))
+            })
             raise _orchestration_v2_http_error(
                 "ORCHESTRATION_V2_UNIT_FALLBACK_INVALID",
                 "The source-locked unit fallback did not pass server validation.",
@@ -312,7 +314,7 @@ async def _lesson_author_orchestration_v2_unit_legacy(
             semantic_review_unavailable(cast("dict[str, Any]", unit), "SEMANTIC_REVIEW_NOT_RUN")
             if semantic_review_mode != "off" else None
         )
-        logger.warning("lesson_author_orchestration_v2 %s", json.dumps({
+        log_payload(logger, logging.WARNING, V2_LOG_FAMILY, {
             "event": "unit_deterministic_fallback_ready",
             "correlation_id": request.correlation_id,
             "source_snapshot_hash": contract.source_snapshot_hash,
@@ -325,7 +327,7 @@ async def _lesson_author_orchestration_v2_unit_legacy(
             "content_origin": "structured_fallback",
             "quality_state": fallback_quality_state,
             **({"semantic_review": semantic_summary} if semantic_summary is not None else {}),
-        }, sort_keys=True))
+        })
         usage = AiUsage().model_dump()
         # The Node dispatch fence is persisted before this HTTP request. A
         # first-attempt fallback therefore settles the reserved upper bound
@@ -619,7 +621,7 @@ async def _lesson_author_orchestration_v2_unit_legacy(
             quality_state = "review_required"
         combined_usage = combine_usage(usage, semantic_usage)
         combined_usage_complete = provider_usage_complete and semantic_usage_complete
-        logger.info("lesson_author_orchestration_v2 %s", json.dumps({
+        log_payload(logger, logging.INFO, V2_LOG_FAMILY, {
             "event": "unit_ready", "correlation_id": request.correlation_id,
             "source_snapshot_hash": contract.source_snapshot_hash, "chapter_key": contract.chapter_key,
             "unit_path": contract.unit_path, "source_fact_count": len(contract.source_facts),
@@ -631,7 +633,7 @@ async def _lesson_author_orchestration_v2_unit_legacy(
             "semantic_review_mode": semantic_review_mode,
             "semantic_provider_dispatched": semantic_provider_dispatched,
             **({"semantic_review": semantic_summary} if semantic_summary is not None else {}),
-        }, sort_keys=True))
+        })
         return {"contract_version": 2, "source_snapshot_hash": contract.source_snapshot_hash,
                 "unit_path": contract.unit_path, "unit": unit, "usage": combined_usage.model_dump(),
                 "usage_complete": combined_usage_complete,
@@ -642,7 +644,7 @@ async def _lesson_author_orchestration_v2_unit_legacy(
     except asyncio.TimeoutError:
         return deterministic_fallback("AI_STAGED_LESSON_WORKFLOW_TIMEOUT", provider_dispatched=provider_dispatched)
     except WorkflowFailure as error:
-        logger.warning("lesson_author_orchestration_v2 %s", json.dumps({
+        log_payload(logger, logging.WARNING, V2_LOG_FAMILY, {
             "event": "unit_generation_failed",
             "correlation_id": request.correlation_id,
             "chapter_key": contract.chapter_key,
@@ -650,12 +652,12 @@ async def _lesson_author_orchestration_v2_unit_legacy(
             "failure_stage": error.failure_stage,
             "failure_code": error.internal_code or error.code,
             "provider_dispatched": provider_dispatched,
-        }, sort_keys=True))
+        })
         return deterministic_fallback(error.internal_code or error.code, provider_dispatched=provider_dispatched)
     except (LessonAuthorProposalValidationError, ValidationError, ValueError) as error:
         validation_errors = ([{"loc": list(item.get("loc", ())), "type": item.get("type")}
                               for item in error.errors()[:16]] if isinstance(error, ValidationError) else [])
-        logger.warning("lesson_author_orchestration_v2 %s", json.dumps({
+        log_payload(logger, logging.WARNING, V2_LOG_FAMILY, {
             "event": "unit_generation_invalid",
             "correlation_id": request.correlation_id,
             "chapter_key": contract.chapter_key,
@@ -663,5 +665,5 @@ async def _lesson_author_orchestration_v2_unit_legacy(
             "exception_type": type(error).__name__,
             "validation_errors": validation_errors,
             "provider_dispatched": provider_dispatched,
-        }, sort_keys=True))
+        })
         return deterministic_fallback("ORCHESTRATION_V2_UNIT_INVALID", provider_dispatched=provider_dispatched)

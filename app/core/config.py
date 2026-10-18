@@ -9,6 +9,8 @@ from dotenv import load_dotenv
 from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from app.core.logging import log_event
+
 APP_ROOT = Path(__file__).resolve().parents[2]
 logger = logging.getLogger(__name__)
 
@@ -21,9 +23,8 @@ def _read_environment(*, emit_legacy_warning: bool = True) -> Environment:
     legacy = os.getenv("NODE_ENV", "").strip().lower()
     value = explicit or legacy or "development"
     if not explicit and legacy and emit_legacy_warning:
-        logger.warning(
-            "ai_rag_legacy_environment_variable variable=NODE_ENV replacement=AI_RAG_ENV"
-        )
+        log_event(logger, logging.WARNING, "ai_rag_legacy_environment_variable", variable="NODE_ENV",
+                  replacement="AI_RAG_ENV")
     if value not in {"development", "test", "production"}:
         raise RuntimeError("AI_RAG_ENV must be development, test, or production.")
     return value  # type: ignore[return-value]
@@ -469,9 +470,8 @@ def validate_startup_settings(value: Settings) -> None:
     if missing:
         raise RuntimeError(f"Missing required environment variables: {', '.join(missing)}")
     if value.host == "0.0.0.0" and value.auth_mode == "token":  # noqa: S104 - comparison, not a bind.
-        logger.warning(
-            "ai_rag_public_bind_without_hmac host=0.0.0.0 auth_mode=token"
-        )
+        log_event(logger, logging.WARNING, "ai_rag_public_bind_without_hmac", host=value.host,
+                  auth_mode=value.auth_mode)
 
 
 settings = Settings()

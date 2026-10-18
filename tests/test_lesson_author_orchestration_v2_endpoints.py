@@ -27,6 +27,7 @@ from app.schemas.orchestration_v2 import (
 )
 from app.services.lesson_author.staged.provider_schemas import STAGED_COMPONENT_PAYLOAD_FIELDS
 from app.services.lesson_author.staged.validation import validate_staged_unit_content
+from tests.log_support import log_text
 
 SOURCE_HASH = "a" * 64
 TENANT_ID = "00000000-0000-4000-8000-000000000001"
@@ -847,7 +848,7 @@ class LessonAuthorOrchestrationV2EndpointTests(unittest.IsolatedAsyncioTestCase)
             await lesson_author_orchestration_v2_course_skeleton(request)
         self.assertEqual(failure.exception.status_code, 502)
         self.assertEqual(failure.exception.detail["code"], "AI_PROVIDER_REQUEST_REJECTED")
-        self.assertNotIn("PRIVATE_PROVIDER_BODY", "\n".join(logs.output))
+        self.assertNotIn("PRIVATE_PROVIDER_BODY", log_text(logs.records))
 
     async def test_course_skeleton_uses_source_complete_fallback_after_malformed_outputs(self) -> None:
         request = RagLessonAuthorCourseSkeletonV2Request.model_validate({

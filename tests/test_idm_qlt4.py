@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import dataclasses
 import json
+import logging
 import unittest
 from collections import Counter
 from pathlib import Path
@@ -49,6 +50,7 @@ from app.idm.validation import errors
 from app.schemas.orchestration_v2 import RagLessonAuthorUnitV2Request
 from app.services.orchestration_v2 import unit as unit_service
 from tests import idm_golden_module as gm
+from tests.log_support import event_lines, logged_events
 from tests.test_idm_module_design import ALLOWED, component, design_module, edited, scope_of
 from tests.test_idm_qlt3 import block, row
 from tests.test_idm_storyboard import (
@@ -233,7 +235,7 @@ class ComponentOrderAutofixTests(unittest.IsolatedAsyncioTestCase):
             result, provider, runtime = await design_module(0, [edited("mod_01", worksheet_beside_teaching)])
         self.assertEqual((len(provider.calls), result["shard"]["idm_design"]["stage_origin"]), (1, "provider"))
         self.assertEqual(runtime.adjustments[COMPONENT_ORDER_CODE], 1)
-        self.assertNotIn("component_orders\": {\"", "".join(logs.output))
+        self.assertNotIn("component_orders\": {\"", "".join(event_lines(logs.records)))
 
         def two_questions(payload: dict[str, Any]) -> None:
             worksheet_beside_teaching(payload)
@@ -246,8 +248,7 @@ class ComponentOrderAutofixTests(unittest.IsolatedAsyncioTestCase):
             result, provider, _ = await design_module(
                 0, [edited("mod_01", two_questions), gm.MODULE_RESPONSES["mod_01"]])
         self.assertEqual(len(provider.calls), 2)
-        attempts = [json.loads(line.split("lesson_author_idm ", 1)[1]) for line in logs.output
-                    if "idm_module_attempt" in line]
+        attempts = logged_events(logs.records, "idm_module_attempt")
         # The failing unit's component types are logged (server enum values only).
         self.assertEqual(attempts[0]["component_orders"], {"lsn_002": ["units[0]=problem,html,problem,la_faq"]})
 
@@ -292,8 +293,7 @@ class TaughtBeforeQuestionTests(unittest.IsolatedAsyncioTestCase):
             result, _, _ = await design_module(1, [edited("mod_02", question_alone)])
         lesson = result["shard"]["idm_design"]["lessons"][0]
         self.assertIn("chỉ xuất hiện trong lời giải của câu hỏi", lesson["notes"])
-        completed = next(json.loads(line.split("lesson_author_idm ", 1)[1]) for line in logs.output
-                         if "idm_stage_completed" in line)
+        completed = logged_events(logs.records, "idm_stage_completed")[0]
         self.assertEqual(completed["error_codes"].get(QUESTION_ONLY_BLOCK_CODE), 1)
 
 
@@ -332,8 +332,8 @@ FIXED_CHOICES = [{"text": "Cấp 1 vì chưa có thiệt hại tài chính", "co
                  {"text": "Cấp 3 vì khách dọa đăng lên mạng xã hội", "correct": False}]
 
 
-def budget_lines(output: list[str]) -> list[dict[str, Any]]:
-    return [json.loads(line.split("lesson_author_idm ", 1)[1]) for line in output if "idm_unit_budget" in line]
+def budget_lines(records: list[logging.LogRecord]) -> list[dict[str, Any]]:
+    return logged_events(records, "idm_unit_budget")
 
 
 class UnitBudgetTests(unittest.IsolatedAsyncioTestCase):
@@ -374,7 +374,8 @@ class UnitBudgetTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual([call["thinking_level"] for call in provider.calls], ["low", "low", "low"])
         self.assertEqual((result["content_origin"], result["usage_source"]), ("provider_validated", "provider"))
         self.assertEqual(result["unit"]["idm_quality"]["judge_status"], "pass")
-        self.assertEqual([(item["step"], item["thinking"], item["remaining_ms"]) for item in budget_lines(logs.output)],
+        self.assertEqual([(item["step"], item["thinking"], item["remaining_ms"])
+                          for item in budget_lines(logs.records)],
                          [("writer", "low", 115_000), ("repair_targeted", "low", 36_500)])
 
     async def test_a_repair_that_cannot_finish_is_not_started(self) -> None:
@@ -387,7 +388,7 @@ class UnitBudgetTests(unittest.IsolatedAsyncioTestCase):
         with self.assertLogs("app.idm", level="INFO") as logs:
             result = await self.run_unit(provider, body)
         self.assertEqual(provider.names, [WRITER])
-        self.assertEqual(budget_lines(logs.output)[-1]["thinking"], "skipped")
+        self.assertEqual(budget_lines(logs.records)[-1]["thinking"], "skipped")
         self.assertIn("không đủ thời gian để sửa", result["unit"]["idm_quality"]["author_note"])
 
     async def test_a_judge_repair_needs_room_for_the_second_judge(self) -> None:
@@ -400,7 +401,7 @@ class UnitBudgetTests(unittest.IsolatedAsyncioTestCase):
         # judge), the finding stays a review note.
         self.assertEqual(provider.names, [WRITER, JUDGE])
         self.assertEqual(result["unit"]["idm_quality"]["judge_status"], "review_required")
-        self.assertEqual(budget_lines(logs.output)[-1], {**budget_lines(logs.output)[-1], "step": "judge_repair",
+        self.assertEqual(budget_lines(logs.records)[-1], {**budget_lines(logs.records)[-1], "step": "judge_repair",
                                                         "thinking": "skipped"})
 
 

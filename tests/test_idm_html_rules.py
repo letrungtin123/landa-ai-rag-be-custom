@@ -46,6 +46,7 @@ from app.services.lesson_author.staged import validation as staged_validation
 from app.services.orchestration_v2 import unit as unit_service
 from app.workflows.contracts import WorkflowFailure
 from tests.idm_test_support import make_runtime
+from tests.log_support import event_lines
 from tests.test_idm_storyboard import (
     REPAIR,
     WRITER,
@@ -375,7 +376,7 @@ class WriterRepairLoopTests(unittest.IsolatedAsyncioTestCase):
         with self.assertLogs("app.idm", "INFO") as logs:
             result = await run_idm_unit(contract=request.unit_contract, runtime=make_runtime(provider, allowance=None),
                                         deps=deps, fallback_only=False)
-        return result, provider, [record.getMessage() for record in logs.records]
+        return result, provider, event_lines(logs.records)
 
     def table_rows(self, extra: dict[str, str] | None = None) -> dict[str, Any]:
         rows = [row(label, value) for label, value in ROWS] + ([extra] if extra else [])

@@ -72,6 +72,7 @@ from app.idm.worksheet import worksheet_fallback_html
 from tests import idm_golden_module as gm
 from tests.idm_golden import key, keys
 from tests.idm_test_support import rehash_contract
+from tests.log_support import logged_events
 from tests.test_idm_module_design import ALLOWED, STAGE, component, design_module, edited, scope_of
 from tests.test_idm_storyboard import (
     JUDGE,
@@ -235,8 +236,7 @@ class SchemaRepairTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn('"IDM_W3_PRACTICE_CRITERIA_FOREIGN"', provider.calls[2]["prompt"])
         self.assertEqual([(event["invocation_kind"], event["outcome"]) for event in runtime.trace],
                          [("writer", "failed"), ("repair", "succeeded"), ("repair", "succeeded")])
-        attempts = [json.loads(line.split("lesson_author_idm ", 1)[1]) for line in logs.output
-                    if "idm_module_attempt" in line]
+        attempts = logged_events(logs.records, "idm_module_attempt")
         self.assertEqual([(item["call"], item["outcome"]) for item in attempts],
                          [(1, "idm_response_schema_invalid"), (2, "validated"), (3, "validated")])
         self.assertEqual(attempts[0]["accepted_lessons"], ["lsn_001"])

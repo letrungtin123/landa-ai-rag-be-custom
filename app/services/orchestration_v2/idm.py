@@ -2,23 +2,25 @@
 
 from __future__ import annotations
 
-import json
 import logging
 from time import monotonic
 from typing import Any
 
 from fastapi import HTTPException
 
+from app.core import metrics
 from app.core.config import settings
 from app.core.errors import AppError
-from app.core.logging import SERVICE_LOGGER_NAME
+from app.core.logging import SERVICE_LOGGER_NAME, log_payload
 from app.idm.runtime import (
+    IDM_LOG_FAMILY,
     RUN_STOPPING_PROVIDER_CODES,
     TRANSIENT_PROVIDER_CODES,
     IdmError,
     IdmProviderError,
     IdmRuntime,
     IdmTokenAllowance,
+    current_provider_stage,
 )
 from app.schemas.chat import RagChatRequest
 from app.schemas.common import AiUsage
@@ -43,7 +45,8 @@ async def _idm_generate(api_key: str, model: str, prompt: str, **options: Any) -
     """
 
     try:
-        return await provider.generate_content(api_key, model, prompt, **options)
+        with metrics.provider_stage(current_provider_stage() or "idm"):
+            return await provider.generate_content(api_key, model, prompt, **options)
     except HTTPException as error:
         code = str(http_error_detail(error).get("code") or "AI_PROVIDER_UNAVAILABLE")
         if code in RUN_STOPPING_PROVIDER_CODES:
@@ -54,9 +57,9 @@ async def _idm_generate(api_key: str, model: str, prompt: str, **options: Any) -
         raise IdmProviderError(error.code, terminal=False, http_status=error.http_status) from error
     except Exception as error:
         status = provider_http_error_status(error)
-        logger.warning("lesson_author_idm %s", json.dumps({
+        log_payload(logger, logging.WARNING, IDM_LOG_FAMILY, {
             "event": "provider_request_failed", "model": model, **safe_provider_error_diagnostics(error),
-        }, sort_keys=True))
+        })
         if status == 400:
             raise IdmProviderError("AI_PROVIDER_REQUEST_REJECTED", terminal=True) from error
         if status in {401, 403}:

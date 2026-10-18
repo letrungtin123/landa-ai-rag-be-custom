@@ -539,8 +539,7 @@ class IndexDocumentCharacterizationTests(unittest.TestCase):
                          ("gemini-embedding-001", "RETRIEVAL_DOCUMENT", 768, contents))
         self.assertEqual([getattr(r, "event", None) or r.getMessage() for r in records], [
             "rag_index_started", "rag_index_extracted", "rag_index_chunked", "rag_index_embedded",
-            "rag_document_structure_nodes is not deployed; using chunk metadata fallback",
-            "rag_document_structure_nodes is not deployed; skipped old structure cleanup",
+            "rag_structure_nodes_unavailable", "rag_structure_nodes_unavailable",
             "rag_index_completed",
         ])
 

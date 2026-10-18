@@ -348,10 +348,28 @@ class ProviderRetryPolicyTests(unittest.TestCase):
         self.assertEqual(raised.exception.detail["code"], "AI_PROVIDER_QUOTA_EXHAUSTED")
 
     def test_provider_calls_are_counted_by_operation_and_outcome(self) -> None:
-        labels = {"operation": "embed", "outcome": "success"}
+        labels = {"operation": "embed", "outcome": "success", "stage": "unlabelled"}
         before = metric("ai_rag_provider_calls_total", labels)
         asyncio.run(provider_service.call_provider_with_timeout(lambda: "ok", "m", operation="embed"))
         self.assertEqual(metric("ai_rag_provider_calls_total", labels), before + 1)
+
+    def test_provider_metrics_carry_the_stage_of_the_calling_pipeline_step(self) -> None:
+        labelled = {"operation": "generate", "outcome": "success", "stage": "idm_w5_writer"}
+        invalid = {"operation": "generate", "outcome": "success", "stage": "other"}
+        before = (metric("ai_rag_provider_calls_total", labelled), metric("ai_rag_provider_calls_total", invalid))
+
+        async def calls() -> None:
+            with metrics.provider_stage("idm_w5_writer"):
+                await provider_service.call_provider_with_timeout(lambda: "ok", "m")
+            with metrics.provider_stage("Not A Label!"):  # never a free-form label value
+                await provider_service.call_provider_with_timeout(lambda: "ok", "m")
+            self.assertEqual(metrics.current_provider_stage(), "unlabelled")
+
+        asyncio.run(calls())
+        after = (metric("ai_rag_provider_calls_total", labelled), metric("ai_rag_provider_calls_total", invalid))
+        self.assertEqual(after, (before[0] + 1, before[1] + 1))
+        self.assertGreater(metric("ai_rag_provider_call_duration_seconds_count",
+                                  {"operation": "generate", "stage": "idm_w5_writer"}), 0)
 
     def test_saturated_provider_limiter_answers_service_busy(self) -> None:
         async def scenario() -> str:
@@ -379,7 +397,7 @@ class EmbeddingTransportTests(unittest.TestCase):
         client = MagicMock()
         client.models.embed_content.return_value = MagicMock(embeddings=[embedding, embedding])
         factory = MagicMock(return_value=client)
-        labels = {"operation": "embed", "kind": "embedding"}
+        labels = {"operation": "embed", "kind": "embedding", "stage": "unlabelled"}
         before = metric("ai_rag_provider_tokens_total", labels)
         with patch("app.infra.gemini.genai.Client", factory):
             vectors, usage = asyncio.run(provider_service.embed_text_batch(

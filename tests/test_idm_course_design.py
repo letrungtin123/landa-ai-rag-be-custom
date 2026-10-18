@@ -48,6 +48,7 @@ from tests.idm_golden import (
     project_context,
     source_facts,
 )
+from tests.log_support import event_lines
 
 STAGES = ("IdmW1SectionResponseV1", "IdmW1ReduceResponseV1", "IdmW2BlueprintResponseV1", "IdmW4CourseResponseV1")
 APPLY_OR_HIGHER = {"apply", "analyze", "evaluate", "create"}
@@ -433,7 +434,7 @@ class IdmRuntimeTests(unittest.IsolatedAsyncioTestCase):
     def test_log_stage_emits_one_json_line(self) -> None:
         with self.assertLogs("app.idm", level="INFO") as logs:
             log_stage("idm_stage_started", {"stage": "idm_course_design", "fact_count": 61})
-        self.assertIn('"event": "idm_stage_started"', logs.output[0])
+        self.assertIn('"event": "idm_stage_started"', event_lines(logs.records)[0])
 
 
 class LaterStagePromptTests(unittest.TestCase):

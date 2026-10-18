@@ -3,14 +3,13 @@
 from __future__ import annotations
 
 import hashlib
-import json
 import logging
 import re
 from typing import Any, Literal
 
 import asyncpg
 
-from app.core.logging import SERVICE_LOGGER_NAME
+from app.core.logging import SERVICE_LOGGER_NAME, log_payload
 from app.instructional_density import (
     INSTRUCTIONAL_DENSITY_POLICY_VERSION,
     SOURCE_SCOPE_CHUNKS_PER_GROUP,
@@ -26,7 +25,7 @@ from app.repositories import source_snapshot as snapshot_repository
 from app.schemas.common import AiUsage
 from app.schemas.orchestration_v2 import RagLessonAuthorSourceSnapshotV2Request
 from app.services.ingestion.chunking import SOURCE_EVIDENCE_LEGACY_REVIEW_REQUIRED, SOURCE_EVIDENCE_READY
-from app.services.orchestration_v2.common import _orchestration_v2_http_error
+from app.services.orchestration_v2.common import V2_LOG_FAMILY, _orchestration_v2_http_error
 from app.services.provider import normalize_embedding_model
 from app.services.retrieval.query import decode_json_object
 from app.services.retrieval.source_coverage import extract_source_coverage_facts
@@ -138,13 +137,13 @@ async def lesson_author_orchestration_v2_source_snapshot(
     )
     if legacy_document_count and "STRUCTURED_EVIDENCE_REVISION_MISSING" not in reason_codes:
         reason_codes = [*reason_codes[:31], "STRUCTURED_EVIDENCE_REVISION_MISSING"]
-        logger.warning("lesson_author_orchestration_v2 %s", json.dumps({
+        log_payload(logger, logging.WARNING, V2_LOG_FAMILY, {
             "event": "source_snapshot_legacy_evidence_review_required",
             "correlation_id": request.correlation_id,
             "source_snapshot_hash": request.source_snapshot_hash,
             "legacy_document_count": legacy_document_count,
             "selected_document_count": len(document_ids),
-        }, sort_keys=True))
+        })
     authority_payload: dict[str, Any] = {
         "mode": authority_mode,
         "source": authority_source,
@@ -329,14 +328,14 @@ async def lesson_author_orchestration_v2_source_snapshot(
             "SOURCE_CURSOR_STALLED", "The source cursor could not advance.",
         )
     facts_wire = [fact.model_dump(mode="json") for fact in facts]
-    logger.info("lesson_author_orchestration_v2 %s", json.dumps({
+    log_payload(logger, logging.INFO, V2_LOG_FAMILY, {
         "event": "source_snapshot_page_ready", "correlation_id": request.correlation_id,
         "source_snapshot_hash": request.source_snapshot_hash, "source_revision": source_revision,
         "source_fact_count": len(facts_wire), "source_content_bytes": content_bytes,
         "source_evidence_ready_document_count": len(document_ids) - legacy_document_count,
         "source_evidence_legacy_document_count": legacy_document_count,
         "has_more": has_more, "provider_call_count": 0,
-    }, sort_keys=True))
+    })
     return {
         "contract_version": 2,
         "source_snapshot_hash": request.source_snapshot_hash,

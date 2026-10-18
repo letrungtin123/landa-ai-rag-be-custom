@@ -28,6 +28,7 @@ from app.services.orchestration_v2 import idm as v2_idm
 from tests import idm_golden as g
 from tests import idm_golden_module as gm
 from tests.idm_test_support import golden_design, module_inputs, module_response
+from tests.log_support import log_text
 from tests.test_lesson_author_orchestration_v2_endpoints import (
     SOURCE_HASH,
     common,
@@ -128,7 +129,7 @@ class CourseSkeletonDispatchTests(EndpointTestCase):
             reply = await self.post(SKELETON_URL, idm_skeleton_body(), AsyncMock(side_effect=provider_error(400)))
         self.assertEqual(reply.status_code, 502)
         self.assertEqual(reply.json()["detail"]["code"], "AI_PROVIDER_REQUEST_REJECTED")
-        self.assertNotIn("PRIVATE_PROVIDER_BODY", "\n".join(logs.output) + reply.text)
+        self.assertNotIn("PRIVATE_PROVIDER_BODY", log_text(logs.records) + reply.text)
 
     async def test_transient_provider_failure_returns_a_reviewable_design(self) -> None:
         failure = HTTPException(status_code=503, detail={"code": "AI_PROVIDER_UNAVAILABLE", "message": "private"})
@@ -254,7 +255,7 @@ class TransportMappingTests(unittest.IsolatedAsyncioTestCase):
             with self.subTest(status=status), self.assertLogs("app.main", "WARNING") as logs:
                 mapped = await self.mapped(provider_error(status))
             self.assertEqual((mapped.code, mapped.terminal, mapped.http_status), (code, terminal, 502))
-            self.assertNotIn("PRIVATE_PROVIDER_BODY", "\n".join(logs.output))
+            self.assertNotIn("PRIVATE_PROVIDER_BODY", log_text(logs.records))
         with self.assertLogs("app.main", "WARNING"):
             self.assertFalse((await self.mapped(RuntimeError("PRIVATE"))).terminal)
 

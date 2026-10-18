@@ -64,6 +64,7 @@ from app.services.orchestration_v2 import idm as v2_idm
 from app.services.orchestration_v2.common import ORCHESTRATION_V2_PROVIDER_FALLBACK_CODES
 from tests import idm_golden as g
 from tests.idm_test_support import ALLOWANCE, assert_node_trace, make_runtime
+from tests.log_support import log_text, logged_events
 from tests.test_idm_endpoints import (
     SHARD_URL,
     SKELETON_URL,
@@ -458,8 +459,10 @@ class ProviderRetryLoopTests(unittest.TestCase):
         self.assertIsInstance(result, HTTPException)
         self.assertEqual((result.status_code, result.detail["code"]), (503, "AI_PROVIDER_RATE_LIMITED"))
         self.assertEqual(sleeps, [25.0, 25.0])
-        self.assertNotIn("PRIVATE", "\n".join(logs.output))
-        self.assertIn("category=rate_limited retry_after_s=25.0", "\n".join(logs.output))
+        self.assertNotIn("PRIVATE", log_text(logs.records))
+        self.assertEqual([(event["category"], event["retry_after_s"])
+                          for event in logged_events(logs.records, "ai_provider_rate_limited")],
+                         [("rate_limited", 25.0)] * len(sleeps))
 
     def test_legacy_calls_keep_one_short_retry_and_report_long_limits_at_once(self) -> None:
         result, sleeps, _ = self.call([RateLimited("x", "0.5s"), "ok"])

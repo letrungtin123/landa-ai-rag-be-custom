@@ -23,7 +23,7 @@ from pydantic import BaseModel, SecretStr
 from app.core import metrics
 from app.core.config import settings
 from app.core.errors import AppError
-from app.core.logging import SERVICE_LOGGER_NAME
+from app.core.logging import SERVICE_LOGGER_NAME, log_event
 from app.infra import gemini as gemini_infra
 from app.infra.provider_limits import RATE_LIMITED_CODE, classify_provider_limit
 from app.lesson_author_blueprint import describe_lesson_author_blueprint_response
@@ -174,7 +174,8 @@ def emit_safe_provider_telemetry(
     try:
         callback(payload)
     except Exception as error:  # pragma: no cover - defensive logging boundary
-        logger.warning("lesson_author_provider_telemetry_emit_failed error_type=%s", type(error).__name__)
+        log_event(logger, logging.WARNING, "lesson_author_provider_telemetry_emit_failed",
+                  error_type=type(error).__name__)
 
 
 def get_embedding_values(item: Any) -> list[float]:
@@ -369,11 +370,7 @@ async def call_provider_with_timeout(
                     "usage_source": "unavailable",
                 })
             else:
-                logger.error(
-                    "ai_provider_timeout model=%s timeout_ms=%s",
-                    model,
-                    timeout_ms,
-                )
+                log_event(logger, logging.ERROR, "ai_provider_timeout", model=model, timeout_ms=timeout_ms)
             raise HTTPException(
                 status_code=504,
                 detail={
@@ -414,13 +411,9 @@ async def call_provider_with_timeout(
                         "retry_after_ms": round(wait_seconds * 1000),
                         "usage_source": "unavailable",
                     })
-                    logger.warning(
-                        "ai_provider_rate_limited category=%s retry_after_s=%.1f waited_s=%.1f model=%s",
-                        limit.kind,
-                        wait_seconds,
-                        rate_limit_waited_seconds,
-                        model,
-                    )
+                    log_event(logger, logging.WARNING, "ai_provider_rate_limited", category=limit.kind,
+                              retry_after_s=round(wait_seconds, 1), waited_s=round(rate_limit_waited_seconds, 1),
+                              model=model)
                     await asyncio.sleep(wait_seconds)
                     if rate_limit_max_wait_ms is not None:
                         # Bounded by the cumulative wait, not by the transient attempts.
@@ -442,14 +435,10 @@ async def call_provider_with_timeout(
                         "usage_source": "unavailable",
                     })
                 else:
-                    logger.error(
-                        "ai_provider_%s model=%s error_type=%s retry_after_s=%s waited_s=%.1f",
-                        limit.kind,
-                        model,
-                        type(error).__name__,
-                        f"{retry_after:.1f}" if retry_after is not None else "none",
-                        rate_limit_waited_seconds,
-                    )
+                    log_event(logger, logging.ERROR, f"ai_provider_{limit.kind}", model=model,
+                              error_type=type(error).__name__,
+                              retry_after_s=round(retry_after, 1) if retry_after is not None else None,
+                              waited_s=round(rate_limit_waited_seconds, 1))
                 if limit.kind == "rate_limited":
                     raise HTTPException(
                         status_code=503,
@@ -478,12 +467,8 @@ async def call_provider_with_timeout(
                         "usage_source": "unavailable",
                     })
                 else:
-                    logger.warning(
-                        "ai_provider_transient_retry model=%s attempt=%s status_code=%s",
-                        model,
-                        attempt + 1,
-                        status_code,
-                    )
+                    log_event(logger, logging.WARNING, "ai_provider_transient_retry", model=model,
+                              attempt=attempt + 1, status_code=status_code)
                 await asyncio.sleep(provider_retry_delay_seconds(attempt))
                 continue
             if is_transient:
@@ -498,12 +483,8 @@ async def call_provider_with_timeout(
                         "usage_source": "unavailable",
                     })
                 else:
-                    logger.error(
-                        "ai_provider_unavailable model=%s status_code=%s error_type=%s",
-                        model,
-                        status_code,
-                        type(error).__name__,
-                    )
+                    log_event(logger, logging.ERROR, "ai_provider_unavailable", model=model,
+                              status_code=status_code, error_type=type(error).__name__)
                 raise HTTPException(
                     status_code=503,
                     detail={
@@ -519,8 +500,10 @@ async def call_provider_with_timeout(
             })
             raise
         finally:
-            metrics.PROVIDER_CALLS.labels(operation=operation, outcome=outcome).inc()
-            metrics.PROVIDER_CALL_DURATION.labels(operation=operation).observe(perf_counter() - attempt_started)
+            stage = metrics.current_provider_stage()
+            metrics.PROVIDER_CALLS.labels(operation=operation, outcome=outcome, stage=stage).inc()
+            metrics.PROVIDER_CALL_DURATION.labels(operation=operation, stage=stage).observe(
+                perf_counter() - attempt_started)
     raise RuntimeError("Provider retry loop exhausted without a result.")
 
 
@@ -552,7 +535,8 @@ async def embed_text_batch(
         raw_embeddings = [response]
     embeddings = [get_embedding_values(item) for item in raw_embeddings]
     usage = normalize_usage(embedding_tokens=sum(estimate_tokens(content) for content in contents))
-    metrics.PROVIDER_TOKENS.labels(operation="embed", kind="embedding").inc(usage.embeddingTokens)
+    metrics.PROVIDER_TOKENS.labels(operation="embed", kind="embedding", stage=metrics.current_provider_stage()).inc(
+        usage.embeddingTokens)
     return embeddings, usage
 
 
@@ -718,15 +702,12 @@ async def generate_content(
                 "response_diagnostics": diagnostics,
             })
         else:
-            logger.warning(
-                "structured_response_unparsed schema=%s model=%s candidates=%s finish_reasons=%s prompt_feedback=%s diagnostics=%s",
-                getattr(response_schema, "__name__", type(response_schema).__name__),
-                model,
-                len(candidates),
-                [str(getattr(candidate, "finish_reason", None))[:80] for candidate in candidates[:3]],
-                bool(getattr(response, "prompt_feedback", None)),
-                diagnostics,
-            )
+            log_event(logger, logging.WARNING, "structured_response_unparsed",
+                      schema=getattr(response_schema, "__name__", type(response_schema).__name__), model=model,
+                      candidates=len(candidates),
+                      finish_reasons=[str(getattr(candidate, "finish_reason", None))[:80]
+                                      for candidate in candidates[:3]],
+                      prompt_feedback=bool(getattr(response, "prompt_feedback", None)), diagnostics=diagnostics)
     emit_safe_provider_telemetry(
         on_provider_telemetry,
         provider_response_telemetry(
@@ -739,8 +720,9 @@ async def generate_content(
         ),
     )
     usage = usage_from_google_response(response, prompt, text)
-    metrics.PROVIDER_TOKENS.labels(operation="generate", kind="input").inc(usage.inputTokens)
-    metrics.PROVIDER_TOKENS.labels(operation="generate", kind="output").inc(usage.outputTokens)
+    stage = metrics.current_provider_stage()
+    metrics.PROVIDER_TOKENS.labels(operation="generate", kind="input", stage=stage).inc(usage.inputTokens)
+    metrics.PROVIDER_TOKENS.labels(operation="generate", kind="output", stage=stage).inc(usage.outputTokens)
     return text, usage
 
 

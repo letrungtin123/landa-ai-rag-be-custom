@@ -8,6 +8,7 @@ from typing import Any
 
 import asyncpg
 
+from app.core import metrics
 from app.core.config import settings
 from app.core.logging import SERVICE_LOGGER_NAME
 from app.repositories import retrieval as retrieval_repository
@@ -132,13 +133,14 @@ async def retrieve_chunks(
 
     limits = retrieval_limits(request)
     query_texts = build_retrieval_query_texts(request)
-    embeddings, usage = await provider.embed_texts(
-        request.api_key,
-        request.embedding_model,
-        query_texts,
-        task_type="QUESTION_ANSWERING",
-        output_dimensionality=request.embedding_dimensions,
-    )
+    with metrics.provider_stage("retrieval_embedding"):
+        embeddings, usage = await provider.embed_texts(
+            request.api_key,
+            request.embedding_model,
+            query_texts,
+            task_type="QUESTION_ANSWERING",
+            output_dimensionality=request.embedding_dimensions,
+        )
     doc_ids = [doc.document_id for doc in request.source_documents] or None
     candidate_limit = retrieval_candidate_limit(request)
     vector_rows: list[asyncpg.Record] = []

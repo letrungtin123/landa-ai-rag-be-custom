@@ -50,6 +50,7 @@ from app.idm.prompts import w1_section_prompt
 from app.idm.qa import FAQ_VALUE_CRITERION, criteria_summary, settle_applicability
 from tests.idm_golden import key, keys
 from tests.idm_test_support import rehash_contract
+from tests.log_support import event_lines
 from tests.test_idm_module_design import component, design_module, edited, scope_of
 from tests.test_idm_storyboard import (
     JUDGE,
@@ -387,7 +388,7 @@ class UnitFaqTests(StoryboardEndpointTestCase):
         judge_prompt = provider.calls[1]["prompt"]
         self.assertIn('"has_faq_slot":true', judge_prompt)
         self.assertIn("Q13_faq_value", judge_prompt)
-        quality_line = next(line for line in logs.output if '"event": "idm_unit_quality"' in line)
+        quality_line = next(line for line in event_lines(logs.records) if '"event": "idm_unit_quality"' in line)
         self.assertIn('"faq": {"c1": {"inferred": 0, "planned": ["common_mistake", "what_if", "common_mistake"], '
                       '"written": ["recall", "common_mistake"]}}', quality_line)
         # A unit without an FAQ gets no FAQ rules.

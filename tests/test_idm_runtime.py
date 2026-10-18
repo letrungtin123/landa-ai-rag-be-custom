@@ -22,6 +22,7 @@ from app.idm.runtime import (
     IdmRuntime,
     IdmTokenAllowance,
     admitted_output_tokens,
+    current_provider_stage,
     estimate_prompt_tokens,
     idm_call,
     idm_generate,
@@ -31,6 +32,7 @@ from app.idm.runtime import (
 )
 from tests.idm_golden import FakeUsage
 from tests.idm_test_support import assert_node_trace
+from tests.log_support import event_lines, log_text, logged_events
 
 BOUND_KEYWORDS = {"pattern", "additionalProperties", "minItems", "maxItems", "minLength", "maxLength", "minimum",
                   "maximum"}
@@ -189,6 +191,24 @@ class GenerateTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(event["provider_dispatched"])
         assert_node_trace(self, item.trace)
 
+    async def test_the_transport_sees_the_stage_of_the_call_in_flight(self) -> None:
+        # The injected transport labels its metrics with the stage (current_provider_stage), which is not
+        # part of the GenerateFn contract; it is unset again after the call, also when the call fails.
+        stages: list[str | None] = []
+
+        async def generate(api_key: str, model: str, prompt: str, **options: Any) -> tuple[str, FakeUsage]:
+            stages.append(current_provider_stage())
+            if len(stages) == 2:
+                raise IdmProviderError("AI_PROVIDER_REQUEST_REJECTED", terminal=True)
+            return '{"value": "ok"}', FakeUsage(10, 2)
+
+        item = runtime(generate)
+        await self.call(item, stage="idm_w5_writer")
+        with self.assertRaises(IdmProviderError):
+            await self.call(item, stage="idm_w6_judge")
+        self.assertEqual(stages, ["idm_w5_writer", "idm_w6_judge"])
+        self.assertIsNone(current_provider_stage())
+
     async def test_transient_provider_error_stops_later_calls(self) -> None:
         provider = Provider(IdmProviderError("ai-provider timeout", terminal=False), '{"value": "never"}')
         item = runtime(provider)
@@ -237,7 +257,7 @@ class GenerateTests(unittest.IsolatedAsyncioTestCase):
         with self.assertLogs("app.idm", "INFO") as logs, self.assertRaises(IdmResponseInvalidError) as caught:
             await self.call(item)
         self.assertEqual(caught.exception.code, "IDM_RESPONSE_TRUNCATED")
-        line = next(record.getMessage() for record in logs.records if "idm_call_rejected" in record.getMessage())
+        line = next(line for line in event_lines(logs.records) if "idm_call_rejected" in line)
         self.assertIn('"finish_reason": "FINISHREASON_MAX_TOKENS"', line)
         self.assertIn("json_invalid@", line)
         self.assertNotIn("PRIVATE-SOURCE", line)
@@ -245,7 +265,7 @@ class GenerateTests(unittest.IsolatedAsyncioTestCase):
         with self.assertLogs("app.idm", "INFO") as logs, self.assertRaises(IdmResponseInvalidError) as caught:
             await self.call(item)
         self.assertEqual(caught.exception.code, "IDM_RESPONSE_SCHEMA_INVALID")
-        self.assertTrue(any("string_type@value" in record.getMessage() for record in logs.records))
+        self.assertTrue(any("string_type@value" in line for line in event_lines(logs.records)))
         self.assertEqual([e["failure_code"] for e in item.trace],
                          ["IDM_RESPONSE_TRUNCATED", "IDM_RESPONSE_SCHEMA_INVALID"])
         assert_node_trace(self, item.trace)
@@ -303,10 +323,13 @@ class GenerateTests(unittest.IsolatedAsyncioTestCase):
     async def test_log_stage_emits_one_json_line(self) -> None:
         with self.assertLogs("app.idm", "INFO") as logs:
             log_stage("idm_stage_completed", {"stage": "idm_module", "count": 2})
-        line = logs.records[0].getMessage()
-        self.assertTrue(line.startswith("lesson_author_idm "))
-        self.assertEqual(json.loads(line.split(" ", 1)[1]),
-                         {"event": "idm_stage_completed", "stage": "idm_module", "count": 2})
+        [record] = logs.records
+        # The message names the event under the old prefix; the fields are fields of the JSON line.
+        self.assertEqual(record.getMessage(), "lesson_author_idm idm_stage_completed")
+        self.assertEqual(logged_events(logs.records),
+                         [{"event": "idm_stage_completed", "stage": "idm_module", "count": 2}])
+        line = json.loads(log_text(logs.records))
+        self.assertEqual((line["event"], line["stage"], line["count"]), ("idm_stage_completed", "idm_module", 2))
 
 
 if __name__ == "__main__":

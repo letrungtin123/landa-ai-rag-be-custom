@@ -37,6 +37,7 @@ from app.schemas.orchestration_v2 import RagLessonAuthorUnitV2Request
 from app.services.orchestration_v2 import source_locked as v2_source_locked
 from app.services.orchestration_v2 import unit as unit_service
 from tests.idm_test_support import make_runtime
+from tests.log_support import event_lines
 from tests.test_idm_storyboard import (
     JUDGE,
     REPAIR,
@@ -269,7 +270,7 @@ class WriterIntegrationTests(StoryboardEndpointTestCase):
         self.assertEqual(status, 200, data)
         self.assert_envelope(data, "provider_validated", "validated", "provider")
         self.assertIn("c0 HTML_SOURCE_LOCATOR at c0: never put a number right after", provider.calls[1]["prompt"])
-        validation = next(json.loads(line.split("lesson_author_idm ", 1)[1]) for line in logs.output
+        validation = next(json.loads(line.split("lesson_author_idm ", 1)[1]) for line in event_lines(logs.records)
                           if '"idm_unit_validation"' in line)
         self.assertEqual(validation["node_acceptance"], ["coverage:HTML_SOURCE_LOCATOR@components[0]"])
         self.assertEqual(validation["finding"], "HTML_SOURCE_LOCATOR@components[0]")
@@ -329,4 +330,5 @@ class FallbackOnlyTests(unittest.IsolatedAsyncioTestCase):
             await self.run_fallback_only(body, [located, slots[1]])
         self.assertEqual(caught.exception.code, "ORCHESTRATION_V2_UNIT_FALLBACK_INVALID")
         reason = "coverage:HTML_SOURCE_LOCATOR@components[0]"
-        self.assertTrue(any('"idm_unit_node_acceptance"' in line and reason in line for line in logs.output))
+        self.assertTrue(any('"idm_unit_node_acceptance"' in line and reason in line
+                            for line in event_lines(logs.records)))

@@ -7,9 +7,45 @@ and model output never become label values.
 
 from __future__ import annotations
 
+import re
+from collections.abc import Iterator
+from contextlib import contextmanager
+from contextvars import ContextVar
+
 from prometheus_client import CONTENT_TYPE_LATEST, CollectorRegistry, Counter, Gauge, Histogram, generate_latest
 
 REGISTRY = CollectorRegistry(auto_describe=True)
+
+# Pipeline stage of the provider calls made in the current context (``provider_stage``): IDM stages
+# (idm_w1_map ... idm_w6_judge), course_skeleton, chapter_shard, chat, embeddings. Calls made
+# outside a labelled stage count as ``unlabelled``; a label that is not a short snake_case token
+# counts as ``other`` so the label set stays bounded.
+UNLABELLED_STAGE = "unlabelled"
+INVALID_STAGE = "other"
+STAGE_LABEL_PATTERN = re.compile(r"[a-z][a-z0-9_]{0,63}")
+_provider_stage: ContextVar[str] = ContextVar("ai_rag_provider_stage", default=UNLABELLED_STAGE)
+
+
+def stage_label(stage: str | None) -> str:
+    if stage is None:
+        return UNLABELLED_STAGE
+    return stage if STAGE_LABEL_PATTERN.fullmatch(stage) else INVALID_STAGE
+
+
+@contextmanager
+def provider_stage(stage: str | None) -> Iterator[None]:
+    """Label the provider calls made inside this block (and the tasks it starts) with ``stage``."""
+
+    token = _provider_stage.set(stage_label(stage))
+    try:
+        yield
+    finally:
+        _provider_stage.reset(token)
+
+
+def current_provider_stage() -> str:
+    return _provider_stage.get()
+
 
 HTTP_REQUESTS = Counter(
     "ai_rag_http_requests_total",
@@ -32,21 +68,21 @@ HTTP_CLIENT_DISCONNECTS = Counter(
 )
 PROVIDER_CALLS = Counter(
     "ai_rag_provider_calls_total",
-    "Provider transport calls by operation and outcome.",
-    ("operation", "outcome"),
+    "Provider transport calls by operation, outcome and pipeline stage.",
+    ("operation", "outcome", "stage"),
     registry=REGISTRY,
 )
 PROVIDER_CALL_DURATION = Histogram(
     "ai_rag_provider_call_duration_seconds",
-    "Provider transport call duration by operation.",
-    ("operation",),
+    "Provider transport call duration by operation and pipeline stage.",
+    ("operation", "stage"),
     buckets=(0.25, 0.5, 1, 2.5, 5, 10, 20, 30, 60, 120, 180, 300),
     registry=REGISTRY,
 )
 PROVIDER_TOKENS = Counter(
     "ai_rag_provider_tokens_total",
-    "Provider-reported or estimated tokens by operation and token kind.",
-    ("operation", "kind"),
+    "Provider-reported or estimated tokens by operation, token kind and pipeline stage.",
+    ("operation", "kind", "stage"),
     registry=REGISTRY,
 )
 FALLBACKS = Counter(

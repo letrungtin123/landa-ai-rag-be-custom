@@ -8,7 +8,7 @@ from typing import Any, cast
 
 import asyncpg
 
-from app.core.logging import SERVICE_LOGGER_NAME
+from app.core.logging import SERVICE_LOGGER_NAME, log_event
 from app.repositories.executor import SqlExecutor
 
 logger = logging.getLogger(SERVICE_LOGGER_NAME)
@@ -161,7 +161,7 @@ async def persist_structure_nodes_if_available(
             )
         return True
     except asyncpg.exceptions.UndefinedTableError:
-        logger.info("rag_document_structure_nodes is not deployed; using chunk metadata fallback")
+        log_event(logger, logging.INFO, "rag_structure_nodes_unavailable", fallback="chunk_metadata")
         return False
 
 
@@ -186,7 +186,7 @@ async def delete_previous_structure_nodes_if_available(
             current_index_id,
         )
     except asyncpg.exceptions.UndefinedTableError:
-        logger.info("rag_document_structure_nodes is not deployed; skipped old structure cleanup")
+        log_event(logger, logging.INFO, "rag_structure_nodes_unavailable", fallback="skip_old_structure_cleanup")
 
 
 async def lock_index_status(conn: SqlExecutor, index_id: Any, document_id: Any) -> Any:
