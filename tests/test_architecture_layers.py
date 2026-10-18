@@ -45,8 +45,10 @@ class Allowance(NamedTuple):
 # An entry only shrinks: the test fails when the file or function grows past its size here (lower the number
 # when it shrinks) and when it fits the limit again (remove the entry). New code never gets an entry.
 FILE_SIZE_ALLOWLIST: dict[str, Allowance] = {
+    # app.idm.prompts is a whole-module entry of the prompt manifest (its full text is hashed), so moving any line
+    # out of it changes prompt_templates_hash: it is split together with a reviewed manifest update.
     "idm/prompts.py": Allowance(973, "the builders of every IDM stage prompt (spec Appendix A)",
-                                "wave 2 (2.5): one prompt module per stage"),
+                                "one prompt module per stage, with a reviewed prompt manifest update"),
 }
 FUNCTION_SIZE_ALLOWLIST: dict[str, Allowance] = {
     "idm/module_design.py::run_idm_module_design": Allowance(214, "W3/W4 call, repair loop, salvage and assembly",
