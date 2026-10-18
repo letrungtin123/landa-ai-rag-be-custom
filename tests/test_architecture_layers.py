@@ -50,8 +50,6 @@ FILE_SIZE_ALLOWLIST: dict[str, Allowance] = {
                                    "wave 2 (2.5): split by W5 step into idm/w5/"),
     "idm/prompts.py": Allowance(973, "the builders of every IDM stage prompt (spec Appendix A)",
                                 "wave 2 (2.5): one prompt module per stage"),
-    "idm/module_design.py": Allowance(889, "W3/W4 module design, salvage and autofix",
-                                      "wave 2 (2.5): split by stage step"),
 }
 FUNCTION_SIZE_ALLOWLIST: dict[str, Allowance] = {
     "idm/module_design.py::run_idm_module_design": Allowance(214, "W3/W4 call, repair loop, salvage and assembly",
