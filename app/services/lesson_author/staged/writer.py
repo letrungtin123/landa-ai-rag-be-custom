@@ -40,7 +40,7 @@ from app.services.lesson_author.staged.plan import (
     consolidate_staged_thin_units,
     staged_lesson_content_output_tokens,
 )
-from app.services.lesson_author.staged.provider_schemas import (
+from app.services.staged_unit.provider_schemas import (
     STAGED_COMPONENT_CONTRACT_VERSION,
     STAGED_COMPONENT_COVERAGE_REPAIR_CONTRACT_VERSION,
     STAGED_COMPONENT_REPAIR_CONTRACT_VERSION,
@@ -71,7 +71,7 @@ from app.services.lesson_author.staged.source_locked import (
     prepare_source_locked_expected,
     staged_unit_source_material,
 )
-from app.services.lesson_author.staged.validation import (
+from app.services.staged_unit.validation import (
     StagedUnitFinding,
     lesson_author_proposal_quality_metrics,
     merge_checkpoint_component_fallback,

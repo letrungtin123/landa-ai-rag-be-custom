@@ -45,13 +45,13 @@ from app.services import provider
 from app.services.deadlines import record_fallback
 from app.services.lesson_author.errors import LessonAuthorProposalValidationError
 from app.services.lesson_author.staged import writer as staged_writer
-from app.services.lesson_author.staged.provider_schemas import (
+from app.services.staged_unit.provider_schemas import (
     bind_staged_instance_payload,
     build_staged_instance_response_model,
     build_staged_multi_repair_model,
     decode_staged_multi_repair,
 )
-from app.services.lesson_author.staged.validation import (
+from app.services.staged_unit.validation import (
     StagedUnitFinding,
     merge_staged_component_payload_delta,
     validate_staged_unit_content,

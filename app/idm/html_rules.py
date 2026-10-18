@@ -73,7 +73,7 @@ _GROUP_UNIT: Final[Mapping[str, str]] = {
     "paragraphs": "paragraph+task blocks", "bullet_points": "bullet items", "ordered_steps": "step items",
     "warnings": "warning blocks",
 }
-# Same expression as staged.provider_schemas.staged_component_payload_code (applied to the JSON text).
+# Same expression as staged_unit.provider_schemas.staged_component_payload_code (applied to the JSON text).
 PRESENTATION_RE: Final = re.compile(
     r"<\s*/?\s*(?:script|iframe|style|div|span)\b|\b(?:style|class|onerror|onclick)\s*=", re.IGNORECASE)
 _WORD_RE: Final = re.compile(r"\w+", re.UNICODE)

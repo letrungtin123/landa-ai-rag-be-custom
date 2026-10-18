@@ -19,7 +19,7 @@ $StrictPaths = @(
 # baseline (pyproject overrides) until PRD-3 deletes it.
 $MypyStrictPaths = @(
     "app/services/provider.py", "app/services/chat", "app/services/retrieval", "app/services/ingestion",
-    "app/services/orchestration_v2", "app/content", "app/contracts"
+    "app/services/orchestration_v2", "app/content", "app/contracts", "app/services/staged_unit"
 )
 $StrictTests = @(
     "tests/test_prd0_security.py",

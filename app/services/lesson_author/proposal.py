@@ -39,7 +39,7 @@ from app.services.lesson_author.source_refs import (
     validate_lesson_author_proposal_source_refs,
 )
 from app.services.lesson_author.staged import writer as staged_writer
-from app.services.lesson_author.staged.provider_schemas import build_lesson_author_proposal_response_schema
+from app.services.staged_unit.provider_schemas import build_lesson_author_proposal_response_schema
 from app.services.lesson_author.staged.skeleton import should_stage_lesson_author_proposal
 from app.services.provider import combine_usage, is_non_retryable_provider_error
 from app.services.retrieval import search as retrieval_search
