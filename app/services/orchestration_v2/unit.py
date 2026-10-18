@@ -42,6 +42,7 @@ from app.semantic_review import (
     validate_semantic_review_response,
 )
 from app.services import provider
+from app.services import runtime as service_runtime
 from app.services.deadlines import record_fallback
 from app.services.lesson_author.errors import LessonAuthorProposalValidationError
 from app.services.lesson_author.staged import writer as staged_writer
@@ -82,8 +83,9 @@ async def lesson_author_orchestration_v2_unit(
     if is_preserve_unit(request.unit_contract):
         # QLT-6: a kept document's unit is its own lines, word for word: no provider call, no fallback metric.
         try:
-            return run_preserve_unit(contract=request.unit_contract, locale=request.locale,
-                                     fallback_only=request.fallback_only, correlation_id=request.correlation_id)
+            return await service_runtime.concurrency.run_cpu(
+                run_preserve_unit, contract=request.unit_contract, locale=request.locale,
+                fallback_only=request.fallback_only, correlation_id=request.correlation_id)
         except IdmError as error:
             raise _idm_http_error(error) from error
         except ValidationError as error:
@@ -91,9 +93,11 @@ async def lesson_author_orchestration_v2_unit(
     if request.unit_contract.idm_unit_brief is not None:
         budget_ms = max(1_000, request.remaining_workflow_budget_ms - ORCHESTRATION_V2_UNIT_FALLBACK_RESPONSE_HEADROOM_MS)
         try:
+            runtime = _idm_runtime(request, budget_ms=budget_ms, allowance=None)
+            # The source-locked rebuilds and the purity context grow with the unit: built off the event loop.
+            deps = await service_runtime.concurrency.run_cpu(_idm_unit_deps, request)
             result = await run_idm_unit(
-                contract=request.unit_contract, runtime=_idm_runtime(request, budget_ms=budget_ms, allowance=None),
-                deps=_idm_unit_deps(request), fallback_only=request.fallback_only,
+                contract=request.unit_contract, runtime=runtime, deps=deps, fallback_only=request.fallback_only,
             )
         except IdmError as error:
             raise _idm_http_error(error) from error

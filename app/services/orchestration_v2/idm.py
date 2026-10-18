@@ -28,6 +28,7 @@ from app.idm.runtime import (
 from app.schemas.chat import RagChatRequest
 from app.schemas.common import AiUsage
 from app.services import provider
+from app.services import runtime as service_runtime
 from app.services.orchestration_v2.common import _orchestration_v2_http_error
 from app.services.provider import (
     http_error_detail,
@@ -87,6 +88,7 @@ def _idm_runtime(request: RagChatRequest, *, budget_ms: int, allowance: Any | No
                          if allowance is not None else None),
         provider_call_timeout_ms=settings.idm_provider_call_timeout_ms,
         rate_limit_max_wait_ms=settings.provider_rate_limit_max_wait_ms,
+        run_cpu=service_runtime.concurrency.run_cpu,
     )
 
 

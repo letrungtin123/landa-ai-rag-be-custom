@@ -26,6 +26,7 @@ from app.contracts.orchestration_v2.provider import (
 )
 from app.schemas.common import AiUsage
 from app.schemas.orchestration_v2 import RagLessonAuthorChapterShardV2Request
+from app.services import runtime as service_runtime
 from app.services.deadlines import record_fallback
 from app.services.orchestration_v2.common import (
     ORCHESTRATION_V2_PROVIDER_FALLBACK_CODES,
@@ -46,8 +47,9 @@ async def lesson_author_orchestration_v2_chapter_shard(
     if context is not None and is_preserve_context(context.project_context):
         # QLT-6: a kept document's lessons are laid out without a provider call (its intended output, no fallback).
         try:
-            return run_preserve_module_design(context=context, skeleton=request.skeleton, plan=request.shard_plan,
-                                              facts=request.source_facts)
+            return await service_runtime.concurrency.run_cpu(
+                run_preserve_module_design, context=context, skeleton=request.skeleton, plan=request.shard_plan,
+                facts=request.source_facts)
         except IdmError as error:
             raise _idm_http_error(error) from error
         except ValidationError as error:

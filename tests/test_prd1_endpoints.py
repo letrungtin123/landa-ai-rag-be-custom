@@ -6,6 +6,7 @@ import logging
 import tempfile
 import time
 import unittest
+from collections.abc import Awaitable, Callable
 from pathlib import Path
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -18,18 +19,34 @@ from pydantic import SecretStr
 from app import main
 from app.core import metrics
 from app.core.errors import AppError
+from app.idm import module_design, storyboard
+from app.idm.storyboard_steps import IdmUnitWriterSteps
 from app.infra import gemini as gemini_infra
 from app.infra.schema_check import SchemaCheckResult
 from app.repositories import indexing as index_repository
 from app.schemas.chat import RagChatRequest
 from app.schemas.kb import RagIndexRequest
+from app.schemas.orchestration_v2 import RagLessonAuthorChapterShardV2Request, RagLessonAuthorUnitV2Request
 from app.services import deadlines as deadlines_service
 from app.services import provider as provider_service
 from app.services import runtime as runtime_service
 from app.services.chat import service as chat_service
 from app.services.ingestion import extract as extraction
 from app.services.ingestion import index as index_service
+from app.services.orchestration_v2 import chapter_shard as chapter_shard_service
+from app.services.orchestration_v2 import unit as unit_service
 from app.services.retrieval import search as retrieval_search
+from tests import idm_golden as g
+from tests import idm_preserve_golden as preserve
+from tests.idm_golden import FakeIdmProvider
+from tests.idm_golden_module import module_context
+from tests.idm_golden_unit import build_unit_request
+from tests.idm_test_support import golden_design, golden_shard, module_response
+from tests.test_idm_endpoints import idm_shard_body
+from tests.test_idm_preserve_design import all_unit_requests as preserve_unit_requests
+from tests.test_idm_preserve_design import golden as preserve_golden
+from tests.test_idm_storyboard import JUDGE, WRITER, FakeGenerate, judge, severity_body, severity_writer
+from tests.test_lesson_author_orchestration_v2_endpoints import common
 
 APP_ROOT = Path(__file__).resolve().parents[1] / "app"
 TOKEN = "prd1-test-token-0123456789"
@@ -288,6 +305,114 @@ class IndexRuntimeTests(unittest.TestCase):
             asyncio_logger.removeHandler(handler)
         slow = [record.getMessage() for record in records if "took" in record.getMessage()]
         self.assertEqual(slow, [])
+
+
+
+# A step made slow blocks for SLOW_STEP_SECONDS; the loop may be held at most LOOP_HOLD_LIMIT_SECONDS. The writer path
+# still settles a draft on the loop (tens of milliseconds, more under coverage on a loaded machine), so the limit sits
+# well above that and below the slow step.
+SLOW_STEP_SECONDS = 0.4
+LOOP_HOLD_LIMIT_SECONDS = 0.3
+
+
+def slow(func: Callable[..., Any]) -> Callable[..., Any]:
+    """``func`` behind blocking work: it stands in for a long CPU-bound step, which must run off the event loop."""
+
+    def run(*args: Any, **kwargs: Any) -> Any:
+        time.sleep(SLOW_STEP_SECONDS)
+        return func(*args, **kwargs)
+
+    return run
+
+
+def loop_blocking_callbacks(scenario: Callable[[], Awaitable[Any]]) -> list[str]:
+    """What asyncio debug mode reports as callbacks that held the event loop too long while ``scenario`` ran."""
+
+    records: list[logging.LogRecord] = []
+
+    class Capture(logging.Handler):
+        def emit(self, record: logging.LogRecord) -> None:
+            records.append(record)
+
+    async def run() -> None:
+        asyncio.get_running_loop().slow_callback_duration = LOOP_HOLD_LIMIT_SECONDS
+        await scenario()
+
+    asyncio_logger = logging.getLogger("asyncio")
+    handler = Capture()
+    asyncio_logger.addHandler(handler)
+    try:
+        asyncio.run(run(), debug=True)
+    finally:
+        asyncio_logger.removeHandler(handler)
+    return [record.getMessage() for record in records if "took" in record.getMessage()]
+
+
+
+def preserve_shard_body() -> dict[str, Any]:
+    """A chapter-shard request for the first chapter of the kept (``preserve_source``) golden document."""
+
+    _result, design, skeleton = preserve_golden()
+    context, plan, facts = module_context(design, skeleton, 0, preserve.source_facts())
+    return {**common(), "skeleton": skeleton.model_dump(mode="json"), "shard_plan": plan.model_dump(mode="json"),
+            "source_facts": [fact.model_dump(mode="json") for fact in facts],
+            "idm_module_context": context.model_dump(mode="json")}
+
+
+class IdmEventLoopTests(unittest.TestCase):
+    """STD-8 on the IDM unit and chapter-shard routes: the deterministic steps that grow with the source go through
+    ``ConcurrencyRuntime.run_cpu``. Each one is made slow here and none may hold the event loop. The W5 settle steps
+    run inside the unit deadlines and stay on the loop (``app.idm.storyboard.run_idm_unit``)."""
+
+    def test_cpu_heavy_idm_unit_steps_do_not_block_the_event_loop(self) -> None:
+        design, _skeleton = golden_design()
+        fallback_only = {**build_unit_request(design, golden_shard(1), chapter_index=1, lesson_position=0,
+                                              unit_position=0, facts=g.source_facts()), "fallback_only": True}
+        written = severity_body()
+        provider = FakeGenerate(**{WRITER: [severity_writer(written)], JUDGE: [judge()]})
+        bodies = [fallback_only, written, preserve_unit_requests()[1]]
+        results: list[dict[str, Any]] = []
+
+        async def scenario() -> None:
+            for body in bodies:
+                request = RagLessonAuthorUnitV2Request.model_validate(body)
+                results.append(await unit_service.lesson_author_orchestration_v2_unit(request))
+
+        with (
+            patch.object(provider_service, "generate_content", provider),
+            patch.object(unit_service, "_idm_unit_deps", slow(unit_service._idm_unit_deps)),
+            patch.object(unit_service, "run_preserve_unit", slow(unit_service.run_preserve_unit)),
+            patch.object(IdmUnitWriterSteps, "__init__", slow(IdmUnitWriterSteps.__init__)),
+            patch.object(storyboard, "_whole_fallback", slow(storyboard._whole_fallback)),
+            patch.object(storyboard, "final_unit_findings", slow(storyboard.final_unit_findings)),
+            patch.object(IdmUnitWriterSteps, "explain_acronyms", slow(IdmUnitWriterSteps.explain_acronyms)),
+        ):
+            self.assertEqual(loop_blocking_callbacks(scenario), [])
+        self.assertEqual([(result["usage_source"], result["content_origin"]) for result in results], [
+            ("deterministic_fallback", "structured_fallback"), ("provider", "provider_validated"),
+            ("deterministic_fallback", "structured_fallback")])
+
+    def test_cpu_heavy_idm_module_steps_do_not_block_the_event_loop(self) -> None:
+        provider = FakeIdmProvider({"IdmW3W4ModuleResponseV1": [module_response("mod_02")]})
+        bodies = [idm_shard_body(), preserve_shard_body()]
+        results: list[dict[str, Any]] = []
+
+        async def scenario() -> None:
+            for body in bodies:
+                request = RagLessonAuthorChapterShardV2Request.model_validate(body)
+                results.append(await chapter_shard_service.lesson_author_orchestration_v2_chapter_shard(request))
+
+        with (
+            patch.object(provider_service, "generate_content", provider),
+            patch.object(module_design, "_salvage", slow(module_design._salvage)),
+            patch.object(module_design, "gate_and_plan_faq", slow(module_design.gate_and_plan_faq)),
+            patch.object(chapter_shard_service, "run_preserve_module_design",
+                         slow(chapter_shard_service.run_preserve_module_design)),
+        ):
+            self.assertEqual(loop_blocking_callbacks(scenario), [])
+        self.assertEqual([result["content_origin"] for result in results],
+                         ["provider_validated", "structured_fallback"])
+        self.assertEqual(len(provider.calls), 1)
 
 
 class ProviderRetryPolicyTests(unittest.TestCase):

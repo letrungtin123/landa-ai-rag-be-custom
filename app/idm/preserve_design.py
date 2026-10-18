@@ -19,7 +19,6 @@ of its lines; no practice, FAQ or diagram, and therefore no assessment obligatio
 
 from __future__ import annotations
 
-import asyncio
 import math
 import time
 from collections.abc import Sequence
@@ -309,8 +308,8 @@ async def run_preserve_course_design(
         raise IdmStageError(EMPTY_CODE)
     texts = [fact.fact_text for fact in content]
     segmentation = await segment_document(runtime, texts, [fact.source_page for fact in content])
-    outline = await asyncio.to_thread(build_outline, segmentation.chapters, texts, context.locale)
-    design, plan = await asyncio.to_thread(
+    outline = await runtime.run_cpu(build_outline, segmentation.chapters, texts, context.locale)
+    design, plan = await runtime.run_cpu(
         lambda: assemble_preserve_design(source_snapshot_hash=source_snapshot_hash, context=context, facts=facts,
                                          content=content, furniture=furniture, segmentation=segmentation,
                                          outline=outline))

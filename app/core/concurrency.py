@@ -124,7 +124,7 @@ class ConcurrencyRuntime:
                 self._process_executor = ProcessPoolExecutor(max_workers=self.cpu_workers)
             return self._process_executor
 
-    async def _run(self, executor: Executor, func: Callable[P, T], *args: P.args, **kwargs: P.kwargs) -> T:
+    async def _run(self, executor: Executor, func: Callable[P, T], /, *args: P.args, **kwargs: P.kwargs) -> T:
         loop = asyncio.get_running_loop()
         async with self.cpu.slot():
             if isinstance(executor, ProcessPoolExecutor):
@@ -133,7 +133,7 @@ class ConcurrencyRuntime:
             context = contextvars.copy_context()
             return await loop.run_in_executor(executor, functools.partial(context.run, func, *args, **kwargs))
 
-    async def run_cpu(self, func: Callable[P, T], *args: P.args, **kwargs: P.kwargs) -> T:
+    async def run_cpu(self, func: Callable[P, T], /, *args: P.args, **kwargs: P.kwargs) -> T:
         """Run CPU-heavy or blocking work off the event loop under the CPU limit."""
         return await self._run(self._threads(), func, *args, **kwargs)
 

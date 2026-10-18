@@ -88,6 +88,12 @@ class GenerateFn(Protocol):
     ) -> Awaitable[tuple[str, UsageLike]]: ...
 
 
+class CpuRunner(Protocol):
+    """Runs one blocking or CPU-heavy call off the event loop and returns its result (STD-8)."""
+
+    def __call__[**P, T](self, func: Callable[P, T], /, *args: P.args, **kwargs: P.kwargs) -> Awaitable[T]: ...
+
+
 class IdmError(Exception):
     """Base for IDM failures that carry a stable, content-free code."""
 
@@ -171,6 +177,9 @@ class IdmRuntime:
     # (AI_RAG_PROVIDER_RATE_LIMIT_MAX_WAIT_MS); 0 keeps the legacy single short retry.
     rate_limit_max_wait_ms: int = 0
     clock: Callable[[], float] = time.monotonic
+    # The deterministic steps that grow with the source run through this, off the event loop. The service passes
+    # its CPU limiter (``ConcurrencyRuntime.run_cpu``: bounded pool, SERVICE_BUSY when saturated).
+    run_cpu: CpuRunner = asyncio.to_thread
     # Soft-bound adjustments made to provider answers before strict validation (coerce.py).
     adjustments: Counter[str] = field(default_factory=Counter)
     _invocations: dict[str, int] = field(default_factory=dict)
