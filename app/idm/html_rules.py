@@ -3,7 +3,7 @@
 An ``html`` slot is written as ``semantic_content`` (ordered sections of typed blocks) and
 rendered by Node. The shared staged validator stays authoritative
 (``app.services.lesson_author.proposal_validation.semantic_learning_visible_text`` on top of
-``app.ordered_learning_content.flatten_ordered_content``, ``staged_component_payload_code``
+``app.content.ordered_learning_content.flatten_ordered_content``, ``staged_component_payload_code``
 and ``staged_instructional_finding``). It reports only the first failure and only as
 ``HTML_SEMANTIC_INVALID``, while the provider wire schema drops every length and count
 bound, so the model never learns which rule it broke (run e869f43a: every html repair
@@ -24,11 +24,12 @@ from __future__ import annotations
 import copy
 import json
 import re
-import unicodedata
 from collections import Counter
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from typing import Any, Final
+
+from app.core.text import casefold_strip_marks
 
 # --- limits (mirror proposal_validation.SEMANTIC_LEARNING_HTML_LIMITS and flatten_ordered_content) ---
 ORDERED_CONTENT_VERSION: Final = 2
@@ -73,7 +74,7 @@ _GROUP_UNIT: Final[Mapping[str, str]] = {
     "paragraphs": "paragraph+task blocks", "bullet_points": "bullet items", "ordered_steps": "step items",
     "warnings": "warning blocks",
 }
-# Same expression as staged.provider_schemas.staged_component_payload_code (applied to the JSON text).
+# Same expression as staged_unit.provider_schemas.staged_component_payload_code (applied to the JSON text).
 PRESENTATION_RE: Final = re.compile(
     r"<\s*/?\s*(?:script|iframe|style|div|span)\b|\b(?:style|class|onerror|onclick)\s*=", re.IGNORECASE)
 _WORD_RE: Final = re.compile(r"\w+", re.UNICODE)
@@ -312,8 +313,7 @@ def _empty(value: Any) -> bool:
 
 
 def _fold(value: str) -> str:
-    text = unicodedata.normalize("NFD", value.casefold())
-    return " ".join("".join(char for char in text if unicodedata.category(char) != "Mn").split())
+    return " ".join(casefold_strip_marks(value).split())
 
 
 def _strings(node: Any) -> Iterable[str]:

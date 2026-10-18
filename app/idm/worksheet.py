@@ -26,8 +26,8 @@ import unicodedata
 from collections.abc import Callable, Sequence
 from typing import Any, Final
 
+from app.content.instructional_quality import TABLE_ROW_RE
 from app.idm.text import idm_fold, trim_at_boundary
-from app.instructional_quality import TABLE_ROW_RE
 
 COMPACTED_CODE: Final = "IDM_W5_WORKSHEET_COMPACTED"
 _PLACEHOLDER_RE: Final = re.compile(r"^\[\s*(.+?)\s*\]$")

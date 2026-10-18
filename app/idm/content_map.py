@@ -10,6 +10,7 @@ from collections.abc import Collection, Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any, Final, Literal
 
+from app.contracts.orchestration_v2.provider import SourceSnapshotFactV2
 from app.idm.artifacts import plain_row_refs
 from app.idm.author_brief import author_audience
 from app.idm.contracts import (
@@ -78,7 +79,6 @@ from app.idm.text import (
     single_line,
 )
 from app.idm.validation import IdmIssue, errors
-from app.lesson_author_orchestration_v2_provider import SourceSnapshotFactV2
 
 _BROAD_SME_RE: Final = re.compile(BROAD_SME_QUESTION_PATTERN)
 _PAGE_NUMBER_RE: Final = re.compile(

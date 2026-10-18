@@ -13,12 +13,13 @@ $StrictPaths = @(
     "app/services/runtime.py", "app/services/meta.py", "app/services/deadlines.py", "app/services/text.py",
     "app/hashing.py"
 )
-# Service code moved verbatim out of app/main.py in PRD-2: mypy strict, pyflakes (F) lint rules.
+# Service code moved verbatim out of app/main.py in PRD-2, and the shared core moved verbatim out of the
+# legacy modules in refactor wave 2 (step 2.1): mypy strict, pyflakes (F) lint rules.
 # The legacy lesson-author pipeline (app/services/lesson_author) keeps the mypy "no new errors"
 # baseline (pyproject overrides) until PRD-3 deletes it.
 $MypyStrictPaths = @(
     "app/services/provider.py", "app/services/chat", "app/services/retrieval", "app/services/ingestion",
-    "app/services/orchestration_v2"
+    "app/services/orchestration_v2", "app/content", "app/contracts", "app/services/staged_unit"
 )
 $StrictTests = @(
     "tests/test_prd0_security.py",
@@ -40,7 +41,8 @@ $StrictTests = @(
     "tests/test_quality_gate_scripts.py",
     "tests/test_route_snapshots.py",
     "tests/test_repository_sql.py",
-    "tests/test_response_models.py"
+    "tests/test_response_models.py",
+    "tests/test_core_text.py"
 )
 # Every IDM test file is held to the strict lint profile.
 $StrictTests += @(Get-ChildItem -Path (Join-Path $RepoRoot "tests") -Filter "test_idm_*.py" |
@@ -57,7 +59,7 @@ function Invoke-Gate([string]$Name, [scriptblock]$Command) {
 Push-Location $RepoRoot
 try {
     Invoke-Gate "ruff (strict paths)" { & $Python -m ruff check @StrictPaths @StrictTests }
-    Invoke-Gate "ruff (moved services, F rules)" { & $Python -m ruff check app/services --select F }
+    Invoke-Gate "ruff (moved code, F rules)" { & $Python -m ruff check app/services app/content app/contracts --select F }
     Invoke-Gate "mypy (strict paths)" { & $Python -m mypy @StrictPaths @MypyStrictPaths }
     Invoke-Gate "pytest + coverage" { & $Python -m pytest -q --cov=app --cov-branch --cov-report=term --cov-fail-under=85 }
     Invoke-Gate "pip-audit" { & $Python -m pip_audit -r requirements.lock --disable-pip }

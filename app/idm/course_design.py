@@ -11,6 +11,7 @@ import dataclasses
 import time
 from typing import Any, Final
 
+from app.contracts.orchestration_v2.provider import SourceSnapshotFactV2
 from app.idm.architecture import AssemblyInput, assemble_idm_course_design, project_course_skeleton, run_w4
 from app.idm.author_brief import BRIEF_CONTEXT_KEYS
 from app.idm.blueprint import blocked_must_dos, build_dispositions, hold_items, run_w2
@@ -37,7 +38,6 @@ from app.idm.purpose import resolve_purpose
 from app.idm.runtime import IdmRuntime, IdmStageError, idm_tail_reserve, log_stage
 from app.idm.signals import IdmCapacityError, SectionPlan, compute_fact_signals, plan_idm_sections
 from app.idm.titles import TitleCaser, sentence_case_plan
-from app.lesson_author_orchestration_v2_provider import SourceSnapshotFactV2
 
 _MS: Final = 1000
 

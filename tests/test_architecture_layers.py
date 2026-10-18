@@ -20,6 +20,8 @@ PURE_MODULE_PATTERNS = (
     "source_*.py", "instructional_*.py", "lesson_quality.py", "semantic_review.py", "workflows/*.py",
     "assessment_*.py", "learner_content_purity.py", "ordered_learning_content.py", "media_brief.py",
     "component_capabilities.py", "lesson_author_*.py", "lesson_content_observation.py", "lesson_prompt_policy.py",
+    # The shared core moved verbatim out of the modules above in refactor wave 2 (their old paths are aliases).
+    "content/*.py", "contracts/**/*.py",
 )
 MAX_ROUTE_HANDLER_LINES = 30
 EVENT_NAME_PATTERN = re.compile(r"[a-z][a-z0-9_]*")
@@ -105,6 +107,53 @@ def size_violations(sizes: dict[str, int], limit: int, allowlist: dict[str, Allo
         elif lines > allowance.lines:
             found.append(f"{name}: grew to {lines} lines (allowlisted at {allowance.lines}; {allowance.target})")
     return found
+
+
+# STD-7 / F-08: accent folding lives in app/core/text.py. A decomposing normalisation (NFD or NFKD, or a form
+# not known statically) anywhere else is a private fold copy. These are the sites left after refactor wave 2
+# (step 2.2) replaced the exact duplicates; each one differs in semantics on purpose or mirrors a Node rule,
+# so it keeps its own code (changing which variant it uses changes matching: ask the owner first). An entry
+# only shrinks: lower the count when a site goes, remove the entry when the file has none.
+FOLD_HOME = "core/text.py"
+DECOMPOSITION_SITES: dict[str, tuple[int, str]] = {
+    "content/instructional_quality.py": (1, "crossword answer key: đ/Đ to d/D keeping case, then ASCII and upper"),
+    "idm/artifacts.py": (1, "detects Vietnamese text by its combining marks; not a fold"),
+    "idm/faq_checks.py": (1, "detects Vietnamese text by its combining marks; not a fold"),
+    "idm/node_acceptance.py": (2, "Node mirrors: normalizedInstructionalText and the crossword answer key"),
+    "idm/text.py": (1, "idm_fold: NFC, lower() (not casefold), đ to d, whitespace collapsed"),
+    "instructional_opportunities.py": (1, "NFKD, lower(), đ to d, unicodedata.combining"),
+    "lesson_quality.py": (1, "drops the marks before casefold, then keeps words only"),
+    "services/staged_unit/provider_schemas.py": (1, "crossword answer key of the staged validator: upper, A-Z, digits"),
+    "services/staged_unit/validation.py": (1, "FAQ heading signal: drops the marks before casefold, spaces collapsed"),
+}
+
+
+def decomposition_count(tree: ast.AST) -> int:
+    """``unicodedata.normalize`` (or an imported ``normalize``) calls whose form is NFD, NFKD or not a literal."""
+
+    count = 0
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call) or not node.args:
+            continue
+        func = node.func
+        named = (isinstance(func, ast.Attribute) and func.attr == "normalize" and isinstance(func.value, ast.Name)
+                 and func.value.id == "unicodedata") or (isinstance(func, ast.Name) and func.id == "normalize")
+        form = node.args[0]
+        if named and (not isinstance(form, ast.Constant) or form.value in {"NFD", "NFKD"}):
+            count += 1
+    return count
+
+
+def decomposition_violations(found: dict[str, int], allowed: dict[str, tuple[int, str]]) -> list[str]:
+    problems = [f"{name}: {count} decomposing normalisation(s), a private fold copy: use app.core.text"
+                for name, count in sorted(found.items()) if name not in allowed]
+    for name, (count, _reason) in sorted(allowed.items()):
+        actual = found.get(name, 0)
+        if actual > count:
+            problems.append(f"{name}: {actual} decomposing normalisations (allowlisted {count}): use app.core.text")
+        elif actual < count:
+            problems.append(f"{name}: {actual} decomposing normalisations (allowlisted {count}): lower the entry")
+    return problems
 
 
 def imported_modules(path: Path) -> list[tuple[str, set[str]]]:
@@ -279,6 +328,32 @@ class ArchitectureLayerTests(unittest.TestCase):
                     if length > MAX_ROUTE_HANDLER_LINES:
                         offenders.append(f"{path.name}:{node.name}:{length}")
         self.assertEqual(offenders, [])
+
+    def test_accent_folding_has_one_home(self) -> None:
+        found: dict[str, int] = {}
+        for path in sorted(APP_ROOT.rglob("*.py")):
+            name = path.relative_to(APP_ROOT).as_posix()
+            count = decomposition_count(ast.parse(path.read_text(encoding="utf-8")))
+            if count and name != FOLD_HOME:
+                found[name] = count
+        self.assertEqual(decomposition_violations(found, DECOMPOSITION_SITES), [])
+        # Guard against the check silently finding nothing after a move.
+        self.assertGreaterEqual(decomposition_count(ast.parse((APP_ROOT / FOLD_HOME).read_text(encoding="utf-8"))), 2)
+
+    def test_fold_rule_catches_new_copies_growth_and_stale_entries(self) -> None:
+        tree = ast.parse("\n".join([
+            "import unicodedata", "from unicodedata import normalize", 'a = unicodedata.normalize("NFD", x)',
+            'b = normalize("NFKD", x)', "c = unicodedata.normalize(form, x)", 'd = unicodedata.normalize("NFC", x)',
+            'e = unicodedata.normalize("NFKC", x)',
+        ]))
+        self.assertEqual(decomposition_count(tree), 3)
+        allowed = {"idm/kept.py": (2, "reason"), "idm/gone.py": (1, "reason")}
+        self.assertEqual(decomposition_violations({"idm/kept.py": 3, "idm/new.py": 1}, allowed), [
+            "idm/new.py: 1 decomposing normalisation(s), a private fold copy: use app.core.text",
+            "idm/gone.py: 0 decomposing normalisations (allowlisted 1): lower the entry",
+            "idm/kept.py: 3 decomposing normalisations (allowlisted 2): use app.core.text",
+        ])
+        self.assertEqual(decomposition_violations({"idm/kept.py": 2, "idm/gone.py": 1}, allowed), [])
 
     def test_canonical_hash_has_one_implementation(self) -> None:
         # STD-7: contract and evidence hashes share app.hashing.canonical_hash (public names kept).

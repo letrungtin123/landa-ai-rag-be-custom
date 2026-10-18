@@ -13,8 +13,8 @@ from app.core.handled_exceptions import report_handled_exception
 from app.core.logging import SERVICE_LOGGER_NAME, log_payload
 from app.idm.course_design import run_idm_course_design
 from app.idm.runtime import IdmError, IdmStageError
-from app.lesson_author_orchestration_v2 import OrchestrationContractError
-from app.lesson_author_orchestration_v2_provider import (
+from app.contracts.orchestration_v2.blueprint import OrchestrationContractError
+from app.contracts.orchestration_v2.provider import (
     COURSE_SKELETON_PROVIDER_SCHEMA_METADATA,
     CourseSkeletonDraftV2,
     CourseSkeletonProviderWireV2,

@@ -29,9 +29,9 @@ from app.services import runtime as service_runtime
 from app.services.lesson_author.architecture_validation import validate_v5_instructional_coherence
 from app.services.lesson_author.checkpoint import build_lesson_author_checkpoint_result
 from app.services.lesson_author.proposal_validation import semantic_learning_visible_text
-from app.services.lesson_author.staged.provider_schemas import staged_component_payload_code
 from app.services.meta import API_VERSION
 from app.services.provider import generate_content
+from app.services.staged_unit.provider_schemas import staged_component_payload_code
 
 # Besides ``app`` and ``create_app``, these names are re-exported for the Node backend's cross-language
 # tests, which run ``python -c "from app.main import <name>"`` (and patch ``app.main.generate_content``)

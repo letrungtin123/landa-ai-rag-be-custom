@@ -22,7 +22,7 @@ from app.services.lesson_author.staged.skeleton import (
     validate_staged_skeleton_source_facts,
 )
 from app.services.lesson_author.staged.source_locked import build_source_locked_staged_skeleton
-from app.services.lesson_author.staged.validation import validate_staged_unit_content
+from app.services.staged_unit.validation import validate_staged_unit_content
 from app.services.provider import combine_usage
 from app.services.retrieval.source_coverage import validate_lesson_author_source_coverage
 from app.workflows.contracts import WorkflowFailure, safe_workflow_issue_summary, safe_workflow_path

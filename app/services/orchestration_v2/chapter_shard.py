@@ -14,8 +14,8 @@ from app.core.logging import SERVICE_LOGGER_NAME, log_payload
 from app.idm.module_design import run_idm_module_design
 from app.idm.preserve_design import is_preserve_context, run_preserve_module_design
 from app.idm.runtime import IdmError, IdmStageError
-from app.lesson_author_orchestration_v2 import OrchestrationContractError
-from app.lesson_author_orchestration_v2_provider import (
+from app.contracts.orchestration_v2.blueprint import OrchestrationContractError
+from app.contracts.orchestration_v2.provider import (
     CHAPTER_SHARD_PROVIDER_SCHEMA_METADATA,
     ChapterShardProviderWireV2,
     bind_chapter_shard_v2,

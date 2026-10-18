@@ -24,7 +24,7 @@ from app.services.lesson_author.staged.plan import (
     ensure_staged_chapter_component_diversity,
     normalize_staged_component_type,
 )
-from app.source_structure import strip_source_range_suffix
+from app.content.source_structure import strip_source_range_suffix
 
 
 def parse_lesson_author_json_value(text: str, label: str) -> Any:

@@ -28,7 +28,7 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from typing import Any, Final
 
-from app.instructional_quality import ORDERED_STEP_RE, TABLE_ROW_RE, clean_source_facts, normalize_visible_text
+from app.content.instructional_quality import ORDERED_STEP_RE, TABLE_ROW_RE, clean_source_facts, normalize_visible_text
 
 _ARROW_RE: Final = re.compile(r"\s*(?:→|->|=>|⇒|⟶|➔|➜|➝|⮕)\s*")
 _BIDIRECTIONAL_RE: Final = re.compile(r"↔|<->|⇔|<=>")

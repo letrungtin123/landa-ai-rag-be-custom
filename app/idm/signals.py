@@ -12,6 +12,14 @@ from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field
 from typing import Final
 
+from app.content.instructional_quality import (
+    ORDERED_STEP_RE,
+    TABLE_ROW_RE,
+    ordered_source_steps,
+    source_relationship_pairs,
+    source_term_definitions,
+)
+from app.contracts.orchestration_v2.provider import SourceSnapshotFactV2
 from app.idm.policy import (
     IDM_DUPLICATE_JACCARD_THRESHOLD,
     IDM_DUPLICATE_NGRAM,
@@ -26,14 +34,6 @@ from app.idm.policy import (
 )
 from app.idm.runtime import IdmError
 from app.idm.text import char_ngrams, idm_fold, jaccard
-from app.instructional_quality import (
-    ORDERED_STEP_RE,
-    TABLE_ROW_RE,
-    ordered_source_steps,
-    source_relationship_pairs,
-    source_term_definitions,
-)
-from app.lesson_author_orchestration_v2_provider import SourceSnapshotFactV2
 
 _SECTION_HEADING_RE: Final = re.compile(r"^(chuong|phan|muc|chapter|part|section)\s*[0-9ivx]+")
 _NUMBERED_HEADING_RE: Final = re.compile(r"^[0-9]+(\.[0-9]+)*\.?\s+\S")

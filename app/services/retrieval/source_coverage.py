@@ -7,7 +7,7 @@ import re
 from typing import Any
 
 from app.core.config import settings
-from app.instructional_quality import TABLE_ROW_RE, clean_source_facts, is_non_instructional_source_line
+from app.content.instructional_quality import TABLE_ROW_RE, clean_source_facts, is_non_instructional_source_line
 from app.schemas.chat import RagChatRequest
 from app.services.lesson_author.errors import LessonAuthorProposalValidationError
 from app.services.retrieval.query import decode_json_object, parse_source_range

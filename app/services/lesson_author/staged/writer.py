@@ -15,12 +15,12 @@ from pydantic import BaseModel
 
 from app.core.handled_exceptions import report_handled_exception
 from app.core.logging import SERVICE_LOGGER_NAME
-from app.learner_content_purity import build_learner_content_purity_context
+from app.content.learner_content_purity import build_learner_content_purity_context
 from app.lesson_author_checkpoint import ChapterCheckpointUnit, checkpoint_expected_units, select_checkpoint_unit
 from app.lesson_author_provider_schema import staged_provider_response_model
 from app.lesson_content_observation import observe_lesson_content
 from app.lesson_prompt_policy import instructional_contract_review_signals, lesson_output_language_policy
-from app.ordered_learning_content import ProviderSemanticVersionError, bind_provider_semantic_versions
+from app.content.ordered_learning_content import ProviderSemanticVersionError, bind_provider_semantic_versions
 from app.prompt_safety import untrusted_block
 from app.schemas.common import AiUsage
 from app.schemas.lesson_author import RagLessonAuthorRequest
@@ -40,7 +40,7 @@ from app.services.lesson_author.staged.plan import (
     consolidate_staged_thin_units,
     staged_lesson_content_output_tokens,
 )
-from app.services.lesson_author.staged.provider_schemas import (
+from app.services.staged_unit.provider_schemas import (
     STAGED_COMPONENT_CONTRACT_VERSION,
     STAGED_COMPONENT_COVERAGE_REPAIR_CONTRACT_VERSION,
     STAGED_COMPONENT_REPAIR_CONTRACT_VERSION,
@@ -71,7 +71,7 @@ from app.services.lesson_author.staged.source_locked import (
     prepare_source_locked_expected,
     staged_unit_source_material,
 )
-from app.services.lesson_author.staged.validation import (
+from app.services.staged_unit.validation import (
     StagedUnitFinding,
     lesson_author_proposal_quality_metrics,
     merge_checkpoint_component_fallback,

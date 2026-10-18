@@ -14,12 +14,12 @@ from typing import Annotated, Any, Literal
 from pydantic import BaseModel, ConfigDict, Field, SerializerFunctionWrapHandler, StringConstraints, model_serializer
 from pydantic.json_schema import SkipJsonSchema
 
-from app.lesson_author_orchestration_v2 import (
+from app.contracts.orchestration_v2.blueprint import (
     ArchitectureComponentAuthorReviewV2,
     ArchitectureMediaBriefV2,
     canonical_hash,
 )
-from app.lesson_author_orchestration_v2_provider import SourceSnapshotFactV2
+from app.contracts.orchestration_v2.provider import SourceSnapshotFactV2
 
 # --- Enums (spec §6.1) -------------------------------------------------------------------
 Intent = Literal["know", "do", "decide"]

@@ -25,9 +25,10 @@ production and `AI_RAG_ENV=test` read the process environment only. `/docs` is s
 
 1. ruff, every rule, on the strict code (`app/core`, `app/infra`, `app/idm`, `app/api`, `app/schemas`,
    `app/repositories` and a few single files) and on the IDM and core test files;
-2. ruff pyflakes rules on all of `app/services`;
-3. mypy `--strict` on the strict code and the moved services (`provider`, `chat`, `retrieval`, `ingestion`,
-   `orchestration_v2`); legacy modules keep a "no new errors" baseline (`pyproject.toml`);
+2. ruff pyflakes rules on all of `app/services`, `app/content` and `app/contracts`;
+3. mypy `--strict` on the strict code, the moved services (`provider`, `chat`, `retrieval`, `ingestion`,
+   `orchestration_v2`) and the shared core moved out of the legacy modules (`app/content`, `app/contracts`,
+   `app/services/staged_unit`); legacy modules keep a "no new errors" baseline (`pyproject.toml`);
 4. pytest with branch coverage, failing under 85%;
 5. pip-audit of `requirements.lock`.
 
@@ -50,12 +51,14 @@ files at most 800 lines, functions at most 120, with a fixed allowlist that only
 | `app/main.py` | App factory only: middleware, error handlers, route registration. `app.main:app` is the ASGI entrypoint. |
 | `app/api` | `deps.py` (internal auth, DB pool) and `routes/` (health, kb, chat, lesson_author_legacy, orchestration_v2): thin handlers. |
 | `app/schemas` | Request and response models per route group (`extra="forbid"`, typed responses). |
-| `app/core` | Settings, security (HMAC), concurrency limits, deadlines, errors, JSON logging, metrics, handled-exception reporting. |
+| `app/core` | Settings, security (HMAC), concurrency limits, deadlines, errors, JSON logging, metrics, handled-exception reporting, accent folding (`text.py`). |
 | `app/infra` | Postgres pool and schema check, signed-URL storage downloads, Gemini client pool, provider 429 classification, PDF layout. |
 | `app/repositories` | All SQL (asyncpg); every tenant query filters by `tenant_id`. |
-| `app/services` | `provider.py` (Gemini gateway: bounded retries, usage, telemetry), `ingestion`, `retrieval`, `chat`, `orchestration_v2` (V2 routes and IDM wiring), `runtime.py` (process resources), `lesson_author` (legacy V5 pipeline, deleted in PRD-3). |
+| `app/services` | `provider.py` (Gemini gateway: bounded retries, usage, telemetry), `ingestion`, `retrieval`, `chat`, `orchestration_v2` (V2 routes and IDM wiring), `staged_unit` (staged unit validation, instance binder and repair merges, shared by IDM W5 and the legacy writer), `runtime.py` (process resources), `lesson_author` (legacy V5 pipeline, deleted in PRD-3). |
 | `app/idm` | The IDM pipeline: pure code (no web framework, DB or settings); the service injects an `IdmRuntime` and the shared helpers. |
-| `app/*.py` (others) | Legacy V2/V5 domain modules, still used by the V2 contract and the shared validators. |
+| `app/content` | Shared content core used by IDM, the V2 contract, the staged validators and ingestion: source structure and readiness, evidence bundles, instructional quality and learner-content purity rules, ordered content. |
+| `app/contracts` | `orchestration_v2`: the V2 contract models (`blueprint.py`) and provider drafts, binders and unit contract (`provider.py`). |
+| `app/*.py` (others) | Legacy V2/V5 domain modules. The ones moved to `app/content` and `app/contracts` in refactor wave 2 keep their old path as an alias of the moved module (tests and the backend scripts import it); new code imports the new path. |
 
 IDM stages (pipeline `idm-1`, used when the request carries an `idm` / `idm_module_context` /
 `unit_contract.idm_unit_brief` field; otherwise the legacy V2 path runs unchanged):

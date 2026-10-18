@@ -12,13 +12,13 @@ from __future__ import annotations
 import dataclasses
 from typing import Any, Final
 
+from app.contracts.orchestration_v2.provider import UnitGenerationContractV2
 from app.idm.contracts import IdmFindingCountsV1, IdmUnitQualityV1
 from app.idm.node_acceptance import acceptance_log, node_acceptance_findings
 from app.idm.preserve_design import PRESERVE_MODE
 from app.idm.preserve_render import KEPT_PREFIX, preserve_text_finding, purity_report, render_preserved_html
 from app.idm.runtime import IdmStageError, log_stage
 from app.idm.storyboard import acceptance_context, parse_brief
-from app.lesson_author_orchestration_v2_provider import UnitGenerationContractV2
 
 PRESERVE_SOURCE_CODE: Final = "IDM_PRESERVE_SOURCE"
 UNIT_INVALID_CODE: Final = "IDM_PRESERVE_UNIT_INVALID"

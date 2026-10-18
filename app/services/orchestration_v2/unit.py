@@ -21,9 +21,9 @@ from app.idm.preserve_unit import is_preserve_unit, run_preserve_unit
 from app.idm.runtime import IDM_LOG_FAMILY, IdmError, IdmStageError
 from app.idm.source_locked import idm_source_faq, idm_source_grounded_single_choice, render_idm_source_locked_html
 from app.idm.storyboard import IdmUnitDeps, run_idm_unit
-from app.instructional_quality import source_relationship_pairs
-from app.learner_content_purity import build_learner_content_purity_context
-from app.lesson_author_orchestration_v2_provider import (
+from app.content.instructional_quality import source_relationship_pairs
+from app.content.learner_content_purity import build_learner_content_purity_context
+from app.contracts.orchestration_v2.provider import (
     UnitGenerationContractV2,
     unit_contract_manifest_v2,
     unit_contract_v5_architecture_v2,
@@ -45,13 +45,13 @@ from app.services import provider
 from app.services.deadlines import record_fallback
 from app.services.lesson_author.errors import LessonAuthorProposalValidationError
 from app.services.lesson_author.staged import writer as staged_writer
-from app.services.lesson_author.staged.provider_schemas import (
+from app.services.staged_unit.provider_schemas import (
     bind_staged_instance_payload,
     build_staged_instance_response_model,
     build_staged_multi_repair_model,
     decode_staged_multi_repair,
 )
-from app.services.lesson_author.staged.validation import (
+from app.services.staged_unit.validation import (
     StagedUnitFinding,
     merge_staged_component_payload_delta,
     validate_staged_unit_content,

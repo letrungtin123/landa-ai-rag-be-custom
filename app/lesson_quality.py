@@ -13,7 +13,7 @@ from dataclasses import dataclass
 from html import unescape
 from typing import Any
 
-from app.ordered_learning_content import flatten_ordered_content
+from app.content.ordered_learning_content import flatten_ordered_content
 from app.workflows.contracts import WorkflowIssue, WorkflowValidationResult
 
 EXPLANATORY_TYPES = {"html", "la_faq"}
