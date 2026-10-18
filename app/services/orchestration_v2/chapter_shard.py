@@ -9,6 +9,7 @@ from typing import Any
 from fastapi import HTTPException
 from pydantic import ValidationError
 
+from app.core.handled_exceptions import report_handled_exception
 from app.core.logging import SERVICE_LOGGER_NAME, log_payload
 from app.idm.module_design import run_idm_module_design
 from app.idm.preserve_design import is_preserve_context, run_preserve_module_design
@@ -112,6 +113,10 @@ async def _lesson_author_orchestration_v2_chapter_shard(
         except Exception as error:
             provider_failure_code = "AI_PROVIDER_UNAVAILABLE"
             last_code = provider_failure_code
+            report_handled_exception(logger, error, stage="chapter_shard", outcome=provider_failure_code,
+                                     family=V2_LOG_FAMILY, correlation_id=request.correlation_id,
+                                     chapter_key=request.shard_plan.chapter_key,
+                                     shard_index=request.shard_plan.shard_index, provider_attempt=attempt)
             log_payload(logger, logging.WARNING, V2_LOG_FAMILY, {
                 "event": "chapter_shard_provider_fallback",
                 "correlation_id": request.correlation_id,

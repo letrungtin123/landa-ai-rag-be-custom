@@ -14,10 +14,11 @@ from pydantic import BaseModel, ValidationError
 
 from app.core import metrics
 from app.core.config import settings
+from app.core.handled_exceptions import report_handled_exception
 from app.core.logging import SERVICE_LOGGER_NAME, log_payload
 from app.idm.diagram import idm_source_step_diagram
 from app.idm.preserve_unit import is_preserve_unit, run_preserve_unit
-from app.idm.runtime import IdmError, IdmStageError
+from app.idm.runtime import IDM_LOG_FAMILY, IdmError, IdmStageError
 from app.idm.source_locked import idm_source_faq, idm_source_grounded_single_choice, render_idm_source_locked_html
 from app.idm.storyboard import IdmUnitDeps, run_idm_unit
 from app.instructional_quality import source_relationship_pairs
@@ -133,6 +134,9 @@ def _idm_unit_deps(request: RagLessonAuthorUnitV2Request) -> IdmUnitDeps:
         evidence_review_required=isinstance(bundle, dict) and bundle.get("status") == "review_required",
         judge_mode=settings.idm_judge_mode,
         recoverable_errors=(LessonAuthorProposalValidationError, WorkflowFailure, ValueError, TypeError, KeyError),
+        on_recoverable_error=lambda stage, code, error: report_handled_exception(
+            logger, error, stage=stage, outcome=code, family=IDM_LOG_FAMILY, correlation_id=request.correlation_id,
+            unit_path=contract.unit_path),
     )
 
 

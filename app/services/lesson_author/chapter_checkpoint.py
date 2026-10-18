@@ -13,6 +13,7 @@ import asyncpg
 from fastapi import HTTPException
 
 from app.core.config import settings
+from app.core.handled_exceptions import report_handled_exception
 from app.core.logging import SERVICE_LOGGER_NAME
 from app.schemas.lesson_author import RagLessonAuthorCheckpointRequest
 from app.services.deadlines import run_with_deadline
@@ -67,6 +68,8 @@ async def _lesson_author_chapter_checkpoint(
         failure = WorkflowFailure("LESSON_VALIDATION_FAILED", "The chapter checkpoint operation failed.",
                                   internal_code="CHAPTER_CHECKPOINT_INTERNAL_ERROR", failure_stage="chapter_checkpoint_internal")
         cause = error
+        report_handled_exception(logger, error, stage="chapter_checkpoint", outcome="CHAPTER_CHECKPOINT_INTERNAL_ERROR",
+                                 correlation_id=request.correlation_id)
     diagnostics = {"workflow": "lesson_generation", "event": "final_failure",
                    "correlation_id": request.correlation_id, "conversation_id": request.conversation_id,
                    "checkpoint_action": request.checkpoint_action, "unit_index": request.checkpoint_unit_index,

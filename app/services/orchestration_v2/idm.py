@@ -11,6 +11,7 @@ from fastapi import HTTPException
 from app.core import metrics
 from app.core.config import settings
 from app.core.errors import AppError
+from app.core.handled_exceptions import report_handled_exception
 from app.core.logging import SERVICE_LOGGER_NAME, log_payload
 from app.idm.runtime import (
     IDM_LOG_FAMILY,
@@ -60,6 +61,10 @@ async def _idm_generate(api_key: str, model: str, prompt: str, **options: Any) -
         log_payload(logger, logging.WARNING, IDM_LOG_FAMILY, {
             "event": "provider_request_failed", "model": model, **safe_provider_error_diagnostics(error),
         })
+        report_handled_exception(
+            logger, error, stage=current_provider_stage() or "idm", family=IDM_LOG_FAMILY, model=model,
+            outcome="AI_PROVIDER_REQUEST_REJECTED" if status == 400
+            else "AI_PROVIDER_AUTH_REJECTED" if status in {401, 403} else "AI_PROVIDER_UNAVAILABLE")
         if status == 400:
             raise IdmProviderError("AI_PROVIDER_REQUEST_REJECTED", terminal=True) from error
         if status in {401, 403}:

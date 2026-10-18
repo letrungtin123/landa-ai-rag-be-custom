@@ -18,6 +18,7 @@ from app.assessment_planner import compile_v5_assessment_plan, materialize_asses
 from app.assessment_selection_contract import VERSION as ASSESSMENT_SELECTION_CONTRACT_VERSION
 from app.assessment_selection_contract import build_assessment_selection_contract
 from app.core.config import settings
+from app.core.handled_exceptions import report_handled_exception
 from app.core.logging import SERVICE_LOGGER_NAME
 from app.instructional_opportunities import VERSION as EVIDENCE_TREATMENT_VERSION
 from app.instructional_opportunities import compile_evidence_treatments
@@ -1117,6 +1118,8 @@ async def _lesson_author_blueprint(
         except Exception as error:
             # Media is additive review metadata. A failure must not erase a
             # source-valid Blueprint or imply that no media is needed.
+            report_handled_exception(logger, error, stage="blueprint_media_review", outcome="MEDIA_REVIEW_UNAVAILABLE",
+                                     correlation_id=request.correlation_id)
             emit_blueprint_diagnostic({
                 "stage": "media_recommendation_evaluation",
                 "event": "failed",

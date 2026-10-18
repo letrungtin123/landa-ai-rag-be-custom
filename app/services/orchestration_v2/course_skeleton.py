@@ -9,6 +9,7 @@ from fastapi import HTTPException
 from pydantic import ValidationError
 
 from app.core.config import settings
+from app.core.handled_exceptions import report_handled_exception
 from app.core.logging import SERVICE_LOGGER_NAME, log_payload
 from app.idm.course_design import run_idm_course_design
 from app.idm.runtime import IdmError, IdmStageError
@@ -93,6 +94,9 @@ async def _lesson_author_orchestration_v2_course_skeleton(
             # blank 5xx response.
             provider_failure_code = "AI_PROVIDER_UNAVAILABLE"
             last_code = provider_failure_code
+            report_handled_exception(logger, error, stage="course_skeleton", outcome=provider_failure_code,
+                                     family=V2_LOG_FAMILY, correlation_id=request.correlation_id,
+                                     provider_attempt=attempt)
             log_payload(logger, logging.WARNING, V2_LOG_FAMILY, {
                 "event": "course_skeleton_provider_fallback",
                 "correlation_id": request.correlation_id,

@@ -23,6 +23,7 @@ from pydantic import BaseModel, SecretStr
 from app.core import metrics
 from app.core.config import settings
 from app.core.errors import AppError
+from app.core.handled_exceptions import report_handled_exception
 from app.core.logging import SERVICE_LOGGER_NAME, log_event
 from app.infra import gemini as gemini_infra
 from app.infra.provider_limits import RATE_LIMITED_CODE, classify_provider_limit
@@ -473,6 +474,8 @@ async def call_provider_with_timeout(
                 continue
             if is_transient:
                 outcome = "unavailable"
+                report_handled_exception(logger, error, stage=metrics.current_provider_stage(),
+                                         outcome="AI_PROVIDER_UNAVAILABLE", model=model, provider_attempt=attempt + 1)
                 if on_provider_diagnostic is not None:
                     emit_safe_provider_telemetry(on_provider_diagnostic, {
                         "event": "provider_unavailable",

@@ -85,6 +85,12 @@ PROVIDER_TOKENS = Counter(
     ("operation", "kind", "stage"),
     registry=REGISTRY,
 )
+HANDLED_EXCEPTIONS = Counter(
+    "ai_rag_handled_exceptions_total",
+    "Exceptions a broad handler turned into a fallback or a safe error code, by stage, exception type and outcome.",
+    ("stage", "exception_type", "outcome"),
+    registry=REGISTRY,
+)
 FALLBACKS = Counter(
     "ai_rag_fallbacks_total",
     "Responses that used deterministic or structured fallback content, by stage.",

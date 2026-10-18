@@ -266,6 +266,8 @@ class IdmUnitDeps:
     # rebuild that type (prose-only ``problem``, ``la_faq`` without explicit conditions, ...).
     # Optional for injected deps: derived from ``source_locked_unit`` when absent.
     source_locked_components: Sequence[dict[str, Any] | None] | None = None
+    # Observer of the ``recoverable_errors`` a W5 step turns into an invalid answer: (stage, code, error).
+    on_recoverable_error: Callable[[str, str, BaseException], None] | None = None
 
 
 def brief_purpose(brief: IdmUnitBriefV1) -> dict[str, str] | None:
@@ -741,10 +743,18 @@ class IdmUnitWriter:
             value = _strip_learning_block_ids(bind_provider_semantic_versions(json.loads(text)))
             unit = self.deps.bind_instance_payload(value, self.expected)
         except self.deps.recoverable_errors as error:
+            self.report_recoverable("idm_w5_bind", "IDM_W5_INSTANCE_INVALID", error)
             raise IdmResponseInvalidError("IDM_W5_INSTANCE_INVALID", safe_error_details(error)) from error
         components = [self.normalize_component(index, component)
                       for index, component in enumerate(unit.get("components", []))]
         return {**unit, "components": components, "component_plan": list(self.plans)}
+
+    def report_recoverable(self, stage: str, code: str, error: BaseException) -> None:
+        """Hand an error this step turns into an invalid answer to the service's observer (type, stage,
+        traceback), so a programming error is not mistaken for a model answer."""
+
+        if self.deps.on_recoverable_error is not None:
+            self.deps.on_recoverable_error(stage, code, error)
 
     def decode_repair(self, text: str, unit: dict[str, Any], targets: list[int],
                       coverage: list[int]) -> dict[str, Any]:
@@ -891,6 +901,7 @@ class IdmUnitWriter:
                 delta = self.decode_repair(text, draft.unit, targets, coverage)
                 return self.deps.merge_repair(draft.unit, delta, targets, coverage)
             except self.deps.recoverable_errors as error:
+                self.report_recoverable("idm_w5_repair", "IDM_W5_REPAIR_INVALID", error)
                 details = (safe_error_details(error) + self.delta_details(delta))[:_MAX_LOGGED_DETAILS]
                 raise IdmResponseInvalidError("IDM_W5_REPAIR_INVALID", details) from error
 

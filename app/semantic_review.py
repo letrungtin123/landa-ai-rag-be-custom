@@ -9,6 +9,7 @@ without network access.
 """
 
 import json
+import logging
 import re
 from collections import Counter
 from copy import deepcopy
@@ -17,6 +18,10 @@ from hashlib import sha256
 from typing import Any, Awaitable, Callable, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
+
+from app.core.handled_exceptions import report_handled_exception
+
+logger = logging.getLogger(__name__)
 
 SEMANTIC_REVIEW_CONTRACT_VERSION = "semantic-review-v1"
 SEMANTIC_REVIEW_PROMPT_VERSION = "semantic-review-prompt-v1"
@@ -378,7 +383,8 @@ async def run_bounded_semantic_review(
         )
     try:
         first = await reviewer(deepcopy(baseline), full_scope)
-    except Exception:
+    except Exception as error:
+        report_handled_exception(logger, error, stage="semantic_review", outcome="SEMANTIC_REVIEW_UNAVAILABLE")
         return SemanticReviewRunOutcome(
             baseline, "review_required", "unavailable", None, None, False, False, (),
             "SEMANTIC_REVIEW_UNAVAILABLE",
@@ -405,7 +411,8 @@ async def run_bounded_semantic_review(
                 "SEMANTIC_REPAIR_DETERMINISTIC_RECHECK_FAILED",
             )
         scoped = await reviewer(deepcopy(repaired), targets)
-    except Exception:
+    except Exception as error:
+        report_handled_exception(logger, error, stage="semantic_repair", outcome="SEMANTIC_REPAIR_UNAVAILABLE")
         return SemanticReviewRunOutcome(
             baseline, "review_required", "review_required", first, None, True, False, targets,
             "SEMANTIC_REPAIR_UNAVAILABLE",

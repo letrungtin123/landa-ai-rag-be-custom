@@ -13,6 +13,7 @@ from fastapi import HTTPException
 from google.genai import types
 from pydantic import BaseModel
 
+from app.core.handled_exceptions import report_handled_exception
 from app.core.logging import SERVICE_LOGGER_NAME
 from app.learner_content_purity import build_learner_content_purity_context
 from app.lesson_author_checkpoint import ChapterCheckpointUnit, checkpoint_expected_units, select_checkpoint_unit
@@ -362,6 +363,10 @@ async def generate_staged_lesson_author_proposal(
                     failure_stage="staged_lesson_provider_request",
                     diagnostics=error_diagnostics,
                 )
+            if not isinstance(error, (HTTPException, WorkflowFailure)):
+                report_handled_exception(logger, error, stage=generation_stage,
+                                         outcome=str(getattr(failure, "internal_code", None) or "PROVIDER_ERROR"),
+                                         correlation_id=request.correlation_id, batch_index=batch_index)
             logger.info("lesson_author_staged_provider_failure %s", json.dumps({
                 "correlation_id": request.correlation_id, "conversation_id": request.conversation_id,
                 "generation_stage": generation_stage, "batch_index": batch_index, "batch_count": batch_count,
@@ -1010,7 +1015,10 @@ async def generate_staged_lesson_author_proposal(
             # otherwise accepted checkpoint or trigger another paid dispatch.
             try:
                 observation = observe_lesson_content(generated, expected, source_coverage_manifest)
-            except Exception:
+            except Exception as error:
+                report_handled_exception(logger, error, stage="content_observation",
+                                         outcome="CONTENT_OBSERVATION_UNAVAILABLE",
+                                         correlation_id=request.correlation_id, unit_path=expected["unit_path"])
                 observation = {"observation_version": "lesson-content-observation-1", "mode": "shadow",
                                "blocking": False, "code": "CONTENT_OBSERVATION_UNAVAILABLE",
                                "semantic_fidelity": "not_measured", "semantic_coverage": "not_measured"}

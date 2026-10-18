@@ -24,6 +24,7 @@ from app.core.document_limits import (
     document_source_suffix,
 )
 from app.core.errors import AppError, DocumentLimitError
+from app.core.handled_exceptions import count_handled_exception
 from app.core.logging import SERVICE_LOGGER_NAME
 from app.repositories import indexing as index_repository
 from app.repositories.indexing import delete_previous_structure_nodes_if_available, persist_structure_nodes_if_available
@@ -215,6 +216,8 @@ async def _index_document(request: RagIndexRequest, pool: asyncpg.Pool) -> dict[
             error_code = exc.code if isinstance(exc, AppError) else "INDEX_DOCUMENT_FAILED"
         if isinstance(exc, (DocumentLimitError, UnsupportedDocumentTypeError)):
             metrics.DOCUMENT_LIMIT_REJECTIONS.labels(code=exc.code).inc()
+        # rag_index_failed below carries the traceback (logger.exception).
+        count_handled_exception(exc, stage="index", outcome=error_code)
         await index_repository.mark_index_error(pool, index_id, error_code)
         logger.exception(
             "rag_index_failed",
