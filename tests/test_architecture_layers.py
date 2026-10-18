@@ -45,9 +45,6 @@ class Allowance(NamedTuple):
 # An entry only shrinks: the test fails when the file or function grows past its size here (lower the number
 # when it shrinks) and when it fits the limit again (remove the entry). New code never gets an entry.
 FILE_SIZE_ALLOWLIST: dict[str, Allowance] = {
-    "idm/storyboard.py": Allowance(1_562, "W5 writer, repair, settle and fallback in one IdmUnitWriter class (11 lines "
-                                          "of it are the wave-1 recoverable-error observer)",
-                                   "wave 2 (2.5): split by W5 step into idm/w5/"),
     "idm/prompts.py": Allowance(973, "the builders of every IDM stage prompt (spec Appendix A)",
                                 "wave 2 (2.5): one prompt module per stage"),
 }

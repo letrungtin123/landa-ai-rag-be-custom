@@ -6,27 +6,22 @@ Acceptance reuses the shared staged validators (injected through
 revision-0 acceptance rules (:mod:`app.idm.node_acceptance`), and adds the IDM
 checks. A failing slot gets one scoped repair, then the source-locked fallback; a
 unit Node would reject is never returned (run c2e5ac41).
+
+The unit inputs (deps, brief, budget, draft, settle code sets) are in ``app.idm.storyboard_context`` and the
+writer's state and deterministic steps in ``app.idm.storyboard_steps``; the prompts, the provider steps, the
+settlement and the unit flow are here.
 """
 
 from __future__ import annotations
 
 import asyncio
-import json
 import re
 import time
-from collections import Counter
-from collections.abc import Callable, Mapping, Sequence
-from dataclasses import dataclass, field
-from typing import Any, Final, Protocol
+from collections.abc import Mapping, Sequence
+from typing import Any, Final
 
-from pydantic import BaseModel, ValidationError
-
-from app.idm.acronyms import KNOWN_ABBREVIATIONS, AcronymGuide, abbreviations, explained, learner_texts, with_expansion
-from app.idm.answer_checks import contested_option, fact_table_rows, unit_teaching
-from app.idm.artifacts import clean_question, clean_semantic
-from app.idm.budget import judge_repair_fits, repair_thinking_for, writer_thinking
-from app.idm.contracts import IdmUnitBriefV1, brief_hash_of
-from app.idm.diagram import idm_diagram_relationships
+from app.idm.answer_checks import contested_option, unit_teaching
+from app.idm.budget import judge_repair_fits, repair_thinking_for
 from app.idm.faq_checks import (
     FAQ_INVENTED_REASON_CODE,
     FAQ_OPEN_QUESTION_CODE,
@@ -34,67 +29,29 @@ from app.idm.faq_checks import (
     FAQ_TYPE_MIX_CODE,
     FAQ_VALUE_CODES,
     RECALL,
-    FaqChecker,
-    extra_recall_items,
     faq_writer_rules,
     question_types,
 )
-from app.idm.fidelity import brief_mode, budget_words, slot_marks, writer_fidelity_rules
+from app.idm.fidelity import slot_marks, writer_fidelity_rules
 from app.idm.fidelity_checks import (
     EXAMPLE_ROLE_CODE,
     FIDELITY_CODES,
     NEW_FACT_CODE,
     SENTENCE_COPY_CODE,
     SENTENCE_LENGTH_CODE,
-    FidelityChecker,
     length_report,
 )
-from app.idm.framework import (
-    build_promise,
-    framework_coverage,
-    framework_support_lines,
-    is_framework_brief,
-    with_framework_list,
-)
-from app.idm.html_rules import (
-    DENSITY_CODE,
-    HtmlRuleViolation,
-    html_rule_violations,
-    minimum_visible_chars,
-    normalize_html_semantic,
-)
-from app.idm.mcq import (
-    ANSWER_LENGTH_CUE_CODE,
-    OPTION_LETTERS,
-    QUESTION_INCOMPLETE_CODE,
-    free_key_letter,
-    normalize_single_choice,
-    option_length_stats,
-    practice_key_shift,
-    question_complete,
-    question_ordinal,
-)
-from app.idm.node_acceptance import (
-    AcceptanceContext,
-    AcceptanceFinding,
-    acceptance_log,
-    node_acceptance_findings,
-)
+from app.idm.framework import framework_coverage
+from app.idm.html_rules import DENSITY_CODE
+from app.idm.mcq import ANSWER_LENGTH_CUE_CODE, OPTION_LETTERS, option_length_stats
+from app.idm.node_acceptance import AcceptanceFinding, acceptance_log
 from app.idm.policy import (
-    EXTRA_WORDS_PER_MUST_KNOW_BLOCK,
-    FAQ_COMPONENT_TYPE,
     FAQ_DEEP_TYPES,
-    IDM_FAQ_MIN_ITEMS,
     IDM_MCQ_LENGTH_TARGET_RATIO,
     IDM_SENTENCE_LENGTH_MAX_AVERAGE_WORDS,
     IDM_SENTENCE_LENGTH_MAX_WORDS,
     IDM_UNIT_WRITER_MAX_OUTPUT_TOKENS,
-    MAX_GENERATED_WORDS,
-    MIN_GENERATED_WORDS,
-    SEGMENT_WORD_BUDGET,
     THINKING_W5,
-    VISIBLE_CHARS_PER_WORD,
-    WORKSHEET_COMPONENT_TYPE,
 )
 from app.idm.prompts import (
     COMPACT_UNIT,
@@ -109,14 +66,9 @@ from app.idm.prompts import (
 )
 from app.idm.qa import (
     ANSWER_CONTESTED_CODE,
-    ANSWER_LEAK_CODE,
-    CALLOUT_TO_PROSE_CODE,
     CALLOUT_UNGROUNDED_CODE,
-    FAQ_ITEMS_DROPPED_CODE,
     FAQ_RESTATES_HTML_CODE,
-    FAQ_TITLE_MISMATCH_CODE,
     FRAMEWORK_INCOMPLETE_CODE,
-    FRAMEWORK_LIST_INSERTED_CODE,
     NOTICE_REASONS,
     REVIEW_REASON_EVIDENCE,
     REVIEW_REASON_FALLBACK,
@@ -126,17 +78,13 @@ from app.idm.qa import (
     REVIEW_REASON_SERVER_EDIT,
     REVIEW_REASON_STEP_INCOMPLETE,
     REVIEW_REASON_STYLE,
-    SOURCE_ARTIFACT_CODE,
     STYLE_CODES,
-    WORKSHEET_INCOMPLETE_CODE,
     JudgeMode,
     JudgeOutcome,
     advisory_slot_findings,
     blocking_count,
     build_unit_author_note,
     build_unit_quality,
-    callouts_as_paragraphs,
-    deterministic_slot_findings,
     final_unit_findings,
     has_practice_slot,
     html_before,
@@ -158,333 +106,41 @@ from app.idm.runtime import (
     record_deterministic_fallback,
     repair_thinking,
 )
-from app.idm.text import evidence_index
-from app.idm.titles import TitleCaser
-from app.idm.worksheet import COMPACTED_CODE as WORKSHEET_COMPACTED_CODE
-from app.idm.worksheet import compact_worksheet, worksheet_fallback_html
-from app.instructional_density import INSTRUCTIONAL_DENSITY_POLICY_VERSION
+from app.idm.storyboard_context import (
+    _COVERAGE_CODES,
+    _FALLBACK_INVALID,
+    _MAX_LOGGED_DETAILS,
+    _MS,
+    _REVIEW_FIRST_CODES,
+    _REVIEW_ONLY_CODES,
+    _TARGETED_REPAIR_CODES,
+    REPAIR_SKIPPED_CODE,
+    IdmUnitDeps,
+    NodeAcceptanceUnitFinding,
+    _Draft,
+    _safe_path,
+    _slot_of,
+    acceptance_context,
+    brief_purpose,
+    build_idm_expected,
+    output_budget,
+    parse_brief,
+    safe_error_details,
+)
+from app.idm.storyboard_steps import IdmUnitWriterSteps
 from app.lesson_author_orchestration_v2_provider import UnitGenerationContractV2
-from app.ordered_learning_content import bind_provider_semantic_versions
 
-_SLOT_RE: Final = re.compile(r"components\[(\d+)\]")
-_COVERAGE_CODES: Final = frozenset({
-    "COMPONENT_COVERAGE_MISSING", "COMPONENT_COVERAGE_INCOMPLETE", "INVALID_FACT_ID_ARRAY",
-})
-_MS: Final = 1000
-# Log/prompt-safe tokens: a validator code and a JSON path (never provider text).
-_SAFE_CODE_RE: Final = re.compile(r"^[A-Z][A-Z0-9_]{2,99}$")
-_SAFE_PATH_RE: Final = re.compile(r"^[A-Za-z0-9_.\[\]]{1,160}$")
-_MAX_LOGGED_DETAILS: Final = 16
 _FIELD_OF_PATH_RE: Final = re.compile(r"^components\[\d+\]\.?")
-VERBATIM_COPY_CODE: Final = "IDM_W5_VERBATIM_COPY"
-# A worksheet that misses part of its structure keeps the provider slot for author review: the
-# source-locked html fallback would replace the practice with plain explanation.
-# An option copying the html before the question (QC course 364564, N3) is a review note once the repair
-# could not fix it: the source-locked question would drop the provider's scenario practice. So are an
-# ungrounded callout that cannot become a paragraph (N9), FAQ items that restate the html while too few
-# others remain, an FAQ title that does not match its questions (N11) and a title that promises a framework
-# the html does not list (N5): the source-locked rebuild would replace the whole teaching slot for a problem
-# the author fixes in a minute.
-# QLT-5 C: a copy (slot or sentence level), explanation or new-fact finding of a teaching slot is a review note too:
-# the source-locked rebuild would answer "too close to the source" with the source itself (plan 2026-10-13 §2.2,
-# point 5). QLT-5 D: so is an FAQ that recalls, copies a source sentence or states a new number or name: the
-# source-locked FAQ is made of verbatim source sentences.
-_REVIEW_FIRST_CODES: Final = frozenset({WORKSHEET_INCOMPLETE_CODE, ANSWER_LEAK_CODE, ANSWER_CONTESTED_CODE,
-                                        CALLOUT_UNGROUNDED_CODE, FAQ_RESTATES_HTML_CODE, FAQ_TITLE_MISMATCH_CODE,
-                                        FRAMEWORK_INCOMPLETE_CODE, SOURCE_ARTIFACT_CODE, VERBATIM_COPY_CODE,
-                                        *FIDELITY_CODES, *FAQ_VALUE_CODES})
-# Findings whose repair is dropped when it breaks a shared or Node rule: they end as review notes anyway.
-_REVIEW_ONLY_CODES: Final = frozenset({*FIDELITY_CODES, *FAQ_VALUE_CODES})
-# Findings a deterministic step settles when the repair does not (a list inserted, an FAQ item dropped, a callout
-# turned into prose, a review note): their repair alone is a targeted one, a scoped rewrite at low thinking. QC run
-# ab8d67e1 (R3): two leak repairs at medium thinking were cut by the unit deadline.
-# QLT-8: a question cut before it asks anything is one targeted repair too (the whole stem is rewritten).
-_TARGETED_REPAIR_CODES: Final = frozenset({FRAMEWORK_INCOMPLETE_CODE, ANSWER_LENGTH_CUE_CODE, ANSWER_LEAK_CODE,
-                                           ANSWER_CONTESTED_CODE, FAQ_RESTATES_HTML_CODE, FAQ_TITLE_MISMATCH_CODE,
-                                           CALLOUT_UNGROUNDED_CODE, SOURCE_ARTIFACT_CODE, QUESTION_INCOMPLETE_CODE,
-                                           *FIDELITY_CODES, *FAQ_VALUE_CODES})
-# A non-targeted repair that would not finish before the unit deadline is not started (R3).
-REPAIR_SKIPPED_CODE: Final = "IDM_W5_REPAIR_SKIPPED_BUDGET"
 # FAQ findings settled by dropping the items concerned while the slot keeps two items.
 _FAQ_PRUNE_CODES: Final = frozenset({FAQ_RESTATES_HTML_CODE, *FAQ_VALUE_CODES})
 _MAX_HINT_FACT_KEYS: Final = 24
 # Locations named per content-mode repair line (server-built JSON paths, never text).
 _MAX_HINT_LOCATIONS: Final = 8
-_FALLBACK_INVALID: Final = "ORCHESTRATION_V2_UNIT_FALLBACK_INVALID"
 
 
-def safe_error_details(error: BaseException) -> list[dict[str, Any]]:
-    """The validator code and path behind a rejected answer, in ``ValidationError``-like form.
-
-    Shared validators raise ``LessonAuthorProposalValidationError(code)`` (the code is the
-    message), ``LessonAuthorProposalValidationError(message, code=..., path=...)`` or
-    ``WorkflowFailure`` with ``diagnostics.validation_finding``; only tokens that look like a
-    code or a JSON path are kept, so provider text can never reach a log line or a prompt.
-    """
-
-    diagnostics = getattr(error, "diagnostics", None)
-    finding = diagnostics.get("validation_finding") if isinstance(diagnostics, dict) else None
-    candidates: list[tuple[Any, Any]] = []
-    if isinstance(finding, dict):
-        candidates.append((finding.get("code"), finding.get("path")))
-    # A code raised as the message carries no location (its ``path`` is the class default "unit").
-    candidates.append((str(error), None))
-    candidates.append((getattr(error, "code", None), getattr(error, "path", None)))
-    for code, path in candidates:
-        if isinstance(code, str) and _SAFE_CODE_RE.fullmatch(code):
-            return [{"type": code, "loc": [path] if isinstance(path, str) and _SAFE_PATH_RE.fullmatch(path) else []}]
-    if isinstance(error, json.JSONDecodeError):
-        return [{"type": "json_invalid", "loc": []}]
-    return [{"type": type(error).__name__, "loc": []}]
-
-
-def _safe_path(path: Any) -> str | None:
-    return path if isinstance(path, str) and _SAFE_PATH_RE.fullmatch(path) else None
-
-
-class UnitFinding(Protocol):
-    code: str
-    path: str
-
-
-@dataclass(frozen=True)
-class IdmUnitDeps:
-    """Shared staged-writer helpers injected by the service layer."""
-
-    build_instance_model: Callable[[list[dict[str, Any]]], type[BaseModel]]
-    bind_instance_payload: Callable[[Any, dict[str, Any]], dict[str, Any]]
-    validate_unit: Callable[[dict[str, Any], dict[str, Any]], UnitFinding | None]
-    build_repair_model: Callable[[dict[str, Any], list[int], list[int]], type[BaseModel]]
-    decode_repair: Callable[[str, dict[str, Any], list[int], list[int], dict[str, Any]], dict[str, Any]]
-    merge_repair: Callable[[dict[str, Any], dict[str, Any], list[int], list[int]], dict[str, Any]]
-    source_locked_unit: dict[str, Any] | None
-    purity_context: dict[str, Any]
-    evidence_review_required: bool
-    judge_mode: JudgeMode
-    recoverable_errors: tuple[type[Exception], ...]
-    # Per-slot source-locked rebuilds in plan order; ``None`` marks a slot whose evidence cannot
-    # rebuild that type (prose-only ``problem``, ``la_faq`` without explicit conditions, ...).
-    # Optional for injected deps: derived from ``source_locked_unit`` when absent.
-    source_locked_components: Sequence[dict[str, Any] | None] | None = None
-    # Observer of the ``recoverable_errors`` a W5 step turns into an invalid answer: (stage, code, error).
-    on_recoverable_error: Callable[[str, str, BaseException], None] | None = None
-
-
-def brief_purpose(brief: IdmUnitBriefV1) -> dict[str, str] | None:
-    """The course purpose a brief carries (QLT-5), as plan data for the writer and the judge."""
-
-    if brief.purpose_profile is None:
-        return None
-    return {"profile": brief.purpose_profile, "summary": brief.purpose_summary or ""}
-
-
-def parse_brief(contract: UnitGenerationContractV2) -> IdmUnitBriefV1:
-    """Validate the brief and check it against the contract slots (spec §7.7.2 step 1)."""
-
-    raw = contract.idm_unit_brief
-    try:
-        brief = IdmUnitBriefV1.model_validate(raw)
-    except ValidationError as error:
-        raise IdmStageError("IDM_W5_BRIEF_CONTRACT_MISMATCH") from error
-    if not isinstance(raw, dict) or brief_hash_of(raw) != brief.brief_hash:
-        raise IdmStageError("IDM_W5_BRIEF_CONTRACT_MISMATCH")
-    plans = contract.component_plan
-    if len(brief.components) != len(plans) or any(
-            slot.component_plan_id != plan.component_plan_id or slot.type != plan.type
-            or slot.owned_fact_keys != plan.source_fact_ids
-            or slot.supporting_fact_keys != plan.supporting_evidence_fact_ids
-            for slot, plan in zip(brief.components, plans, strict=True)):
-        raise IdmStageError("IDM_W5_BRIEF_CONTRACT_MISMATCH")
-    return brief
-
-
-def output_budget(brief: IdmUnitBriefV1, contract: UnitGenerationContractV2) -> dict[str, Any]:
-    """Segment-based teaching budget (spec §7.7.3); never the 1.75x-source rule. An explained unit (QLT-5 C) gets
-    ``EXPLAIN_BUDGET_PERCENT`` of it; Node's ``idmUnitOutputBudget`` computes the same numbers from the brief."""
-
-    blocks = {treatment.block_id for slot in brief.components for treatment in slot.treatments}
-    words = SEGMENT_WORD_BUDGET[brief.unit_segment] + EXTRA_WORDS_PER_MUST_KNOW_BLOCK * max(0, len(blocks) - 1)
-    words = budget_words(max(MIN_GENERATED_WORDS, min(MAX_GENERATED_WORDS, words)), brief_mode(brief),
-                         brief.unit_segment)
-    source_chars = sum(len(fact.fact_text) for fact in contract.source_facts)
-    return {"policy_version": INSTRUCTIONAL_DENSITY_POLICY_VERSION, "source_content_chars": source_chars,
-            "source_estimated_words": len(" ".join(fact.fact_text for fact in contract.source_facts).split()),
-            "max_visible_chars": words * VISIBLE_CHARS_PER_WORD, "max_words": words}
-
-
-def acceptance_context(contract: UnitGenerationContractV2, brief: IdmUnitBriefV1) -> AcceptanceContext:
-    """What Node's unit acceptance reads from the contract (``acceptOrchestrationV2GeneratedUnit``)."""
-
-    budget = output_budget(brief, contract)
-    return AcceptanceContext(
-        unit_title=contract.unit_title, unit_source_fact_ids=tuple(contract.unit_source_fact_ids),
-        plans=tuple(plan.model_dump(mode="json") for plan in contract.component_plan),
-        exact_identifiers=tuple(value for fact in contract.source_facts for value in (fact.fact_key, fact.source_ref)
-                                if value),
-        budget={"max_words": budget["max_words"], "max_visible_chars": budget["max_visible_chars"]},
-        worksheet_slots=frozenset(index for index, slot in enumerate(brief.components)
-                                  if slot.role == "practice" and slot.type == WORKSHEET_COMPONENT_TYPE))
-
-
-@dataclass
-class NodeAcceptanceUnitFinding:
-    """A Node acceptance rule in the shape of a shared-validator finding (``code``, ``path``)."""
-
-    code: str
-    path: str
-    acceptance: AcceptanceFinding
-
-    @classmethod
-    def of(cls, acceptance: AcceptanceFinding) -> NodeAcceptanceUnitFinding:
-        return cls(acceptance.code, acceptance.path, acceptance)
-
-
-def build_idm_expected(contract: UnitGenerationContractV2, brief: IdmUnitBriefV1, deps: IdmUnitDeps,
-                       locale: str) -> dict[str, Any]:
-    """The staged validator's ``expected`` dict with the IDM output budget."""
-
-    supporting = list(dict.fromkeys(fact_id for plan in contract.component_plan
-                                    for fact_id in plan.supporting_evidence_fact_ids))
-    text_by_id = {fact.fact_key: fact.fact_text for fact in contract.source_facts}
-    # The same step construction as the IDM diagram fallback (app.idm.diagram), so a provider
-    # diagram is never required to draw a slogan or heading the fallback would refuse (run e869f43a).
-    diagrams = {
-        plan.component_plan_id: idm_diagram_relationships(
-            text_by_id[fact_id] for fact_id in dict.fromkeys([*plan.source_fact_ids,
-                                                              *plan.supporting_evidence_fact_ids])
-            if fact_id in text_by_id)
-        for plan in contract.component_plan if plan.type == "la_diagram"
-    }
-    return {
-        "unit_title": contract.unit_title, "unit_purpose": contract.unit_purpose,
-        "source_fact_ids": list(contract.unit_source_fact_ids), "supporting_evidence_fact_ids": supporting,
-        "component_types": [plan.type for plan in contract.component_plan],
-        "component_plan": [plan.model_dump(mode="json") for plan in contract.component_plan],
-        "diagram_relationships_by_plan_id": diagrams,
-        "learning_objectives": list(contract.lesson_learning_objectives),
-        "learning_objective_refs": list(contract.unit_learning_objective_refs), "locale": locale,
-        "learner_content_purity": deps.purity_context, "instructional_output_budget": output_budget(brief, contract),
-    }
-
-
-def _strip_learning_block_ids(value: Any) -> Any:
-    """Teaching-group ids are server-owned; V2 IDM plans carry none."""
-
-    slots = value.get("components") if isinstance(value, dict) else None
-    # A writer answer addresses slots by key ({"c0": ...}); a decoded repair delta is a list.
-    payloads = slots.values() if isinstance(slots, dict) else slots if isinstance(slots, list) else []
-    for payload in payloads:
-        semantic = payload.get("semantic_content") if isinstance(payload, dict) else None
-        sections = semantic.get("sections") if isinstance(semantic, dict) else None
-        for section in sections if isinstance(sections, list) else []:
-            if isinstance(section, dict):
-                section["learning_block_ids"] = []
-    return value
-
-
-def _slot_of(finding: UnitFinding | None) -> int | None:
-    match = _SLOT_RE.search(finding.path) if finding is not None else None
-    return int(match.group(1)) if match else None
-
-
-@dataclass
-class _Draft:
-    unit: dict[str, Any]
-    fallback_slots: list[int]
-    repair_applied: bool = False
-    # Provider slots kept for author review: the shared payload validator accepts them, only IDM
-    # pedagogy checks (spec §7.7.2(b)) still fail, and no source-locked rebuild exists for the slot.
-    review_slots: list[int] = field(default_factory=list)
-    # Why each fallback or review slot was settled that way (validator codes; QC 234653, D16).
-    reasons: dict[int, list[str]] = field(default_factory=dict)
-
-
-class IdmUnitWriter:
-    """State for one unit: contract, brief, deps, runtime and the evolving draft."""
-
-    def __init__(self, contract: UnitGenerationContractV2, brief: IdmUnitBriefV1, deps: IdmUnitDeps,
-                 runtime: IdmRuntime) -> None:
-        self.contract, self.brief, self.deps, self.runtime = contract, brief, deps, runtime
-        self.plans = [plan.model_dump(mode="json") for plan in contract.component_plan]
-        self.expected = build_idm_expected(contract, brief, deps, runtime.locale)
-        # Source-locked fallback content restates whole facts; the IDM teaching
-        # budget applies to authored content only, so fallback validation drops it.
-        self.expected_fallback = {**self.expected, "instructional_output_budget": None}
-        self.text_by_id = {fact.fact_key: fact.fact_text for fact in contract.source_facts}
-        self.owned_text = [" ".join(self.text_by_id[key] for key in slot.owned_fact_keys if key in self.text_by_id)
-                           for slot in brief.components]
-        # Everything the writer was given (SOURCE_FACTS + LESSON_CONTEXT_FACTS); numbers of the approved
-        # plan (Must Do, purpose, practice sentences) may be repeated too.
-        self.evidence = evidence_index(
-            [*(fact.fact_text for fact in contract.source_facts),
-             *(item.fact_text for item in brief.lesson_context_facts)],
-            number_texts=[brief.lesson_objective, brief.unit_purpose, *brief.lesson_practice_sentences])
-        # QLT-5 C: the content mode of the unit and its checks of the teaching html slots. Names and numbers of the
-        # approved plan's titles may be repeated; drafted plan text (support briefs, scenarios) adds none.
-        self.mode = brief_mode(brief)
-        # QLT-7: the server-written framework briefs (item names and descriptions taken from the facts) are plan text
-        # too: the orientation unit of run fae66524 listed "SHIFT 4", "SHIFT 5" from them and got IDM_W5_NEW_FACT.
-        server_briefs = [item.brief for slot in brief.components for item in slot.support_items
-                         if is_framework_brief(item.brief)]
-        # The audience is plan text as well: a drafted example now names the learner's role from it ("một CEO").
-        plan_texts = [brief.course_title, brief.module_title, brief.lesson_title, brief.lesson_objective,
-                      brief.unit_purpose, contract.unit_title, *(slot.title for slot in brief.components),
-                      *server_briefs, brief.target_audience]
-        self.fidelity = FidelityChecker.build(brief, self.text_by_id, self.evidence, locale=runtime.locale,
-                                              plan_texts=plan_texts)
-        # QLT-5 D: the FAQ plan and the facts each FAQ answer is grounded in (its anchors, not the whole lesson).
-        self.faq = FaqChecker.build(
-            brief, {**{item.fact_key: item.fact_text for item in brief.lesson_context_facts}, **self.text_by_id},
-            plan_texts=[*plan_texts, *brief.lesson_practice_sentences])
-        self.has_faq = any(slot.type == FAQ_COMPONENT_TYPE for slot in brief.components)
-        # QLT-7: the table rows of the facts (a contested key is read against them too) and the sentence case of the
-        # slot titles, keeping the proper names the facts and the plan write.
-        given = [*(fact.fact_text for fact in contract.source_facts),
-                 *(item.fact_text for item in brief.lesson_context_facts)]
-        self.fact_rows = fact_table_rows(given)
-        self.titles = TitleCaser.from_texts([*given, *plan_texts])
-        # QLT-8: the full forms the facts give ("SPD (Standard Product Dev)") and the server's short list.
-        self.acronyms = AcronymGuide.build(given, runtime.locale)
-        self.acronyms_explained = 0
-        # A unit or html slot title that names "N <items>" promises an overview of all N items (QC 364564, N5). The
-        # items come from the unit's facts or, for an orientation unit whose blocks only introduce the framework,
-        # from the server-written support item W4 attached with the names of every item (QC run 8de1c76b, Q3).
-        teaching = [slot for slot in brief.components if slot.type == "html" and slot.role != "practice"]
-        self.framework_support = framework_support_lines(item.brief for slot in teaching for item in slot.support_items)
-        # The items come from one group: the support item, or the facts of one source block (QC run ab8d67e1, R1).
-        blocks: dict[str, list[str]] = {}
-        for fact in contract.source_facts:
-            blocks.setdefault(fact.scope_key, []).append(fact.fact_text)
-        self.framework = build_promise([contract.unit_title, *(slot.title for slot in teaching)],
-                                       [self.framework_support, *blocks.values()])
-        self.framework_inserted = 0
-        # The worksheet was shortened to fit the budget (Q2); QLT-9: whether its worked example stayed.
-        self.worksheet_compacted = False
-        self.worksheet_example_kept = False
-        self.codes: list[str] = []
-        # Provider, time-budget and repair failures behind a fallback (codes only, never provider text).
-        self.failure_codes: list[str] = []
-        self.faq_items_dropped = 0
-        # FAQ items dropped because their answer only repeated the html above them (N11).
-        self.faq_items_restated = 0
-        # QLT-5 D: FAQ items dropped because they copied a source sentence, or asked for a fact again past the one
-        # recall question allowed.
-        self.faq_items_copied = 0
-        self.faq_items_recall = 0
-        # QLT-7: FAQ items dropped because they answered an open SME question.
-        self.faq_items_open = 0
-        # FAQ items dropped because Node's workspace schema rejects them (not a grounding problem).
-        self.faq_items_invalid = 0
-        # Ungrounded callouts turned into plain paragraphs after the repair could not ground them (N9).
-        self.callouts_converted = 0
-        self.budget: dict[str, Any] = self.expected["instructional_output_budget"]
-        self.min_html_chars = minimum_visible_chars(self.budget.get("source_content_chars"))
-        # Deterministic html fixes applied before validation (counted, never content).
-        self.html_fixes: Counter[str] = Counter()
-        # Node's revision-0 acceptance rules: never return a unit Node rejects (run c2e5ac41).
-        self.acceptance = acceptance_context(contract, brief)
-        self.last_acceptance: list[AcceptanceFinding] = []
-        self.acceptance_seen: list[str] = []
+class IdmUnitWriter(IdmUnitWriterSteps):
+    """The W5 writer of one unit: prompts, provider steps and the settlement of a draft (``IdmUnitWriterSteps``
+    holds the state and the deterministic steps)."""
 
     # -- prompts ----------------------------------------------------------------------------
     def writer_prompt(self) -> str:
@@ -526,12 +182,6 @@ class IdmUnitWriter:
             faq_rules=faq_writer_rules(self.mode) if self.has_faq else "",
             example_opening=example_opening(self.contract.unit_path, self.runtime.locale),
         )
-
-    def html_violations(self, component: Any) -> list[HtmlRuleViolation]:
-        if not isinstance(component, dict) or component.get("type") != "html":
-            return []
-        return html_rule_violations(component.get("semantic_content"), budget=self.budget,
-                                    min_chars=self.min_html_chars)
 
     def rule_lines(self, unit: dict[str, Any], issues: Sequence[tuple[str, int]],
                    locations: Mapping[tuple[str, int], str]) -> list[str]:
@@ -676,161 +326,6 @@ class IdmUnitWriter:
         listed = ", ".join(f"[{key}]" for key in keys)
         return f" Start from this slot's facts: {listed}." if keys else ""
 
-    # -- acceptance --------------------------------------------------------------------------
-    def normalize_component(self, index: int, component: Any) -> Any:
-        """Deterministic, meaning-preserving fixes before validation: html (``app.idm.html_rules``) and the
-        seeded option order of a single-choice question (``app.idm.mcq``, QC course 364564 N2)."""
-
-        plan = self.plans[index] if 0 <= index < len(self.plans) else None
-        # A slot that owns no fact (a supporting question or FAQ) claims no coverage: the plan holds ownership, not
-        # the answer (QC run 61068de6: SUPPORTING_COMPONENT_CLAIMS_OWNERSHIP on a question without a source-locked
-        # rebuild ended the unit in FALLBACK_INVALID and the run in needs_action).
-        if (plan is not None and plan.get("component_plan_id") and not plan.get("source_fact_ids")
-                and isinstance(component, dict) and component.get("covered_source_fact_ids")):
-            component = {**component, "covered_source_fact_ids": []}
-            self.runtime.adjustments["w5_supporting_claim_cleared"] += 1
-        plan_type = plan["type"] if plan is not None else None
-        # QLT-7: the slot title in sentence case (Vietnamese), keeping acronyms and the facts' proper names.
-        if (self.runtime.locale == "vi" and isinstance(component, dict) and isinstance(component.get("title"), str)
-                and (titled := self.titles.title(component["title"])) != component["title"]):
-            component = {**component, "title": titled}
-            self.runtime.adjustments["w5_title_sentence_case"] += 1
-        # PDF marks in learner text (QC run ab8d67e1, R5): "Row N:" labels and a repeated word go first.
-        artefacts: Counter[str] = Counter()
-        if plan_type in {"problem", "la_faq"} and isinstance(component, dict):
-            component = clean_question(component, self.evidence.pairs, artefacts)
-            self.count_artefacts(artefacts)
-        if plan_type == "problem" and isinstance(component, dict):
-            # The key's letter: the one W4 gave the slot (QLT-9, balanced and shuffled over the course); for a design
-            # written before it, the question's place in the course plus the shift encoded in its practice id (Q4),
-            # or, for a question without a practice, a letter seeded by the source and the unit.
-            ordinal = question_ordinal(self.contract.unit_path)
-            slot = self.brief.components[index] if index < len(self.brief.components) else None
-            if slot is not None and slot.key_letter is not None:
-                ordinal = slot.key_letter
-            elif ordinal is not None and slot is not None and slot.practice is not None:
-                ordinal += practice_key_shift(slot.practice.practice_id)
-            elif ordinal is not None:
-                ordinal = free_key_letter(self.contract.source_snapshot_hash, self.contract.unit_path)
-            normalized, codes = normalize_single_choice(component, str(self.plans[index]["component_plan_id"]),
-                                                        ordinal)
-            self.runtime.adjustments.update(codes)
-            return normalized
-        if plan_type != "html" or not isinstance(component, dict) or not isinstance(
-                component.get("semantic_content"), dict):
-            return component
-        semantic, fixes = normalize_html_semantic(component["semantic_content"])
-        if isinstance(semantic, dict):
-            semantic = clean_semantic(semantic, self.evidence.pairs, self.runtime.locale, artefacts)
-        fixes.update(artefacts)
-        component = {**component, "semantic_content": semantic} if fixes else component
-        # QLT-5 C: an example that does not repeat the facts carries the illustrative label (explain mode, teaching
-        # slots), so a drafted example never reads as a fact.
-        component, labelled = self.fidelity.label_examples(index, component)
-        if labelled:
-            fixes["example_labelled"] += labelled
-        if not fixes:
-            return component
-        self.html_fixes.update(fixes)
-        self.runtime.adjustments.update({f"w5_html_{key}": count for key, count in fixes.items()})
-        return component
-
-    def count_artefacts(self, artefacts: Counter[str]) -> None:
-        self.runtime.adjustments.update({f"w5_text_{key}": count for key, count in artefacts.items()})
-
-    def bind(self, text: str) -> dict[str, Any]:
-        try:
-            value = _strip_learning_block_ids(bind_provider_semantic_versions(json.loads(text)))
-            unit = self.deps.bind_instance_payload(value, self.expected)
-        except self.deps.recoverable_errors as error:
-            self.report_recoverable("idm_w5_bind", "IDM_W5_INSTANCE_INVALID", error)
-            raise IdmResponseInvalidError("IDM_W5_INSTANCE_INVALID", safe_error_details(error)) from error
-        components = [self.normalize_component(index, component)
-                      for index, component in enumerate(unit.get("components", []))]
-        return {**unit, "components": components, "component_plan": list(self.plans)}
-
-    def report_recoverable(self, stage: str, code: str, error: BaseException) -> None:
-        """Hand an error this step turns into an invalid answer to the service's observer (type, stage,
-        traceback), so a programming error is not mistaken for a model answer."""
-
-        if self.deps.on_recoverable_error is not None:
-            self.deps.on_recoverable_error(stage, code, error)
-
-    def decode_repair(self, text: str, unit: dict[str, Any], targets: list[int],
-                      coverage: list[int]) -> dict[str, Any]:
-        """The addressed slot payloads of a repair answer, prepared exactly like a writer answer.
-
-        The repair wire schema hides the server-owned ``semantic_content.version``; without the
-        stamp every html repair failed the shared reader (run e869f43a: 4 x IDM_W5_REPAIR_INVALID).
-        """
-
-        delta: dict[str, Any] = _strip_learning_block_ids(bind_provider_semantic_versions(
-            self.deps.decode_repair(text, unit, targets, coverage, {})))
-        changes = delta.get("components") if isinstance(delta, dict) else None
-        if isinstance(changes, list):
-            delta = {**delta, "components": [
-                self.normalize_component(change["component_index"], change)
-                if isinstance(change, dict) and type(change.get("component_index")) is int else change
-                for change in changes]}
-        return delta
-
-    def delta_details(self, delta: Any) -> list[dict[str, Any]]:
-        """Safe html rule codes and paths of the slots a rejected repair answer addressed."""
-
-        changes = delta.get("components") if isinstance(delta, dict) else None
-        details: list[dict[str, Any]] = []
-        for change in changes if isinstance(changes, list) else []:
-            index = change.get("component_index") if isinstance(change, dict) else None
-            if type(index) is not int or not 0 <= index < len(self.plans) or "semantic_content" not in change:
-                continue
-            component = {"type": self.plans[index]["type"], "semantic_content": change["semantic_content"]}
-            details.extend({"type": item.code, "loc": [f"components[{index}].{item.location}"]}
-                           for item in self.html_violations(component))
-        return details[:_MAX_LOGGED_DETAILS]
-
-    def log_findings(self, answer: str, draft: _Draft, finding: UnitFinding | None,
-                     idm: Sequence[tuple[str, int]]) -> None:
-        """One safe line per accepted-but-invalid writer/repair answer: codes, paths, numbers."""
-
-        slots = sorted({index for _code, index in idm} | ({slot} if (slot := _slot_of(finding)) is not None else set()))
-        components = draft.unit.get("components", [])
-        html_rules = [item.as_log(index) for index in slots if 0 <= index < len(components)
-                      for item in self.html_violations(components[index])]
-        log_stage("idm_unit_validation", {
-            "correlation_id": self.runtime.correlation_id, "unit_path": self.contract.unit_path, "answer": answer,
-            "finding": None if finding is None else f"{finding.code}@{_safe_path(finding.path) or ''}",
-            "idm_findings": [f"{code}@components[{index}]" for code, index in idm],
-            "html_rules": html_rules[:_MAX_LOGGED_DETAILS], "html_fixes": dict(sorted(self.html_fixes.items())),
-            "node_acceptance": acceptance_log(self.last_acceptance, _MAX_LOGGED_DETAILS),
-            "fallback_slots": list(draft.fallback_slots),
-        })
-
-    def problems(self, draft: _Draft) -> tuple[UnitFinding | None, list[tuple[str, int]]]:
-        """First shared-validator finding plus IDM slot findings (fallback slots exempt)."""
-
-        expected = self.expected_fallback if draft.fallback_slots else self.expected
-        finding: UnitFinding | None = self.deps.validate_unit(draft.unit, expected)
-        self.last_acceptance = []
-        if finding is None:
-            # Node rejects the whole unit on the first of these; each is settled like a shared-validator finding.
-            self.last_acceptance = self.node_acceptance(draft)
-            finding = NodeAcceptanceUnitFinding.of(self.last_acceptance[0]) if self.last_acceptance else None
-        exempt = {*draft.fallback_slots, *draft.review_slots}
-        idm = [(item.code, item.component_index)
-               for item in deterministic_slot_findings(draft.unit, self.brief, self.owned_text, self.evidence,
-                                                       self.framework, fidelity=self.fidelity, faq_check=self.faq,
-                                                       fact_rows=self.fact_rows)
-               if item.component_index not in exempt]
-        return finding, idm
-
-    def node_acceptance(self, draft: _Draft, *, whole_fallback: bool = False) -> list[AcceptanceFinding]:
-        """Node acceptance findings of ``draft`` (budget only on provider content, as Node measures it)."""
-
-        findings = node_acceptance_findings(draft.unit, self.acceptance,
-                                            provider_validated=not whole_fallback and not draft.fallback_slots)
-        self.acceptance_seen.extend(item for item in acceptance_log(findings) if item not in self.acceptance_seen)
-        return findings
-
     def acceptance_rule_lines(self, index: int) -> list[str]:
         """Repair lines for the Node rules a slot breaks (the finer detail code where Node's code is coarse)."""
 
@@ -842,42 +337,6 @@ class IdmUnitWriter:
             location = ", ".join(f"{slot}.items[{position}]" for position in item.items) or slot
             lines.append(rule_line(slot, item.detail or item.code, location))
         return lines
-
-    def prune_items(self, draft: _Draft, index: int, finding: AcceptanceFinding) -> _Draft | None:
-        """Drop the FAQ items Node would reject while the slot keeps its minimum item count."""
-
-        components = list(draft.unit.get("components", []))
-        component = components[index] if 0 <= index < len(components) else None
-        items = component.get("items") if isinstance(component, dict) else None
-        if (not isinstance(component, dict) or component.get("type") != "la_faq" or not isinstance(items, list)
-                or not finding.items):
-            return None
-        drop = set(finding.items)
-        keep = [item for position, item in enumerate(items) if position not in drop]
-        if len(keep) < IDM_FAQ_MIN_ITEMS:
-            return None
-        components[index] = {**component, "items": keep}
-        self.faq_items_invalid += len(items) - len(keep)
-        self.runtime.adjustments["w5_faq_items_invalid_dropped"] += len(items) - len(keep)
-        return _Draft({**draft.unit, "components": components}, list(draft.fallback_slots), draft.repair_applied,
-                      list(draft.review_slots), dict(draft.reasons))
-
-    # -- time budget (QC run ab8d67e1, R3) ------------------------------------------------------
-    def log_budget(self, step: str, thinking: ThinkingLevel | None) -> None:
-        """One line per budget decision: the step, the seconds left and the level chosen (numbers only)."""
-
-        log_stage("idm_unit_budget", {
-            "correlation_id": self.runtime.correlation_id, "unit_path": self.contract.unit_path, "step": step,
-            "remaining_ms": int(self.runtime.remaining_seconds() * _MS), "thinking": thinking or "skipped",
-        })
-
-    def writer_level(self, preferred: ThinkingLevel, step: str) -> ThinkingLevel:
-        level = writer_thinking(self.runtime.remaining_seconds(), repair_room=has_practice_slot(self.brief),
-                                preferred=preferred)
-        if level != preferred:
-            self.runtime.adjustments["w5_writer_thinking_lowered_budget"] += 1
-        self.log_budget(step, level)
-        return level
 
     # -- provider steps -----------------------------------------------------------------------
     async def write(self, repair: str = "", thinking: ThinkingLevel = THINKING_W5) -> dict[str, Any]:
@@ -916,182 +375,6 @@ class IdmUnitWriter:
         return _Draft({**unit, "component_plan": list(self.plans)}, list(draft.fallback_slots), True,
                       list(draft.review_slots), dict(draft.reasons))
 
-    def fallback_component(self, index: int) -> dict[str, Any] | None:
-        slots = self.deps.source_locked_components
-        if slots is None:
-            source = self.deps.source_locked_unit
-            slots = source.get("components", []) if source is not None else []
-        component = slots[index] if 0 <= index < len(slots) else None
-        return dict(component) if component is not None else None
-
-    def is_worksheet(self, index: int) -> bool:
-        slot = self.brief.components[index] if 0 <= index < len(self.brief.components) else None
-        return slot is not None and slot.role == "practice" and slot.type == WORKSHEET_COMPONENT_TYPE
-
-    def worksheet_fallback(self, index: int) -> dict[str, Any] | None:
-        """The source-locked component of a worksheet slot as a structured form (QC run 8de1c76b, Q2): the
-        fields in one table, the closing lines and a self-check list; ``None`` when the facts hold no form."""
-
-        base = self.fallback_component(index)
-        if base is None or not self.is_worksheet(index):
-            return None
-        plan = self.plans[index]
-        keys = list(dict.fromkeys([*plan["source_fact_ids"], *plan["supporting_evidence_fact_ids"]]))
-        practice = self.brief.components[index].practice
-        structured = worksheet_fallback_html(str(base.get("title") or self.contract.unit_title),
-                                             [self.text_by_id[key] for key in keys if key in self.text_by_id],
-                                             practice.sentence if practice else None, self.runtime.locale)
-        return {**base, "html": structured} if structured else None
-
-    def fallback_slot(self, draft: _Draft, index: int, reasons: Sequence[str] = ()) -> _Draft | None:
-        component = self.fallback_component(index)
-        if component is None:
-            return None
-        components = list(draft.unit["components"])
-        worksheet = self.worksheet_fallback(index)
-        if worksheet is not None:
-            components[index] = worksheet
-            candidate = _Draft({**draft.unit, "components": components}, sorted({*draft.fallback_slots, index}))
-            finding, _idm = self.problems(candidate)
-            # The structured form is used only when the validators accept it in that slot.
-            if _slot_of(finding) != index:
-                component = worksheet
-                self.runtime.adjustments["w5_worksheet_structured_fallback"] += 1
-        components[index] = component
-        record_deterministic_fallback(self.runtime, stage="idm_w5_slot", code="IDM_W5_SLOT_FALLBACK")
-        return _Draft({**draft.unit, "components": components}, sorted({*draft.fallback_slots, index}),
-                      draft.repair_applied, [slot for slot in draft.review_slots if slot != index],
-                      {**draft.reasons, index: list(dict.fromkeys(reasons))})
-
-    def keep_for_review(self, draft: _Draft, index: int, reasons: Sequence[str]) -> _Draft:
-        self.codes.extend(reasons)
-        return _Draft(draft.unit, list(draft.fallback_slots), draft.repair_applied,
-                      sorted({*draft.review_slots, index}), {**draft.reasons, index: list(dict.fromkeys(reasons))})
-
-    def prune_faq(self, draft: _Draft, index: int) -> _Draft | None:
-        """Drop the FAQ items that repeat the html above them (N11), copy a source sentence or state a number or a
-        name their facts do not (QLT-5 D), and the recall questions past the one allowed when a clarifying question
-        stays, while the slot keeps its minimum item count."""
-
-        components = list(draft.unit.get("components", []))
-        component = components[index] if 0 <= index < len(components) else None
-        items = component.get("items") if isinstance(component, dict) else None
-        if (not isinstance(component, dict) or component.get("type") != FAQ_COMPONENT_TYPE
-                or not isinstance(items, list)):
-            return None
-        restated = set(restated_faq_items(component, html_before(draft.unit, index)))
-        copied = set(self.faq.restated(component)) - restated
-        # QLT-7: an item that answers an open SME question, or invents a reason for a threshold, goes too.
-        unresolved = set(self.faq.open_items(component)) - restated - copied
-        new_facts = (set(self.faq.with_new_facts(index, component)) | set(self.faq.invented_reasons(index, component))
-                     ) - restated - copied - unresolved
-        drop = restated | copied | new_facts | unresolved
-        types = question_types(component)
-        kept = [position for position in range(len(items)) if position not in drop]
-        kept_types = [types[position] for position in kept]
-        recall = ({kept[position] for position in extra_recall_items(kept_types)}
-                  if any(kind in FAQ_DEEP_TYPES for kind in kept_types) else set())
-        drop |= recall
-        keep = [item for position, item in enumerate(items) if position not in drop]
-        if not drop or len(keep) < IDM_FAQ_MIN_ITEMS:
-            return None
-        components[index] = {**component, "items": keep}
-        self.faq_items_dropped += len(new_facts)
-        self.faq_items_restated += len(restated)
-        self.faq_items_copied += len(copied)
-        self.faq_items_recall += len(recall)
-        self.faq_items_open += len(unresolved)
-        self.codes.append(FAQ_ITEMS_DROPPED_CODE)
-        for key, count in (("w5_faq_items_dropped", len(new_facts)), ("w5_faq_items_restated_dropped", len(restated)),
-                           ("w5_faq_items_copied_dropped", len(copied)),
-                           ("w5_faq_items_recall_dropped", len(recall)),
-                           ("w5_faq_items_open_question_dropped", len(unresolved))):
-            if count:
-                self.runtime.adjustments[key] += count
-        return _Draft({**draft.unit, "components": components}, list(draft.fallback_slots), draft.repair_applied,
-                      list(draft.review_slots), dict(draft.reasons))
-
-    def compact_worksheet(self, draft: _Draft, index: int) -> _Draft | None:
-        """An over-budget worksheet made shorter, its worked example kept as long as possible (QLT-9: shorter
-        guidance cells, then two example entries, then without other sections, only then without the example), when
-        that fits every html rule and Node's budget and the worksheet stays complete (QC run 8de1c76b, Q2)."""
-
-        components = list(draft.unit.get("components", []))
-        component = components[index] if 0 <= index < len(components) else None
-        if not isinstance(component, dict) or not self.is_worksheet(index):
-            return None
-
-        def with_slot(value: dict[str, Any]) -> _Draft:
-            return _Draft({**draft.unit, "components": [*components[:index], value, *components[index + 1:]]},
-                          list(draft.fallback_slots), draft.repair_applied, list(draft.review_slots),
-                          dict(draft.reasons))
-
-        def fits(value: dict[str, Any]) -> bool:
-            if self.html_violations(value):
-                return False
-            finding, idm = self.problems(with_slot(value))
-            return _slot_of(finding) != index and not any(slot == index for _code, slot in idm)
-
-        compacted = compact_worksheet(component, fits)
-        if compacted is None:
-            return None
-        value, keeps_example = compacted
-        self.worksheet_compacted = True
-        self.worksheet_example_kept = keeps_example
-        self.codes.append(WORKSHEET_COMPACTED_CODE)
-        self.runtime.adjustments["w5_worksheet_compacted_example_kept" if keeps_example
-                                 else "w5_worksheet_compacted"] += 1
-        return with_slot(value)
-
-    def insert_framework_list(self, draft: _Draft, index: int) -> _Draft | None:
-        """The teaching html with one more section listing every promised item by name (QC run 8de1c76b, Q3), when
-        the names are known (unit facts or the W4 support item) and the slot stays within every html rule."""
-
-        if self.framework is None or len(self.framework.labels) != self.framework.count:
-            return None
-        components = list(draft.unit.get("components", []))
-        component = components[index] if 0 <= index < len(components) else None
-        if not isinstance(component, dict) or component.get("type") != "html":
-            return None
-        listed = with_framework_list(component, self.framework, self.runtime.locale)
-        if listed is None or self.html_violations(listed):
-            return None
-        components[index] = listed
-        candidate = _Draft({**draft.unit, "components": components}, list(draft.fallback_slots),
-                           draft.repair_applied, list(draft.review_slots), dict(draft.reasons))
-        finding, idm = self.problems(candidate)
-        if _slot_of(finding) == index or (FRAMEWORK_INCOMPLETE_CODE, index) in idm:
-            return None
-        self.framework_inserted += len(self.framework.labels)
-        self.codes.append(FRAMEWORK_LIST_INSERTED_CODE)
-        self.runtime.adjustments["w5_framework_list_inserted"] += 1
-        return candidate
-
-    def callouts_to_prose(self, draft: _Draft, index: int) -> _Draft | None:
-        """Turn the callouts the facts do not support into plain paragraphs (QC course 364564, N9), when the
-        slot stays valid that way; the text no longer reads as a quotation and the note asks the SME."""
-
-        components = list(draft.unit.get("components", []))
-        component = components[index] if 0 <= index < len(components) else None
-        if not isinstance(component, dict):
-            return None
-        positions = ungrounded_callouts(component, self.evidence)
-        converted = callouts_as_paragraphs(component, positions)
-        if not positions or self.html_violations(converted):
-            return None
-        components[index] = converted
-        candidate = _Draft({**draft.unit, "components": components}, list(draft.fallback_slots),
-                           draft.repair_applied, list(draft.review_slots), dict(draft.reasons))
-        # Another IDM finding of the slot is settled by the next pass; a validator or Node finding means the
-        # paragraph form is not acceptable here.
-        finding, idm = self.problems(candidate)
-        if _slot_of(finding) == index or (CALLOUT_UNGROUNDED_CODE, index) in idm:
-            return None
-        self.callouts_converted += len(positions)
-        self.codes.append(CALLOUT_TO_PROSE_CODE)
-        self.runtime.adjustments["w5_callouts_to_prose"] += len(positions)
-        return candidate
-
     async def budgeted_repair(self, draft: _Draft, issues: Sequence[tuple[str, int]],
                               locations: Mapping[tuple[str, int], str], *, targeted: bool) -> tuple[_Draft, bool]:
         """One repair call at the thinking level the time left allows, or none (R3); ``(draft, repaired)``.
@@ -1115,73 +398,6 @@ class IdmUnitWriter:
                 raise
             self.failure_codes.append(error.code)
         return draft, False
-
-    def keep_whole_questions(self, before: _Draft, after: _Draft) -> _Draft:
-        """A question a repair cut short gets its pre-repair version back (QLT-8, run 0a11aa9e c1.l2.u4: the leak
-        repair ended the stem at "… với các tiêu chí của 5 trục chuyển dịch" and the cut stem reached the course); the
-        finding that started the repair is then settled as before (review note or fallback)."""
-
-        old = before.unit.get("components", [])
-        new = list(after.unit.get("components", []))
-        restored = 0
-        for index, component in enumerate(new):
-            previous = old[index] if index < len(old) else None
-            if (isinstance(component, dict) and component.get("type") == "problem" and isinstance(previous, dict)
-                    and question_complete(previous.get("question"))
-                    and not question_complete(component.get("question"))):
-                new[index] = previous
-                restored += 1
-        if not restored:
-            return after
-        self.runtime.adjustments["w5_cut_question_reverted"] += restored
-        return _Draft({**after.unit, "components": new}, list(after.fallback_slots), after.repair_applied,
-                      list(after.review_slots), dict(after.reasons))
-
-    def explain_acronyms(self, draft: _Draft) -> tuple[_Draft, list[str]]:
-        """QLT-8: the full form in brackets at the first use of each abbreviation in the unit's provider html, when the
-        facts or the server's short list give it and the slot keeps every rule it met; and the abbreviations nobody
-        explains, for the author note (``app.idm.acronyms``)."""
-
-        components = list(draft.unit.get("components", []))
-        texts = [text for component in components if isinstance(component, dict)
-                 for text in learner_texts(component)]
-        unexplained: list[str] = []
-        for token in abbreviations(texts):
-            full = self.acronyms.expansion(token)
-            if token in KNOWN_ABBREVIATIONS or explained(token, full, texts):
-                continue
-            if full is None:
-                if self.acronyms.worth_noting(token):
-                    unexplained.append(token)
-                continue
-            for index, component in enumerate(components):
-                if (index in draft.fallback_slots or not isinstance(component, dict)
-                        or component.get("type") != "html"):
-                    continue
-                expanded = with_expansion(component, token, full)
-                if expanded is None:
-                    continue
-                candidate = _Draft({**draft.unit, "components": [*components[:index], expanded,
-                                                                 *components[index + 1:]]},
-                                   list(draft.fallback_slots), draft.repair_applied, list(draft.review_slots),
-                                   dict(draft.reasons))
-                if not self.html_violations(expanded) and self.keeps_findings(draft, candidate, index):
-                    components[index] = expanded
-                    draft = candidate
-                    self.acronyms_explained += 1
-                    self.runtime.adjustments["w5_acronym_explained"] += 1
-                break
-        return draft, unexplained
-
-    def keeps_findings(self, before: _Draft, after: _Draft, index: int) -> bool:
-        """``after`` fails no shared, Node or IDM rule of slot ``index`` that ``before`` passed."""
-
-        old_finding, old_idm = self.problems(before)
-        new_finding, new_idm = self.problems(after)
-        if new_finding is not None and (old_finding is None or (new_finding.code, new_finding.path)
-                                        != (old_finding.code, old_finding.path)):
-            return False
-        return {code for code, slot in new_idm if slot == index} <= {code for code, slot in old_idm if slot == index}
 
     async def settle(self, draft: _Draft) -> _Draft | None:
         """Repair once, then replace failing slots with the source-locked fallback.
@@ -1560,3 +776,11 @@ async def _judge_and_repair(writer: IdmUnitWriter, draft: _Draft, mode: JudgeMod
             blocking_count(second.findings) < blocking_count(judge.findings)):
         return repaired, second
     return draft, judge
+
+
+# The names other modules and the tests import from this path; the unit inputs moved to storyboard_context and
+# the deterministic steps of the writer to storyboard_steps.
+__all__ = [
+    "IdmUnitDeps", "IdmUnitWriter", "acceptance_context", "build_idm_expected", "output_budget", "parse_brief",
+    "run_idm_unit", "safe_error_details",
+]
