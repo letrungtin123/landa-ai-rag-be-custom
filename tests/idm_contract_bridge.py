@@ -40,10 +40,10 @@ from typing import Any
 from unittest.mock import patch
 
 import httpx
-from fastapi import HTTPException
 
 from app import main
 from app.api import deps as api_deps
+from app.core.errors import ServiceError
 from app.idm.node_acceptance import node_acceptance_findings
 from app.idm.preserve_render import preserve_text_finding
 from app.idm.storyboard import acceptance_context, parse_brief
@@ -180,7 +180,7 @@ class UnitGenerate:
             text = json.dumps(self.writer.pop(0) if self.writer else writer_answer(self.request), ensure_ascii=False)
         elif name.startswith("StagedMultiRepair"):
             if not self.repair:
-                raise HTTPException(status_code=503, detail={"code": "AI_PROVIDER_UNAVAILABLE",
+                raise ServiceError(status_code=503, detail={"code": "AI_PROVIDER_UNAVAILABLE",
                                                                   "message": "bridge has no repair answer"})
             text = json.dumps(self.repair.pop(0), ensure_ascii=False)
         elif name.startswith("IdmJudgeResponseV1"):

@@ -2,12 +2,13 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, ClassVar
 
-from fastapi import Request
+from fastapi import HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
+from app.core.error_codes import PROVIDER_ERROR_CODES, ErrorCode
 from app.core.logging import correlation_id_var
 
 logger = logging.getLogger(__name__)
@@ -30,6 +31,33 @@ class DocumentLimitError(AppError):
             http_status=422,
             safe_message=safe_message,
         )
+
+
+class ServiceError(HTTPException):
+    """A failure of the service layer, answered as ``{"detail": detail}`` with its HTTP status.
+
+    It is the ``fastapi.HTTPException`` the service code raised before refactor wave 2b, under the one
+    name the service layer may know: FastAPI's own handler renders it unchanged (same status, same body,
+    no correlation id, which only ``AppError`` carries), so no wire envelope changed. Raised with a
+    ``{"code", "message"}`` detail (a code of ``app.core.error_codes``) or, in the legacy lesson-author
+    validation paths, a plain message.
+    """
+
+    # ``provider_error_type`` of the provider diagnostics (app.infra.gemini.errors), which reach Node:
+    # these errors were reported there as HTTPException and keep that value.
+    diagnostic_type: ClassVar[str] = "HTTPException"
+
+
+class ProviderError(ServiceError):
+    """An AI provider failure with a registered code (``app.core.error_codes.PROVIDER_ERROR_CODES``)."""
+
+    def __init__(self, code: str, message: str) -> None:
+        self.error_code: ErrorCode = PROVIDER_ERROR_CODES[code]
+        super().__init__(status_code=self.error_code.http_status, detail={"code": code, "message": message})
+
+    @property
+    def retryable(self) -> bool:
+        return self.error_code.retryable
 
 
 def error_payload(code: str, message: str, *, include_correlation_id: bool = False) -> dict[str, Any]:

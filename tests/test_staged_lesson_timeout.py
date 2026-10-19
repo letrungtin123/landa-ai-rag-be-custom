@@ -10,6 +10,7 @@ from unittest.mock import AsyncMock, patch
 from fastapi import HTTPException
 
 from app.core.config import settings
+from app.core.errors import ServiceError
 from app.schemas.common import AiUsage
 from app.schemas.lesson_author import RagLessonAuthorRequest
 from app.services.lesson_author.staged.plan import (
@@ -146,7 +147,7 @@ class StagedLessonTimeoutTests(unittest.TestCase):
             }
             for index, fact_id in enumerate(fact_ids, start=1)
         ]}
-        timeout_error = HTTPException(
+        timeout_error = ServiceError(
             status_code=504,
             detail={"code": "AI_PROVIDER_TIMEOUT", "message": "safe"},
         )
@@ -176,7 +177,7 @@ class StagedLessonTimeoutTests(unittest.TestCase):
         self.assertNotEqual(provider.await_args_list[1].kwargs["request_timeout_ms"], 60_000)
 
     def test_stage_two_timeout_is_non_retryable_and_fails_closed(self) -> None:
-        timeout_error = HTTPException(
+        timeout_error = ServiceError(
             status_code=504,
             detail={"code": "AI_PROVIDER_TIMEOUT", "message": "safe"},
         )

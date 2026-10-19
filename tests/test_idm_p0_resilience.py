@@ -22,6 +22,7 @@ from fastapi import HTTPException
 from pydantic import BaseModel
 
 from app import main
+from app.core.errors import ServiceError
 from app.idm import runtime as idm_runtime
 from app.idm.coerce import (
     CLAMPED_NUMBER_CODE,
@@ -322,7 +323,7 @@ class ProviderStopTests(unittest.IsolatedAsyncioTestCase):
 
 class ProviderStopEndpointTests(EndpointTestCase):
     def provider_failure(self, code: str) -> AsyncMock:
-        return AsyncMock(side_effect=HTTPException(503, {"code": code, "message": "private"}))
+        return AsyncMock(side_effect=ServiceError(503, {"code": code, "message": "private"}))
 
     async def test_idm_course_skeleton_and_chapter_shard_report_quota_and_rate_limit(self) -> None:
         for url, body in ((SKELETON_URL, idm_skeleton_body()), (SHARD_URL, idm_shard_body())):
@@ -345,7 +346,7 @@ class UnitProviderStopTests(StoryboardEndpointTestCase):
     async def test_quota_and_rate_limit_reach_node_instead_of_a_fallback_unit(self) -> None:
         for code in ("AI_PROVIDER_QUOTA_EXHAUSTED", "AI_PROVIDER_RATE_LIMITED"):
             with self.subTest(code=code):
-                failure = HTTPException(503, {"code": code, "message": "private"})
+                failure = ServiceError(503, {"code": code, "message": "private"})
                 status, data, _provider = await self.post(severity_body(), FakeGenerate(**{WRITER: [failure]}))
                 self.assertEqual((status, data["detail"]["code"]), (503, code))
 
@@ -477,7 +478,7 @@ class ProviderRetryLoopTests(unittest.TestCase):
         self.assertEqual(events[-1]["provider_limit_category"], "quota_exhausted")
 
     def test_legacy_code_sets_treat_a_rate_limit_like_the_quota_code_they_knew(self) -> None:
-        error = HTTPException(503, {"code": "AI_PROVIDER_RATE_LIMITED"})
+        error = ServiceError(503, {"code": "AI_PROVIDER_RATE_LIMITED"})
         self.assertTrue(provider_service.is_non_retryable_provider_error(error))
         self.assertIn("AI_PROVIDER_RATE_LIMITED", ORCHESTRATION_V2_PROVIDER_FALLBACK_CODES)
 

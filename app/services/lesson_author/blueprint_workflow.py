@@ -11,7 +11,7 @@ from time import perf_counter
 from typing import Any, Literal
 
 import asyncpg
-from fastapi import HTTPException
+from app.core.errors import ServiceError
 from google.genai import types
 
 from app.assessment_planner import compile_v5_assessment_plan, materialize_assessment_source_refs
@@ -327,7 +327,7 @@ async def _lesson_author_blueprint(
                 internal_code="ARCH_FACT_ALLOCATION_FAILED",
                 failure_stage="canonical_fact_allocation",
             ) from error
-        except HTTPException as error:
+        except ServiceError as error:
             raise WorkflowFailure(
                 "PROVIDER_ERROR",
                 "Course Architect provider call failed.",
@@ -776,7 +776,7 @@ async def _lesson_author_blueprint(
                         request_timeout_ms=settings.blueprint_provider_request_timeout_ms,
                         on_provider_telemetry=record_repair_provider_telemetry,
                     )
-                except HTTPException as error:
+                except ServiceError as error:
                     emit_blueprint_diagnostic({
                         "stage": "architecture_repair_provider",
                         "event": "failed",
@@ -887,7 +887,7 @@ async def _lesson_author_blueprint(
                 internal_code="ARCH_REPAIR_PATCH_APPLY_FAILED",
                 failure_stage="architecture_repair_patch_apply",
             ) from error
-        except HTTPException as error:
+        except ServiceError as error:
             raise WorkflowFailure(
                 "ARCHITECTURE_REPAIR_INVALID",
                 "Provider returned an invalid scoped architecture repair.",
@@ -1138,7 +1138,7 @@ async def _lesson_author_blueprint(
             "repair_pass_number": int((error.diagnostics or {}).get("repair_count") or runtime.get("repair_provider_pass") or 0),
             "duration_ms": max(0, round((perf_counter() - workflow_started) * 1000)),
         })
-        raise HTTPException(
+        raise ServiceError(
             status_code=422 if error.code in {
                 "SOURCE_SCOPE_INCOMPLETE", "SOURCE_MAP_SCOPE_INCOMPLETE", "SOURCE_EVIDENCE_INSUFFICIENT",
                 "SOURCE_FACT_EXTRACTION_CAPACITY_EXCEEDED", "ARCHITECT_CONTEXT_CANNOT_REPRESENT_SOURCE",
@@ -1170,7 +1170,7 @@ async def _lesson_author_blueprint(
             "duration_ms": max(0, round((perf_counter() - workflow_started) * 1000)),
             "validation_code": error.code,
         })
-        raise HTTPException(
+        raise ServiceError(
             status_code=502,
             detail={
                 "code": "LESSON_AUTHOR_BLUEPRINT_SOURCE_COVERAGE_INVALID",

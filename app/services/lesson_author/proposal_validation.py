@@ -6,7 +6,7 @@ import json
 import re
 from typing import Any
 
-from fastapi import HTTPException
+from app.core.errors import ServiceError
 
 from app.content.ordered_learning_content import flatten_ordered_content
 from app.services.lesson_author.errors import LessonAuthorProposalValidationError
@@ -20,13 +20,13 @@ def parse_lesson_author_json(text: str, label: str) -> dict[str, Any]:
     except json.JSONDecodeError:
         match = re.search(r"\{.*\}", text, flags=re.DOTALL)
         if not match:
-            raise HTTPException(status_code=502, detail=f"AI không trả JSON {label} hợp lệ.")
+            raise ServiceError(status_code=502, detail=f"AI không trả JSON {label} hợp lệ.")
         try:
             parsed = json.loads(match.group(0))
         except json.JSONDecodeError as exc:
-            raise HTTPException(status_code=502, detail=f"AI không trả JSON {label} hợp lệ.") from exc
+            raise ServiceError(status_code=502, detail=f"AI không trả JSON {label} hợp lệ.") from exc
     if not isinstance(parsed, dict):
-        raise HTTPException(status_code=502, detail=f"AI không trả JSON {label} dạng object hợp lệ.")
+        raise ServiceError(status_code=502, detail=f"AI không trả JSON {label} dạng object hợp lệ.")
     return parsed
 
 

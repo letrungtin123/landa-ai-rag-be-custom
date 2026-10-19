@@ -13,6 +13,7 @@ from pydantic import SecretStr, ValidationError
 
 from app import lesson_quality, main
 from app.api import deps as api_deps
+from app.core.errors import ServiceError
 from app.lesson_author_checkpoint import ChapterCheckpointUnit, assemble_checkpoint_chapter, select_checkpoint_unit
 from app.schemas.common import AiUsage
 from app.schemas.lesson_author import RagLessonAuthorCheckpointRequest, RagLessonAuthorRequest
@@ -179,7 +180,7 @@ class ChapterCheckpointTests(unittest.TestCase):
 
     def test_timeout_is_terminal_provider_error_without_identical_request_retry(self):
         request, _, _ = fixture(index=3)
-        failure = HTTPException(504, {"code": "AI_PROVIDER_TIMEOUT", "message": "safe"})
+        failure = ServiceError(504, {"code": "AI_PROVIDER_TIMEOUT", "message": "safe"})
         provider_boundary = AsyncMock(side_effect=failure)
         with patch("app.services.lesson_author.proposal.lesson_author_proposal", provider_boundary):
             with self.assertRaises(HTTPException) as raised:

@@ -216,12 +216,11 @@ class ArchitectureLayerTests(unittest.TestCase):
         self.assertEqual(offenders, [])
 
     def test_layers_import_only_what_the_layer_table_allows(self) -> None:
-        # §19.2 dependency table. ``fastapi.HTTPException`` is the one web-framework name the
-        # service layer still uses: it is the provider/service error type of the code moved out of
-        # app/main.py, and turning it into AppError would change error bodies (correlation_id).
+        # §19.2 dependency table. The service layer raises app.core.errors.ServiceError / ProviderError
+        # (refactor wave 2b): it never imports the web framework.
         layers: dict[str, tuple[list[Path], tuple[str, ...]]] = {
             "services": (sorted((APP_ROOT / "services").rglob("*.py")),
-                         ("starlette", "app.api", "app.main")),
+                         ("fastapi", "starlette", "app.api", "app.main")),
             "repositories": (sorted((APP_ROOT / "repositories").rglob("*.py")),
                              ("fastapi", "starlette", "app.api", "app.main", "app.services", "app.idm")),
             "schemas": (sorted((APP_ROOT / "schemas").rglob("*.py")),
@@ -235,11 +234,9 @@ class ArchitectureLayerTests(unittest.TestCase):
         for layer, (paths, forbidden) in layers.items():
             self.assertTrue(paths, layer)
             for path in paths:
-                for name, imported in imported_modules(path):
+                for name, _imported in imported_modules(path):
                     if any(name == item or name.startswith(item + ".") for item in forbidden):
                         offenders.append(f"{layer}:{path.relative_to(APP_ROOT).as_posix()}:{name}")
-                    if layer == "services" and name.split(".")[0] == "fastapi" and imported != {"HTTPException"}:
-                        offenders.append(f"{layer}:{path.relative_to(APP_ROOT).as_posix()}:{name}:{imported}")
         self.assertEqual(offenders, [])
 
     def test_no_application_module_imports_app_main(self) -> None:

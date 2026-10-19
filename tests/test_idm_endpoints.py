@@ -12,11 +12,10 @@ from typing import Any
 from unittest.mock import AsyncMock, patch
 
 import httpx
-from fastapi import HTTPException
 
 from app import main
 from app.api import deps as api_deps
-from app.core.errors import AppError
+from app.core.errors import AppError, ServiceError
 from app.idm.contracts import IdmCourseDesignV1, IdmShardDesignV1
 from app.idm.runtime import IdmBudgetError, IdmProviderError, IdmStageError
 from app.lesson_author_orchestration_v2 import ChapterBlueprintShardV2, CourseSkeletonV2
@@ -132,7 +131,7 @@ class CourseSkeletonDispatchTests(EndpointTestCase):
         self.assertNotIn("PRIVATE_PROVIDER_BODY", log_text(logs.records) + reply.text)
 
     async def test_transient_provider_failure_returns_a_reviewable_design(self) -> None:
-        failure = HTTPException(status_code=503, detail={"code": "AI_PROVIDER_UNAVAILABLE", "message": "private"})
+        failure = ServiceError(status_code=503, detail={"code": "AI_PROVIDER_UNAVAILABLE", "message": "private"})
         reply = await self.post(SKELETON_URL, idm_skeleton_body(), AsyncMock(side_effect=failure))
         self.assertEqual(reply.status_code, 200)
         data = reply.json()
@@ -234,13 +233,13 @@ class TransportMappingTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_service_errors_map_to_idm_provider_errors(self) -> None:
         cases = [
-            (HTTPException(504, {"code": "AI_PROVIDER_TIMEOUT"}), "AI_PROVIDER_TIMEOUT", False, 504),
+            (ServiceError(504, {"code": "AI_PROVIDER_TIMEOUT"}), "AI_PROVIDER_TIMEOUT", False, 504),
             # QC course 234653 (D6): an exhausted key or a persistent rate limit must reach Node (503), not
             # become deterministic content.
-            (HTTPException(503, {"code": "AI_PROVIDER_QUOTA_EXHAUSTED"}), "AI_PROVIDER_QUOTA_EXHAUSTED", True, 503),
-            (HTTPException(503, {"code": "AI_PROVIDER_RATE_LIMITED"}), "AI_PROVIDER_RATE_LIMITED", True, 503),
-            (HTTPException(502, {"code": "AI_PROVIDER_REQUEST_REJECTED"}), "AI_PROVIDER_REQUEST_REJECTED", True, 502),
-            (HTTPException(503, "plain detail"), "AI_PROVIDER_UNAVAILABLE", False, 503),
+            (ServiceError(503, {"code": "AI_PROVIDER_QUOTA_EXHAUSTED"}), "AI_PROVIDER_QUOTA_EXHAUSTED", True, 503),
+            (ServiceError(503, {"code": "AI_PROVIDER_RATE_LIMITED"}), "AI_PROVIDER_RATE_LIMITED", True, 503),
+            (ServiceError(502, {"code": "AI_PROVIDER_REQUEST_REJECTED"}), "AI_PROVIDER_REQUEST_REJECTED", True, 502),
+            (ServiceError(503, "plain detail"), "AI_PROVIDER_UNAVAILABLE", False, 503),
             (AppError(code="SERVICE_BUSY", http_status=503, safe_message="busy"), "SERVICE_BUSY", False, 503),
         ]
         for error, code, terminal, status in cases:

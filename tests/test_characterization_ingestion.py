@@ -30,7 +30,7 @@ from pptx.util import Inches
 from pydantic import ValidationError
 
 from app import main
-from app.core.errors import AppError, DocumentLimitError
+from app.core.errors import AppError, DocumentLimitError, ServiceError
 from app.repositories import indexing as index_repository
 from app.schemas.common import AiUsage
 from app.schemas.kb import RagDeleteDocumentRequest, RagDeleteKbRequest, RagIndexRequest
@@ -642,7 +642,7 @@ class IndexDocumentCharacterizationTests(unittest.TestCase):
 
     def test_non_retryable_failures_return_error_payload_instead_of_raising(self) -> None:
         app_error = AppError(code="CUSTOM_APP_ERROR", http_status=409, safe_message="custom")
-        provider_rejected = HTTPException(status_code=400, detail={"code": "AI_PROVIDER_REQUEST_REJECTED"})
+        provider_rejected = ServiceError(status_code=400, detail={"code": "AI_PROVIDER_REQUEST_REJECTED"})
         for name, error, reason in (("app_error_code_kept", app_error, "CUSTOM_APP_ERROR"),
                                     ("provider_4xx", provider_rejected, "INDEX_DOCUMENT_FAILED")):
             with self.subTest(case=name):
@@ -656,14 +656,14 @@ class IndexDocumentCharacterizationTests(unittest.TestCase):
         # status "error" (INDEX_DOCUMENT_FAILED), so the backend could not tell it was retryable. The index
         # row is still marked failed (with the provider code) and the route answers 503 with that code.
         cases = {
-            "unavailable": (HTTPException(503, detail={"code": "AI_PROVIDER_UNAVAILABLE", "message": "down"}),
+            "unavailable": (ServiceError(503, detail={"code": "AI_PROVIDER_UNAVAILABLE", "message": "down"}),
                             "AI_PROVIDER_UNAVAILABLE"),
-            "rate_limited": (HTTPException(503, detail={"code": "AI_PROVIDER_RATE_LIMITED"}),
+            "rate_limited": (ServiceError(503, detail={"code": "AI_PROVIDER_RATE_LIMITED"}),
                              "AI_PROVIDER_RATE_LIMITED"),
-            "quota": (HTTPException(503, detail={"code": "AI_PROVIDER_QUOTA_EXHAUSTED"}),
+            "quota": (ServiceError(503, detail={"code": "AI_PROVIDER_QUOTA_EXHAUSTED"}),
                       "AI_PROVIDER_QUOTA_EXHAUSTED"),
-            "timeout": (HTTPException(504, detail={"code": "AI_PROVIDER_TIMEOUT"}), "AI_PROVIDER_TIMEOUT"),
-            "raw_429_without_code": (HTTPException(429, detail="slow down"), "AI_PROVIDER_UNAVAILABLE"),
+            "timeout": (ServiceError(504, detail={"code": "AI_PROVIDER_TIMEOUT"}), "AI_PROVIDER_TIMEOUT"),
+            "raw_429_without_code": (ServiceError(429, detail="slow down"), "AI_PROVIDER_UNAVAILABLE"),
             "service_busy": (AppError(code="SERVICE_BUSY", http_status=503, safe_message="busy"), "SERVICE_BUSY"),
         }
         for name, (error, code) in cases.items():

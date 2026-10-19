@@ -14,10 +14,10 @@ from typing import Any
 from unittest.mock import AsyncMock, patch
 
 import httpx
-from fastapi import HTTPException
 
 from app import main
 from app.api import deps as api_deps
+from app.core.errors import ServiceError
 from app.idm.contracts import IdmTreatmentRefV1, IdmUnitBriefV1, IdmUnitQualityV1, brief_hash_of
 from app.idm.mcq import normalize_single_choice, practice_key_shift, question_ordinal
 from app.idm.runtime import IdmStageError
@@ -172,7 +172,7 @@ def judge(*overrides: tuple[str, str, int | None]) -> dict[str, Any]:
 
 
 def unavailable() -> Exception:
-    return HTTPException(status_code=503, detail={"code": "AI_PROVIDER_UNAVAILABLE", "message": "private"})
+    return ServiceError(status_code=503, detail={"code": "AI_PROVIDER_UNAVAILABLE", "message": "private"})
 
 
 class FakeGenerate:

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import HTTPException
+from app.core.errors import ServiceError
 
 
 def update_blueprint_source_coverage(
@@ -65,7 +65,7 @@ def validate_lesson_author_proposal_source_refs(
                         invalid_refs.add(str(ref))
     if invalid_refs:
         refs = ", ".join(sorted(invalid_refs)[:5])
-        raise HTTPException(
+        raise ServiceError(
             status_code=502,
             detail=f"AI trả mã nguồn không tồn tại trong cấu trúc tài liệu: {refs}",
         )

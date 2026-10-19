@@ -10,7 +10,7 @@ from time import perf_counter
 from typing import Any
 
 import asyncpg
-from fastapi import HTTPException
+from app.core.errors import ServiceError
 from google.genai import types
 
 from app.core.config import settings
@@ -114,7 +114,7 @@ async def _lesson_author_proposal(
     source_coverage = format_source_coverage_manifest(source_coverage_manifest)
     missing_blueprint_fact_ids = structure_context.get("blueprint_draft_missing_source_fact_ids", [])
     if missing_blueprint_fact_ids:
-        raise HTTPException(
+        raise ServiceError(
             status_code=422,
             detail={
                 "code": "LESSON_AUTHOR_BLUEPRINT_SOURCE_COVERAGE_INCOMPLETE",
@@ -124,7 +124,7 @@ async def _lesson_author_proposal(
             },
         )
     if retrieval_search.target_source_scope_is_incomplete(structure_context, rows, sources, source_coverage_manifest):
-        raise HTTPException(
+        raise ServiceError(
             status_code=422,
             detail={
                 "code": "LESSON_AUTHOR_SOURCE_SCOPE_INCOMPLETE",
@@ -133,7 +133,7 @@ async def _lesson_author_proposal(
             },
         )
     if source_coverage_manifest and source_coverage_manifest.get("scope_unresolved"):
-        raise HTTPException(
+        raise ServiceError(
             status_code=422,
             detail={
                 "code": "LESSON_AUTHOR_INFERRED_SCOPE_UNRESOLVED",
@@ -146,7 +146,7 @@ async def _lesson_author_proposal(
             },
         )
     if source_coverage_manifest and source_coverage_manifest.get("truncated"):
-        raise HTTPException(
+        raise ServiceError(
             status_code=422,
             detail={
                 "code": "LESSON_AUTHOR_SOURCE_COVERAGE_TRUNCATED",
@@ -229,8 +229,8 @@ async def _lesson_author_proposal(
                 validate_lesson_author_source_coverage(staged_candidate, source_coverage_manifest)
                 proposal = staged_candidate
                 logger.info("lesson_author_proposal_staged_valid context_chars=%s", len(context))
-            except (HTTPException, LessonAuthorProposalValidationError) as error:
-                if isinstance(error, HTTPException) and is_non_retryable_provider_error(error):
+            except (ServiceError, LessonAuthorProposalValidationError) as error:
+                if isinstance(error, ServiceError) and is_non_retryable_provider_error(error):
                     raise WorkflowFailure("PROVIDER_ERROR", "The provider rejected the staged lesson generation request.") from error
                 last_error = re.sub(r"\s+", " ", str(error)).strip()[:240]
                 logger.warning("lesson_author_proposal_staged_failed conversation_id=%s reason=%s", request.conversation_id, last_error or "unknown")
@@ -265,7 +265,7 @@ async def _lesson_author_proposal(
                     validate_lesson_author_source_coverage(candidate, source_coverage_manifest)
                     proposal = candidate
                     break
-                except HTTPException as error:
+                except ServiceError as error:
                     if is_non_retryable_provider_error(error):
                         raise WorkflowFailure("PROVIDER_ERROR", "The provider rejected lesson proposal generation.") from error
                     last_error = re.sub(r"\s+", " ", str(error)).strip()[:240]
@@ -303,7 +303,7 @@ async def _lesson_author_proposal(
                 error.internal_code or error.code,
             )
             raise
-        except HTTPException as error:
+        except ServiceError as error:
             raise WorkflowFailure(
                 "LESSON_REPAIR_INVALID",
                 "Provider returned invalid JSON for scoped lesson repair.",
@@ -361,7 +361,7 @@ async def _lesson_author_proposal(
             "external_failure_code": error.code,
             "duration_ms": max(0, round((perf_counter() - workflow_started) * 1000)),
         })
-        raise HTTPException(
+        raise ServiceError(
             status_code=422 if error.code in {"SOURCE_EVIDENCE_INSUFFICIENT", "SOURCE_SCOPE_INCOMPLETE"} else 502,
             detail={
                 "code": error.code,

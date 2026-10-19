@@ -10,7 +10,7 @@ from time import perf_counter
 from typing import Any
 
 import asyncpg
-from fastapi import HTTPException
+from app.core.errors import ServiceError
 
 from app.core.config import settings
 from app.core.handled_exceptions import report_handled_exception
@@ -50,7 +50,7 @@ async def _lesson_author_chapter_checkpoint(
         cause: Exception = error
     except WorkflowFailure as error:
         failure, cause = error, error
-    except HTTPException as error:
+    except ServiceError as error:
         detail = error.detail if isinstance(error.detail, dict) else {}
         code = str(detail.get("code") or "SOURCE_SCOPE_INCOMPLETE")
         if not re.fullmatch(r"[A-Z][A-Z0-9_]{0,95}", code):
@@ -84,7 +84,7 @@ async def _lesson_author_chapter_checkpoint(
                          "provider_total_tokens", "provider_finish_reason", "provider_schema_fingerprint"}
         diagnostics.update({key: value for key, value in failure.diagnostics.items() if key in provider_keys})
     logger.info("lesson_author_checkpoint_diagnostic %s", json.dumps(diagnostics, sort_keys=True))
-    raise HTTPException(status_code=502 if failure.code == "PROVIDER_ERROR" else 422, detail={
+    raise ServiceError(status_code=502 if failure.code == "PROVIDER_ERROR" else 422, detail={
         "code": failure.code, "message": "The chapter could not complete its validated checkpoint operation.",
         "internal_failure_code": failure.internal_code, "failure_stage": failure.failure_stage,
         "correlation_id": request.correlation_id,

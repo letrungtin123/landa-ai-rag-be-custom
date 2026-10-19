@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Any
 
 import asyncpg
-from fastapi import HTTPException
+from app.core.errors import ServiceError
 
 from app.core import metrics
 from app.core.concurrency import deadline_seconds
@@ -53,7 +53,7 @@ RETRYABLE_PROVIDER_HTTP_STATUSES = frozenset({429, 502, 503, 504})
 
 def retryable_provider_failure(exc: BaseException) -> AppError | None:
     """Map a transient provider failure (quota/rate limit/unavailable/timeout) to a retryable 503."""
-    if not isinstance(exc, HTTPException) or exc.status_code not in RETRYABLE_PROVIDER_HTTP_STATUSES:
+    if not isinstance(exc, ServiceError) or exc.status_code not in RETRYABLE_PROVIDER_HTTP_STATUSES:
         return None
     detail = http_error_detail(exc)
     code = str(detail.get("code") or "")
@@ -75,13 +75,13 @@ async def index_document(request: RagIndexRequest, pool: asyncpg.Pool) -> dict[s
 
 async def _index_document(request: RagIndexRequest, pool: asyncpg.Pool) -> dict[str, Any]:
     if request.embedding_dimensions != 768:
-        raise HTTPException(status_code=400, detail="RAG hiện chỉ hỗ trợ embedding 768 chiều.")
+        raise ServiceError(status_code=400, detail="RAG hiện chỉ hỗ trợ embedding 768 chiều.")
     row = await index_repository.load_document(pool, request.tenant_id, request.kb_id, request.document_id)
     if row is None:
-        raise HTTPException(status_code=404, detail="Không tìm thấy tài liệu Knowledge Base.")
+        raise ServiceError(status_code=404, detail="Không tìm thấy tài liệu Knowledge Base.")
     # F4: whitespace-only content has nothing to learn; reject it before any index row exists.
     if row["file_path"] is None and not clean_text(str(row["content"] or "")):
-        raise HTTPException(status_code=400, detail="Tài liệu không có file nguồn hoặc nội dung để học.")
+        raise ServiceError(status_code=400, detail="Tài liệu không có file nguồn hoặc nội dung để học.")
 
     index_id: str | None = None
     raw_bytes: int | None = None

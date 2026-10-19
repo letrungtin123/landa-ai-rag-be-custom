@@ -6,7 +6,7 @@ import json
 import re
 from typing import Any
 
-from fastapi import HTTPException
+from app.core.errors import ServiceError
 
 from app.component_capabilities import validate_instance_plan
 from app.instructional_density import INSTRUCTIONAL_DENSITY_POLICY_VERSION
@@ -39,7 +39,7 @@ def parse_lesson_author_json_value(text: str, label: str) -> Any:
             continue
         if isinstance(value, (dict, list)):
             return value
-    raise HTTPException(status_code=502, detail=f"AI không trả JSON {label} hợp lệ.")
+    raise ServiceError(status_code=502, detail=f"AI không trả JSON {label} hợp lệ.")
 
 
 def should_stage_lesson_author_proposal(

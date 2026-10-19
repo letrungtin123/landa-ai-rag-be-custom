@@ -6,7 +6,7 @@ import re
 from time import perf_counter
 from typing import Any
 
-from fastapi import HTTPException
+from app.core.errors import ProviderError
 
 from app.core.config import settings
 from app.services.lesson_author.proposal_validation import (
@@ -73,13 +73,8 @@ class StagedLessonWorkflowDeadline:
     def stage_two_provider_timeout_ms(self) -> tuple[int, int]:
         remaining_ms = self.remaining_ms()
         if remaining_ms <= 0:
-            raise HTTPException(
-                status_code=504,
-                detail={
-                    "code": "AI_STAGED_LESSON_WORKFLOW_TIMEOUT",
-                    "message": "AI provider phản hồi quá lâu. Vui lòng thử lại sau.",
-                },
-            )
+            raise ProviderError("AI_STAGED_LESSON_WORKFLOW_TIMEOUT",
+                                "AI provider phản hồi quá lâu. Vui lòng thử lại sau.")
         provider_timeout_ms = min(
             max(1, settings.staged_lesson_content_provider_timeout_ms),
             STAGED_LESSON_CONTENT_PROVIDER_TIMEOUT_MAX_MS,

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 
-from fastapi import HTTPException
+from app.core.errors import ServiceError
 from pydantic import BaseModel, SecretStr
 
 from app.core import metrics
@@ -25,8 +25,8 @@ ORCHESTRATION_V2_PROVIDER_FALLBACK_CODES = frozenset({
 })
 
 
-def _orchestration_v2_http_error(code: str, message: str, *, status_code: int = 422) -> HTTPException:
-    return HTTPException(status_code=status_code, detail={"code": code, "message": message})
+def _orchestration_v2_http_error(code: str, message: str, *, status_code: int = 422) -> ServiceError:
+    return ServiceError(status_code=status_code, detail={"code": code, "message": message})
 
 
 async def _orchestration_v2_generate_content(
@@ -57,7 +57,7 @@ async def _orchestration_v2_generate_content(
                 json_mode=True,
                 response_schema=response_schema,
             )
-    except HTTPException:
+    except ServiceError:
         raise
     except Exception as error:
         status = provider_http_error_status(error)

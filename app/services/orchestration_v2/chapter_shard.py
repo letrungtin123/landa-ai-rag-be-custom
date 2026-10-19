@@ -6,7 +6,7 @@ import json
 import logging
 from typing import Any
 
-from fastapi import HTTPException
+from app.core.errors import ServiceError
 from pydantic import ValidationError
 
 from app.core.handled_exceptions import report_handled_exception
@@ -104,7 +104,7 @@ async def _lesson_author_orchestration_v2_chapter_shard(
                 correlation_id=request.correlation_id,
                 generation_stage="chapter_shard",
             )
-        except HTTPException as error:
+        except ServiceError as error:
             detail = http_error_detail(error)
             code = detail.get("code")
             if code not in ORCHESTRATION_V2_PROVIDER_FALLBACK_CODES:

@@ -6,7 +6,7 @@ import logging
 from time import monotonic
 from typing import Any
 
-from fastapi import HTTPException
+from app.core.errors import ServiceError
 
 from app.core import metrics
 from app.core.config import settings
@@ -51,7 +51,7 @@ async def _idm_generate(api_key: str, model: str, prompt: str, **options: Any) -
     try:
         with metrics.provider_stage(current_provider_stage() or "idm"):
             return await provider.generate_content(api_key, model, prompt, **options)
-    except HTTPException as error:
+    except ServiceError as error:
         code = str(http_error_detail(error).get("code") or "AI_PROVIDER_UNAVAILABLE")
         if code in RUN_STOPPING_PROVIDER_CODES:
             raise IdmProviderError(code, terminal=True, http_status=503) from error
@@ -92,7 +92,7 @@ def _idm_runtime(request: RagChatRequest, *, budget_ms: int, allowance: Any | No
     )
 
 
-def _idm_http_error(error: IdmError) -> HTTPException:
+def _idm_http_error(error: IdmError) -> ServiceError:
     if isinstance(error, IdmProviderError):
         return _orchestration_v2_http_error(error.code, "AI provider failed for the IDM stage.",
                                             status_code=error.http_status)

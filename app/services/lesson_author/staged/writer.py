@@ -9,7 +9,7 @@ from copy import deepcopy
 from time import perf_counter
 from typing import Any, Callable
 
-from fastapi import HTTPException
+from app.core.errors import ServiceError
 from google.genai import types
 from pydantic import BaseModel
 
@@ -205,7 +205,7 @@ async def generate_staged_lesson_author_proposal(
             )
         try:
             provider_timeout_ms, remaining_workflow_budget_ms = workflow_deadline.stage_two_provider_timeout_ms()
-        except HTTPException:
+        except ServiceError:
             logger.info(
                 "lesson_author_staged_content_batch generation_stage=%s batch_index=%s batch_count=%s unit_count=%s content_output_tokens=%s provider_timeout_ms=%s remaining_workflow_budget_ms=%s duration_ms=%s provider_finish_reason=%s status=workflow_deadline_exhausted correlation_id=%s",
                 generation_stage,
@@ -353,7 +353,7 @@ async def generate_staged_lesson_author_proposal(
                         **error_diagnostics,
                     },
                 )
-            elif isinstance(error, (HTTPException, WorkflowFailure)):
+            elif isinstance(error, (ServiceError, WorkflowFailure)):
                 failure = error
             else:
                 provider_event = "provider_request_failed"
@@ -363,7 +363,7 @@ async def generate_staged_lesson_author_proposal(
                     failure_stage="staged_lesson_provider_request",
                     diagnostics=error_diagnostics,
                 )
-            if not isinstance(error, (HTTPException, WorkflowFailure)):
+            if not isinstance(error, (ServiceError, WorkflowFailure)):
                 report_handled_exception(logger, error, stage=generation_stage,
                                          outcome=str(getattr(failure, "internal_code", None) or "PROVIDER_ERROR"),
                                          correlation_id=request.correlation_id, batch_index=batch_index)
@@ -457,7 +457,7 @@ async def generate_staged_lesson_author_proposal(
     else:
         try:
             skeleton, batches = parse_and_validate_skeleton(skeleton_text, "skeleton")
-        except (HTTPException, LessonAuthorProposalValidationError) as error:
+        except (ServiceError, LessonAuthorProposalValidationError) as error:
             skeleton_failure = str(getattr(error, "detail", None) or error)
             logger.warning(
                 "lesson_author_staged_skeleton_recovery_start reason=%s response_chars=%s",
@@ -510,8 +510,8 @@ async def generate_staged_lesson_author_proposal(
                 "lesson_author_staged_skeleton_recovered mode=provider units=%s",
                 sum(len(batch) for batch in batches),
             )
-        except (HTTPException, LessonAuthorProposalValidationError) as error:
-            if isinstance(error, HTTPException) and is_non_retryable_provider_error(error):
+        except (ServiceError, LessonAuthorProposalValidationError) as error:
+            if isinstance(error, ServiceError) and is_non_retryable_provider_error(error):
                 raise
             logger.warning(
                 "lesson_author_staged_skeleton_recovery_fallback initial_reason=%s recovery_reason=%s",
@@ -648,7 +648,7 @@ async def generate_staged_lesson_author_proposal(
         except ProviderSemanticVersionError as error:
             raise WorkflowFailure("LESSON_VALIDATION_FAILED", "Invalid staged HTML format.",
                                   internal_code=str(error), failure_stage="staged_content_validation") from None
-        except HTTPException:
+        except ServiceError:
             logger.warning(
                 "lesson_author_staged_content_batch_unparsed batch=%s response_chars=%s",
                 batch_index,
@@ -858,7 +858,7 @@ async def generate_staged_lesson_author_proposal(
                         if isinstance(generated, dict)
                         else recovery_unit_match["reason"] if recovery_unit_match else "MISSING_OR_INVALID_UNIT"
                     )
-                except (HTTPException, LessonAuthorProposalValidationError, ProviderSemanticVersionError) as error:
+                except (ServiceError, LessonAuthorProposalValidationError, ProviderSemanticVersionError) as error:
                     generated = None
                     generated_fact_ids = set()
                     generated_supporting_evidence_fact_ids = set()

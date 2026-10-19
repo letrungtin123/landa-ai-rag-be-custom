@@ -6,7 +6,7 @@ import json
 import re
 from typing import Any, Callable, Literal
 
-from fastapi import HTTPException
+from app.core.errors import ServiceError
 from google.genai import types
 
 from app.core.config import settings
@@ -455,7 +455,7 @@ async def generate_validated_lesson_author_blueprint(
                     )
                 ),
             )
-        except HTTPException as error:
+        except ServiceError as error:
             emit_safe_provider_telemetry(
                 emit_diagnostic,
                 {

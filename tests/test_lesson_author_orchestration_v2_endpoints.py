@@ -6,17 +6,11 @@ from unittest.mock import AsyncMock, patch
 
 from fastapi import HTTPException
 
+from app.core.errors import ServiceError
 from app.lesson_author_orchestration_v2 import canonical_hash
 from app.lesson_author_orchestration_v2_provider import (
     ChapterShardProviderWireV2,
     CourseSkeletonProviderWireV2,
-)
-from app.services.orchestration_v2.chapter_shard import lesson_author_orchestration_v2_chapter_shard
-from app.services.orchestration_v2.course_skeleton import lesson_author_orchestration_v2_course_skeleton
-from app.services.orchestration_v2.source_snapshot import lesson_author_orchestration_v2_source_snapshot
-from app.services.orchestration_v2.unit import (
-    ORCHESTRATION_V2_UNIT_FALLBACK_RESPONSE_HEADROOM_MS,
-    lesson_author_orchestration_v2_unit,
 )
 from app.schemas.common import AiUsage
 from app.schemas.orchestration_v2 import (
@@ -27,6 +21,13 @@ from app.schemas.orchestration_v2 import (
 )
 from app.services.lesson_author.staged.provider_schemas import STAGED_COMPONENT_PAYLOAD_FIELDS
 from app.services.lesson_author.staged.validation import validate_staged_unit_content
+from app.services.orchestration_v2.chapter_shard import lesson_author_orchestration_v2_chapter_shard
+from app.services.orchestration_v2.course_skeleton import lesson_author_orchestration_v2_course_skeleton
+from app.services.orchestration_v2.source_snapshot import lesson_author_orchestration_v2_source_snapshot
+from app.services.orchestration_v2.unit import (
+    ORCHESTRATION_V2_UNIT_FALLBACK_RESPONSE_HEADROOM_MS,
+    lesson_author_orchestration_v2_unit,
+)
 from tests.log_support import log_text
 
 SOURCE_HASH = "a" * 64
@@ -879,7 +880,7 @@ class LessonAuthorOrchestrationV2EndpointTests(unittest.IsolatedAsyncioTestCase)
             "scope_catalog": [{"scope_key": "scope-1", "title": "Mục 1", "source_ref": None,
                                "fact_count": 1, "content_chars": 5}], "max_attempts": 1,
         })
-        provider_failure = HTTPException(status_code=504, detail={
+        provider_failure = ServiceError(status_code=504, detail={
             "code": "AI_PROVIDER_TIMEOUT", "message": "private",
         })
         with patch("app.services.provider.generate_content", AsyncMock(side_effect=provider_failure)):
@@ -1014,7 +1015,7 @@ class LessonAuthorOrchestrationV2EndpointTests(unittest.IsolatedAsyncioTestCase)
                               "source_chunk": 0, "locator": {}}],
             "max_attempts": 1,
         })
-        provider_failure = HTTPException(status_code=503, detail={
+        provider_failure = ServiceError(status_code=503, detail={
             "code": "AI_PROVIDER_UNAVAILABLE", "message": "private",
         })
         with patch("app.services.provider.generate_content", AsyncMock(side_effect=provider_failure)):

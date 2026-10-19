@@ -15,14 +15,13 @@ import re
 from time import perf_counter
 from typing import Any, Callable, Literal
 
-from fastapi import HTTPException
 from google.genai import errors as genai_errors
 from google.genai import types
 from pydantic import BaseModel, SecretStr
 
 from app.core import metrics
 from app.core.config import settings
-from app.core.errors import AppError
+from app.core.errors import AppError, ProviderError, ServiceError
 from app.core.handled_exceptions import report_handled_exception
 from app.core.logging import SERVICE_LOGGER_NAME, log_event
 from app.infra import gemini as gemini_infra
@@ -206,7 +205,7 @@ def provider_http_error_status(error: Exception) -> int | None:
 
 def safe_provider_error_diagnostics(error: Exception) -> dict[str, Any]:
     """Classify locally; never emit exception messages, bodies, URLs or headers."""
-    status = None if isinstance(error, HTTPException) else provider_http_error_status(error)
+    status = None if isinstance(error, ServiceError) else provider_http_error_status(error)
     details = getattr(error, "details", None)
     envelope = details if isinstance(details, dict) else {}
     error_body = envelope.get("error", envelope)
@@ -250,7 +249,7 @@ def safe_provider_error_diagnostics(error: Exception) -> dict[str, Any]:
                       "PERMISSION_DENIED", "UNAUTHENTICATED", "NOT_FOUND", "FAILED_PRECONDITION"}
     # Type names are operational metadata, but never trust a dynamically created
     # exception type to be free of customer-controlled content.
-    error_type = type(error).__name__
+    error_type = ServiceError.diagnostic_type if isinstance(error, ServiceError) else type(error).__name__
     known_types = {"ClientError", "ServerError", "APIError", "TimeoutError", "Timeout", "ReadTimeout", "ConnectTimeout",
                    "ConnectionError", "ConnectError", "RemoteProtocolError", "SSLError", "TypeError", "ValueError",
                    "ValidationError", "RuntimeError", "HTTPException", "AttributeError", "KeyError"}
@@ -372,13 +371,7 @@ async def call_provider_with_timeout(
                 })
             else:
                 log_event(logger, logging.ERROR, "ai_provider_timeout", model=model, timeout_ms=timeout_ms)
-            raise HTTPException(
-                status_code=504,
-                detail={
-                    "code": "AI_PROVIDER_TIMEOUT",
-                    "message": "AI provider phản hồi quá lâu. Vui lòng thử lại sau.",
-                },
-            ) from error
+            raise ProviderError("AI_PROVIDER_TIMEOUT", "AI provider phản hồi quá lâu. Vui lòng thử lại sau.") from error
         except Exception as error:
             status_code = provider_http_error_status(error)
             provider_error = str(error)
@@ -441,20 +434,8 @@ async def call_provider_with_timeout(
                               retry_after_s=round(retry_after, 1) if retry_after is not None else None,
                               waited_s=round(rate_limit_waited_seconds, 1))
                 if limit.kind == "rate_limited":
-                    raise HTTPException(
-                        status_code=503,
-                        detail={
-                            "code": RATE_LIMITED_CODE,
-                            "message": "AI provider đang giới hạn tần suất gọi. Vui lòng thử lại sau ít phút.",
-                        },
-                    ) from error
-                raise HTTPException(
-                    status_code=503,
-                    detail={
-                        "code": "AI_PROVIDER_QUOTA_EXHAUSTED",
-                        "message": "AI provider đã hết hạn mức. Vui lòng nạp thêm hạn mức hoặc đổi API key trước khi thử lại.",
-                    },
-                ) from error
+                    raise ProviderError(RATE_LIMITED_CODE, "AI provider đang giới hạn tần suất gọi. Vui lòng thử lại sau ít phút.") from error
+                raise ProviderError("AI_PROVIDER_QUOTA_EXHAUSTED", "AI provider đã hết hạn mức. Vui lòng nạp thêm hạn mức hoặc đổi API key trước khi thử lại.") from error
             is_transient = (isinstance(status_code, int) and status_code >= 500) or "UNAVAILABLE" in provider_error
             if is_transient and attempt + 1 < max_attempts:
                 outcome = "transient_retry"
@@ -488,13 +469,7 @@ async def call_provider_with_timeout(
                 else:
                     log_event(logger, logging.ERROR, "ai_provider_unavailable", model=model,
                               status_code=status_code, error_type=type(error).__name__)
-                raise HTTPException(
-                    status_code=503,
-                    detail={
-                        "code": "AI_PROVIDER_UNAVAILABLE",
-                        "message": "AI provider hiện không khả dụng. Vui lòng thử lại sau.",
-                    },
-                ) from error
+                raise ProviderError("AI_PROVIDER_UNAVAILABLE", "AI provider hiện không khả dụng. Vui lòng thử lại sau.") from error
             emit_safe_provider_telemetry(on_provider_diagnostic, {
                 "event": "provider_request_failed",
                 "model": model,
@@ -739,8 +714,8 @@ NON_RETRYABLE_PROVIDER_ERROR_CODES = frozenset({
 })
 
 
-def http_error_detail(error: HTTPException) -> dict[str, Any]:
-    """The structured ``detail`` of a service HTTPException (``{"code", "message"}``), else ``{}``.
+def http_error_detail(error: ServiceError) -> dict[str, Any]:
+    """The structured ``detail`` of a service error (``{"code", "message"}``), else ``{}``.
 
     Starlette types ``detail`` as ``str``; the service raises dict details, so it is read untyped.
     """
@@ -748,6 +723,6 @@ def http_error_detail(error: HTTPException) -> dict[str, Any]:
     return detail if isinstance(detail, dict) else {}
 
 
-def is_non_retryable_provider_error(error: HTTPException) -> bool:
+def is_non_retryable_provider_error(error: ServiceError) -> bool:
     detail = http_error_detail(error)
     return detail.get("code") in NON_RETRYABLE_PROVIDER_ERROR_CODES

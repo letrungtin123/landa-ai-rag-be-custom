@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from fastapi import HTTPException
+from app.core.errors import ServiceError
 from pydantic import ValidationError
 
 from app.core.config import settings
@@ -79,7 +79,7 @@ async def _lesson_author_orchestration_v2_course_skeleton(
                 correlation_id=request.correlation_id,
                 generation_stage="course_skeleton",
             )
-        except HTTPException as error:
+        except ServiceError as error:
             detail = http_error_detail(error)
             code = detail.get("code")
             if code not in ORCHESTRATION_V2_PROVIDER_FALLBACK_CODES:
