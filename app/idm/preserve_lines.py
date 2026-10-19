@@ -5,8 +5,8 @@ learner sees is the document's own text, in order. This module holds the pure li
 
 * the learner-visible form of a source line and its tokens, the unit of the exact-text check. The Node mirror is
   ``lesson-author-idm-preserve.logic.ts`` and both use the ECMAScript white-space set, so a unit Python accepts is
-  accepted by Node and the other way round (``tests/test_idm_preserve_text.py`` and the backend cross-language test
-  pin the parity). A table row of the source snapshot (``Row N: a | b | c``) is shown as its cells: the ``Row N:``
+  accepted by Node and the other way round (``tests/unit/idm/test_idm_preserve_text.py`` and the backend cross-language
+  test pin the parity). A table row of the source snapshot (``Row N: a | b | c``) is shown as its cells: the ``Row N:``
   label and the `` | `` separators are parser markup, not words of the document;
 * heading candidates (``Chương 1``, ``Bài 2``, ``1.1``, ``II.``, short ALL-CAPS lines, ...);
 * page furniture: page numbers, and a short line repeated at a page edge on several pages (a running header or

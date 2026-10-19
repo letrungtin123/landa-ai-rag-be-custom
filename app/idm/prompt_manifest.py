@@ -5,7 +5,7 @@ and ``/v1/meta``, and it did not change across the prompt edits since IDM-1. Thi
 from the sources of the prompt templates, so any template change gives a new value without touching
 that contract: ``/v1/meta`` and the IDM request logs carry it, and
 ``tests/fixtures/prompt_templates_manifest.json`` records it so a prompt change cannot land without
-an explicit manifest update (``tests/test_idm_prompt_manifest.py``).
+an explicit manifest update (``tests/golden/test_idm_prompt_manifest.py``).
 
 An entry is a module that holds prompt text only, or ``module:qualname`` for a prompt builder inside a
 larger module. Besides the source, an entry covers the plain constants (strings, numbers and

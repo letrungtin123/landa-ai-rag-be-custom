@@ -81,7 +81,7 @@ class StagedLessonProviderBoundaryTests(unittest.TestCase):
 
     def test_uat_empty_semantic_html_delta_repaired_and_failure_reason_retained(self):
         from tests.test_component_instance_contract import PROFILE
-        from tests.test_lesson_prompt_policy import request_and_unit
+        from tests.unit.legacy.test_lesson_prompt_policy import request_and_unit
         request, generated = request_and_unit("problem", "vi")
         architecture = request.blueprint_architecture.model_dump()
         architecture["component_capabilities"] = PROFILE
@@ -199,7 +199,7 @@ class StagedLessonProviderBoundaryTests(unittest.TestCase):
 
     def test_scoped_repair_runs_inside_existing_single_recovery_budget(self):
         from tests.test_component_instance_contract import PROFILE
-        from tests.test_lesson_prompt_policy import request_and_unit
+        from tests.unit.legacy.test_lesson_prompt_policy import request_and_unit
         request, unit = request_and_unit("problem", "en")
         architecture = request.blueprint_architecture.model_dump()
         architecture["component_capabilities"] = PROFILE
@@ -245,7 +245,7 @@ class StagedLessonProviderBoundaryTests(unittest.TestCase):
 
     def test_three_batch_chapter_repairs_last_html_without_reemitting_evidence(self):
         from tests.test_component_instance_contract import PROFILE
-        from tests.test_lesson_prompt_policy import request_and_unit
+        from tests.unit.legacy.test_lesson_prompt_policy import request_and_unit
         request, template = request_and_unit("problem", "vi")
         architecture = request.blueprint_architecture.model_dump()
         architecture["component_capabilities"] = PROFILE

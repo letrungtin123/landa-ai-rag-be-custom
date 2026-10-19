@@ -16,7 +16,7 @@ worker log) and, where Node only has a coarse code, a finer ``detail`` for the r
 
 JavaScript semantics are reproduced where they matter: string lengths in UTF-16 code units, the
 ECMAScript white-space set, ``String.prototype.slice`` on code units, ASCII ``\\d``/``\\w``/``\\b``.
-``tests/test_idm_node_acceptance.py`` pins the rules and the backend test
+``tests/unit/idm/test_idm_node_acceptance.py`` pins the rules and the backend test
 ``lesson-author-idm-acceptance.cross-language.test.ts`` (through ``tests/idm_contract_bridge.py``) keeps
 the verdicts in parity with the real Node code. Diagram geometry is computed by Node itself and is
 not mirrored; only the diagram text rules are.

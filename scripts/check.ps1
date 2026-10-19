@@ -23,35 +23,37 @@ $MypyStrictPaths = @(
     "app/services/orchestration_v2", "app/content", "app/contracts", "app/services/staged_unit"
 )
 $StrictTests = @(
-    "tests/test_prd0_security.py",
-    "tests/test_document_limits.py",
-    "tests/test_architecture_layers.py",
-    "tests/test_prd1_runtime.py",
-    "tests/test_prd1_endpoints.py",
-    "tests/test_characterization_ingestion.py",
-    "tests/test_characterization_retrieval_chat.py",
+    "tests/unit/core/test_prd0_security.py",
+    "tests/unit/core/test_document_limits.py",
+    "tests/contract/test_architecture_layers.py",
+    "tests/unit/core/test_prd1_runtime.py",
+    "tests/unit/api/test_prd1_endpoints.py",
+    "tests/unit/services/test_characterization_ingestion.py",
+    "tests/unit/services/test_characterization_retrieval_chat.py",
     "tests/idm_golden.py",
-    "tests/idm_golden_module.py",
-    "tests/idm_golden_unit.py",
-    "tests/idm_test_support.py",
+    "tests/golden/idm_golden_module.py",
+    "tests/golden/idm_golden_unit.py",
+    "tests/support/idm_test_support.py",
     "tests/idm_contract_bridge.py",
-    "tests/log_support.py",
-    "tests/test_handled_exceptions.py",
-    "tests/test_settings_hygiene.py",
-    "tests/test_readme_settings.py",
-    "tests/test_quality_gate_scripts.py",
-    "tests/test_route_snapshots.py",
-    "tests/test_repository_sql.py",
-    "tests/test_response_models.py",
-    "tests/test_core_text.py",
-    "tests/test_contract_bridge.py",
-    "tests/test_provider_wire_shared.py",
-    "tests/test_legacy_route_usage.py",
-    "tests/test_response_contract_observation.py"
+    "tests/support/log_support.py",
+    "tests/unit/core/test_handled_exceptions.py",
+    "tests/unit/core/test_settings_hygiene.py",
+    "tests/contract/test_readme_settings.py",
+    "tests/contract/test_quality_gate_scripts.py",
+    "tests/contract/test_route_snapshots.py",
+    "tests/unit/repositories/test_repository_sql.py",
+    "tests/contract/test_response_models.py",
+    "tests/unit/core/test_core_text.py",
+    "tests/contract/test_contract_bridge.py",
+    "tests/unit/contracts/test_provider_wire_shared.py",
+    "tests/contract/test_legacy_route_usage.py",
+    "tests/contract/test_response_contract_observation.py",
+    "tests/golden/test_idm_prompt_manifest.py",
+    "tests/golden/test_idm_prompt_outputs.py"
 )
 # Every IDM test file is held to the strict lint profile.
-$StrictTests += @(Get-ChildItem -Path (Join-Path $RepoRoot "tests") -Filter "test_idm_*.py" |
-    Where-Object { $_.Name -ne "test_idm_foundation.py" } | ForEach-Object { "tests/" + $_.Name })
+$StrictTests += @(Get-ChildItem -Path (Join-Path $RepoRoot "tests/unit/idm") -Filter "test_idm_*.py" |
+    Where-Object { $_.Name -ne "test_idm_foundation.py" } | ForEach-Object { "tests/unit/idm/" + $_.Name })
 
 # Windows PowerShell does not stop on a failing native command; check each exit code.
 function Invoke-Gate([string]$Name, [scriptblock]$Command) {

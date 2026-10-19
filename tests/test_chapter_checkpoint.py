@@ -22,7 +22,7 @@ from app.services.lesson_author import checkpoint as checkpoint_service
 from app.services.lesson_author.staged import skeleton as staged_skeleton
 from app.services.lesson_author.staged import source_locked as staged_source_locked
 from app.workflows.contracts import WorkflowFailure, WorkflowValidationResult
-from tests.test_lesson_prompt_policy import request_and_unit
+from tests.unit.legacy.test_lesson_prompt_policy import request_and_unit
 
 
 def fixture(count=5, *, action="generate_unit", index=0):

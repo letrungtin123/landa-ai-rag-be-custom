@@ -16,7 +16,7 @@ was rejected). This module mirrors those rules so the IDM writer can
   (:func:`normalize_html_semantic`): it never invents, rewrites or drops text, it only
   moves text into the block shape the renderer accepts and drops empty or duplicated values.
 
-``tests/test_idm_html_rules.py`` keeps the mirror in parity with the shared validator.
+``tests/unit/idm/test_idm_html_rules.py`` keeps the mirror in parity with the shared validator.
 """
 
 from __future__ import annotations

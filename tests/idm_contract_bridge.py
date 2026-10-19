@@ -11,12 +11,12 @@ request models and the real IDM code runs in-process. No network is used.
 Stages:
 * ``course_skeleton`` — golden W1/W1-reduce/W2/W4 answers (``tests/idm_golden.py``).
 * ``chapter_shard``  — golden W3/W4 module answer for the requested module
-  (``tests/idm_golden_module.py``); ``options.hold_lessons`` turns the practice
+  (``tests/golden/idm_golden_module.py``); ``options.hold_lessons`` turns the practice
   of the listed lessons into a held practice without a practice component.
 * ``unit``           — deterministic W5 writer answers generated from the
   request's contract and brief (or ``options.writer`` / ``options.repair`` answers
   given by the caller); the W6 judge always passes.
-* ``golden_unit``    — the golden IDM unit requests of ``tests/test_idm_storyboard.py`` with a valid
+* ``golden_unit``    — the golden IDM unit requests of ``tests/unit/idm/test_idm_storyboard.py`` with a valid
   writer answer each (``worksheet``: html practice worksheet + problem; ``escalate``: problem +
   la_faq; ``severity``: html explanation + problem).
 * ``acceptance``     — the Python mirror of Node's unit acceptance
@@ -24,8 +24,8 @@ Stages:
   the first finding as ``{"check", "code", "path"}`` or ``null`` (Node parity test).
 
 QLT-6 ``preserve_source`` (a document kept as it is): ``course_skeleton`` answers the one segmentation call from
-``tests/idm_preserve_golden.py`` (or ``options.segmentation``); ``chapter_shard`` and ``unit`` fail the test if the
-provider is called at all. ``preserve_source`` returns that fixture's facts and context; ``preserve_text`` runs the
+``tests/golden/idm_preserve_golden.py`` (or ``options.segmentation``); ``chapter_shard`` and ``unit`` fail the test if
+the provider is called at all. ``preserve_source`` returns that fixture's facts and context; ``preserve_text`` runs the
 exact-text check (``app.idm.preserve_render.preserve_text_finding``) on ``request.cases[i]`` (``facts`` texts and an
 ``html`` fragment) for the Node parity test.
 """
@@ -50,8 +50,8 @@ from app.idm.storyboard import acceptance_context, parse_brief
 from app.lesson_author_orchestration_v2_provider import UnitGenerationContractV2
 from app.schemas.common import AiUsage
 from tests import idm_golden as g
-from tests import idm_golden_module as gm
-from tests import idm_preserve_golden as pg
+from tests.golden import idm_golden_module as gm
+from tests.golden import idm_preserve_golden as pg
 
 ROUTES = {
     "course_skeleton": "/v1/lesson-author/orchestration-v2/course-skeleton",
@@ -234,8 +234,8 @@ def golden_units() -> dict[str, Any]:
     """Golden unit requests with a valid writer answer each (``severity``: html explain + problem;
     ``severity_explain``: the same unit in an explained course, QLT-5 C, whose budget is 135%)."""
 
-    from tests import test_idm_fidelity_unit as fu  # noqa: PLC0415 - test fixtures, loaded only for this stage
-    from tests import test_idm_storyboard as sb  # noqa: PLC0415 - test fixtures, loaded only for this stage
+    from tests.unit.idm import test_idm_fidelity_unit as fu  # noqa: PLC0415 - test fixtures, loaded only for this stage
+    from tests.unit.idm import test_idm_storyboard as sb  # noqa: PLC0415 - test fixtures, loaded only for this stage
 
     def explain_writer(body: dict[str, Any]) -> dict[str, Any]:
         return fu.writer_with(body, fu.explained_c0(fu.owned_of(body)))

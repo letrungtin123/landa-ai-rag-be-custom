@@ -25,7 +25,7 @@ from app.services.lesson_author.staged.source_locked import build_source_locked_
 from app.services.lesson_author.staged.validation import validate_staged_unit_content
 from app.services.lesson_author.staged.writer import generate_staged_lesson_author_proposal
 from app.source_map import build_source_map
-from tests.test_evidence_scope_allocation_v5 import _manifest, _nodes, _v5_blueprint
+from tests.unit.legacy.test_evidence_scope_allocation_v5 import _manifest, _nodes, _v5_blueprint
 
 PROFILE = {"version": 2, "max_components_per_unit": 4, "max_assessments_per_unit": 3, "assessment_enabled": True}
 

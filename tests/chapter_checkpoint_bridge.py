@@ -9,8 +9,8 @@ from app.lesson_author_checkpoint import ChapterCheckpointUnit
 from app.schemas.common import AiUsage
 from app.schemas.lesson_author import RagLessonAuthorCheckpointRequest
 from tests.test_chapter_checkpoint import checkpoint_result, fixture, provider_result
-from tests.test_checkpoint_component_quality_repair import instance_wire
-from tests.test_staged_instance_output import checkpoint_instance_fixture
+from tests.unit.legacy.test_checkpoint_component_quality_repair import instance_wire
+from tests.unit.legacy.test_staged_instance_output import checkpoint_instance_fixture
 
 
 def run(payload):
@@ -21,13 +21,13 @@ def run(payload):
         provider = AsyncMock(side_effect=[(json.dumps(broken), AiUsage()),
             (json.dumps({"components": [{"component_index": 2, "edges": unit["components"][2]["edges"]}]}), AiUsage())])
         if payload["action"] == "coverage_repair":
-            from tests.test_checkpoint_coverage_repair import coverage_fixture
+            from tests.unit.legacy.test_checkpoint_coverage_repair import coverage_fixture
             request, unit, broken_unit, _, manifest, delta = coverage_fixture()
             provider = AsyncMock(side_effect=[(json.dumps(instance_wire(broken_unit)), AiUsage()),
                                               (json.dumps(delta), AiUsage())])
         if payload["action"] in ("duplicate_claim_repair", "null_claim_repair"):
-            from tests.test_coverage_claim_recovery import repaired_payload
-            from tests.test_staged_ordered_writer import uat_fixture
+            from tests.unit.legacy.test_coverage_claim_recovery import repaired_payload
+            from tests.unit.legacy.test_staged_ordered_writer import uat_fixture
             request, unit, _, manifest = uat_fixture()
             # The dense Python-only fixture replaces the unit scope; restore
             # the same approved treatment reasons as checkpoint_instance_fixture

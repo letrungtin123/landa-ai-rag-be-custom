@@ -7,7 +7,8 @@ Two parts:
   the backend imports them from this module instead.
 * The HTTP contract: every POST route with its top-level request model and, for the typed routes, its response
   model, exported as one JSON Schema document (``contracts/landa-ai-rag.http.schema.json``) that Node can compare
-  against. ``tests/test_contract_bridge.py`` checks that the committed file matches these models and the routes.
+  against. ``tests/contract/test_contract_bridge.py`` checks that the committed file matches these models and the
+  routes.
 
 Regenerate the schema file after a deliberate contract change with ``python -m app.contract_bridge``.
 """

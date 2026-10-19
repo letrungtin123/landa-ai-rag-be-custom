@@ -38,10 +38,17 @@ updated deliberately, never by hand:
 
 - route snapshots (`tests/snapshots/routes`): `LANDA_UPDATE_ROUTE_SNAPSHOTS=1`;
 - IDM prompt manifest (`tests/fixtures/prompt_templates_manifest.json`): `LANDA_UPDATE_PROMPT_MANIFEST=1`;
-- the settings table of this file: `LANDA_UPDATE_README=1 python -m pytest tests/test_readme_settings.py`.
+- the settings table of this file: `LANDA_UPDATE_README=1 python -m pytest tests/contract/test_readme_settings.py`.
 
-`tests/test_architecture_layers.py` holds the structure rules: layer imports, no `print`, internal auth on every
-route except `/healthz` and `/readyz`, thin route handlers, structured log calls, and STD-5 sizes (strict code:
+Test layout: `tests/unit/<package>/` holds the tests of one `app` package (`tests/unit/legacy/` those of the legacy
+V5 pipeline, deleted with it); `tests/contract/` the HTTP wire format, route snapshots, error codes and repository
+rules; `tests/golden/` the IDM golden builders and the recorded prompt hashes; `tests/support/` shared helpers;
+`tools/` scripts that are not tests (QC replay, schema probe, source benchmark). The files left directly in `tests/`
+are named by the backend's cross-language tests (`python -m tests.<module>`, `tests/idm_golden.py`): they move only
+together with the backend.
+
+`tests/contract/test_architecture_layers.py` holds the structure rules: layer imports, no `print`, internal auth on
+every route except `/healthz` and `/readyz`, thin route handlers, structured log calls, and STD-5 sizes (strict code:
 files at most 800 lines, functions at most 120, with a fixed allowlist that only shrinks).
 
 ## Architecture
@@ -127,7 +134,7 @@ bounded repair, then deterministic source-locked content marked for review. Prom
 
 ## Settings
 
-Generated from `app/core/config.py` (`LANDA_UPDATE_README=1 python -m pytest tests/test_readme_settings.py`).
+Generated from `app/core/config.py` (`LANDA_UPDATE_README=1 python -m pytest tests/contract/test_readme_settings.py`).
 Secrets are `SecretStr` and never logged; `.env.example` holds placeholders.
 
 <!-- settings-table:start -->

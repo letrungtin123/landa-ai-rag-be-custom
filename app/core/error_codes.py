@@ -3,7 +3,7 @@
 Node reads ``detail.code`` of a failed request (``{"detail": {"code", "message"}}``) to decide whether a
 run retries, stops or falls back, so a code and its status are a wire contract: they change together
 with the backend, never in one place only. ``AppError`` and ``ProviderError`` (``app.core.errors``)
-are raised with these codes; ``tests/test_error_codes.py`` checks that every literal ``AppError`` code
+are raised with these codes; ``tests/contract/test_error_codes.py`` checks that every literal ``AppError`` code
 of the service and every provider code is registered here with the status it is raised with.
 
 Stage-level codes inside a successful payload (``IDM_*``, ``ORCHESTRATION_V2_*`` findings) are not

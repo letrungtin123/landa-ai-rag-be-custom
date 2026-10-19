@@ -7,7 +7,7 @@ which texts match: that is a behaviour change, never a cleanup.
 
 Other folds keep their own code because their semantics differ from both variants here (for example
 ``app.idm.text.idm_fold``: NFC, ``lower()``, "đ" to "d", whitespace collapsed; or the Node mirrors in
-``app.idm.node_acceptance``). ``tests/test_architecture_layers.py`` freezes where decomposing
+``app.idm.node_acceptance``). ``tests/contract/test_architecture_layers.py`` freezes where decomposing
 normalisation may still appear outside this module, so a new private copy fails the gate.
 """
 

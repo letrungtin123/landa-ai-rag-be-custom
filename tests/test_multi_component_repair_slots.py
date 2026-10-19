@@ -13,11 +13,11 @@ from app.services.lesson_author.staged import provider_schemas as staged_schemas
 from app.services.lesson_author.staged import validation as staged_validation
 from app.services.lesson_author.staged.provider_schemas import STAGED_COMPONENT_PAYLOAD_FIELDS
 from app.workflows.contracts import WorkflowFailure
-from tests import test_checkpoint_provider_sdk as sdk_fixture
-from tests.staged_schema_probe import capture_sdk_body
+from tests.unit.legacy import test_checkpoint_provider_sdk as sdk_fixture
+from tools.staged_schema_probe import capture_sdk_body
 from tests.test_chapter_checkpoint import checkpoint_result
-from tests.test_checkpoint_component_quality_repair import instance_wire
-from tests.test_staged_ordered_writer import uat_fixture
+from tests.unit.legacy.test_checkpoint_component_quality_repair import instance_wire
+from tests.unit.legacy.test_staged_ordered_writer import uat_fixture
 
 
 def fixture():

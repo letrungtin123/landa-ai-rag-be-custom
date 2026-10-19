@@ -49,7 +49,7 @@ jobs:
         working-directory: landa-ai-rag
     steps:
       # The cross-language test resolves the backend as a sibling directory
-      # (tests/test_instructional_opportunities.py: Path(__file__).parents[2] / "landa-backend").
+      # (tests/unit/legacy/test_instructional_opportunities.py: Path(__file__).parents[4] / "landa-backend").
       - name: Checkout AI service
         uses: actions/checkout@v5 # pin-sha
         with:
@@ -83,7 +83,7 @@ jobs:
         if: env.HAS_BACKEND_CHECKOUT != 'true'
         run: |
           echo "::warning::BACKEND_REPO_TOKEN not available: deselecting the Node cross-language test"
-          echo "PYTEST_ADDOPTS=--deselect tests/test_instructional_opportunities.py::InstructionalOpportunityTests::test_node_registry_maps_discovered_treatments_permissions_and_faq_last" >> "$GITHUB_ENV"
+          echo "PYTEST_ADDOPTS=--deselect tests/unit/legacy/test_instructional_opportunities.py::InstructionalOpportunityTests::test_node_registry_maps_discovered_treatments_permissions_and_faq_last" >> "$GITHUB_ENV"
 
       - name: Set up Python
         uses: actions/setup-python@v6 # pin-sha
@@ -107,7 +107,7 @@ jobs:
           .venv-dev/bin/python -m pip install --require-hashes --no-deps -r requirements-dev.lock
 
       # The coverage threshold and the checked paths live in scripts/check.sh (kept equal to
-      # scripts/check.ps1 by tests/test_quality_gate_scripts.py).
+      # scripts/check.ps1 by tests/contract/test_quality_gate_scripts.py).
       - name: Quality gate (ruff, mypy, pytest with the coverage gate, pip-audit)
         run: sh scripts/check.sh
 

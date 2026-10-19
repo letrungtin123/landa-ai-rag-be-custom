@@ -35,8 +35,8 @@ from app.services.lesson_author.staged.skeleton import match_staged_unit_by_titl
 from app.source_map import build_source_map
 from app.workflows.contracts import WorkflowFailure
 from app.workflows.course_architecture import classify_course_repair_targets
-from tests.test_evidence_scope_allocation_v5 import _manifest, _nodes, _v5_blueprint
-from tests.test_lesson_author_blueprint import blueprint_request
+from tests.unit.legacy.test_evidence_scope_allocation_v5 import _manifest, _nodes, _v5_blueprint
+from tests.unit.legacy.test_lesson_author_blueprint import blueprint_request
 
 
 async def endpoint_fixture(count=371, *, intent="worked_example", thin=True, locale="en"):
