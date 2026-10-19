@@ -29,7 +29,8 @@ production and `AI_RAG_ENV=test` read the process environment only. `/docs` is s
 3. mypy `--strict` on the strict code, the moved services (`provider`, `chat`, `retrieval`, `ingestion`,
    `orchestration_v2`) and the shared core moved out of the legacy modules (`app/content`, `app/contracts`,
    `app/services/staged_unit`); legacy modules keep a "no new errors" baseline (`pyproject.toml`);
-4. pytest with branch coverage, failing under 85%;
+4. pytest with branch coverage, failing under 85%, then the coverage of each `app` package
+   (`scripts/coverage_by_package.py`: a report, except `app/idm`, which fails under 90%);
 5. pip-audit of `requirements.lock`.
 
 Tests never reach the network or a database: providers are fakes at the `google.genai.Client` or

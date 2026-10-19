@@ -12,7 +12,7 @@ $StrictPaths = @(
     "app/main.py", "app/api", "app/schemas", "app/repositories",
     "app/services/runtime.py", "app/services/meta.py", "app/services/deadlines.py", "app/services/text.py",
     "app/services/legacy_routes.py", "app/services/response_contracts.py",
-    "app/hashing.py", "app/contract_bridge.py"
+    "app/hashing.py", "app/contract_bridge.py", "scripts/coverage_by_package.py"
 )
 # Service code moved verbatim out of app/main.py in PRD-2, and the shared core moved verbatim out of the
 # legacy modules in refactor wave 2 (step 2.1): mypy strict, pyflakes (F) lint rules.
@@ -69,6 +69,8 @@ try {
     Invoke-Gate "ruff (moved code, F rules)" { & $Python -m ruff check app/services app/content app/contracts --select F }
     Invoke-Gate "mypy (strict paths)" { & $Python -m mypy @StrictPaths @MypyStrictPaths }
     Invoke-Gate "pytest + coverage" { & $Python -m pytest -q --cov=app --cov-branch --cov-report=term --cov-fail-under=85 }
+    # Coverage of each app package: a report, except the packages with a target (hardening plan §19.6).
+    Invoke-Gate "coverage by package" { & $Python scripts/coverage_by_package.py --fail-under app/idm=90 }
     Invoke-Gate "pip-audit" { & $Python -m pip_audit -r requirements.lock --disable-pip }
 } finally {
     Pop-Location

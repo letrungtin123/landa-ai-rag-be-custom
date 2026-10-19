@@ -44,6 +44,7 @@ class GateScriptParityTests(unittest.TestCase):
 
     def test_both_scripts_run_the_same_steps_and_thresholds(self) -> None:
         for step in ("-m ruff check", "--select F", "-m mypy", "-m pytest -q --cov=app --cov-branch",
+                     "scripts/coverage_by_package.py --fail-under app/idm=90",
                      "-m pip_audit -r requirements.lock --disable-pip"):
             with self.subTest(step=step):
                 self.assertIn(step, PS1)

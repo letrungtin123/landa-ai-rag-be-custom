@@ -9,7 +9,7 @@ if [ ! -x "$python" ]; then
 fi
 
 # Code held to the full PRD standard (§19.3): ruff (all rules) + mypy strict.
-strict_paths="app/core app/infra app/idm app/prompt_safety.py app/__main__.py app/main.py app/api app/schemas app/repositories app/services/runtime.py app/services/meta.py app/services/deadlines.py app/services/text.py app/services/legacy_routes.py app/services/response_contracts.py app/hashing.py app/contract_bridge.py"
+strict_paths="app/core app/infra app/idm app/prompt_safety.py app/__main__.py app/main.py app/api app/schemas app/repositories app/services/runtime.py app/services/meta.py app/services/deadlines.py app/services/text.py app/services/legacy_routes.py app/services/response_contracts.py app/hashing.py app/contract_bridge.py scripts/coverage_by_package.py"
 # Service code moved verbatim out of app/main.py in PRD-2, and the shared core moved verbatim out of the
 # legacy modules in refactor wave 2 (step 2.1): mypy strict, pyflakes (F) lint rules.
 # The legacy lesson-author pipeline (app/services/lesson_author) keeps the mypy "no new errors"
@@ -28,4 +28,6 @@ cd "$repo_root"
 # shellcheck disable=SC2086
 "$python" -m mypy $strict_paths $mypy_strict_paths
 "$python" -m pytest -q --cov=app --cov-branch --cov-report=term --cov-fail-under=85
+# Coverage of each app package: a report, except the packages with a target (hardening plan §19.6).
+"$python" scripts/coverage_by_package.py --fail-under app/idm=90
 "$python" -m pip_audit -r requirements.lock --disable-pip
