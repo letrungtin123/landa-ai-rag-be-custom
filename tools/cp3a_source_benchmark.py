@@ -14,9 +14,9 @@ REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 if str(REPOSITORY_ROOT) not in sys.path:
     sys.path.insert(0, str(REPOSITORY_ROOT))
 
-from app.services.ingestion.extract import extract_pdf
-from app.source_readiness import analyze_pdf_readiness
-from app.source_visual_observation import (
+from app.services.ingestion.extract import extract_pdf  # noqa: E402 - after the sys.path setup of a script
+from app.source_readiness import analyze_pdf_readiness  # noqa: E402
+from app.source_visual_observation import (  # noqa: E402
     build_shadow_visual_observation_plan,
     record_human_visual_observation,
 )
@@ -79,7 +79,7 @@ def _run_candidate(
     pages: list[int],
 ) -> dict[str, Any]:
     bridge = Path(__file__).with_name("cp3a_layout_candidate.py")
-    completed = subprocess.run(
+    completed = subprocess.run(  # noqa: S603 - this repository's own bridge script
         [
             str(python),
             str(bridge),
@@ -487,7 +487,8 @@ def main() -> int:
         "integration_scope": "cp3b_prototype_eligibility_only",
         "integration_blockers": sorted(set(blockers)),
         "limitations": [
-            "This result applies to the labeled document and corpus; it is not a universal customer-document specification.",
+            "This result applies to the labeled document and corpus; it is not a universal customer-document "
+            "specification.",
             "Human-reviewed visual observations are benchmarked; no model/provider visual inference was performed.",
             "No parser output was assembled into a writer payload in CP3A.",
         ],

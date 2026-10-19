@@ -69,7 +69,7 @@ async def _orchestration_v2_generate_content(
             "model": model,
             **diagnostics,
         })
-        if status == 400:
+        if status == 400:  # noqa: PLR2004 - HTTP status
             raise _orchestration_v2_http_error(
                 "AI_PROVIDER_REQUEST_REJECTED",
                 "AI provider rejected the structured generation request.",

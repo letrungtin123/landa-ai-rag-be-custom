@@ -92,7 +92,8 @@ async def lesson_author_orchestration_v2_unit(
         except ValidationError as error:
             raise _idm_http_error(IdmStageError("IDM_STAGE_OUTPUT_INVALID")) from error
     if request.unit_contract.idm_unit_brief is not None:
-        budget_ms = max(1_000, request.remaining_workflow_budget_ms - ORCHESTRATION_V2_UNIT_FALLBACK_RESPONSE_HEADROOM_MS)
+        budget_ms = max(1_000,
+                        request.remaining_workflow_budget_ms - ORCHESTRATION_V2_UNIT_FALLBACK_RESPONSE_HEADROOM_MS)
         try:
             runtime = _idm_runtime(request, budget_ms=budget_ms, allowance=None)
             # The source-locked rebuilds and the purity context grow with the unit: built off the event loop.
@@ -196,7 +197,7 @@ def _orchestration_v2_unit_source_rows(request: RagLessonAuthorUnitV2Request) ->
     } for fact in contract.source_facts]
 
 
-async def _lesson_author_orchestration_v2_unit_legacy(
+async def _lesson_author_orchestration_v2_unit_legacy(  # noqa: PLR0917 - legacy route helper, called positionally
     request: RagLessonAuthorUnitV2Request,
     contract: UnitGenerationContractV2,
     manifest: dict[str, Any],
@@ -343,7 +344,7 @@ async def _lesson_author_orchestration_v2_unit_legacy(
         # even when Python rejected the request before reaching Gemini. The
         # durable fallback-only replay is provider-free and fully complete.
         first_attempt = not request.fallback_only
-        if len(attempt_trace) < 64:
+        if len(attempt_trace) < 64:  # noqa: PLR2004 - attempt trace cap
             attempt_trace.append({
                 "sequence": len(attempt_trace) + 1,
                 "invocation_kind": "deterministic",
@@ -355,7 +356,8 @@ async def _lesson_author_orchestration_v2_unit_legacy(
                 "failure_stage": ("provider_usage" if reason_code == "PROVIDER_USAGE_INCOMPLETE"
                                   else "durable_replay" if reason_code == "DURABLE_FINAL_ATTEMPT"
                                   else "unit_generation"),
-                "failure_code": reason_code[:100] if re.fullmatch(r"[A-Z][A-Z0-9_]{0,99}", reason_code) else "FALLBACK_REQUIRED",
+                "failure_code": reason_code[:100] if re.fullmatch(r"[A-Z][A-Z0-9_]{0,99}", reason_code)
+                else "FALLBACK_REQUIRED",
                 "failure_path": None,
                 "provider_dispatched": provider_dispatched,
                 "usage_source": "unknown",
@@ -412,7 +414,7 @@ async def _lesson_author_orchestration_v2_unit_legacy(
         elapsed_ms = max(0, int((perf_counter() - unit_started) * 1000))
         remaining_ms = request.remaining_workflow_budget_ms - elapsed_ms
         timeout_ms = min(settings.semantic_review_timeout_ms, remaining_ms)
-        if timeout_ms < 1_000:
+        if timeout_ms < 1_000:  # noqa: PLR2004 - one-second floor
             raise RuntimeError("SEMANTIC_WORKFLOW_BUDGET_EXHAUSTED")
         invocation_dispatched = False
         invocation_usage_complete = False
@@ -429,7 +431,7 @@ async def _lesson_author_orchestration_v2_unit_legacy(
                 for key in ("provider_input_tokens", "provider_output_tokens", "provider_total_tokens")
             ]
             if (
-                metadata.get("provider_http_status") == 200
+                metadata.get("provider_http_status") == 200  # noqa: PLR2004 - HTTP status
                 and metadata.get("usage_source") == "provider"
                 and all(type(value) is int and value >= 0 for value in counts)
                 and counts[2] >= counts[0] + counts[1]  # type: ignore[operator]  # ints, checked just above
@@ -448,8 +450,8 @@ async def _lesson_author_orchestration_v2_unit_legacy(
             if (
                 outcome is None
                 or type(provider_attempt) is not int
-                or not 1 <= provider_attempt <= 8
-                or len(attempt_trace) >= 64
+                or not 1 <= provider_attempt <= 8  # noqa: PLR2004 - attempt cap
+                or len(attempt_trace) >= 64  # noqa: PLR2004 - attempt trace cap
             ):
                 return
             raw_code = str(metadata.get("internal_failure_code") or event).upper()
@@ -650,7 +652,7 @@ async def _lesson_author_orchestration_v2_unit_legacy(
                 "content_origin": content_origin, "quality_state": quality_state,
                 "attempt_trace": attempt_trace,
                 **({"semantic_review": semantic_summary} if semantic_summary is not None else {})}
-    except asyncio.TimeoutError:
+    except TimeoutError:
         return deterministic_fallback("AI_STAGED_LESSON_WORKFLOW_TIMEOUT", provider_dispatched=provider_dispatched)
     except WorkflowFailure as error:
         log_payload(logger, logging.WARNING, V2_LOG_FAMILY, {

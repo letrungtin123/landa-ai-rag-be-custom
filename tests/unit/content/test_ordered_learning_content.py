@@ -32,17 +32,24 @@ class OrderedContentTests(unittest.TestCase):
     def test_mixed_unknown_empty_and_aggregate_overflow_rejected(self):
         cases = []
         for field, value in [("paragraphs", ["silently discarded"]), ("version", 3), ("sections", [])]:
-            p = payload(); p[field] = value; cases.append(p)
+            p = payload()
+            p[field] = value
+            cases.append(p)
         for block in [{"kind": "unknown", "text": "bad"}, {"kind": "paragraph", "text": "ok", "items": ["bad"]},
                       {"kind": "table", "rows": [{"label": "empty value"}]}, {"kind": "paragraph", "text": "x" * 2001}]:
-            p = payload(); p["sections"][0]["blocks"] = [block]; cases.append(p)
-        p = payload(); p["sections"][0]["blocks"] = [{"kind": "bullets", "items": ["item"] * 11}]
-        p["sections"][1]["blocks"] = [{"kind": "bullets", "items": ["item"] * 10}]; cases.append(p)
+            p = payload()
+            p["sections"][0]["blocks"] = [block]
+            cases.append(p)
+        p = payload()
+        p["sections"][0]["blocks"] = [{"kind": "bullets", "items": ["item"] * 11}]
+        p["sections"][1]["blocks"] = [{"kind": "bullets", "items": ["item"] * 10}]
+        cases.append(p)
         for p in cases:
             self.assertIsNotNone(semantic_learning_visible_text(p)[1])
 
     def test_missing_group_repair_is_scoped_and_unknown_group_rejected(self):
-        component = {"type": "html", "semantic_content": payload(), "source_fact_ids": [], "covered_source_fact_ids": []}
+        component = {"type": "html", "semantic_content": payload(), "source_fact_ids": [],
+                     "covered_source_fact_ids": []}
         plan = {"type": "html", "source_fact_ids": [], "learning_block_ids": ["teach_a", "teach_b", "teach_c"]}
         finding = staged_instructional_finding(component, 0, plan)
         self.assertEqual(finding.code, "HTML_TEACHING_GROUP_MISSING")
@@ -55,7 +62,8 @@ class OrderedContentTests(unittest.TestCase):
 
     def test_heading_or_metadata_is_not_teaching_witness(self):
         fact = "The third framework defines the approved sustainable operating condition."
-        p = payload(); p["sections"][0]["heading"] = fact
+        p = payload()
+        p["sections"][0]["heading"] = fact
         unit = {"components": [{"type": "html", "semantic_content": p, "covered_source_fact_ids": ["f1"]}]}
         expected = {"source_fact_ids": ["f1"], "component_plan": [{"type": "html", "source_fact_ids": ["f1"]}]}
         report = observe_lesson_content(unit, expected, {"facts": [{"fact_id": "f1", "text": fact}]})

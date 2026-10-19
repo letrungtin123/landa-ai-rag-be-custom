@@ -37,10 +37,10 @@ class GateScriptParityTests(unittest.TestCase):
             with self.subTest(list=ps1):
                 self.assertEqual(ps1_list(ps1), sh_list(sh))
                 self.assertTrue(all((REPO_ROOT / path).exists() for path in ps1_list(ps1)), ps1)
-        # Every IDM test file except the foundation one is added on top of the lists by both scripts.
-        self.assertIn('-Filter "test_idm_*.py"', PS1)
-        self.assertIn("tests/unit/idm/test_idm_*.py", SH)
-        self.assertEqual(PS1.count('"test_idm_foundation.py"') + SH.count('"test_idm_foundation.py"'), 2)
+        # Every test package except the legacy pipeline's (deleted with it) is held to the strict lint profile.
+        packages = {f"tests/unit/{path.name}" for path in (REPO_ROOT / "tests" / "unit").iterdir()
+                    if path.is_dir() and not path.name.startswith(("_", "."))}
+        self.assertEqual(packages - set(ps1_list("StrictTests")), {"tests/unit/legacy"})
 
     def test_both_scripts_run_the_same_steps_and_thresholds(self) -> None:
         for step in ("-m ruff check", "--select F", "-m mypy", "-m pytest -q --cov=app --cov-branch",

@@ -60,9 +60,9 @@ async def _idm_generate(api_key: str, model: str, prompt: str, **options: Any) -
         })
         report_handled_exception(
             logger, error, stage=current_provider_stage() or "idm", family=IDM_LOG_FAMILY, model=model,
-            outcome="AI_PROVIDER_REQUEST_REJECTED" if status == 400
+            outcome="AI_PROVIDER_REQUEST_REJECTED" if status == 400  # noqa: PLR2004 - HTTP status
             else "AI_PROVIDER_AUTH_REJECTED" if status in {401, 403} else "AI_PROVIDER_UNAVAILABLE")
-        if status == 400:
+        if status == 400:  # noqa: PLR2004 - HTTP status
             raise IdmProviderError("AI_PROVIDER_REQUEST_REJECTED", terminal=True) from error
         if status in {401, 403}:
             raise IdmProviderError("AI_PROVIDER_AUTH_REJECTED", terminal=True) from error

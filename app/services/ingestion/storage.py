@@ -44,7 +44,7 @@ async def fetch_index_source(request: RagIndexRequest, storage_path: str, destin
         raw = await asyncio.to_thread(download_storage_object, storage_path)
         size = len(raw)
         assert_document_size(size, maximum=settings.max_document_bytes)
-        destination.write_bytes(raw)
+        destination.write_bytes(raw)  # noqa: ASYNC240 - one bounded write of the uploaded file
         source = "service_key"
     logger.info(
         "rag_index_downloaded",

@@ -7,13 +7,6 @@ from typing import Any, Literal, cast
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 
-from app.instructional_density import (
-    DEFAULT_INSTRUCTIONAL_DENSITY_BUDGET,
-    INSTRUCTIONAL_DENSITY_POLICY_VERSION,
-    evaluate_instructional_density,
-    instructional_output_budget,
-    profile_instructional_texts,
-)
 from app.content.instructional_quality import (
     build_source_grounded_single_choice,
     clean_source_facts,
@@ -21,6 +14,10 @@ from app.content.instructional_quality import (
     source_clarification_signals,
     source_relationship_pairs,
     source_term_definitions,
+)
+from app.content.source_evidence_bundle import (
+    build_degraded_source_evidence_bundle,
+    build_source_evidence_bundle,
 )
 from app.contracts.orchestration_v2.blueprint import (
     ArchitectureComponentAuthorReviewV2,
@@ -34,11 +31,14 @@ from app.contracts.orchestration_v2.blueprint import (
     canonical_hash,
 )
 from app.contracts.schema_projection import ORCHESTRATION_V2_WIRE, project_provider_schema, provider_wire_model
-from app.prompt_safety import UNTRUSTED_JSON_CONTEXT_RULE
-from app.content.source_evidence_bundle import (
-    build_degraded_source_evidence_bundle,
-    build_source_evidence_bundle,
+from app.instructional_density import (
+    DEFAULT_INSTRUCTIONAL_DENSITY_BUDGET,
+    INSTRUCTIONAL_DENSITY_POLICY_VERSION,
+    evaluate_instructional_density,
+    instructional_output_budget,
+    profile_instructional_texts,
 )
+from app.prompt_safety import UNTRUSTED_JSON_CONTEXT_RULE
 
 MAX_SOURCE_PAGE_FACTS = 500
 MAX_SOURCE_SCOPES = 4096
@@ -107,7 +107,7 @@ class SourceOutlineAuthorityV2(BaseModel):
     chapters: list[SourceOutlineChapterV2] = Field(max_length=512)
 
     @model_validator(mode="after")
-    def validate_authority(self) -> "SourceOutlineAuthorityV2":
+    def validate_authority(self) -> SourceOutlineAuthorityV2:
         if self.mode == "locked":
             if not self.complete or not self.chapters or self.source not in {"toc", "headings"}:
                 raise ValueError("locked source authority is incomplete")
@@ -258,10 +258,10 @@ def _safe_architecture_failure_code(error: Exception) -> str:
 
 
 def _subplan_for_scopes(
-    plan: "ChapterShardPlanV2",
+    plan: ChapterShardPlanV2,
     scope_ids: list[str],
     facts: list[SourceSnapshotFactV2],
-) -> "ChapterShardPlanV2":
+) -> ChapterShardPlanV2:
     selected = [fact for fact in facts if fact.scope_key in set(scope_ids)]
     return ChapterShardPlanV2(
         chapter_key=plan.chapter_key,
@@ -278,7 +278,7 @@ def salvage_chapter_shard_draft_v2(
     text: str,
     *,
     skeleton: CourseSkeletonV2,
-    plan: "ChapterShardPlanV2",
+    plan: ChapterShardPlanV2,
     source_facts: list[SourceSnapshotFactV2],
 ) -> tuple[ChapterBlueprintShardV2, dict[str, Any]] | None:
     """Keep only independently proven provider units and fill their missing scopes.
@@ -304,7 +304,7 @@ def salvage_chapter_shard_draft_v2(
     rejection_codes: Counter[str] = Counter()
     candidate_unit_count = 0
 
-    for lesson_index, raw_lesson in enumerate(raw_lessons):
+    for _lesson_index, raw_lesson in enumerate(raw_lessons):
         raw_units = raw_lesson.get("units") if isinstance(raw_lesson, dict) else None
         if not isinstance(raw_lesson, dict) or not isinstance(raw_units, list):
             rejection_codes["LESSON_SHAPE_INVALID"] += 1
@@ -405,14 +405,14 @@ def _fallback_scope_title(scope_key: str, facts: list[SourceSnapshotFactV2]) -> 
     if not candidate and scoped:
         candidate = scoped[0].fact_text
     normalized = " ".join((candidate or scope_key).split()).strip()
-    if len(normalized) > 140:
+    if len(normalized) > 140:  # noqa: PLR2004 - label length limit
         normalized = normalized[:137].rstrip() + "..."
     return normalized or scope_key
 
 
 def fallback_chapter_shard_draft_v2(
     skeleton: CourseSkeletonV2,
-    plan: "ChapterShardPlanV2",
+    plan: ChapterShardPlanV2,
     facts: list[SourceSnapshotFactV2],
 ) -> ChapterShardDraftV2:
     """Build a source-complete conservative architecture without another LLM call.
@@ -448,7 +448,8 @@ def fallback_chapter_shard_draft_v2(
                 type="html",
                 title=f"Nội dung trọng tâm: {label}"[:180],
                 rationale=("Trình bày đầy đủ nội dung nguồn để trực tiếp hỗ trợ mục tiêu của bài học."
-                           if vi else "Present the source content completely to directly support the lesson objective."),
+                           if vi
+                           else "Present the source content completely to directly support the lesson objective."),
                 author_review=ArchitectureComponentAuthorReviewV2(
                     purpose=("Giải thích và hệ thống hóa nội dung nguồn theo mục tiêu của bài học."
                              if vi else "Explain and organize the source content around the lesson objective."),
@@ -459,7 +460,7 @@ def fallback_chapter_shard_draft_v2(
                 source_scope_ids=[scope_key],
             )],
             media_brief=None,
-        ) for index, (scope_key, label) in enumerate(zip(scopes, labels), start=1)]
+        ) for index, (scope_key, label) in enumerate(zip(scopes, labels, strict=False), start=1)]
         lesson_title = chapter.title if len(scope_groups) == 1 else (
             f"{chapter.title} - Phần {lesson_index}" if vi else f"{chapter.title} - Part {lesson_index}")
         lesson_objective = ((f"Vận dụng các nội dung {', '.join(labels)} để góp phần đạt kết quả đầu ra của "
@@ -544,7 +545,7 @@ class UnitGenerationContractV2(BaseModel):
     contract_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
 
     @model_validator(mode="after")
-    def validate_unit_generation_contract(self) -> "UnitGenerationContractV2":
+    def validate_unit_generation_contract(self) -> UnitGenerationContractV2:
         scopes = set(self.unit_source_scope_ids)
         fact_ids = [fact.fact_key for fact in self.source_facts]
         if (len(scopes) != len(self.unit_source_scope_ids) or len(fact_ids) != len(set(fact_ids))
@@ -668,7 +669,8 @@ def unit_contract_v5_architecture_v2(contract: UnitGenerationContractV2) -> dict
     ))
     return {"component_capabilities": {"version": 2, "max_components_per_unit": 4,
                                         "max_assessments_per_unit": 3,
-                                        "assessment_enabled": any(plan.type == "problem" for plan in contract.component_plan)},
+                                        "assessment_enabled": any(plan.type == "problem"
+                                                                  for plan in contract.component_plan)},
             "architecture_contract_version": 5, "chapter_title": contract.chapter_title,
             "source_refs": source_refs, "lessons": [{"title": contract.lesson_title,
                 "learning_objectives": contract.lesson_learning_objectives,
@@ -939,9 +941,9 @@ def _compile_unit_components_v2(
         relationships = source_relationship_pairs(texts)
         return {
             "texts": texts,
-            "sortable": len(ordered_source_steps(texts, locale=skeleton.locale)) >= 3,
-            "crossword": len(source_term_definitions(texts)) >= 3,
-            "faq": len(source_clarification_signals(texts)) >= 2,
+            "sortable": len(ordered_source_steps(texts, locale=skeleton.locale)) >= 3,  # noqa: PLR2004 - source evidence floor
+            "crossword": len(source_term_definitions(texts)) >= 3,  # noqa: PLR2004 - source evidence floor
+            "faq": len(source_clarification_signals(texts)) >= 2,  # noqa: PLR2004 - source evidence floor
             "diagram": bool(relationships),
             "problem": build_source_grounded_single_choice(unit.title, texts, locale=skeleton.locale) is not None,
         }
@@ -966,7 +968,7 @@ def _compile_unit_components_v2(
             admitted_plan.append(component)
             continue
         removed_types.append(component.type)
-        if component.type == "problem" and component_index <= 3:
+        if component.type == "problem" and component_index <= 3:  # noqa: PLR2004 - assessment slots per unit
             component_scope_ids = list(component.source_scope_ids)
             relevant_fact_ids = [
                 fact.fact_key for fact in unit_facts if fact.scope_key in set(component_scope_ids)
@@ -1045,7 +1047,7 @@ def _compile_unit_components_v2(
         scope_ids = opportunities.get(component_type, [])
         if component_type in present_types or not scope_ids:
             continue
-        if len(admitted_plan) + (1 if faq else 0) >= 4:
+        if len(admitted_plan) + (1 if faq else 0) >= 4:  # noqa: PLR2004 - components per unit
             omitted_types.append(component_type)
             continue
         admitted_plan.append(_compiled_component_v2(
@@ -1057,7 +1059,7 @@ def _compile_unit_components_v2(
         present_types.add(component_type)
         added_types.append(component_type)
     if faq is None and opportunities.get("la_faq"):
-        if len(admitted_plan) < 4:
+        if len(admitted_plan) < 4:  # noqa: PLR2004 - components per unit
             faq = _compiled_component_v2(
                 "la_faq",
                 locale=skeleton.locale,
@@ -1089,7 +1091,7 @@ def _compile_unit_components_v2(
         "obligation_omitted_component_indices": [
             component_index
             for component_index, component in enumerate(unit.component_plan, start=1)
-            if component.type == "problem" and component_index > 3 and not interaction_supported(component)
+            if component.type == "problem" and component_index > 3 and not interaction_supported(component)  # noqa: PLR2004 - assessment slots per unit
         ],
         "opportunity_types": sorted(opportunities),
     }
@@ -1106,7 +1108,7 @@ def bind_chapter_shard_v2(
     allocated_scopes = [scope for lesson in draft.lessons for unit in lesson.units for scope in unit.source_scope_ids]
     if len(allocated_scopes) != len(set(allocated_scopes)) or set(allocated_scopes) != set(plan.source_scope_ids):
         raise OrchestrationContractError("ARCHITECTURE_SHARD_UNIT_ALLOCATION_INCOMPLETE")
-    if sum(len(lesson.units) for lesson in draft.lessons) > 4096:
+    if sum(len(lesson.units) for lesson in draft.lessons) > 4096:  # noqa: PLR2004 - units per shard
         raise OrchestrationContractError("ARCHITECTURE_SHARD_UNIT_LIMIT_EXCEEDED")
     if source_facts is not None:
         fact_scopes = {fact.scope_key for fact in source_facts}
@@ -1171,11 +1173,11 @@ def skeleton_prompt_v2(
     )
     scope_wire = json.dumps([scope.model_dump() for scope in scopes], ensure_ascii=False, separators=(",", ":"))
     return (
-        "Design only the global course skeleton. Allocate every source scope exactly once. "
-        "Each chapter must include concrete learner-facing learning_outcomes. "
-        "When SOURCE_OUTLINE_AUTHORITY.mode is locked, emit exactly the listed chapters in exact order, "
-        "with exact titles and deterministic scope ownership by matching source_ref; never merge, split, rename, or reorder. "
-        "Do not emit source fact IDs or lesson content. Output valid JSON matching the response schema. "
+        "Design only the global course skeleton. Allocate every source scope exactly once. Each chapter must include "
+        "concrete learner-facing learning_outcomes. When SOURCE_OUTLINE_AUTHORITY.mode is locked, emit exactly the "
+        "listed chapters in exact order, with exact titles and deterministic scope ownership by matching source_ref; "
+        "never merge, split, rename, or reorder. Do not emit source fact IDs or lesson content. Output valid JSON "
+        "matching the response schema. "
         f"{UNTRUSTED_JSON_CONTEXT_RULE} "
         f"Output language: {locale}. SOURCE_OUTLINE_AUTHORITY="
         f"{source_authority.model_dump_json()}. SOURCE_SCOPE_CATALOG={scope_wire}"
@@ -1202,31 +1204,32 @@ def chapter_shard_prompt_v2(
         "max_source_scopes": DEFAULT_INSTRUCTIONAL_DENSITY_BUDGET.max_independent_topics,
     }
     return (
-        "Design strict lesson, unit, and component-plan architecture only for this immutable chapter shard. "
-        "Maintain an explicit pedagogical chain: every lesson objective must operationalize one or more chapter learning_outcomes; "
-        "the lesson learning_objectives must be observable, specific steps toward that lesson objective; every unit purpose must state "
-        "what the learner will achieve and must align with its local learning_objective_refs; every component rationale and author_review "
-        "must explain how that block supports the containing unit rather than repeat generic chapter copy. "
-        "Allocate every supplied source_scope_id to exactly one unit. Every unit must reference valid local learning objectives "
-        "Keep every unit within UNIT_DENSITY_BUDGET; split oversized or multi-topic material into consecutive coherent units "
-        "instead of producing one long HTML block. "
-        "(lo_1, lo_2, ...). Select the smallest useful set of up to four components. HTML is optional; when selected it MUST be "
-        "the first component. FAQ is optional; when selected it MUST be the final component. Order the remaining treatments as "
-        "relationship/sequence/terminology practice, then problem assessment, then FAQ. Together the selected components "
-        "must cover every unit scope, and each component scope must remain inside its unit. "
-        "Select problem only when one correct answer and grounded distractors can be verified from an explicit source-authored "
-        "question, term-definition set, keyed table, or ordered procedure; it is rendered exclusively as one-answer multiple choice. "
-        "Select la_sortable only when the source explicitly contains at least three ordered procedure steps. Select la_crossword "
-        "only when at least three term-definition pairs are explicit. Select la_diagram only for an explicit relationship, table, "
-        "hierarchy, or flow. Select la_faq only when at least two explicit source conditions, exceptions, cautions, or misconception boundaries support useful anticipated questions. "
-        "Never select an interaction merely to increase component count. "
-        "For every component return author_review with optional purpose, example_scenario, visual_asset, and "
+        "Design strict lesson, unit, and component-plan architecture only for this immutable chapter shard. Maintain "  # noqa: S608 - prompt text, not SQL
+        "an explicit pedagogical chain: every lesson objective must operationalize one or more chapter "
+        "learning_outcomes; the lesson learning_objectives must be observable, specific steps toward that lesson "
+        "objective; every unit purpose must state what the learner will achieve and must align with its local "
+        "learning_objective_refs; every component rationale and author_review must explain how that block supports the "
+        "containing unit rather than repeat generic chapter copy. Allocate every supplied source_scope_id to exactly "
+        "one unit. Every unit must reference valid local learning objectives Keep every unit within "
+        "UNIT_DENSITY_BUDGET; split oversized or multi-topic material into consecutive coherent units instead of "
+        "producing one long HTML block. (lo_1, lo_2, ...). Select the smallest useful set of up to four components. "
+        "HTML is optional; when selected it MUST be the first component. FAQ is optional; when selected it MUST be the "
+        "final component. Order the remaining treatments as relationship/sequence/terminology practice, then problem "
+        "assessment, then FAQ. Together the selected components must cover every unit scope, and each component scope "
+        "must remain inside its unit. Select problem only when one correct answer and grounded distractors can be "
+        "verified from an explicit source-authored question, term-definition set, keyed table, or ordered procedure; "
+        "it is rendered exclusively as one-answer multiple choice. Select la_sortable only when the source explicitly "
+        "contains at least three ordered procedure steps. Select la_crossword only when at least three term-definition "
+        "pairs are explicit. Select la_diagram only for an explicit relationship, table, hierarchy, or flow. Select "
+        "la_faq only when at least two explicit source conditions, exceptions, cautions, or misconception boundaries "
+        "support useful anticipated questions. Never select an interaction merely to increase component count. For "
+        "every component return author_review with optional purpose, example_scenario, visual_asset, and "
         "user_behavior_navigation. These explain the proposed block to the author and are not editable component data. "
-        "For every unit, explicitly return media_brief as either null or one concrete video/static_infographic brief with "
-        "a title, bullet-ready content_points, context_description, and rationale; it is a production brief, not generated media. "
-        "Do not change chapter identity/title/objective and do not emit raw source text outside learner-facing plans. Never place "
-        "source filenames, citations, page/slide/chunk locators, internal IDs, or source-attribution phrases in learner-facing content. "
-        "Output valid JSON matching the response schema. "
+        "For every unit, explicitly return media_brief as either null or one concrete video/static_infographic brief "
+        "with a title, bullet-ready content_points, context_description, and rationale; it is a production brief, not "
+        "generated media. Do not change chapter identity/title/objective and do not emit raw source text outside "
+        "learner-facing plans. Never place source filenames, citations, page/slide/chunk locators, internal IDs, or "
+        "source-attribution phrases in learner-facing content. Output valid JSON matching the response schema. "
         f"{UNTRUSTED_JSON_CONTEXT_RULE} "
         f"Output language: {locale}. UNIT_DENSITY_BUDGET="
         f"{json.dumps(density_budget, ensure_ascii=False, separators=(',', ':'))}. "

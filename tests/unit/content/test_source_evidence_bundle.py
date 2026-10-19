@@ -74,7 +74,8 @@ class SourceEvidenceBundleTests(unittest.TestCase):
 
     def test_process_and_hierarchy_relations_are_explicit(self) -> None:
         facts = [
-            fact("f1", "Bước 1: Xác định mối nguy trong khu vực làm việc.", locator={"heading_path": ["HIRA", "Nhận diện"]}),
+            fact("f1", "Bước 1: Xác định mối nguy trong khu vực làm việc.",
+                 locator={"heading_path": ["HIRA", "Nhận diện"]}),
             fact("f2", "Bước 2: Đánh giá mức độ rủi ro theo tiêu chí.", locator={"heading_path": ["HIRA", "Đánh giá"]}),
             fact("f3", "Bước 3: Chọn biện pháp kiểm soát phù hợp.", locator={"heading_path": ["HIRA", "Kiểm soát"]}),
         ]

@@ -6,8 +6,8 @@ import json
 import re
 from typing import Any
 
-from app.core.config import settings
 from app.content.instructional_quality import TABLE_ROW_RE, clean_source_facts, is_non_instructional_source_line
+from app.core.config import settings
 from app.schemas.chat import RagRequestBase
 from app.services.lesson_author.errors import LessonAuthorProposalValidationError
 from app.services.retrieval.query import decode_json_object, parse_source_range
@@ -217,9 +217,9 @@ def _append_unique_source_line(lines: list[str], line: str) -> None:
         existing_signature = existing.casefold()
         if signature == existing_signature:
             return
-        if len(signature) >= 24 and signature in existing_signature:
+        if len(signature) >= 24 and signature in existing_signature:  # noqa: PLR2004 - signature length floor
             return
-        if len(existing_signature) >= 24 and existing_signature in signature:
+        if len(existing_signature) >= 24 and existing_signature in signature:  # noqa: PLR2004 - signature length floor
             lines[index] = value
             return
     lines.append(value)
@@ -270,7 +270,7 @@ def _build_unpaginated_source_sections(
                 (
                     node
                     for node in nodes_by_document.get(document_id, [])
-                    if len(line_signature) >= 8
+                    if len(line_signature) >= 8  # noqa: PLR2004 - signature length floor
                     and (
                         node["heading_signature"] in line_signature
                         or line_signature in node["heading_signature"]
@@ -344,7 +344,7 @@ def lesson_author_blueprint_draft_fact_ids(request: RagRequestBase) -> set[str]:
 def lesson_author_blueprint_draft_supporting_fact_ids(request: RagRequestBase) -> set[str]:
     """Return V5 read-only supporting evidence without changing ownership."""
     architecture = getattr(request, "blueprint_architecture", None)
-    if architecture is None or architecture.architecture_contract_version != 5:
+    if architecture is None or architecture.architecture_contract_version != 5:  # noqa: PLR2004 - architecture contract version
         return set()
     return {
         fact_id.strip()
@@ -417,7 +417,8 @@ def _resolve_paginated_source_refs(
         document_id = str(scope.get("document_id") or "")
         start_page = _source_page_number(scope.get("start_page"))
         end_page = _source_page_number(scope.get("end_page"))
-        if source_ref and start_page is not None and end_page is not None and has_chunk(document_id, start_page, end_page):
+        if (source_ref and start_page is not None and end_page is not None
+                and has_chunk(document_id, start_page, end_page)):
             resolved.add(source_ref)
 
     for node in structure_nodes:
@@ -547,7 +548,7 @@ def build_source_coverage_manifest(
         for section in sections
         if not expanded_refs or str(section.get("source_ref") or "").casefold() in expanded_refs
     ]
-    for section_index, section in enumerate(scoped_sections, start=1):
+    for _section_index, section in enumerate(scoped_sections, start=1):
         source_ref = str(section.get("source_ref") or "").strip().casefold()
         chunk_no = int(section.get("source_chunk") or 0)
         locator_prefix = source_ref or f"c{chunk_no + 1}"
@@ -599,7 +600,8 @@ def format_source_coverage_manifest(manifest: dict[str, Any] | None) -> str:
         return ""
     lines = [
         "MANDATORY SOURCE COVERAGE CHECKLIST (internal provenance IDs):",
-        "Mọi fact_id phải được gán vào ít nhất một unit qua source_fact_ids. Không dùng source_refs để thay thế checklist này.",
+        "Mọi fact_id phải được gán vào ít nhất một unit qua source_fact_ids. Không dùng source_refs để thay thế "
+        "checklist này.",
     ]
     for fact in facts:
         if not isinstance(fact, dict):
@@ -619,7 +621,8 @@ def format_source_coverage_manifest(manifest: dict[str, Any] | None) -> str:
             locator = f"đoạn nguồn {int(chunk_no or 0) + 1}"
         line = f"- [{fact_id}] {locator}: {text}"
         if sum(len(item) + 1 for item in lines) + len(line) > MAX_SOURCE_COVERAGE_MANIFEST_CHARS:
-            lines.append("- [MANIFEST_TRUNCATED] Phần còn lại phải được xử lý ở lượt tiếp theo; không được tuyên bố đã bao phủ toàn bộ nguồn.")
+            lines.append("- [MANIFEST_TRUNCATED] Phần còn lại phải được xử lý ở lượt tiếp theo; không được tuyên bố "
+                         "đã bao phủ toàn bộ nguồn.")
             break
         lines.append(line)
     return "\n".join(lines)
@@ -644,7 +647,11 @@ def format_course_architecture_coverage_contract(manifest: dict[str, Any] | None
         "canonical_source_fact_count": total,
         "canonical_represented_fact_count": represented,
         "fact_scope_complete": bool(manifest.get("fact_scope_complete", not manifest.get("truncated"))),
-        "allocation_policy": "The server assigns canonical source_fact_ids after architecture using source-section, concept, source-reference and semantic-block ownership. Do not invent fact IDs or enumerate the whole canonical manifest.",
+        "allocation_policy": (
+            "The server assigns canonical source_fact_ids after architecture using source-section, concept, "
+            "source-reference and semantic-block ownership. Do not invent fact IDs or enumerate the whole canonical "
+            "manifest."
+        ),
     }
     return json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
 

@@ -221,13 +221,13 @@ async def lesson_author_orchestration_v2_source_snapshot(
         source_ref = str(metadata.get("source_ref") or row.get("source_section") or "").strip()[:255] or None
         heading = metadata.get("heading_path")
         if isinstance(heading, list):
-            heading = " › ".join(
+            heading = " › ".join(  # noqa: RUF001 - the breadcrumb separator of the snapshot
                 str(value).strip()[:120] for value in heading[:8] if str(value).strip()
             )
         scope_title = str(heading or row.get("source_section") or "").strip()
         if not scope_title:
             suffix = f" · page {page}" if page is not None else f" · chunk {chunk_no + 1}"
-            scope_title = f"{str(row.get('document_name') or 'Source document')}{suffix}"
+            scope_title = f"{row.get('document_name') or 'Source document'!s}{suffix}"
         scope_title = scope_title[:500]
         visual_regions = metadata.get("visual_regions")
         if not isinstance(visual_regions, list):
@@ -255,7 +255,7 @@ async def lesson_author_orchestration_v2_source_snapshot(
         for lane_index, partition in enumerate(fact_partitions):
             scope_locator = f"{scope_owner}:chunk-group:{scope_group}:lane:{lane_index}"
             scope_key = "scope3_" + hashlib.sha256(
-                f"{document_id}\x1e{scope_locator}".encode("utf-8"),
+                f"{document_id}\x1e{scope_locator}".encode(),
             ).hexdigest()[:32]
             # Chunk metadata describes every structure found anywhere in the
             # chunk. Density partitioning creates independent scopes, so
@@ -267,7 +267,7 @@ async def lesson_author_orchestration_v2_source_snapshot(
                 bool(re.match(r"^Row\s+\d+\s*:\s*.+\|.+$", text, re.IGNORECASE))
                 for text in partition
             )
-            partition_has_table = partition_table_row_count >= 2
+            partition_has_table = partition_table_row_count >= 2  # noqa: PLR2004 - a table has at least two rows
             partition_content_kinds = set(content_kinds)
             if partition_has_table:
                 partition_content_kinds.add("table")

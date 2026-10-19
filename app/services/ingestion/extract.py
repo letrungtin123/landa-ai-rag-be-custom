@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any
 from uuid import UUID
 
+from app.content.source_readiness import collect_pdf_visual_regions
 from app.core.config import settings
 from app.core.document_limits import (
     INDEX_DOCUMENT_SUFFIXES,
@@ -21,7 +22,6 @@ from app.core.document_limits import (
 from app.core.errors import DocumentLimitError
 from app.infra.pdf_layout import column_reading_order
 from app.services.text import clean_text
-from app.content.source_readiness import collect_pdf_visual_regions
 
 
 @dataclass
@@ -146,13 +146,13 @@ def _pdf_page_content(page: Any) -> tuple[str, dict[str, Any]]:
                 line_bbox = line.get("bbox") if isinstance(line, dict) else None
                 line_units.append({
                     "bbox": tuple(float(value) for value in (
-                        line_bbox if isinstance(line_bbox, (list, tuple)) and len(line_bbox) == 4 else bbox
+                        line_bbox if isinstance(line_bbox, (list, tuple)) and len(line_bbox) == 4 else bbox  # noqa: PLR2004 - a bbox has four coordinates
                     )),
                     "text": line_text,
                     "max_font_size": max(line_sizes, default=0.0),
                 })
         text = "\n".join(lines).strip()
-        if text and isinstance(bbox, (list, tuple)) and len(bbox) == 4:
+        if text and isinstance(bbox, (list, tuple)) and len(bbox) == 4:  # noqa: PLR2004 - a bbox has four coordinates
             text_entries.append({
                 "kind": "text",
                 "bbox": tuple(float(value) for value in bbox),
@@ -168,7 +168,7 @@ def _pdf_page_content(page: Any) -> tuple[str, dict[str, Any]]:
             rows = table.extract() or []
             rendered = _render_structured_table(rows)
             bbox = getattr(table, "bbox", None)
-            if rendered and isinstance(bbox, (list, tuple)) and len(bbox) == 4:
+            if rendered and isinstance(bbox, (list, tuple)) and len(bbox) == 4:  # noqa: PLR2004 - a bbox has four coordinates
                 table_entries.append({
                     "kind": "table",
                     "bbox": tuple(float(value) for value in bbox),
@@ -182,7 +182,7 @@ def _pdf_page_content(page: Any) -> tuple[str, dict[str, Any]]:
     table_boxes = [entry["bbox"] for entry in table_entries]
     visible_text_entries = [
         entry for entry in text_entries
-        if not any(_bbox_overlap_ratio(entry["bbox"], table_bbox) >= 0.8 for table_bbox in table_boxes)
+        if not any(_bbox_overlap_ratio(entry["bbox"], table_bbox) >= 0.8 for table_bbox in table_boxes)  # noqa: PLR2004 - table overlap threshold
     ]
     ordered_entries = sorted(
         [*visible_text_entries, *table_entries],
@@ -206,8 +206,8 @@ def _pdf_page_content(page: Any) -> tuple[str, dict[str, Any]]:
         if (
             body_font_size > 0
             and size >= max(body_font_size * 1.18, body_font_size + 1.5)
-            and 3 <= len(title) <= 160
-            and len(title.split()) <= 18
+            and 3 <= len(title) <= 160  # noqa: PLR2004 - heading shape heuristic
+            and len(title.split()) <= 18  # noqa: PLR2004 - heading shape heuristic
         ):
             heading_candidates.append({
                 "title": title,
@@ -243,7 +243,7 @@ def extract_pdf(path: Path) -> list[ExtractedSection]:
     # the real parser error. The size is already bounded by assert_document_size.
     data = path.read_bytes()
     try:
-        import pymupdf
+        import pymupdf  # noqa: PLC0415 - parser library, loaded on first use
 
         sections: list[ExtractedSection] = []
         with pymupdf.open(stream=data, filetype="pdf") as document:  # type: ignore[no-untyped-call]
@@ -266,7 +266,7 @@ def extract_pdf(path: Path) -> list[ExtractedSection]:
     except ImportError:
         pass
 
-    from pypdf import PdfReader
+    from pypdf import PdfReader  # noqa: PLC0415 - parser library, loaded on first use
 
     reader = PdfReader(io.BytesIO(data))
     if len(reader.pages) > settings.max_document_pages:
@@ -285,11 +285,11 @@ def extract_pdf(path: Path) -> list[ExtractedSection]:
 
 
 def extract_docx(path: Path) -> list[ExtractedSection]:
-    from docx import Document
-    from docx.oxml.table import CT_Tbl
-    from docx.oxml.text.paragraph import CT_P
-    from docx.table import Table
-    from docx.text.paragraph import Paragraph
+    from docx import Document  # noqa: PLC0415 - parser library, loaded on first use
+    from docx.oxml.table import CT_Tbl  # noqa: PLC0415 - parser library, loaded on first use
+    from docx.oxml.text.paragraph import CT_P  # noqa: PLC0415 - parser library, loaded on first use
+    from docx.table import Table  # noqa: PLC0415 - parser library, loaded on first use
+    from docx.text.paragraph import Paragraph  # noqa: PLC0415 - parser library, loaded on first use
 
     document = Document(str(path))
     parts: list[str] = []
@@ -328,7 +328,7 @@ def extract_docx(path: Path) -> list[ExtractedSection]:
 
 
 def extract_pptx(path: Path) -> list[ExtractedSection]:
-    from pptx import Presentation
+    from pptx import Presentation  # noqa: PLC0415 - parser library, loaded on first use
 
     presentation = Presentation(str(path))
     if len(presentation.slides) > settings.max_document_pages:
@@ -370,7 +370,8 @@ def extract_pptx(path: Path) -> list[ExtractedSection]:
                 section=f"Slide {index}",
                 metadata={
                     "extraction_version": STRUCTURED_EXTRACTION_VERSION,
-                    "content_kinds": sorted({"text", *( ["table"] if table_count else []), *( ["speaker_notes"] if notes_included else [])}),
+                    "content_kinds": sorted({"text", *( ["table"] if table_count else []),
+                                             *( ["speaker_notes"] if notes_included else [])}),
                     "table_count": table_count,
                     "heading_candidates": heading_candidates,
                     "notes_included": notes_included,
@@ -381,7 +382,7 @@ def extract_pptx(path: Path) -> list[ExtractedSection]:
 
 
 def extract_xlsx(path: Path) -> list[ExtractedSection]:
-    from openpyxl import load_workbook
+    from openpyxl import load_workbook  # noqa: PLC0415 - parser library, loaded on first use
 
     workbook = load_workbook(str(path), read_only=True, data_only=False)
     sections: list[ExtractedSection] = []
@@ -414,7 +415,7 @@ def extract_xlsx(path: Path) -> list[ExtractedSection]:
 
 
 def extract_xls(path: Path) -> list[ExtractedSection]:
-    import xlrd
+    import xlrd  # noqa: PLC0415 - parser library, loaded on first use
 
     workbook = xlrd.open_workbook(str(path))
     sections: list[ExtractedSection] = []
@@ -462,8 +463,10 @@ def extract_doc(path: Path) -> list[ExtractedSection]:
             if converted.exists():
                 return extract_docx(converted)
     text = clean_text(re.sub(r"[^\x09\x0a\x0d\x20-\x7e\u00c0-\u1ef9]+", " ", decode_bytes(path.read_bytes())))
-    if len(text) < 200:
-        raise ValueError("File .doc quá cũ hoặc không trích xuất được đủ nội dung. Hãy chuyển file sang .docx hoặc PDF.")
+    if len(text) < 200:  # noqa: PLR2004 - minimum extracted text
+        raise ValueError(
+            "File .doc quá cũ hoặc không trích xuất được đủ nội dung. Hãy chuyển file sang .docx hoặc PDF."
+        )
     return [ExtractedSection(text=text)]
 
 

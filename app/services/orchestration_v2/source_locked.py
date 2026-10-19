@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import re
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 from app.content.instructional_quality import (
     build_source_grounded_single_choice,
@@ -296,7 +297,7 @@ def _orchestration_v2_source_locked_component(
         component["items"] = items
     elif plan.type == "la_faq":
         answers = _source_locked_faq_answers(fact_texts)
-        if len(answers) < 2:
+        if len(answers) < 2:  # noqa: PLR2004 - minimum items for the treatment
             return None
         component["items"] = [{
             "question": _source_locked_faq_question(answer, title, item_index, locale),
@@ -304,7 +305,7 @@ def _orchestration_v2_source_locked_component(
         } for item_index, answer in enumerate(answers)]
     elif plan.type == "la_sortable":
         source_steps = _orchestration_v2_sortable_steps(fact_texts, locale)
-        if len(source_steps) < 3:
+        if len(source_steps) < 3:  # noqa: PLR2004 - minimum items for the treatment
             return None
         component.update({
             "question_text": ("Arrange the procedure steps in the correct order."
@@ -313,7 +314,7 @@ def _orchestration_v2_source_locked_component(
         })
     elif plan.type == "la_crossword":
         words = _orchestration_v2_crossword_words(title, fact_texts, locale)
-        if len(words) < 3:
+        if len(words) < 3:  # noqa: PLR2004 - minimum items for the treatment
             return None
         component["words"] = words
     elif plan.type == "la_diagram":

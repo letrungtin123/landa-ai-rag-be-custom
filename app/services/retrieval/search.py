@@ -365,9 +365,12 @@ def build_retrieval_diagnostics(
     )
     top_row = rows[0] if rows else None
     limits = retrieval_limits(request)
-    target_scope_hard_locked = bool(structure_context.get("target_source_scope_hard_locked")) if structure_context else False
-    target_scope_truncated = bool(structure_context.get("target_source_scope_truncated")) if structure_context else False
-    target_scope_missing_pages = structure_context.get("target_source_scope_missing_pages", []) if structure_context else []
+    target_scope_hard_locked = (bool(structure_context.get("target_source_scope_hard_locked"))
+                                if structure_context else False)
+    target_scope_truncated = (bool(structure_context.get("target_source_scope_truncated"))
+                              if structure_context else False)
+    target_scope_missing_pages = (structure_context.get("target_source_scope_missing_pages", [])
+                                  if structure_context else [])
     reason: str | None = None
     if not request.kb_id:
         reason = "missing_kb_id"
@@ -377,9 +380,7 @@ def build_retrieval_diagnostics(
         reason = "target_source_scope_incomplete"
     elif not rows:
         reason = "no_confident_matching_chunks"
-    elif not sources:
-        reason = "context_limit_exhausted"
-    elif len(sources) < len(rows):
+    elif not sources or len(sources) < len(rows):
         reason = "context_limit_exhausted"
 
     known_refs = structure_context.get("known_source_refs", set()) if structure_context else set()
@@ -405,20 +406,26 @@ def build_retrieval_diagnostics(
             if "source_scope" in (row.get("methods") or [row.get("method") or ""])
         ),
         "context_chars": sum(len(clean_text(str(row.get("content") or ""))) for row in rows[: len(sources)]),
-        "retrieval_candidate_count": structure_context.get("retrieval_candidate_count", len(rows)) if structure_context else len(rows),
+        "retrieval_candidate_count": structure_context.get("retrieval_candidate_count", len(rows))
+        if structure_context else len(rows),
         "context_truncated": len(sources) < len(rows),
         "omitted_retrieved_count": max(0, len(rows) - len(sources)),
-        "target_source_scope_candidate_count": structure_context.get("target_source_scope_candidate_count", 0) if structure_context else 0,
+        "target_source_scope_candidate_count": structure_context.get("target_source_scope_candidate_count", 0)
+        if structure_context else 0,
         "target_source_scope_hard_locked": target_scope_hard_locked,
-        "target_source_scope_pages": structure_context.get("target_source_scope_pages", []) if structure_context else [],
-        "target_source_scope_expected_pages": structure_context.get("target_source_scope_expected_pages", []) if structure_context else [],
+        "target_source_scope_pages": structure_context.get("target_source_scope_pages", [])
+        if structure_context else [],
+        "target_source_scope_expected_pages": structure_context.get("target_source_scope_expected_pages", [])
+        if structure_context else [],
         "target_source_scope_missing_pages": target_scope_missing_pages,
         "target_source_scope_truncated": target_scope_truncated,
-        "out_of_scope_retrieval_count": structure_context.get("out_of_scope_retrieval_count", 0) if structure_context else 0,
+        "out_of_scope_retrieval_count": structure_context.get("out_of_scope_retrieval_count", 0)
+        if structure_context else 0,
         "structure_source": structure_context.get("structure_source") if structure_context else None,
         "structure_confidence": structure_context.get("structure_confidence") if structure_context else None,
         "structure_node_count": structure_context.get("structure_node_count", 0) if structure_context else 0,
-        "source_structure_warnings": structure_context.get("source_structure_warnings", []) if structure_context else [],
+        "source_structure_warnings": structure_context.get("source_structure_warnings", [])
+        if structure_context else [],
         "known_source_ref_count": len(known_refs),
         "covered_source_ref_count": len(covered_refs),
         "source_coverage_ratio": round(coverage_ratio, 4) if coverage_ratio is not None else None,

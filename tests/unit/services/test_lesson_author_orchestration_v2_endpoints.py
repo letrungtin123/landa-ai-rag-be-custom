@@ -137,7 +137,7 @@ def relationship_unit_contract_wire(*, include_html: bool) -> dict:
         "Row 1: Chu trình | Công cụ BiC",
         "Row 2: PLAN | Change Mindset + BQS/BMQ",
         "Row 3: DO | SPD (Standard Product Dev)",
-    )))]
+    ), strict=False))]
     diagram = {
         **base["component_plan"][0],
         "component_plan_id": "cp2_" + "d" * 32,
@@ -320,7 +320,8 @@ class LessonAuthorOrchestrationV2EndpointTests(unittest.IsolatedAsyncioTestCase)
                 contract = unit_contract_wire()
                 contract["unit_source_fact_ids"] = ["fact-1", "fact-2", "fact-3"]
                 source_texts = ([
-                    "Câu hỏi: Bước đầu tiên khi đánh giá rủi ro là gì? A. Nhận diện mối nguy. B. Bỏ qua nguồn phát sinh. C. Chờ xảy ra sự cố.",
+                    "Câu hỏi: Bước đầu tiên khi đánh giá rủi ro là gì? A. Nhận diện mối nguy. B. Bỏ qua nguồn phát "
+                    "sinh. C. Chờ xảy ra sự cố.",
                     "Đáp án: A",
                     "Giải thích: Nhận diện mối nguy là dữ kiện đầu tiên của quy trình đánh giá rủi ro.",
                 ] if component_type == "problem" else [
@@ -328,8 +329,10 @@ class LessonAuthorOrchestrationV2EndpointTests(unittest.IsolatedAsyncioTestCase)
                     "Mối nguy điện: Nguồn điện không được kiểm soát có thể gây điện giật hoặc hồ quang.",
                     "Mối nguy hóa chất: Phơi nhiễm cần được kiểm soát theo đặc tính của hóa chất.",
                 ] if component_type == "la_crossword" else [
-                    "Nếu phát hiện điều kiện không an toàn, người lao động phải dừng công việc và báo cho người phụ trách.",
-                    "Khi biện pháp kiểm soát chưa được xác nhận hiệu quả, công việc chỉ được tiếp tục sau khi hoàn tất đánh giá lại.",
+                    "Nếu phát hiện điều kiện không an toàn, người lao động phải dừng công việc và báo cho người phụ "
+                    "trách.",
+                    "Khi biện pháp kiểm soát chưa được xác nhận hiệu quả, công việc chỉ được tiếp tục sau khi hoàn tất "
+                    "đánh giá lại.",
                     "Lưu ý: Không được bỏ qua bước xác nhận vì công việc đã từng được thực hiện trước đó.",
                 ] if component_type == "la_faq" else [
                     "Bước 1: Nhận diện mối nguy và ghi rõ nguồn phát sinh trước khi bắt đầu công việc.",
@@ -364,7 +367,8 @@ class LessonAuthorOrchestrationV2EndpointTests(unittest.IsolatedAsyncioTestCase)
                     "unit_contract": contract, "max_attempts": 1,
                     "remaining_workflow_budget_ms": 60_000, "fallback_only": True,
                 })
-                with patch("app.services.lesson_author.staged.writer.generate_staged_lesson_author_proposal", AsyncMock()) as provider:
+                with patch("app.services.lesson_author.staged.writer.generate_staged_lesson_author_proposal",
+                           AsyncMock()) as provider:
                     response = await lesson_author_orchestration_v2_unit(request)
                 provider.assert_not_called()
                 self.assertEqual(response["usage_source"], "deterministic_fallback")
@@ -375,7 +379,8 @@ class LessonAuthorOrchestrationV2EndpointTests(unittest.IsolatedAsyncioTestCase)
                 self.assertEqual(response["attempt_trace"][0]["usage_source"], "unknown")
                 expected_types = ["html"] if component_type == "html" else ["html", component_type]
                 self.assertEqual([item["type"] for item in response["unit"]["components"]], expected_types)
-                for item, expected_plan in zip(response["unit"]["components"], contract["component_plan"]):
+                for item, expected_plan in zip(response["unit"]["components"], contract["component_plan"],
+                                               strict=False):
                     self.assertEqual(item["component_plan_id"], expected_plan["component_plan_id"])
                     self.assertEqual(item["source_fact_ids"], expected_plan["source_fact_ids"])
 
@@ -520,7 +525,7 @@ class LessonAuthorOrchestrationV2EndpointTests(unittest.IsolatedAsyncioTestCase)
         with patch("app.services.lesson_author.staged.writer.generate_staged_lesson_author_proposal", staged):
             response = await lesson_author_orchestration_v2_unit(request)
         staged.assert_awaited_once()
-        args, kwargs = staged.await_args
+        _args, kwargs = staged.await_args
         self.assertEqual(kwargs["checkpoint_unit_index"], 0)
         self.assertEqual(
             kwargs["remaining_workflow_budget_ms"],
@@ -829,7 +834,8 @@ class LessonAuthorOrchestrationV2EndpointTests(unittest.IsolatedAsyncioTestCase)
         })
         draft = {key: value for key, value in skeleton_wire().items()
                  if key not in {"contract_version", "source_snapshot_hash", "locale"}}
-        with patch("app.services.provider.generate_content", AsyncMock(return_value=(json.dumps(draft), AiUsage(outputTokens=20)))) as provider:
+        with patch("app.services.provider.generate_content",
+                   AsyncMock(return_value=(json.dumps(draft), AiUsage(outputTokens=20)))) as provider:
             response = await lesson_author_orchestration_v2_course_skeleton(request)
         provider.assert_awaited_once()
         self.assertIs(provider.await_args.kwargs["response_schema"], CourseSkeletonProviderWireV2)
@@ -862,7 +868,8 @@ class LessonAuthorOrchestrationV2EndpointTests(unittest.IsolatedAsyncioTestCase)
                  "fact_count": 1, "content_chars": 5},
             ], "max_attempts": 2,
         })
-        with patch("app.services.provider.generate_content", AsyncMock(return_value=("{}", AiUsage(outputTokens=3)))) as provider:
+        with patch("app.services.provider.generate_content",
+                   AsyncMock(return_value=("{}", AiUsage(outputTokens=3)))) as provider:
             response = await lesson_author_orchestration_v2_course_skeleton(request)
         self.assertEqual(provider.await_count, 2)
         self.assertEqual(response["usage"]["outputTokens"], 6)

@@ -32,7 +32,8 @@ def build_no_context_answer(locale: Literal["vi", "en"]) -> str:
     if locale == "en":
         return (
             "I could not find enough relevant information in the selected Knowledge Base to answer this accurately. "
-            "Please check that the bot is linked to the correct Knowledge Base and that the related files have finished learning."
+            "Please check that the bot is linked to the correct Knowledge Base and that the related files have "
+            "finished learning."
         )
     return (
         "Hiện tại tôi chưa tìm thấy đủ thông tin liên quan trong Kho tri thức đang chọn để trả lời chính xác. "
@@ -62,9 +63,11 @@ def build_chat_prompt(
 ) -> str:
     locale_rule = "Trả lời bằng tiếng Việt có dấu." if request.locale == "vi" else "Answer in English."
     knowledge_rule = (
-        "Nguyên tắc: ưu tiên tài liệu/kiến thức được cung cấp. Nếu tài liệu không đủ, nói rõ phần còn thiếu và không bịa dữ kiện."
+        "Nguyên tắc: ưu tiên tài liệu/kiến thức được cung cấp. Nếu tài liệu không đủ, nói rõ phần còn thiếu và không "
+        "bịa dữ kiện."
         if request.locale == "vi"
-        else "Principle: prioritize the provided documents/knowledge. If the material is insufficient, state what is missing and do not invent facts."
+        else "Principle: prioritize the provided documents/knowledge. If the material is insufficient, state what is "
+        "missing and do not invent facts."
     )
     no_context = (
         "Chưa tìm thấy đoạn tài liệu liên quan trong kho kiến thức."
@@ -77,7 +80,8 @@ def build_chat_prompt(
             request.system_prompt,
             locale_rule,
             knowledge_rule,
-            "Trả lời đầy đủ theo yêu cầu. Với câu hỏi đơn giản, trả lời gọn; với câu hỏi cần giải thích, trình bày đủ các ý chính hoặc từng bước. Không cắt bỏ điều kiện quan trọng.",
+            "Trả lời đầy đủ theo yêu cầu. Với câu hỏi đơn giản, trả lời gọn; với câu hỏi cần giải thích, trình bày đủ "
+            "các ý chính hoặc từng bước. Không cắt bỏ điều kiện quan trọng.",
             UNTRUSTED_CONTENT_RULE_VI if request.locale == "vi" else UNTRUSTED_CONTENT_RULE_EN,
             f"Lịch sử hội thoại gần đây:\n{untrusted_block('CONVERSATION_HISTORY', format_history(request.history))}"
             if request.history else "",

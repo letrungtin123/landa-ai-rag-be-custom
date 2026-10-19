@@ -30,7 +30,7 @@ class OrchestrationV2SourceLockedFallbackTests(unittest.TestCase):
         } for index, (fact_id, text) in enumerate(zip(fact_ids, [
             "Trang 27: Nhận diện mối nguy trước khi bắt đầu công việc.",
             "Đánh giá mức rủi ro trước khi chọn biện pháp (slide 28, chunk 4).",
-        ]))]
+        ], strict=False))]
         plans = [{
             "component_plan_id": "cp2_" + "d" * 32,
             "type": "html",
@@ -96,7 +96,7 @@ class OrchestrationV2SourceLockedFallbackTests(unittest.TestCase):
                 "Bước 1: Kiểm tra điều kiện an toàn trước khi bắt đầu.",
                 "Bước 2: Mang thiết bị bảo hộ phù hợp với mối nguy.",
                 "Bước 3: Thực hiện công việc theo trình tự đã phê duyệt.",
-            ]))
+            ], strict=False))
         ]
         plans = [
             {
@@ -159,7 +159,7 @@ class OrchestrationV2SourceLockedFallbackTests(unittest.TestCase):
         self.assertTrue(all(len(text) >= 14 and not text[:1].islower() for text in texts))
         self.assertEqual(len({text.casefold() for text in texts}), len(texts))
         self.assertTrue(all(source in text for source, text in zip(
-            ["Kiểm tra điều kiện", "Mang thiết bị", "Thực hiện công việc"], texts,
+            ["Kiểm tra điều kiện", "Mang thiết bị", "Thực hiện công việc"], texts, strict=False,
         )))
 
         expected = unit_contract_v5_architecture_v2(contract)["lessons"][0]["units"][0]
@@ -185,7 +185,7 @@ class OrchestrationV2SourceLockedFallbackTests(unittest.TestCase):
             "source_page": 1,
             "source_chunk": index,
             "locator": {"instructional_density_policy_version": "unit-content-v3-density-1"},
-        } for index, (fact_id, text) in enumerate(zip(fact_ids, source_values))]
+        } for index, (fact_id, text) in enumerate(zip(fact_ids, source_values, strict=False))]
         common = {
             "learning_objective_refs": ["lo_1"],
             "source_scope_ids": ["scope-1"],
@@ -311,7 +311,8 @@ class OrchestrationV2SourceLockedFallbackTests(unittest.TestCase):
         html_only = contract.model_copy(update={"component_plan": contract.component_plan[:1]})
         self.assertEqual(build_orchestration_v2_source_locked_unit(html_only, "vi"),
                          build_orchestration_v2_source_locked_unit(
-                             html_only, "vi", components=build_orchestration_v2_source_locked_components(html_only, "vi")))
+                             html_only, "vi",
+                             components=build_orchestration_v2_source_locked_components(html_only, "vi")))
 
 
 if __name__ == "__main__":

@@ -84,7 +84,7 @@ class StructuredSourceExtractionTests(unittest.TestCase):
         self.assertIn("Row 2: Chemical |  | HSE lead", rendered)
 
     def test_docx_preserves_heading_paragraph_and_table_document_order(self) -> None:
-        from docx import Document
+        from docx import Document  # noqa: PLC0415 - parser library, imported by the test that needs it
 
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "structured.docx"
@@ -109,7 +109,7 @@ class StructuredSourceExtractionTests(unittest.TestCase):
         ])
 
     def test_pdf_uses_layout_font_signal_for_heading_metadata(self) -> None:
-        import pymupdf
+        import pymupdf  # noqa: PLC0415 - parser library, imported by the test that needs it
 
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "structured.pdf"
@@ -129,8 +129,8 @@ class StructuredSourceExtractionTests(unittest.TestCase):
         })
 
     def test_pptx_preserves_title_and_table_as_distinct_structure(self) -> None:
-        from pptx import Presentation
-        from pptx.util import Inches
+        from pptx import Presentation  # noqa: PLC0415 - parser library, imported by the test that needs it
+        from pptx.util import Inches  # noqa: PLC0415 - parser library, imported by the test that needs it
 
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "structured.pptx"
@@ -154,7 +154,7 @@ class StructuredSourceExtractionTests(unittest.TestCase):
         ])
 
     def test_xlsx_preserves_cell_coordinates_and_formula_text(self) -> None:
-        from openpyxl import Workbook
+        from openpyxl import Workbook  # noqa: PLC0415 - parser library, imported by the test that needs it
 
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "structured.xlsx"

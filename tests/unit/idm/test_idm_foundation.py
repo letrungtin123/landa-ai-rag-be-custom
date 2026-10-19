@@ -44,7 +44,7 @@ class IdmFoundationTests(unittest.IsolatedAsyncioTestCase):
     async def test_index_temp_path_uses_document_id_and_safe_extractor_suffix(self) -> None:
         document_id = "00000000-0000-4000-8000-000000000001"
         with tempfile.TemporaryDirectory() as temp_dir:
-            root = Path(temp_dir).resolve()
+            root = Path(temp_dir).resolve()  # noqa: ASYNC240 - a local temp directory in a test
             for original_name, expected_suffix in (
                 ("../../x.py", ".txt"),
                 ("C:/x/y.pdf", ".pdf"),
@@ -57,7 +57,8 @@ class IdmFoundationTests(unittest.IsolatedAsyncioTestCase):
 
             pdf_path = extraction.index_document_temp_path(temp_dir, document_id, "../../source.pdf")
             pdf_path.write_bytes(b"offline fixture")
-            with patch("app.services.ingestion.extract.extract_pdf", return_value=[ExtractedSection(text="parsed")]) as extractor:
+            with patch("app.services.ingestion.extract.extract_pdf",
+                       return_value=[ExtractedSection(text="parsed")]) as extractor:
                 sections = extraction.extract_sections(pdf_path, pdf_path.name)
             extractor.assert_called_once_with(pdf_path)
             self.assertEqual(sections[0].text, "parsed")

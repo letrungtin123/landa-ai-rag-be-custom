@@ -64,7 +64,8 @@ class ProviderRequestObservabilityTests(unittest.TestCase):
 
     def test_telemetry_sink_failure_does_not_change_generation(self):
         client = MagicMock()
-        client.models.generate_content.return_value = SimpleNamespace(text='{}', parsed=None, candidates=[], usage_metadata=None, prompt_feedback=None)
+        client.models.generate_content.return_value = SimpleNamespace(text='{}', parsed=None, candidates=[],
+                                                                      usage_metadata=None, prompt_feedback=None)
         with patch('google.genai.Client', return_value=client):
             text, _ = asyncio.run(generate_content('test', 'test', 'private', max_output_tokens=100,
                 on_provider_telemetry=MagicMock(side_effect=RuntimeError('sink unavailable'))))

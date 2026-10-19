@@ -425,7 +425,8 @@ class StartupTests(unittest.TestCase):
     def test_startup_survives_an_unreachable_database_and_connects_later(self) -> None:
         pool = MagicMock(close=AsyncMock(), fetchval=AsyncMock(return_value=1))
         create_pool = AsyncMock(side_effect=[OSError("refused"), pool])
-        refresh = AsyncMock(side_effect=lambda *args, **kwargs: runtime_service.schema_guard.record(SchemaCheckResult("ok")))
+        refresh = AsyncMock(
+            side_effect=lambda *args, **kwargs: runtime_service.schema_guard.record(SchemaCheckResult("ok")))
 
         async def scenario() -> None:
             async with main.app.router.lifespan_context(main.app):

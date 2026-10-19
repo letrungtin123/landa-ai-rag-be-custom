@@ -69,7 +69,8 @@ class SourceStructureTests(unittest.TestCase):
                     "document_id": "44444444-4444-4444-8444-444444444444",
                     "document_name": "raw.pdf",
                     "source_ref": "src-006",
-                    "title": "Quy định an toàn lao động và bảo vệ môi trường trong sản xuất (từ slide 30 đến slide 32 )",
+                    "title": "Quy định an toàn lao động và bảo vệ môi trường trong sản xuất "
+                             "(từ slide 30 đến slide 32 )",
                 },
             ],
         }
@@ -287,11 +288,16 @@ class SourceStructureTests(unittest.TestCase):
                 ),
             }],
             structure_nodes=[
-                {"document_id": "doc-office", "source_ref": "src-001", "title": "OFFICE AREA CLEANING INSTRUCTIONS", "order": 0},
+                {"document_id": "doc-office", "source_ref": "src-001", "title": "OFFICE AREA CLEANING INSTRUCTIONS",
+                 "order": 0},
                 {"document_id": "doc-office", "source_ref": "src-002", "title": "REQUIRED STANDARDS", "order": 1},
-                {"document_id": "doc-office", "source_ref": "src-006", "title": "Prepare tools, equipment, and chemicals | - Glass cleaner", "order": 2},
-                {"document_id": "doc-office", "source_ref": "src-007", "title": "PERFORM CLEANING | 2. PERFORM CLEANING", "order": 3},
-                {"document_id": "doc-office", "source_ref": "src-008", "title": "Request permission to clean | Ask before cleaning.", "order": 4, "parent_source_ref": "src-007"},
+                {"document_id": "doc-office", "source_ref": "src-006",
+                 "title": "Prepare tools, equipment, and chemicals | - Glass cleaner", "order": 2},
+                {"document_id": "doc-office", "source_ref": "src-007",
+                 "title": "PERFORM CLEANING | 2. PERFORM CLEANING", "order": 3},
+                {"document_id": "doc-office", "source_ref": "src-008",
+                 "title": "Request permission to clean | Ask before cleaning.", "order": 4,
+                 "parent_source_ref": "src-007"},
             ],
             target_source_refs={"src-002", "src-006"},
         )
@@ -661,7 +667,8 @@ class SourceStructureTests(unittest.TestCase):
             [
                 "An toàn Lao động và Sức khỏe Nghề nghiệp (từ Slide 1 đến slide 5)",
                 "Nhận diện mối nguy và đánh giá rủi ro (từ Slide 6 đến slide 10)",
-                "Thực hành Nhận diện mối nguy, Đánh giá Rủi ro, Lựa chọn và sử dụng PPE phù hợp (từ slide 11 đến slide 25)",
+                "Thực hành Nhận diện mối nguy, Đánh giá Rủi ro, Lựa chọn và sử dụng PPE phù hợp (từ slide 11 đến slide "
+                "25)",
                 "Bảo vệ môi trường trong sản xuất (từ slide 26 đến slide 27)",
                 "Quy Trình Ứng Phó Khẩn Cấp Và Bảo Vệ Môi Trường (từ slide 28 đến slide 29 )",
                 "Quy định an toàn lao động và bảo vệ môi trường trong sản xuất (từ slide 30 đến slide 32 )",

@@ -74,7 +74,7 @@ async def index_document(request: RagIndexRequest, pool: asyncpg.Pool) -> dict[s
 
 
 async def _index_document(request: RagIndexRequest, pool: asyncpg.Pool) -> dict[str, Any]:
-    if request.embedding_dimensions != 768:
+    if request.embedding_dimensions != 768:  # noqa: PLR2004 - dimensions of the vector column
         raise ServiceError(status_code=400, detail="RAG hiện chỉ hỗ trợ embedding 768 chiều.")
     row = await index_repository.load_document(pool, request.tenant_id, request.kb_id, request.document_id)
     if row is None:
@@ -110,7 +110,9 @@ async def _index_document(request: RagIndexRequest, pool: asyncpg.Pool) -> dict[
                     assert_document_size(raw_bytes, maximum=settings.max_document_bytes)
                 index_id = await index_repository.start_index_row(pool, row, effective_embedding_model)
                 if source_path is not None:
-                    sections = await service_runtime.concurrency.run_extraction(extraction.extract_sections, source_path, source_path.name)
+                    sections = await service_runtime.concurrency.run_extraction(
+                        extraction.extract_sections, source_path, source_path.name
+                    )
                 else:
                     sections = [ExtractedSection(text=clean_text(row["content"] or ""))]
             logger.info(
@@ -151,7 +153,7 @@ async def _index_document(request: RagIndexRequest, pool: asyncpg.Pool) -> dict[
             )
 
             content_sha = hashlib.sha256("\n\n".join(chunk["content"] for chunk in chunks).encode("utf-8")).hexdigest()
-            async with pool.acquire() as conn:
+            async with pool.acquire() as conn:  # noqa: SIM117 - the transaction is the inner block
                 async with conn.transaction():
                     index_status = await index_repository.lock_index_status(conn, index_id, row["id"])
                     if index_status != "running":
@@ -182,7 +184,7 @@ async def _index_document(request: RagIndexRequest, pool: asyncpg.Pool) -> dict[
                                 ),
                                 vector_literal(embedding),
                             )
-                            for chunk_no, (chunk, embedding) in enumerate(zip(chunks, embeddings))
+                            for chunk_no, (chunk, embedding) in enumerate(zip(chunks, embeddings, strict=False))
                         ],
                     )
                     await persist_structure_nodes_if_available(conn, row, index_id, structure)
@@ -234,7 +236,7 @@ async def _index_document(request: RagIndexRequest, pool: asyncpg.Pool) -> dict[
             # F5: a transient provider failure is a retryable 503 carrying the provider code, so the
             # backend's durable worker retries it instead of reading HTTP 200 + status "error".
             raise retryable from None
-        if isinstance(exc, AppError) and exc.http_status >= 500:
+        if isinstance(exc, AppError) and exc.http_status >= 500:  # noqa: PLR2004 - server error status
             raise  # e.g. SERVICE_BUSY from the provider limiter: retryable as well
         return {
             "status": "error",

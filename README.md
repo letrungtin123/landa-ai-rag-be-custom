@@ -24,11 +24,11 @@ production and `AI_RAG_ENV=test` read the process environment only. `/docs` is s
 `scripts\check.ps1` (Windows) and `scripts/check.sh` (Linux, CI) run the same steps with `.venv-dev`:
 
 1. ruff, every rule, on the strict code (`app/core`, `app/infra`, `app/idm`, `app/api`, `app/schemas`,
-   `app/repositories` and a few single files) and on the IDM and core test files;
+   `app/repositories`, `app/contracts`, the services outside the legacy pipeline and a few single files), on
+   every test directory except `tests/unit/legacy`, and on `tools/`;
 2. ruff pyflakes rules on all of `app/services`, `app/content` and `app/contracts`;
-3. mypy `--strict` on the strict code, the moved services (`provider`, `chat`, `retrieval`, `ingestion`,
-   `orchestration_v2`) and the shared core moved out of the legacy modules (`app/content`, `app/contracts`,
-   `app/services/staged_unit`); legacy modules keep a "no new errors" baseline (`pyproject.toml`);
+3. mypy `--strict` on the strict code and on `app/content` and `app/services/staged_unit` (shared core moved out
+   of the legacy modules, not yet lint-clean); legacy modules keep a "no new errors" baseline (`pyproject.toml`);
 4. pytest with branch coverage, failing under 85%, then the coverage of each `app` package
    (`scripts/coverage_by_package.py`: a report, except `app/idm`, which fails under 90%);
 5. pip-audit of `requirements.lock`.

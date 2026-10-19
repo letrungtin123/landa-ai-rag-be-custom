@@ -190,7 +190,7 @@ class StructuredEventTests(unittest.TestCase):
     def test_logged_exceptions_carry_frames_and_no_message(self) -> None:
         logger, stream = self.capture("tests.structured_exception")
         try:
-            {}["PRIVATE_KEY_NAME"]  # noqa: B018 - the KeyError under test
+            {}["PRIVATE_KEY_NAME"]  # the KeyError under test
         except KeyError:
             logger.exception("unhandled_request_error", extra={"event": "unhandled_request_error"})
         line = json.loads(stream.getvalue())

@@ -348,7 +348,8 @@ class LessonAuthorOrchestrationV2ProviderTests(unittest.TestCase):
                 self.assertEqual(set(sdk_schema["properties"]), set(original["properties"]))
                 self.assertEqual(sdk_schema["required"], original["required"])
                 if server_model is ChapterShardDraftV2:
-                    media = sdk_schema["properties"]["lessons"]["items"]["properties"]["units"]["items"]["properties"]["media_brief"]
+                    units = sdk_schema["properties"]["lessons"]["items"]["properties"]["units"]
+                    media = units["items"]["properties"]["media_brief"]
                     self.assertTrue(media["nullable"])
                     self.assertEqual(set(media["properties"]), {
                         "type", "title", "content_points", "context_description", "rationale",
@@ -494,7 +495,9 @@ class LessonAuthorOrchestrationV2ProviderTests(unittest.TestCase):
             UnitGenerationContractV2.model_validate({**wrong_type, "contract_hash": canonical_hash(wrong_type)})
 
     def test_actual_stage_two_contract_receives_structured_evidence_without_new_ownership(self) -> None:
-        from app.services.lesson_author.staged.source_locked import build_staged_instructional_contract
+        from app.services.lesson_author.staged.source_locked import (  # noqa: PLC0415 - legacy pipeline, one test
+            build_staged_instructional_contract,
+        )
 
         source_revision = "e" * 64
         asset_revision = "f" * 64

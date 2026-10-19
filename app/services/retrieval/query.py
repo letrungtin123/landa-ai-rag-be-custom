@@ -9,10 +9,10 @@ from typing import Any
 
 import asyncpg
 
+from app.content.source_structure import strip_source_range_suffix
 from app.core.config import settings
 from app.schemas.chat import RagRequestBase
 from app.services.text import clean_text
-from app.content.source_structure import strip_source_range_suffix
 
 SOURCE_RANGE_RE = re.compile(
     r"\b(?:từ|tu|from)\s+(?:slide|slides|trang|page|pages)\s+(\d+)\s+"
@@ -77,7 +77,6 @@ KEYWORD_STOPWORDS = {
     "với",
     "you",
     "your",
-    "the",
     "and",
     "for",
     "from",
@@ -105,7 +104,7 @@ def build_keyword_patterns(value: str) -> tuple[list[str], list[str], list[str]]
 
     phrase_patterns: list[str] = []
     for candidate in [raw, normalized]:
-        if len(candidate) >= 3:
+        if len(candidate) >= 3:  # noqa: PLR2004 - keyword length floor
             pattern = make_like_pattern(candidate)
             if pattern and pattern not in phrase_patterns:
                 phrase_patterns.append(pattern)
@@ -118,13 +117,13 @@ def build_keyword_patterns(value: str) -> tuple[list[str], list[str], list[str]]
         candidates.extend(part for part in re.split(r"[_\-.]+", token) if part)
         for candidate in candidates:
             cleaned = candidate.strip("._- ").lower()
-            if len(cleaned) < 3 or cleaned in KEYWORD_STOPWORDS or cleaned in seen:
+            if len(cleaned) < 3 or cleaned in KEYWORD_STOPWORDS or cleaned in seen:  # noqa: PLR2004 - keyword length floor
                 continue
             seen.add(cleaned)
             terms.append(cleaned)
-            if len(terms) >= 12:
+            if len(terms) >= 12:  # noqa: PLR2004 - keyword count cap
                 break
-        if len(terms) >= 12:
+        if len(terms) >= 12:  # noqa: PLR2004 - keyword count cap
             break
 
     term_patterns = [make_like_pattern(term) for term in terms]
@@ -250,7 +249,7 @@ def build_target_source_scopes(
         title_fold = normalize_query_text(semantic_title).casefold()
         title_terms = set(re.findall(r"[0-9A-Za-zÀ-ỹ]{3,}", title_fold, flags=re.UNICODE))
         overlap = len(title_terms & query_terms) / max(1, len(title_terms))
-        if title_fold not in haystack and overlap < 0.6:
+        if title_fold not in haystack and overlap < 0.6:  # noqa: PLR2004 - title overlap threshold
             continue
         page_range = parse_source_range(raw_title)
         if not page_range:
@@ -283,9 +282,7 @@ def row_passes_retrieval_threshold(row: dict[str, Any]) -> bool:
     keyword_score = float(row.get("keyword_score") or 0)
     if keyword_score >= settings.retrieval_keyword_min_score:
         return True
-    if max(score, vector_score) >= settings.retrieval_min_score:
-        return True
-    return False
+    return max(score, vector_score) >= settings.retrieval_min_score
 
 
 def apply_retrieval_quality_controls(

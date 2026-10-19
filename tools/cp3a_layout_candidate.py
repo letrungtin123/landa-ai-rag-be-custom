@@ -77,8 +77,8 @@ def main() -> int:
     os.environ["NO_PROXY"] = "*"
     _block_network()
 
-    import psutil
-    import pymupdf4llm
+    import psutil  # noqa: PLC0415 - imported once the network is blocked
+    import pymupdf4llm  # noqa: PLC0415 - imported once the network is blocked
 
     source = Path(args.source).resolve()
     selected_pages = [int(value) - 1 for value in args.pages.split(",") if value.strip()]

@@ -18,7 +18,7 @@ from app.source_readiness import (
 
 
 def _synthetic_pdf(path: Path) -> None:
-    import pymupdf
+    import pymupdf  # noqa: PLC0415 - parser library, imported by the tests that build a PDF
 
     document = pymupdf.open()
 
@@ -122,7 +122,7 @@ class SourceReadinessTests(unittest.TestCase):
         self.assertNotIn("critical_elements", str(result))
 
     def test_repeated_decorative_images_do_not_become_content_evidence(self) -> None:
-        import pymupdf
+        import pymupdf  # noqa: PLC0415 - parser library, imported by the tests that build a PDF
 
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "repeated-decoration.pdf"
@@ -178,7 +178,7 @@ class SourceReadinessTests(unittest.TestCase):
                 self.cells = cells
 
         class Table:
-            rows = [
+            rows = [  # noqa: RUF012 - read-only test fake
                 Row([(0, 0, 600, 800), None, None]),
                 Row([None, (300, 200, 390, 240), (390, 200, 560, 240)]),
                 Row([None, (300, 240, 390, 280), (390, 240, 560, 280)]),

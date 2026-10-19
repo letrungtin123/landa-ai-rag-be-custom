@@ -9,7 +9,7 @@ from app.schemas.kb import RagDeleteDocumentRequest, RagDeleteKbRequest
 
 
 async def delete_document(request: RagDeleteDocumentRequest, pool: asyncpg.Pool) -> dict[str, bool]:
-    try:
+    try:  # noqa: SIM105 - the structure tables are optional
         await documents_repository.delete_document_structure_nodes(
             pool,
             request.tenant_id,
@@ -23,7 +23,7 @@ async def delete_document(request: RagDeleteDocumentRequest, pool: asyncpg.Pool)
 
 
 async def delete_kb(request: RagDeleteKbRequest, pool: asyncpg.Pool) -> dict[str, bool]:
-    try:
+    try:  # noqa: SIM105 - the structure tables are optional
         await documents_repository.delete_kb_structure_nodes(pool, request.tenant_id, request.kb_id)
     except asyncpg.exceptions.UndefinedTableError:
         pass

@@ -7,12 +7,12 @@ from typing import Any, Literal
 
 import asyncpg
 
+from app.content.source_structure import PARSER_VERSION, analyze_source_structure, structure_outline
 from app.repositories import retrieval as retrieval_repository
 from app.schemas.chat import RagRequestBase
 from app.services.ingestion.extract import ExtractedSection
 from app.services.retrieval.query import decode_json_list, decode_json_object
 from app.source_chapter_policy import resolve_source_chapter_policy
-from app.content.source_structure import PARSER_VERSION, analyze_source_structure, structure_outline
 
 MAX_SOURCE_STRUCTURE_DOCUMENTS = 40
 MAX_SOURCE_OUTLINE_CHARS = 16000
@@ -144,7 +144,7 @@ async def rebuild_stale_source_structures_from_chunks(
     repaired: dict[str, dict[str, Any]] = {}
     for document_id, sections in repair_sections.items():
         structure = await asyncio.to_thread(analyze_source_structure, sections)
-        if len(repair_rows) >= 480:
+        if len(repair_rows) >= 480:  # noqa: PLR2004 - repair row cap
             structure["warnings"].append("SOURCE_STRUCTURE_REBUILD_INCOMPLETE")
         repaired[document_id] = {
             "document_id": document_id,

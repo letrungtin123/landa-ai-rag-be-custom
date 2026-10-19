@@ -19,6 +19,10 @@ Replays, with recorded / hand-written provider answers (tests/idm_golden.py and 
 Writes every generated payload (volatile timings removed) and one sha256 per item.
 """
 
+# The application and test modules are imported inside the functions: the tree to measure is the one on sys.path
+# when the replay runs.
+# ruff: noqa: PLC0415
+
 from __future__ import annotations
 
 import asyncio
@@ -87,15 +91,17 @@ def main() -> None:
 
     for chapter_index, module in enumerate(design.modules):
         context, plan, facts = gm.module_context(design, skeleton, chapter_index, g.source_facts())
-        provider = g.FakeIdmProvider({"IdmW3W4ModuleResponseV1": [copy.deepcopy(gm.MODULE_RESPONSES[module.module_key])]})
+        answer = copy.deepcopy(gm.MODULE_RESPONSES[module.module_key])
+        provider = g.FakeIdmProvider({"IdmW3W4ModuleResponseV1": [answer]})
         result = asyncio.run(run_idm_module_design(context=context, skeleton=skeleton, plan=plan, facts=facts,
                                                    runtime=make_runtime(provider)))
         items[f"module/{module.module_key}"] = normalize(result)
         shard = golden_shard(chapter_index)
         for lesson_position, lesson in enumerate(shard.lessons):
             for unit_position, _unit in enumerate(lesson.units):
-                body = gu.build_unit_request(design, shard, chapter_index=chapter_index, lesson_position=lesson_position,
-                                             unit_position=unit_position, facts=g.source_facts())
+                body = gu.build_unit_request(design, shard, chapter_index=chapter_index,
+                                             lesson_position=lesson_position, unit_position=unit_position,
+                                             facts=g.source_facts())
                 name = f"unit/{lesson.lesson_key}/u{unit_position + 1}"
                 fallback_only = {**copy.deepcopy(body), "fallback_only": True}
                 items[f"{name}/fallback_only"] = asyncio.run(post_unit(app_main.app, fallback_only, FakeGenerate()))

@@ -5,7 +5,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from app.hashing import canonical_hash as canonical_hash
+from app.hashing import canonical_hash as canonical_hash  # noqa: PLC0414 - explicit re-export
 
 ORCHESTRATION_CONTRACT_VERSION = 2
 SHA256_PATTERN = re.compile(r"^[0-9a-f]{64}$")
@@ -40,7 +40,7 @@ class CourseSkeletonChapterV2(BaseModel):
     @field_validator("source_scope_ids")
     @classmethod
     def validate_unique_ids(cls, value: list[str]) -> list[str]:
-        if any(not item or len(item) > 255 for item in value) or len(set(value)) != len(value):
+        if any(not item or len(item) > 255 for item in value) or len(set(value)) != len(value):  # noqa: PLR2004 - contract length limit
             raise ValueError("source identifiers must be non-empty and unique")
         return value
 
@@ -68,7 +68,7 @@ class CourseSkeletonV2(BaseModel):
         return value
 
     @model_validator(mode="after")
-    def validate_identity_and_ownership(self) -> "CourseSkeletonV2":
+    def validate_identity_and_ownership(self) -> CourseSkeletonV2:
         keys = [chapter.chapter_key for chapter in self.chapters]
         orders = [chapter.order for chapter in self.chapters]
         if len(set(keys)) != len(keys) or sorted(orders) != list(range(len(self.chapters))):
@@ -85,13 +85,13 @@ class ArchitectureComponentPlanV2(BaseModel):
     type: Literal["html", "problem", "la_faq", "la_sortable", "la_crossword", "la_diagram"]
     title: str = Field(min_length=1, max_length=180)
     rationale: str = Field(min_length=1, max_length=500)
-    author_review: "ArchitectureComponentAuthorReviewV2"
+    author_review: ArchitectureComponentAuthorReviewV2
     source_scope_ids: list[str] = Field(min_length=1, max_length=4096)
 
     @field_validator("source_scope_ids")
     @classmethod
     def validate_scope_ids(cls, value: list[str]) -> list[str]:
-        if any(not item or len(item) > 255 for item in value) or len(set(value)) != len(value):
+        if any(not item or len(item) > 255 for item in value) or len(set(value)) != len(value):  # noqa: PLR2004 - contract length limit
             raise ValueError("component scope identifiers must be non-empty and unique")
         return value
 
@@ -127,7 +127,7 @@ class ArchitectureMediaBriefV2(BaseModel):
     @field_validator("content_points")
     @classmethod
     def validate_content_points(cls, value: list[str]) -> list[str]:
-        if any(not item.strip() or len(item) > 600 for item in value):
+        if any(not item.strip() or len(item) > 600 for item in value):  # noqa: PLR2004 - contract length limit
             raise ValueError("media brief content points are invalid")
         return value
 
@@ -143,9 +143,9 @@ class UnitArchitectureV2(BaseModel):
     media_brief: ArchitectureMediaBriefV2 | None
 
     @model_validator(mode="after")
-    def validate_unit_contract(self) -> "UnitArchitectureV2":
+    def validate_unit_contract(self) -> UnitArchitectureV2:
         if len(set(self.source_scope_ids)) != len(self.source_scope_ids) or any(
-                not item or len(item) > 255 for item in self.source_scope_ids):
+                not item or len(item) > 255 for item in self.source_scope_ids):  # noqa: PLR2004 - contract length limit
             raise ValueError("unit scope identifiers must be non-empty and unique")
         if len(set(self.learning_objective_refs)) != len(self.learning_objective_refs) or any(
                 not OBJECTIVE_REF_PATTERN.fullmatch(item) for item in self.learning_objective_refs):
@@ -181,10 +181,10 @@ class LessonArchitectureV2(BaseModel):
     units: list[UnitArchitectureV2] = Field(min_length=1, max_length=512)
 
     @model_validator(mode="after")
-    def validate_objective_bindings(self) -> "LessonArchitectureV2":
-        if any(not value.strip() or len(value) > 500 for value in self.learning_objectives):
+    def validate_objective_bindings(self) -> LessonArchitectureV2:
+        if any(not value.strip() or len(value) > 500 for value in self.learning_objectives):  # noqa: PLR2004 - contract length limit
             raise ValueError("lesson learning objectives are invalid")
-        if any(not value.strip() or len(value) > 280 for value in self.learning_activities):
+        if any(not value.strip() or len(value) > 280 for value in self.learning_activities):  # noqa: PLR2004 - contract length limit
             raise ValueError("lesson activities are invalid")
         maximum = len(self.learning_objectives)
         for unit in self.units:
@@ -228,7 +228,7 @@ class AssessmentObligationV2(BaseModel):
     @field_validator("relevant_scope_ids", "relevant_evidence_fact_ids")
     @classmethod
     def validate_evidence_ids(cls, value: list[str]) -> list[str]:
-        if len(set(value)) != len(value) or any(not item or len(item) > 255 for item in value):
+        if len(set(value)) != len(value) or any(not item or len(item) > 255 for item in value):  # noqa: PLR2004 - contract length limit
             raise ValueError("assessment obligation evidence references are invalid")
         return value
 
@@ -265,12 +265,12 @@ class ChapterBlueprintShardV2(BaseModel):
     @field_validator("source_scope_ids")
     @classmethod
     def validate_coverage_ids(cls, value: list[str]) -> list[str]:
-        if any(not item or len(item) > 255 for item in value) or len(set(value)) != len(value):
+        if any(not item or len(item) > 255 for item in value) or len(set(value)) != len(value):  # noqa: PLR2004 - contract length limit
             raise ValueError("scope identifiers must be non-empty and unique")
         return value
 
     @model_validator(mode="after")
-    def validate_shard_identity(self) -> "ChapterBlueprintShardV2":
+    def validate_shard_identity(self) -> ChapterBlueprintShardV2:
         if self.shard_index >= self.shard_count:
             raise ValueError("shard index is outside shard count")
         owned_scopes = [scope for lesson in self.lessons for unit in lesson.units for scope in unit.source_scope_ids]
