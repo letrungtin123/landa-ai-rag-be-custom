@@ -121,6 +121,13 @@ DEADLINE_EXCEEDED = Counter(
     ("route",),
     registry=REGISTRY,
 )
+# Traffic of the legacy AI ID V1 routes (app.services.legacy_routes), watched before they are removed.
+LEGACY_ROUTE_CALLS = Counter(
+    "ai_rag_legacy_route_calls_total",
+    "Calls of the legacy AI ID V1 routes and of the orchestration-v2 routes without IDM input, by route template.",
+    ("route",),
+    registry=REGISTRY,
+)
 
 
 def render_metrics() -> tuple[bytes, str]:
