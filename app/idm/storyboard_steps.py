@@ -12,6 +12,8 @@ from collections import Counter
 from collections.abc import Sequence
 from typing import Any
 
+from app.content.ordered_learning_content import bind_provider_semantic_versions
+from app.contracts.orchestration_v2.provider import UnitGenerationContractV2
 from app.idm.acronyms import KNOWN_ABBREVIATIONS, AcronymGuide, abbreviations, explained, learner_texts, with_expansion
 from app.idm.answer_checks import fact_table_rows
 from app.idm.artifacts import clean_question, clean_semantic
@@ -63,8 +65,6 @@ from app.idm.text import evidence_index
 from app.idm.titles import TitleCaser
 from app.idm.worksheet import COMPACTED_CODE as WORKSHEET_COMPACTED_CODE
 from app.idm.worksheet import compact_worksheet, worksheet_fallback_html
-from app.lesson_author_orchestration_v2_provider import UnitGenerationContractV2
-from app.ordered_learning_content import bind_provider_semantic_versions
 
 
 class IdmUnitWriterSteps:

@@ -13,14 +13,14 @@ from typing import Any, Final
 
 from pydantic import ValidationError
 
+from app.contracts.orchestration_v2.blueprint import LessonArchitectureV2
+from app.contracts.orchestration_v2.provider import ChapterShardPlanV2
 from app.idm.contracts import IdmLessonDesignV1, IdmPracticeTaskV1
 from app.idm.module_autofix import autofix_lesson
 from app.idm.module_design_lessons import normalize_lesson, validate_lesson
 from app.idm.module_layout import ModuleScope, project_lesson
 from app.idm.runtime import SCHEMA_INVALID_CODE, IdmRuntime, log_stage
 from app.idm.validation import IdmIssue, errors
-from app.lesson_author_orchestration_v2 import LessonArchitectureV2
-from app.lesson_author_orchestration_v2_provider import ChapterShardPlanV2
 
 # Failing codes/paths logged per W4 attempt (QC run 8de1c76b, Q1d); paths are server-built, never content.
 _MAX_LOGGED_ISSUES: Final = 24

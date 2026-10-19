@@ -12,6 +12,8 @@ from collections import Counter
 from collections.abc import Sequence
 from typing import Any, Final
 
+from app.contracts.orchestration_v2.blueprint import CourseSkeletonV2
+from app.contracts.orchestration_v2.provider import ChapterShardPlanV2, SourceSnapshotFactV2
 from app.idm.contracts import (
     IdmLessonDesignV1,
     IdmModuleContextV1,
@@ -65,8 +67,6 @@ from app.idm.runtime import (
 )
 from app.idm.titles import TitleCaser, sentence_case_lessons
 from app.idm.validation import IdmIssue
-from app.lesson_author_orchestration_v2 import CourseSkeletonV2
-from app.lesson_author_orchestration_v2_provider import ChapterShardPlanV2, SourceSnapshotFactV2
 
 _MS: Final = 1000
 _MAX_ACTIVITIES: Final = 3

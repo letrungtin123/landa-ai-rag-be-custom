@@ -7,6 +7,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 from typing import Final
 
+from app.contracts.orchestration_v2.blueprint import ArchitectureComponentAuthorReviewV2
 from app.idm.artifacts import ROW_LABEL_ANY_RE, plain_row_refs
 from app.idm.contracts import IdmLessonDesignV1, IdmLessonPlanV1
 from app.idm.module_autofix import format_has_evidence
@@ -21,7 +22,6 @@ from app.idm.policy import (
 )
 from app.idm.text import idm_fold, produces_output, sanitize_author_text, single_line
 from app.idm.validation import IdmIssue
-from app.lesson_author_orchestration_v2 import ArchitectureComponentAuthorReviewV2
 
 # Graded practice types plus the worksheet html of a "do" Must Do (spec §10.1, QC 234653 R5).
 PRACTICE_COMPONENT_TYPES: Final = GRADED_PRACTICE_TYPES | {WORKSHEET_COMPONENT_TYPE}

@@ -11,6 +11,7 @@ from collections.abc import Collection, Sequence
 from dataclasses import dataclass
 from typing import Any, Final
 
+from app.content.learner_content_purity import component_learner_text
 from app.idm.answer_checks import (
     contested_option,
     quoted_key,
@@ -58,7 +59,6 @@ from app.idm.text import (
     ngram_overlap,
     word_ngrams,
 )
-from app.learner_content_purity import component_learner_text
 
 MIN_FEEDBACK_CHARS: Final = 60
 # An option is named by its text when the explanation contains the start of it (accent-folded).

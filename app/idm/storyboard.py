@@ -20,6 +20,7 @@ import time
 from collections.abc import Mapping, Sequence
 from typing import Any, Final
 
+from app.contracts.orchestration_v2.provider import UnitGenerationContractV2
 from app.idm.answer_checks import contested_option, unit_teaching
 from app.idm.budget import judge_repair_fits, repair_thinking_for
 from app.idm.faq_checks import (
@@ -128,7 +129,6 @@ from app.idm.storyboard_context import (
     safe_error_details,
 )
 from app.idm.storyboard_steps import IdmUnitWriterSteps
-from app.lesson_author_orchestration_v2_provider import UnitGenerationContractV2
 
 _FIELD_OF_PATH_RE: Final = re.compile(r"^components\[\d+\]\.?")
 # FAQ findings settled by dropping the items concerned while the slot keeps two items.

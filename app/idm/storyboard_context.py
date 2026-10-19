@@ -14,6 +14,7 @@ from typing import Any, Final, Protocol
 
 from pydantic import BaseModel, ValidationError
 
+from app.contracts.orchestration_v2.provider import UnitGenerationContractV2
 from app.idm.contracts import IdmUnitBriefV1, brief_hash_of
 from app.idm.diagram import idm_diagram_relationships
 from app.idm.faq_checks import FAQ_VALUE_CODES
@@ -42,7 +43,6 @@ from app.idm.qa import (
 )
 from app.idm.runtime import IdmStageError
 from app.instructional_density import INSTRUCTIONAL_DENSITY_POLICY_VERSION
-from app.lesson_author_orchestration_v2_provider import UnitGenerationContractV2
 
 _SLOT_RE: Final = re.compile(r"components\[(\d+)\]")
 _MS: Final = 1000
