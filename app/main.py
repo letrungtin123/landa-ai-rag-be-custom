@@ -16,26 +16,29 @@ from app.api.routes import health as health_routes
 from app.api.routes import kb as kb_routes
 from app.api.routes import lesson_author_legacy as lesson_author_legacy_routes
 from app.api.routes import orchestration_v2 as orchestration_v2_routes
+from app.contract_bridge import (
+    AiUsage,
+    RagLessonAuthorCheckpointRequest,
+    RagLessonAuthorCourseSkeletonV2Request,
+    build_lesson_author_checkpoint_result,
+    generate_content,
+    semantic_learning_visible_text,
+    staged_component_payload_code,
+    validate_v5_instructional_coherence,
+)
 from app.core.config import settings
 from app.core.errors import AppError, app_error_handler, request_validation_error_handler, unhandled_error_handler
 from app.core.lifespan import build_lifespan
 from app.core.logging import configure_application_logging
 from app.core.middleware import RequestBodyLimitMiddleware
 from app.core.request_context import DisconnectCancellationMiddleware, RequestContextMiddleware
-from app.schemas.common import AiUsage
-from app.schemas.lesson_author import RagLessonAuthorCheckpointRequest
-from app.schemas.orchestration_v2 import RagLessonAuthorCourseSkeletonV2Request
 from app.services import runtime as service_runtime
-from app.services.lesson_author.architecture_validation import validate_v5_instructional_coherence
-from app.services.lesson_author.checkpoint import build_lesson_author_checkpoint_result
-from app.services.lesson_author.proposal_validation import semantic_learning_visible_text
 from app.services.meta import API_VERSION
-from app.services.provider import generate_content
-from app.services.staged_unit.provider_schemas import staged_component_payload_code
 
-# Besides ``app`` and ``create_app``, these names are re-exported for the Node backend's cross-language
-# tests, which run ``python -c "from app.main import <name>"`` (and patch ``app.main.generate_content``)
-# against this checkout. Remove a name only after the backend test imports it from its new module.
+# Besides ``app`` and ``create_app``, these names are re-exported from ``app.contract_bridge`` for the Node
+# backend's cross-language tests, which run ``python -c "from app.main import <name>"`` (and patch
+# ``app.main.generate_content``) against this checkout. Remove a name only after the backend test imports it from
+# ``app.contract_bridge``.
 __all__ = [
     "AiUsage",
     "RagLessonAuthorCheckpointRequest",

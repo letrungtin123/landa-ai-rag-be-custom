@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import unittest
+from pathlib import Path
 from typing import Any
 
 from fastapi.routing import APIRoute
@@ -20,7 +21,12 @@ from app.schemas.chat import ChatResponse
 from app.schemas.common import AiUsage
 from app.schemas.health import HealthResponse, ServiceMetaResponse
 from app.schemas.kb import INDEX_DOCUMENT_RESPONSE, DeleteResponse, IndexDocumentResponse
-from app.schemas.orchestration_v2 import SourceSnapshotV2Response
+from app.schemas.orchestration_v2 import (
+    ChapterShardV2Response,
+    CourseSkeletonV2Response,
+    SourceSnapshotV2Response,
+    UnitV2Response,
+)
 
 USAGE = AiUsage(inputTokens=3, outputTokens=2, embeddingTokens=1, totalTokens=6).model_dump()
 
@@ -62,6 +68,35 @@ CASES: list[tuple[str, TypeAdapter[Any], dict[str, Any]]] = [
 ]
 
 
+# Step 2.6: the generation answers, fed the bodies the route snapshots recorded (every IDM and legacy branch there).
+ROUTE_SNAPSHOTS = Path(__file__).resolve().parent / "snapshots" / "routes"
+GENERATION_RESPONSES: dict[str, type[Any]] = {
+    "post_v2_course_skeleton_idm": CourseSkeletonV2Response,
+    "post_v2_course_skeleton_legacy": CourseSkeletonV2Response,
+    "post_v2_course_skeleton_legacy_fallback": CourseSkeletonV2Response,
+    "post_v2_chapter_shard_idm": ChapterShardV2Response,
+    "post_v2_chapter_shard_legacy": ChapterShardV2Response,
+    "post_v2_unit_idm": UnitV2Response,
+    "post_v2_unit_idm_fallback_only": UnitV2Response,
+    "post_v2_unit_legacy_fallback_only": UnitV2Response,
+    "post_v2_unit_legacy_invalid_provider": UnitV2Response,
+}
+
+
+def snapshot_body(name: str) -> dict[str, Any]:
+    case = json.loads((ROUTE_SNAPSHOTS / f"{name}.json").read_text(encoding="utf-8"))
+    body: dict[str, Any] = case["expected"]["body"]
+    return body
+
+
+CASES += [(name, TypeAdapter(model), snapshot_body(name)) for name, model in GENERATION_RESPONSES.items()]
+# Semantic review on: the unit answer gains a trailing ``semantic_review`` summary.
+CASES.append(("unit_semantic_review", TypeAdapter(UnitV2Response), {
+    **snapshot_body("post_v2_unit_legacy_fallback_only"),
+    "semantic_review": {"mode": "observe", "config_hash": "d" * 64, "findings": [], "score": 0.5, "x": None},
+}))
+
+
 class ResponseModelTests(unittest.TestCase):
     def test_response_models_reproduce_the_service_json(self) -> None:
         for name, adapter, value in CASES:
@@ -83,6 +118,30 @@ class ResponseModelTests(unittest.TestCase):
         self.assertEqual(models["/v1/kb/delete"], DeleteResponse)
         self.assertEqual(models["/v1/chat"], ChatResponse)
         self.assertEqual(models["/v1/lesson-author/orchestration-v2/source-snapshot"], SourceSnapshotV2Response)
+        self.assertEqual(models["/v1/lesson-author/orchestration-v2/course-skeleton"], CourseSkeletonV2Response)
+        self.assertEqual(models["/v1/lesson-author/orchestration-v2/chapter-shard"], ChapterShardV2Response)
+        self.assertEqual(models["/v1/lesson-author/orchestration-v2/unit"], UnitV2Response)
+
+    def test_generation_responses_keep_the_untyped_wire_bytes(self) -> None:
+        # Before step 2.6 these routes declared ``dict[str, Any]``, so FastAPI encoded the service dict with that
+        # adapter's dump_json. The typed model must produce the same bytes (key order, floats, escapes).
+        untyped: TypeAdapter[dict[str, Any]] = TypeAdapter(dict[str, Any])
+        floats = {"attempt_trace": [{"score": 1e-05, "big": 1e16, "text": "Bước " + chr(0x2028) + " \"x\" </script>"}]}
+        bodies = [(name, model, snapshot_body(name)) for name, model in GENERATION_RESPONSES.items()]
+        bodies.append(("floats", UnitV2Response, {**snapshot_body("post_v2_unit_idm"), **floats}))
+        for name, model, body in bodies:
+            with self.subTest(case=name):
+                typed: TypeAdapter[Any] = TypeAdapter(model)
+                self.assertEqual(typed.dump_json(typed.validate_python(body), by_alias=True),
+                                 untyped.dump_json(untyped.validate_python(body), by_alias=True))
+
+    def test_generation_responses_keep_absent_add_ons_absent(self) -> None:
+        skeleton = CourseSkeletonV2Response.model_validate(snapshot_body("post_v2_course_skeleton_legacy"))
+        self.assertNotIn("idm", skeleton.model_dump(mode="json"))
+        shard = ChapterShardV2Response.model_validate(snapshot_body("post_v2_chapter_shard_legacy"))
+        self.assertNotIn("idm_design", shard.model_dump(mode="json")["shard"])
+        unit = UnitV2Response.model_validate(snapshot_body("post_v2_unit_idm"))
+        self.assertNotIn("semantic_review", unit.model_dump(mode="json"))
 
 
 if __name__ == "__main__":

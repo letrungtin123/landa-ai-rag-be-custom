@@ -25,7 +25,7 @@ from app.lesson_content_observation import observe_lesson_content
 from app.lesson_prompt_policy import instructional_contract_review_signals, lesson_output_language_policy
 from app.prompt_safety import untrusted_block
 from app.schemas.common import AiUsage
-from app.schemas.lesson_author import RagLessonAuthorRequest
+from app.schemas.lesson_author import RagLessonAuthorProposalBase
 from app.services import provider
 from app.services.lesson_author.errors import LessonAuthorProposalValidationError
 from app.services.lesson_author.prompts import STAGED_UNIT_UNTRUSTED_RULE
@@ -94,7 +94,7 @@ logger = logging.getLogger(SERVICE_LOGGER_NAME)
 
 
 async def generate_staged_lesson_author_proposal(
-    request: RagLessonAuthorRequest,
+    request: RagLessonAuthorProposalBase,
     context: str,
     source_outline: str,
     source_coverage: str = "",

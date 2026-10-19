@@ -8,7 +8,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.component_capabilities import ComponentCapabilities
 from app.lesson_author_checkpoint import ChapterCheckpointUnit
-from app.schemas.chat import RagChatRequest
+from app.schemas.chat import RagRequestBase
 
 # A chapter checkpoint runs on V5 course architectures only.
 CHECKPOINT_ARCHITECTURE_CONTRACT_VERSION = 5
@@ -75,7 +75,9 @@ class RagLessonAuthorDraftArchitecture(BaseModel):
     lessons: list[RagLessonAuthorBlueprintLesson] = Field(default_factory=list)
 
 
-class RagLessonAuthorRequest(RagChatRequest):
+class RagLessonAuthorProposalBase(RagRequestBase):
+    """Fields the proposal and chapter-checkpoint routes share (the checkpoint is a staged chapter proposal)."""
+
     outline_context: str = ""
     target_scope_instruction: str = ""
     output_schema_hint: str
@@ -95,7 +97,11 @@ class RagLessonAuthorRequest(RagChatRequest):
     blueprint_architecture: RagLessonAuthorDraftArchitecture | None = None
 
 
-class RagLessonAuthorCheckpointRequest(RagLessonAuthorRequest):
+class RagLessonAuthorRequest(RagLessonAuthorProposalBase):
+    """``/v1/lesson-author/proposal`` request."""
+
+
+class RagLessonAuthorCheckpointRequest(RagLessonAuthorProposalBase):
     """Internal-token-only path. Regular chat cannot opt into it via extra fields."""
     model_config = ConfigDict(extra="forbid")
     checkpoint_version: Literal[1] = 1
@@ -124,7 +130,7 @@ class RagLessonAuthorCheckpointRequest(RagLessonAuthorRequest):
         return self
 
 
-class RagLessonAuthorBlueprintRequest(RagChatRequest):
+class RagLessonAuthorBlueprintRequest(RagRequestBase):
     component_capabilities: ComponentCapabilities | None = None
     # Gemini 3.5 Flash supports up to 65,536 generated tokens. Keep the wider
     # contract scoped to Blueprints; regular RAG chat remains bounded by its

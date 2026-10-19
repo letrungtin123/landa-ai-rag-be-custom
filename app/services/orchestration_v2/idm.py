@@ -25,7 +25,7 @@ from app.idm.runtime import (
 )
 from app.infra.gemini.calls import require_provider_api_key
 from app.infra.gemini.errors import http_error_detail, provider_http_error_status, safe_provider_error_diagnostics
-from app.schemas.chat import RagChatRequest
+from app.schemas.chat import RagRequestBase
 from app.schemas.common import AiUsage
 from app.services import provider
 from app.services import runtime as service_runtime
@@ -69,7 +69,7 @@ async def _idm_generate(api_key: str, model: str, prompt: str, **options: Any) -
         raise IdmProviderError("AI_PROVIDER_UNAVAILABLE", terminal=False) from error
 
 
-def _idm_runtime(request: RagChatRequest, *, budget_ms: int, allowance: Any | None) -> IdmRuntime:
+def _idm_runtime(request: RagRequestBase, *, budget_ms: int, allowance: Any | None) -> IdmRuntime:
     # Ties the content of every IDM request (course design, module, unit) to the prompt templates
     # that wrote it, also across a deploy in the middle of a run.
     log_event(logger, logging.INFO, "idm_prompt_templates", family=IDM_LOG_FAMILY,

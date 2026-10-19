@@ -2,18 +2,21 @@
 
 from __future__ import annotations
 
-from typing import Annotated, Any
+from typing import Annotated
 
 import asyncpg
 from fastapi import Depends, FastAPI
 
 from app.api.deps import get_db, require_internal_token
 from app.schemas.orchestration_v2 import (
+    ChapterShardV2Response,
+    CourseSkeletonV2Response,
     RagLessonAuthorChapterShardV2Request,
     RagLessonAuthorCourseSkeletonV2Request,
     RagLessonAuthorSourceSnapshotV2Request,
     RagLessonAuthorUnitV2Request,
     SourceSnapshotV2Response,
+    UnitV2Response,
 )
 from app.services.orchestration_v2 import chapter_shard as chapter_shard_service
 from app.services.orchestration_v2 import course_skeleton as course_skeleton_service
@@ -32,16 +35,23 @@ async def lesson_author_orchestration_v2_source_snapshot(
 
 async def lesson_author_orchestration_v2_course_skeleton(
     request: RagLessonAuthorCourseSkeletonV2Request,
-) -> dict[str, Any]:
-    return await course_skeleton_service.lesson_author_orchestration_v2_course_skeleton(request)
+) -> CourseSkeletonV2Response:
+    return CourseSkeletonV2Response.model_validate(
+        await course_skeleton_service.lesson_author_orchestration_v2_course_skeleton(request),
+    )
 
 
-async def lesson_author_orchestration_v2_chapter_shard(request: RagLessonAuthorChapterShardV2Request) -> dict[str, Any]:
-    return await chapter_shard_service.lesson_author_orchestration_v2_chapter_shard(request)
+async def lesson_author_orchestration_v2_chapter_shard(
+    request: RagLessonAuthorChapterShardV2Request,
+) -> ChapterShardV2Response:
+    return ChapterShardV2Response.model_validate(
+        await chapter_shard_service.lesson_author_orchestration_v2_chapter_shard(request),
+    )
 
 
-async def lesson_author_orchestration_v2_unit(request: RagLessonAuthorUnitV2Request) -> dict[str, Any]:
-    return await unit_service.lesson_author_orchestration_v2_unit(request)
+async def lesson_author_orchestration_v2_unit(request: RagLessonAuthorUnitV2Request) -> UnitV2Response:
+    return UnitV2Response.model_validate(await unit_service.lesson_author_orchestration_v2_unit(request))
+
 
 
 def register(app: FastAPI) -> None:

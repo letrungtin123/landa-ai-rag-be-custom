@@ -10,7 +10,7 @@ from typing import Any
 import asyncpg
 
 from app.core.config import settings
-from app.schemas.chat import RagChatRequest
+from app.schemas.chat import RagRequestBase
 from app.services.text import clean_text
 from app.content.source_structure import strip_source_range_suffix
 
@@ -131,7 +131,7 @@ def build_keyword_patterns(value: str) -> tuple[list[str], list[str], list[str]]
     return phrase_patterns, [pattern for pattern in term_patterns if pattern], terms
 
 
-def retrieval_limits(request: RagChatRequest) -> dict[str, int]:
+def retrieval_limits(request: RagRequestBase) -> dict[str, int]:
     if request.target == "lesson_author":
         return {
             "top_k": max(1, settings.lesson_author_top_k),
@@ -145,13 +145,13 @@ def retrieval_limits(request: RagChatRequest) -> dict[str, int]:
     }
 
 
-def retrieval_candidate_limit(request: RagChatRequest) -> int:
+def retrieval_candidate_limit(request: RagRequestBase) -> int:
     multiplier = max(1, settings.retrieval_candidate_multiplier)
     top_k = retrieval_limits(request)["top_k"]
     return max(top_k, top_k * multiplier)
 
 
-def build_retrieval_query_texts(request: RagChatRequest) -> list[str]:
+def build_retrieval_query_texts(request: RagRequestBase) -> list[str]:
     """Add authoring scope hints to semantic retrieval without changing chat Q&A."""
     values = [request.user_message]
     if request.target == "lesson_author":
@@ -183,7 +183,7 @@ def parse_source_range(value: str) -> tuple[int, int] | None:
 
 
 def build_target_source_scopes(
-    request: RagChatRequest,
+    request: RagRequestBase,
     structure_context: dict[str, Any],
 ) -> list[dict[str, Any]]:
     """Resolve a selected authoring chapter to its explicit TOC page range."""

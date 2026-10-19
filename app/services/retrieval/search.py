@@ -14,7 +14,7 @@ from app.core.logging import SERVICE_LOGGER_NAME
 from app.infra.gemini.calls import normalize_embedding_model
 from app.repositories import retrieval as retrieval_repository
 from app.repositories.pgvector import vector_literal
-from app.schemas.chat import RagChatRequest
+from app.schemas.chat import RagRequestBase
 from app.schemas.common import AiUsage
 from app.schemas.lesson_author import RagLessonAuthorBlueprintRequest
 from app.schemas.orchestration_v2 import RagLessonAuthorSourceSnapshotV2Request
@@ -46,7 +46,7 @@ logger = logging.getLogger(SERVICE_LOGGER_NAME)
 
 async def load_target_source_scope_chunks(
     pool: asyncpg.Pool,
-    request: RagChatRequest,
+    request: RagRequestBase,
     scopes: list[dict[str, Any]],
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     if not scopes or not request.kb_id:
@@ -97,7 +97,7 @@ async def load_target_source_scope_chunks(
 
 async def load_lesson_author_blueprint_source_chunks(
     pool: asyncpg.Pool,
-    request: RagChatRequest,
+    request: RagRequestBase,
 ) -> tuple[list[dict[str, Any]], bool]:
     """Load selected source documents in source order for a Blueprint contract.
 
@@ -125,7 +125,7 @@ async def load_lesson_author_blueprint_source_chunks(
 
 async def retrieve_chunks(
     pool: asyncpg.Pool,
-    request: RagChatRequest,
+    request: RagRequestBase,
 ) -> tuple[list[dict[str, Any]], AiUsage, dict[str, Any]]:
     structure_context = await load_source_structure_context(pool, request)
     if not request.kb_id:
@@ -350,7 +350,7 @@ def format_sources(
 
 
 def build_retrieval_diagnostics(
-    request: RagChatRequest,
+    request: RagRequestBase,
     rows: list[dict[str, Any]],
     sources: list[dict[str, Any]],
     structure_context: dict[str, Any] | None = None,

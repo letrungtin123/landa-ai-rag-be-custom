@@ -8,7 +8,7 @@ from typing import Any, Literal
 import asyncpg
 
 from app.repositories import retrieval as retrieval_repository
-from app.schemas.chat import RagChatRequest
+from app.schemas.chat import RagRequestBase
 from app.services.ingestion.extract import ExtractedSection
 from app.services.retrieval.query import decode_json_list, decode_json_object
 from app.source_chapter_policy import resolve_source_chapter_policy
@@ -117,7 +117,7 @@ def build_source_structure_context(
 
 async def rebuild_stale_source_structures_from_chunks(
     pool: asyncpg.Pool,
-    request: RagChatRequest,
+    request: RagRequestBase,
     document_ids: list[str],
 ) -> dict[str, dict[str, Any]]:
     """Reparse bounded stored chunks for indexes created by an older parser."""
@@ -156,7 +156,7 @@ async def rebuild_stale_source_structures_from_chunks(
 
 async def load_source_structure_context(
     pool: asyncpg.Pool,
-    request: RagChatRequest,
+    request: RagRequestBase,
 ) -> dict[str, Any]:
     if not request.kb_id or request.target != "lesson_author":
         return build_source_structure_context([], locale=request.locale)

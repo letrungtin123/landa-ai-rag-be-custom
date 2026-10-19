@@ -10,7 +10,7 @@ from app.prompt_safety import untrusted_block, untrusted_content_rule
 from app.schemas.lesson_author import (
     RagLessonAuthorBlueprintRequest,
     RagLessonAuthorDraftArchitecture,
-    RagLessonAuthorRequest,
+    RagLessonAuthorProposalBase,
 )
 from app.services.lesson_author.proposal_validation import (
     MIN_STAGED_LESSON_AUTHOR_HTML_TEXT_CHARS,
@@ -84,7 +84,7 @@ def format_approved_lesson_quality_contract(
 
 
 def build_lesson_author_prompt(
-    request: RagLessonAuthorRequest,
+    request: RagLessonAuthorProposalBase,
     context: str,
     source_outline: str = "",
     source_coverage: str = "",

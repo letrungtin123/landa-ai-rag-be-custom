@@ -10,7 +10,7 @@ from app.component_capabilities import validate_instance_plan
 from app.content.source_structure import strip_source_range_suffix
 from app.core.errors import ServiceError
 from app.instructional_density import INSTRUCTIONAL_DENSITY_POLICY_VERSION
-from app.schemas.lesson_author import RagLessonAuthorRequest
+from app.schemas.lesson_author import RagLessonAuthorProposalBase
 from app.services.lesson_author.architecture_shape import (
     _is_v4_supporting_factless_unit,
     _is_v5_supporting_factless_unit,
@@ -42,7 +42,7 @@ def parse_lesson_author_json_value(text: str, label: str) -> Any:
 
 
 def should_stage_lesson_author_proposal(
-    request: RagLessonAuthorRequest,
+    request: RagLessonAuthorProposalBase,
     context: str,
 ) -> bool:
     """Stage chapter creation before the provider can truncate one large JSON."""
@@ -140,7 +140,7 @@ def match_staged_unit_by_title(generated_units: list[Any], expected_title: str) 
     return matches[0] if len(matches) == 1 else None
 
 
-def _blueprint_draft_architecture(request: RagLessonAuthorRequest) -> dict[str, Any] | None:
+def _blueprint_draft_architecture(request: RagLessonAuthorProposalBase) -> dict[str, Any] | None:
     architecture = request.blueprint_architecture
     if architecture is None:
         return None
@@ -324,7 +324,7 @@ def _locked_component_plan(
 
 def _apply_blueprint_architecture_to_skeleton(
     skeleton: dict[str, Any],
-    request: RagLessonAuthorRequest,
+    request: RagLessonAuthorProposalBase,
 ) -> dict[str, Any]:
     architecture = _blueprint_draft_architecture(request)
     if architecture is None:
@@ -431,7 +431,7 @@ def _apply_blueprint_architecture_to_skeleton(
 
 
 def _build_blueprint_locked_staged_skeleton(
-    request: RagLessonAuthorRequest,
+    request: RagLessonAuthorProposalBase,
     manifest: dict[str, Any] | None,
 ) -> dict[str, Any]:
     """Fallback that preserves the approved Blueprint topology and source coverage."""

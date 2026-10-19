@@ -8,7 +8,7 @@ from typing import Any
 
 from app.core.config import settings
 from app.content.instructional_quality import TABLE_ROW_RE, clean_source_facts, is_non_instructional_source_line
-from app.schemas.chat import RagChatRequest
+from app.schemas.chat import RagRequestBase
 from app.services.lesson_author.errors import LessonAuthorProposalValidationError
 from app.services.retrieval.query import decode_json_object, parse_source_range
 from app.services.text import clean_text
@@ -315,7 +315,7 @@ def _expand_target_source_refs(
     return expanded
 
 
-def lesson_author_target_source_refs(request: RagChatRequest) -> set[str]:
+def lesson_author_target_source_refs(request: RagRequestBase) -> set[str]:
     if request.target != "lesson_author":
         return set()
     values = "\n".join([
@@ -325,7 +325,7 @@ def lesson_author_target_source_refs(request: RagChatRequest) -> set[str]:
     return {match.group(0).casefold() for match in SOURCE_REF_RE.finditer(values)}
 
 
-def lesson_author_blueprint_draft_fact_ids(request: RagChatRequest) -> set[str]:
+def lesson_author_blueprint_draft_fact_ids(request: RagRequestBase) -> set[str]:
     """Return the exact persisted fact coverage for a Blueprint chapter draft."""
     architecture = getattr(request, "blueprint_architecture", None)
     if architecture is None:
@@ -341,7 +341,7 @@ def lesson_author_blueprint_draft_fact_ids(request: RagChatRequest) -> set[str]:
     return fact_ids
 
 
-def lesson_author_blueprint_draft_supporting_fact_ids(request: RagChatRequest) -> set[str]:
+def lesson_author_blueprint_draft_supporting_fact_ids(request: RagRequestBase) -> set[str]:
     """Return V5 read-only supporting evidence without changing ownership."""
     architecture = getattr(request, "blueprint_architecture", None)
     if architecture is None or architecture.architecture_contract_version != 5:

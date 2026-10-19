@@ -19,7 +19,7 @@ from app.infra.gemini.errors import is_non_retryable_provider_error
 from app.infra.gemini.usage import combine_usage
 from app.lesson_quality import duplicate_validation_result, pedagogical_validation_result
 from app.schemas.common import AiUsage
-from app.schemas.lesson_author import RagLessonAuthorCheckpointRequest, RagLessonAuthorRequest
+from app.schemas.lesson_author import RagLessonAuthorCheckpointRequest, RagLessonAuthorProposalBase
 from app.services import provider
 from app.services.deadlines import run_with_deadline
 from app.services.lesson_author import checkpoint as checkpoint_service
@@ -57,7 +57,7 @@ logger = logging.getLogger(SERVICE_LOGGER_NAME)
 
 
 async def lesson_author_proposal(
-    request: RagLessonAuthorRequest,
+    request: RagLessonAuthorProposalBase,
     pool: asyncpg.Pool,
 ) -> dict[str, Any]:
     return await run_with_deadline(
@@ -68,7 +68,7 @@ async def lesson_author_proposal(
 
 
 async def _lesson_author_proposal(
-    request: RagLessonAuthorRequest,
+    request: RagLessonAuthorProposalBase,
     pool: asyncpg.Pool,
 ) -> dict[str, Any]:
     workflow_started = perf_counter()

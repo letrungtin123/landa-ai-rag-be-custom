@@ -14,7 +14,7 @@ from app.content.instructional_quality import (
     source_clarification_signals,
 )
 from app.lesson_prompt_policy import component_instructional_brief
-from app.schemas.lesson_author import RagLessonAuthorRequest
+from app.schemas.lesson_author import RagLessonAuthorProposalBase
 from app.services.lesson_author.errors import LessonAuthorProposalValidationError
 from app.services.lesson_author.proposal_validation import _normalize_structural_title
 from app.services.lesson_author.staged.plan import (
@@ -29,7 +29,7 @@ from app.services.retrieval.source_coverage import SOURCE_REF_RE, _source_chunk_
 from app.services.text import clean_text
 
 
-def _requested_staged_chapter_title(request: RagLessonAuthorRequest) -> str:
+def _requested_staged_chapter_title(request: RagLessonAuthorProposalBase) -> str:
     """Derive a semantic title without trusting source filenames or ranges."""
     message = re.sub(r"\s+", " ", request.user_message).strip()
     match = re.search(
@@ -64,7 +64,7 @@ def _source_locked_unit_title(facts: list[dict[str, Any]], index: int, locale: s
 
 
 def _blueprint_lesson_fact_groups(
-    request: RagLessonAuthorRequest,
+    request: RagLessonAuthorProposalBase,
     facts: list[dict[str, Any]],
 ) -> list[tuple[str, list[dict[str, Any]]]]:
     match = re.search(
@@ -123,7 +123,7 @@ def _source_fact_group_key(fact: dict[str, Any]) -> tuple[str, Any, Any]:
 
 
 def build_source_locked_staged_skeleton(
-    request: RagLessonAuthorRequest,
+    request: RagLessonAuthorProposalBase,
     manifest: dict[str, Any] | None,
 ) -> dict[str, Any]:
     """Build a bounded, lossless skeleton when provider planning is malformed.

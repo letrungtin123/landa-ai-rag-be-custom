@@ -1,4 +1,4 @@
-"""Request and response models of ``/v1/chat`` (the request is the base of every RAG request)."""
+"""Request and response models of ``/v1/chat``, and the request envelope every RAG route shares."""
 
 from __future__ import annotations
 
@@ -31,7 +31,13 @@ class RagSourceDocument(BaseModel):
         return validate_uuid_string(value, info.field_name) or ""
 
 
-class RagChatRequest(BaseModel):
+class RagRequestBase(BaseModel):
+    """The envelope every RAG request carries (tenant, model, provider key, sources, locale).
+
+    It is not a route body itself: each route declares its own top-level request model on top of it, so a field
+    added for one route never leaks into another route's contract.
+    """
+
     tenant_id: str
     kb_id: str | None = None
     conversation_id: str
@@ -85,6 +91,10 @@ class RagChatRequest(BaseModel):
         if len(value) > MAX_SOURCE_DOCUMENTS:
             raise ValueError("Tối đa 20 tài liệu nguồn cho mỗi request RAG.")
         return value
+
+
+class RagChatRequest(RagRequestBase):
+    """``/v1/chat`` request: exactly the shared envelope."""
 
 
 class ChatResponse(BaseModel):

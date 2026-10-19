@@ -1,4 +1,4 @@
-"""Request models of the orchestration-v2 routes and the source-snapshot response."""
+"""Request and response models of the orchestration-v2 routes: source snapshot, skeleton, chapter shard, unit."""
 
 from __future__ import annotations
 
@@ -6,8 +6,9 @@ from typing import Any, Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, SecretStr, model_validator
+from pydantic.json_schema import SkipJsonSchema
 
-from app.contracts.orchestration_v2.blueprint import CourseSkeletonV2
+from app.contracts.orchestration_v2.blueprint import ChapterBlueprintShardV2, CourseSkeletonV2
 from app.contracts.orchestration_v2.provider import (
     ChapterShardPlanV2,
     SourceOutlineAuthorityV2,
@@ -15,11 +16,11 @@ from app.contracts.orchestration_v2.provider import (
     SourceSnapshotFactV2,
     UnitGenerationContractV2,
 )
-from app.idm.contracts import IdmCourseSkeletonRequestV1, IdmModuleContextV1
-from app.schemas.chat import RagChatRequest
+from app.idm.contracts import IdmCourseDesignV1, IdmCourseSkeletonRequestV1, IdmModuleContextV1, IdmShardDesignV1
+from app.schemas.chat import RagRequestBase
 
 
-class RagLessonAuthorSourceSnapshotV2Request(RagChatRequest):
+class RagLessonAuthorSourceSnapshotV2Request(RagRequestBase):
     model_config = ConfigDict(extra="forbid")
     # Source paging is deterministic database work. It deliberately carries no
     # tenant provider secret because this endpoint cannot call Gemini.
@@ -49,7 +50,7 @@ class RagLessonAuthorSourceSnapshotV2Request(RagChatRequest):
         return self
 
 
-class RagLessonAuthorCourseSkeletonV2Request(RagChatRequest):
+class RagLessonAuthorCourseSkeletonV2Request(RagRequestBase):
     model_config = ConfigDict(extra="forbid")
     contract_version: Literal[2] = 2
     source_snapshot_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
@@ -71,7 +72,7 @@ class RagLessonAuthorCourseSkeletonV2Request(RagChatRequest):
         return self
 
 
-class RagLessonAuthorChapterShardV2Request(RagChatRequest):
+class RagLessonAuthorChapterShardV2Request(RagRequestBase):
     model_config = ConfigDict(extra="forbid")
     contract_version: Literal[2] = 2
     skeleton: CourseSkeletonV2
@@ -95,7 +96,7 @@ class RagLessonAuthorChapterShardV2Request(RagChatRequest):
         return self
 
 
-class RagLessonAuthorUnitV2Request(RagChatRequest):
+class RagLessonAuthorUnitV2Request(RagRequestBase):
     model_config = ConfigDict(extra="forbid")
     contract_version: Literal[2] = 2
     unit_contract: UnitGenerationContractV2
@@ -128,3 +129,75 @@ class SourceSnapshotV2Response(BaseModel):
     has_more: bool
     page_content_bytes: int
     usage: dict[str, Any]
+
+
+# ---- generation responses (step 2.6) --------------------------------------------------------------------------------
+# These models describe the dicts the services already return. FastAPI serializes them with the same pydantic-core
+# JSON encoder it used for the untyped ``dict[str, Any]`` answers, and the field order is the wire order, so the
+# bytes are unchanged. An optional add-on field is omitted when absent (never sent as null), exactly as the services
+# leave the key out.
+UsageSource = Literal["provider", "reserved_upper_bound", "deterministic_fallback"]
+ContentOrigin = Literal["provider_validated", "structured_fallback"]
+QualityState = Literal["validated", "review_required"]
+
+
+def _absent(value: object) -> bool:
+    return value is None
+
+
+class CourseSkeletonV2Response(BaseModel):
+    """``/course-skeleton`` answer: the course skeleton and, on IDM runs, the IDM course design."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    contract_version: Literal[2]
+    skeleton: CourseSkeletonV2
+    idm: IdmCourseDesignV1 | SkipJsonSchema[None] = Field(default=None, exclude_if=_absent)
+    usage: dict[str, int]
+    usage_complete: bool
+    usage_source: UsageSource
+    content_origin: ContentOrigin
+    quality_state: QualityState
+
+
+class ChapterShardV2Payload(ChapterBlueprintShardV2):
+    """One chapter shard; IDM runs append their module design as ``idm_design`` (spec §8.2)."""
+
+    idm_design: IdmShardDesignV1 | SkipJsonSchema[None] = Field(default=None, exclude_if=_absent)
+
+
+class ChapterShardV2Response(BaseModel):
+    """``/chapter-shard`` answer."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    contract_version: Literal[2]
+    shard: ChapterShardV2Payload
+    usage: dict[str, int]
+    usage_complete: bool
+    usage_source: UsageSource
+    content_origin: ContentOrigin
+    quality_state: QualityState
+
+
+class UnitV2Response(BaseModel):
+    """``/unit`` answer.
+
+    ``unit`` stays an object: the IDM writer, the legacy writer and the fallbacks each emit its keys in their own
+    order, and Node validates the components itself. ``attempt_trace`` events come from several writers as well.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    contract_version: Literal[2]
+    source_snapshot_hash: str
+    unit_path: str
+    unit: dict[str, Any]
+    usage: dict[str, int]
+    usage_complete: bool
+    usage_source: UsageSource
+    content_origin: ContentOrigin
+    quality_state: QualityState
+    attempt_trace: list[dict[str, Any]]
+    # Present only when semantic review is on (``AI_RAG_SEMANTIC_REVIEW_MODE``).
+    semantic_review: dict[str, Any] | SkipJsonSchema[None] = Field(default=None, exclude_if=_absent)
