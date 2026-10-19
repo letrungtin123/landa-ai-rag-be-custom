@@ -19,7 +19,9 @@ import httpx
 from app import main
 from app.api import deps as api_deps
 from app.core import metrics
+from app.core.errors import ProviderError, ServiceError
 from app.core.handled_exceptions import HANDLED_EXCEPTION_EVENT, count_handled_exception, report_handled_exception
+from app.core.logging import exception_fields, exception_type_label
 from app.idm.runtime import IdmProviderError
 from app.idm.storyboard import run_idm_unit
 from app.schemas.orchestration_v2 import RagLessonAuthorUnitV2Request
@@ -71,6 +73,26 @@ class ReportTests(unittest.TestCase):
         before = counted("other", "OtherException", "other")
         count_handled_exception(dynamic, stage="Free Text", outcome="not a code!")
         self.assertEqual(counted("other", "OtherException", "other"), before + 1)
+
+
+    def test_service_and_provider_errors_keep_the_old_http_exception_label(self) -> None:
+        # They were fastapi.HTTPException (OtherException) until wave 2b; the label holds until the review.
+        for error in (ServiceError(status_code=502, detail="PRIVATE"),
+                      ProviderError("AI_PROVIDER_UNAVAILABLE", "PRIVATE")):
+            with self.subTest(error=type(error).__name__):
+                self.assertEqual(exception_type_label(error), "OtherException")
+                try:
+                    try:
+                        raise error
+                    except ServiceError as cause:
+                        raise IdmProviderError("AI_PROVIDER_UNAVAILABLE", terminal=False) from cause
+                except IdmProviderError as wrapped:
+                    fields = exception_fields(wrapped)
+                self.assertEqual((fields["exception_type"], fields["exception_cause_type"]),
+                                 ("IdmProviderError", "OtherException"))
+                before = counted("idm", "OtherException", "AI_PROVIDER_UNAVAILABLE")
+                count_handled_exception(error, stage="idm", outcome="AI_PROVIDER_UNAVAILABLE")
+                self.assertEqual(counted("idm", "OtherException", "AI_PROVIDER_UNAVAILABLE"), before + 1)
 
 
 class OrchestrationFallbackTests(unittest.IsolatedAsyncioTestCase):

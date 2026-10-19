@@ -45,6 +45,11 @@ KNOWN_EXCEPTION_MODULES = (
     "json", "asyncpg", "concurrent.futures", "ssl", "socket",
 )
 UNKNOWN_EXCEPTION_TYPE = "OtherException"
+# Service and provider errors were fastapi.HTTPException until refactor wave 2b (step 2.4), an unknown
+# module, so OtherException. They keep that label, and every subclass with them, so the handled-exception
+# series of the owner's review (2026-10-18 to about 2026-10-25) stays comparable. Remove this case after
+# that review.
+_SERIES_STABLE_EXCEPTION_TYPES = frozenset({("app.core.errors", "ServiceError"), ("app.core.errors", "ProviderError")})
 _LIBRARY_PATH_MARKERS = ("/site-packages/", "/dist-packages/")
 _STDLIB_PATH_PATTERN = re.compile(r"/lib/python3\.\d+/|/Lib/")
 # Observability fields every JSON line carries; they default to null and are
@@ -121,6 +126,8 @@ def exception_type_label(error: BaseException) -> str:
     """
 
     cls = type(error)
+    if any((base.__module__, base.__qualname__) in _SERIES_STABLE_EXCEPTION_TYPES for base in cls.__mro__):
+        return UNKNOWN_EXCEPTION_TYPE
     module = cls.__module__ or ""
     if any(module == known or module.startswith(known + ".") for known in KNOWN_EXCEPTION_MODULES):
         return cls.__name__
