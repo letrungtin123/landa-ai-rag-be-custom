@@ -20,9 +20,10 @@ from app.core.security import require_configured_service_auth
 from app.idm.policy import IDM_PROMPT_POLICY_VERSION
 from app.idm.prompt_manifest import prompt_templates_hash
 from app.infra import db as db_infra
-from app.infra import gemini as gemini_infra
 from app.infra import schema_check as schema_infra
 from app.infra import storage as storage_infra
+from app.infra.gemini import pool as gemini_pool
+from app.infra.gemini import transport as gemini_transport
 
 logger = logging.getLogger(SERVICE_LOGGER_NAME)
 
@@ -37,6 +38,9 @@ concurrency = ConcurrencyRuntime(
     acquire_timeout_seconds=settings.limiter_acquire_timeout_ms / 1000,
     extraction_executor=settings.extraction_executor,
 )
+# Provider calls take their slots from this runtime's limiter, looked up at every attempt so a
+# replaced ``concurrency`` (tests) is the one in use.
+gemini_transport.use_provider_slots(lambda: concurrency.provider)
 
 
 db_pool: asyncpg.Pool | None = None
@@ -133,5 +137,5 @@ async def shutdown() -> None:
     elif db_pool is not None:
         await db_pool.close()
     db_pool = None
-    gemini_infra.client_pool.clear()
+    gemini_pool.client_pool.clear()
     concurrency.shutdown()

@@ -11,6 +11,7 @@ from google import genai
 from google.genai import models, types
 
 from app.core.config import settings
+from app.infra.gemini.calls import embed_text_batch
 from app.lesson_author_blueprint import (
     LESSON_AUTHOR_BLUEPRINT_RESPONSE_SCHEMA,
     LessonAuthorBlueprintResponse,
@@ -56,7 +57,7 @@ from app.services.lesson_author.staged.source_locked import (
 )
 from app.services.lesson_author.staged.validation import validate_staged_unit_content
 from app.services.lesson_author.staged.writer import generate_staged_lesson_author_proposal
-from app.services.provider import embed_text_batch, generate_content
+from app.services.provider import generate_content
 from app.services.retrieval.source_coverage import restrict_blueprint_draft_source_manifest
 from app.workflows.contracts import WorkflowValidationResult
 
@@ -1765,7 +1766,7 @@ class LessonAuthorBlueprintContractTests(unittest.TestCase):
 class LessonAuthorBlueprintRetryTests(unittest.IsolatedAsyncioTestCase):
     async def test_embedding_provider_quota_exhaustion_is_returned_as_non_retryable_service_error(self) -> None:
         with patch(
-            "app.services.provider.asyncio.to_thread",
+            "app.infra.gemini.transport.asyncio.to_thread",
             side_effect=RuntimeError("429 RESOURCE_EXHAUSTED"),
         ):
             with self.assertRaises(HTTPException) as raised:
@@ -1782,7 +1783,7 @@ class LessonAuthorBlueprintRetryTests(unittest.IsolatedAsyncioTestCase):
         provider_error = RuntimeError("503 UNAVAILABLE")
         provider_error.status_code = 503
         with patch(
-            "app.services.provider.asyncio.to_thread",
+            "app.infra.gemini.transport.asyncio.to_thread",
             side_effect=provider_error,
         ):
             with self.assertRaises(HTTPException) as raised:
@@ -1799,7 +1800,7 @@ class LessonAuthorBlueprintRetryTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_provider_quota_exhaustion_is_returned_as_non_retryable_service_error(self) -> None:
         with patch(
-            "app.services.provider.asyncio.to_thread",
+            "app.infra.gemini.transport.asyncio.to_thread",
             side_effect=RuntimeError("429 RESOURCE_EXHAUSTED"),
         ):
             with self.assertRaises(HTTPException) as raised:

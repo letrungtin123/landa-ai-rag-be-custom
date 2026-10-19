@@ -6,9 +6,9 @@ import json
 import re
 from typing import Any
 
-from app.core.errors import ServiceError
-
 from app.component_capabilities import validate_instance_plan
+from app.content.source_structure import strip_source_range_suffix
+from app.core.errors import ServiceError
 from app.instructional_density import INSTRUCTIONAL_DENSITY_POLICY_VERSION
 from app.schemas.lesson_author import RagLessonAuthorRequest
 from app.services.lesson_author.architecture_shape import (
@@ -24,7 +24,6 @@ from app.services.lesson_author.staged.plan import (
     ensure_staged_chapter_component_diversity,
     normalize_staged_component_type,
 )
-from app.content.source_structure import strip_source_range_suffix
 
 
 def parse_lesson_author_json_value(text: str, label: str) -> Any:

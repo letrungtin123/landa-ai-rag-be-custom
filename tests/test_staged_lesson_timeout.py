@@ -11,6 +11,8 @@ from fastapi import HTTPException
 
 from app.core.config import settings
 from app.core.errors import ServiceError
+from app.infra.gemini.errors import is_non_retryable_provider_error
+from app.infra.gemini.transport import call_provider_with_timeout
 from app.schemas.common import AiUsage
 from app.schemas.lesson_author import RagLessonAuthorRequest
 from app.services.lesson_author.staged.plan import (
@@ -19,7 +21,6 @@ from app.services.lesson_author.staged.plan import (
     staged_lesson_content_output_tokens,
 )
 from app.services.lesson_author.staged.writer import generate_staged_lesson_author_proposal
-from app.services.provider import call_provider_with_timeout, is_non_retryable_provider_error
 
 
 def staged_request(*, max_output_tokens: int = 30_000) -> RagLessonAuthorRequest:

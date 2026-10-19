@@ -21,7 +21,7 @@ from app.core import metrics
 from app.core.errors import AppError
 from app.idm import module_design, storyboard
 from app.idm.storyboard_steps import IdmUnitWriterSteps
-from app.infra import gemini as gemini_infra
+from app.infra.gemini import pool as gemini_pool
 from app.infra.schema_check import SchemaCheckResult
 from app.repositories import indexing as index_repository
 from app.schemas.chat import RagChatRequest
@@ -161,7 +161,7 @@ class LifespanTests(unittest.TestCase):
             patch.object(main.settings, "supabase_url", "http://127.0.0.1:54321"),
             patch.object(main.settings, "supabase_service_key", SecretStr("legacy-service-key")),
             patch.object(runtime_service.schema_guard, "refresh", AsyncMock()),
-            patch.object(gemini_infra.client_pool, "clear") as clear_clients,
+            patch.object(gemini_pool.client_pool, "clear") as clear_clients,
             patch.object(runtime_service.concurrency, "shutdown") as shutdown_executors,
         ):
             async def scenario() -> None:
@@ -417,7 +417,7 @@ class IdmEventLoopTests(unittest.TestCase):
 
 class ProviderRetryPolicyTests(unittest.TestCase):
     def test_backoff_grows_with_jitter_and_respects_cap(self) -> None:
-        with patch.object(provider_service, "PROVIDER_TRANSIENT_RETRY_DELAY_SECONDS", 1.0), \
+        with patch("app.infra.gemini.retry.PROVIDER_TRANSIENT_RETRY_DELAY_SECONDS", 1.0), \
                 patch.object(main.settings, "provider_retry_max_ms", 3_000):
             first = provider_service.provider_retry_delay_seconds(0)
             second = provider_service.provider_retry_delay_seconds(1)
@@ -525,7 +525,7 @@ class EmbeddingTransportTests(unittest.TestCase):
         factory = MagicMock(return_value=client)
         labels = {"operation": "embed", "kind": "embedding", "stage": "unlabelled"}
         before = metric("ai_rag_provider_tokens_total", labels)
-        with patch("app.infra.gemini.genai.Client", factory):
+        with patch("app.infra.gemini.pool.genai.Client", factory):
             vectors, usage = asyncio.run(provider_service.embed_text_batch(
                 "embed-key", "gemini-embedding-001", ["xin chào", "an toàn"], task_type="RETRIEVAL_DOCUMENT",
             ))

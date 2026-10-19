@@ -10,11 +10,13 @@ from time import perf_counter
 from typing import Any
 
 import asyncpg
-from app.core.errors import ServiceError
 from google.genai import types
 
 from app.core.config import settings
+from app.core.errors import ServiceError
 from app.core.logging import SERVICE_LOGGER_NAME
+from app.infra.gemini.errors import is_non_retryable_provider_error
+from app.infra.gemini.usage import combine_usage
 from app.lesson_quality import duplicate_validation_result, pedagogical_validation_result
 from app.schemas.common import AiUsage
 from app.schemas.lesson_author import RagLessonAuthorCheckpointRequest, RagLessonAuthorRequest
@@ -39,9 +41,7 @@ from app.services.lesson_author.source_refs import (
     validate_lesson_author_proposal_source_refs,
 )
 from app.services.lesson_author.staged import writer as staged_writer
-from app.services.staged_unit.provider_schemas import build_lesson_author_proposal_response_schema
 from app.services.lesson_author.staged.skeleton import should_stage_lesson_author_proposal
-from app.services.provider import combine_usage, is_non_retryable_provider_error
 from app.services.retrieval import search as retrieval_search
 from app.services.retrieval.query import retrieval_limits
 from app.services.retrieval.search import build_retrieval_diagnostics, format_sources
@@ -49,6 +49,7 @@ from app.services.retrieval.source_coverage import (
     format_source_coverage_manifest,
     validate_lesson_author_source_coverage,
 )
+from app.services.staged_unit.provider_schemas import build_lesson_author_proposal_response_schema
 from app.workflows.contracts import RepairTarget, WorkflowFailure, WorkflowGenerationResult, WorkflowValidationResult
 from app.workflows.lesson_generation import LessonGenerationWorkflowCallbacks, run_lesson_generation_workflow
 

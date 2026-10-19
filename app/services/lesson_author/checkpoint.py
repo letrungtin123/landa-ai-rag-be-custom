@@ -5,6 +5,7 @@ from __future__ import annotations
 from time import perf_counter
 from typing import Any, Callable
 
+from app.infra.gemini.usage import combine_usage
 from app.lesson_author_checkpoint import assemble_checkpoint_chapter, checkpoint_expected_units
 from app.lesson_quality import (
     duplicate_validation_result,
@@ -22,9 +23,8 @@ from app.services.lesson_author.staged.skeleton import (
     validate_staged_skeleton_source_facts,
 )
 from app.services.lesson_author.staged.source_locked import build_source_locked_staged_skeleton
-from app.services.staged_unit.validation import validate_staged_unit_content
-from app.services.provider import combine_usage
 from app.services.retrieval.source_coverage import validate_lesson_author_source_coverage
+from app.services.staged_unit.validation import validate_staged_unit_content
 from app.workflows.contracts import WorkflowFailure, safe_workflow_issue_summary, safe_workflow_path
 
 

@@ -6,10 +6,12 @@ import json
 import re
 from typing import Any, Callable, Literal
 
-from app.core.errors import ServiceError
 from google.genai import types
 
 from app.core.config import settings
+from app.core.errors import ServiceError
+from app.infra.gemini.telemetry import emit_safe_provider_telemetry
+from app.infra.gemini.usage import combine_usage
 from app.lesson_author_blueprint import (
     LESSON_AUTHOR_BLUEPRINT_RESPONSE_SCHEMA,
     LessonAuthorBlueprintValidationError,
@@ -23,7 +25,6 @@ from app.schemas.lesson_author import RagLessonAuthorBlueprintRequest
 from app.services import provider
 from app.services.lesson_author.proposal_validation import _normalize_structural_title
 from app.services.lesson_author.source_context import V5ImmutableSourceContext
-from app.services.provider import combine_usage, emit_safe_provider_telemetry
 from app.source_chapter_policy import bind_source_chapters
 from app.workflows.contracts import WorkflowIssue, WorkflowValidationResult, safe_workflow_issue_summary
 

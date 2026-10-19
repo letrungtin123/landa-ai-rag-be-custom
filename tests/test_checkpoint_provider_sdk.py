@@ -188,7 +188,7 @@ class CheckpointProviderSDKTests(unittest.TestCase):
             events = []
             body = {"error": {"code": status, "message": "PRIVATE", "status": "RESOURCE_EXHAUSTED" if status == 429 else "UNAVAILABLE"}}
             with patch("httpx.Client.send", return_value=response(status, body)) as transport, \
-                    patch("app.services.provider.PROVIDER_TRANSIENT_RETRY_DELAY_SECONDS", 0):
+                    patch("app.infra.gemini.retry.PROVIDER_TRANSIENT_RETRY_DELAY_SECONDS", 0):
                 with self.assertRaises(HTTPException) as failure:
                     asyncio.run(provider_service.generate_content("offline-key", "offline-model", "PRIVATE", max_output_tokens=30000,
                                                       on_provider_telemetry=events.append))

@@ -12,6 +12,13 @@ from typing import Any, Literal, cast
 from google.genai import types
 from pydantic import BaseModel, ValidationError
 
+from app.content.instructional_quality import source_relationship_pairs
+from app.content.learner_content_purity import build_learner_content_purity_context
+from app.contracts.orchestration_v2.provider import (
+    UnitGenerationContractV2,
+    unit_contract_manifest_v2,
+    unit_contract_v5_architecture_v2,
+)
 from app.core import metrics
 from app.core.config import settings
 from app.core.handled_exceptions import report_handled_exception
@@ -21,13 +28,8 @@ from app.idm.preserve_unit import is_preserve_unit, run_preserve_unit
 from app.idm.runtime import IDM_LOG_FAMILY, IdmError, IdmStageError
 from app.idm.source_locked import idm_source_faq, idm_source_grounded_single_choice, render_idm_source_locked_html
 from app.idm.storyboard import IdmUnitDeps, run_idm_unit
-from app.content.instructional_quality import source_relationship_pairs
-from app.content.learner_content_purity import build_learner_content_purity_context
-from app.contracts.orchestration_v2.provider import (
-    UnitGenerationContractV2,
-    unit_contract_manifest_v2,
-    unit_contract_v5_architecture_v2,
-)
+from app.infra.gemini.retry import PROVIDER_TRANSIENT_MAX_ATTEMPTS
+from app.infra.gemini.usage import combine_usage
 from app.schemas.common import AiUsage
 from app.schemas.lesson_author import RagLessonAuthorRequest
 from app.schemas.orchestration_v2 import RagLessonAuthorUnitV2Request
@@ -46,6 +48,13 @@ from app.services import runtime as service_runtime
 from app.services.deadlines import record_fallback
 from app.services.lesson_author.errors import LessonAuthorProposalValidationError
 from app.services.lesson_author.staged import writer as staged_writer
+from app.services.orchestration_v2.common import V2_LOG_FAMILY, _orchestration_v2_http_error
+from app.services.orchestration_v2.idm import _idm_http_error, _idm_runtime
+from app.services.orchestration_v2.source_locked import (
+    build_orchestration_v2_source_locked_components,
+    build_orchestration_v2_source_locked_unit,
+)
+from app.services.retrieval.source_coverage import format_source_coverage_manifest
 from app.services.staged_unit.provider_schemas import (
     bind_staged_instance_payload,
     build_staged_instance_response_model,
@@ -57,14 +66,6 @@ from app.services.staged_unit.validation import (
     merge_staged_component_payload_delta,
     validate_staged_unit_content,
 )
-from app.services.orchestration_v2.common import V2_LOG_FAMILY, _orchestration_v2_http_error
-from app.services.orchestration_v2.idm import _idm_http_error, _idm_runtime
-from app.services.orchestration_v2.source_locked import (
-    build_orchestration_v2_source_locked_components,
-    build_orchestration_v2_source_locked_unit,
-)
-from app.services.provider import PROVIDER_TRANSIENT_MAX_ATTEMPTS, combine_usage
-from app.services.retrieval.source_coverage import format_source_coverage_manifest
 from app.workflows.contracts import WorkflowFailure
 
 logger = logging.getLogger(SERVICE_LOGGER_NAME)

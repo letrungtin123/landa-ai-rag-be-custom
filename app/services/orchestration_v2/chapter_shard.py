@@ -6,14 +6,8 @@ import json
 import logging
 from typing import Any
 
-from app.core.errors import ServiceError
 from pydantic import ValidationError
 
-from app.core.handled_exceptions import report_handled_exception
-from app.core.logging import SERVICE_LOGGER_NAME, log_payload
-from app.idm.module_design import run_idm_module_design
-from app.idm.preserve_design import is_preserve_context, run_preserve_module_design
-from app.idm.runtime import IdmError, IdmStageError
 from app.contracts.orchestration_v2.blueprint import OrchestrationContractError
 from app.contracts.orchestration_v2.provider import (
     CHAPTER_SHARD_PROVIDER_SCHEMA_METADATA,
@@ -24,6 +18,14 @@ from app.contracts.orchestration_v2.provider import (
     parse_chapter_shard_draft_v2,
     salvage_chapter_shard_draft_v2,
 )
+from app.core.errors import ServiceError
+from app.core.handled_exceptions import report_handled_exception
+from app.core.logging import SERVICE_LOGGER_NAME, log_payload
+from app.idm.module_design import run_idm_module_design
+from app.idm.preserve_design import is_preserve_context, run_preserve_module_design
+from app.idm.runtime import IdmError, IdmStageError
+from app.infra.gemini.errors import http_error_detail
+from app.infra.gemini.usage import combine_usage
 from app.schemas.common import AiUsage
 from app.schemas.orchestration_v2 import RagLessonAuthorChapterShardV2Request
 from app.services import runtime as service_runtime
@@ -35,7 +37,6 @@ from app.services.orchestration_v2.common import (
     _orchestration_v2_http_error,
 )
 from app.services.orchestration_v2.idm import _idm_http_error, _idm_runtime
-from app.services.provider import combine_usage, http_error_detail
 
 logger = logging.getLogger(SERVICE_LOGGER_NAME)
 

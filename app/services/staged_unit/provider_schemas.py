@@ -14,11 +14,11 @@ from google.genai import types
 from pydantic import BaseModel, Field, ValidationError, create_model, model_validator
 
 from app.component_capabilities import validate_instance_plan
+from app.infra.gemini.errors import safe_provider_error_diagnostics
 from app.lesson_prompt_policy import lesson_instructional_quality_policy
 from app.services.lesson_author.errors import LessonAuthorProposalValidationError
 from app.services.lesson_author.proposal_validation import semantic_learning_visible_text
 from app.services.lesson_author.staged.plan import normalize_staged_component_type
-from app.services.provider import safe_provider_error_diagnostics
 from app.workflows.contracts import WorkflowFailure
 
 if TYPE_CHECKING:

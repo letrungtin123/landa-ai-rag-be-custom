@@ -4,14 +4,14 @@ from __future__ import annotations
 
 import logging
 
-from app.core.errors import ServiceError
 from pydantic import BaseModel, SecretStr
 
 from app.core import metrics
+from app.core.errors import ServiceError
 from app.core.logging import SERVICE_LOGGER_NAME, log_payload
+from app.infra.gemini.errors import provider_http_error_status, safe_provider_error_diagnostics
 from app.schemas.common import AiUsage
 from app.services import provider
-from app.services.provider import provider_http_error_status, safe_provider_error_diagnostics
 
 logger = logging.getLogger(SERVICE_LOGGER_NAME)
 # Message prefix of the orchestration-v2 log events (log searches by prefix keep matching).

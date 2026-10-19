@@ -5,14 +5,8 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from app.core.errors import ServiceError
 from pydantic import ValidationError
 
-from app.core.config import settings
-from app.core.handled_exceptions import report_handled_exception
-from app.core.logging import SERVICE_LOGGER_NAME, log_payload
-from app.idm.course_design import run_idm_course_design
-from app.idm.runtime import IdmError, IdmStageError
 from app.contracts.orchestration_v2.blueprint import OrchestrationContractError
 from app.contracts.orchestration_v2.provider import (
     COURSE_SKELETON_PROVIDER_SCHEMA_METADATA,
@@ -22,6 +16,14 @@ from app.contracts.orchestration_v2.provider import (
     fallback_course_skeleton_draft_v2,
     skeleton_prompt_v2,
 )
+from app.core.config import settings
+from app.core.errors import ServiceError
+from app.core.handled_exceptions import report_handled_exception
+from app.core.logging import SERVICE_LOGGER_NAME, log_payload
+from app.idm.course_design import run_idm_course_design
+from app.idm.runtime import IdmError, IdmStageError
+from app.infra.gemini.errors import http_error_detail
+from app.infra.gemini.usage import combine_usage
 from app.schemas.common import AiUsage
 from app.schemas.orchestration_v2 import RagLessonAuthorCourseSkeletonV2Request
 from app.services.deadlines import record_fallback
@@ -31,7 +33,6 @@ from app.services.orchestration_v2.common import (
     _orchestration_v2_generate_content,
 )
 from app.services.orchestration_v2.idm import _idm_http_error, _idm_runtime
-from app.services.provider import combine_usage, http_error_detail
 
 logger = logging.getLogger(SERVICE_LOGGER_NAME)
 

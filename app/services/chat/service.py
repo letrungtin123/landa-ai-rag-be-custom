@@ -9,11 +9,11 @@ import asyncpg
 from app.core import metrics
 from app.core.config import settings
 from app.core.logging import redact_secret_like_values
+from app.infra.gemini.usage import combine_usage
 from app.prompt_safety import untrusted_block, untrusted_content_rule
 from app.schemas.chat import RagChatMessage, RagChatRequest
 from app.services import provider
 from app.services.deadlines import run_with_deadline
-from app.services.provider import combine_usage
 from app.services.retrieval import search as retrieval_search
 from app.services.retrieval.query import retrieval_limits
 from app.services.retrieval.search import build_retrieval_diagnostics, format_sources

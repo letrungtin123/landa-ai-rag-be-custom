@@ -10,8 +10,8 @@ from fastapi.testclient import TestClient
 
 from app.core.error_codes import APP_ERROR_CODES, ERROR_CODES, PROVIDER_ERROR_CODES
 from app.core.errors import ProviderError, ServiceError
+from app.infra.gemini.errors import NON_RETRYABLE_PROVIDER_ERROR_CODES, safe_provider_error_diagnostics
 from app.infra.provider_limits import QUOTA_EXHAUSTED_CODE, RATE_LIMITED_CODE
-from app.services.provider import NON_RETRYABLE_PROVIDER_ERROR_CODES, safe_provider_error_diagnostics
 
 APP_ROOT = Path(__file__).resolve().parents[1] / "app"
 # Calls that build an AppError from a literal code and status (``super().__init__`` of its subclasses).

@@ -23,8 +23,8 @@ from app.__main__ import uvicorn_options
 from app.api.routes import health as health_routes
 from app.core.config import Settings, missing_required_setting_names
 from app.infra import db as db_infra
-from app.infra import gemini as gemini_infra
 from app.infra import schema_check
+from app.infra.gemini import pool as gemini_pool
 from app.infra.schema_check import SchemaCheckResult, SchemaGuard
 from app.services import runtime as runtime_service
 
@@ -444,7 +444,7 @@ class StartupTests(unittest.TestCase):
             patch.object(main.settings, "supabase_service_key", SecretStr("")),
             patch.object(runtime_service.schema_guard, "refresh", refresh),
             patch.object(db_infra, "retry_delay_seconds", lambda *args, **kwargs: 0.01),
-            patch.object(gemini_infra.client_pool, "clear"),
+            patch.object(gemini_pool.client_pool, "clear"),
             patch.object(runtime_service.concurrency, "shutdown"),
         ):
             asyncio.run(scenario())

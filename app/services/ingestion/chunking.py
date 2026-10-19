@@ -8,11 +8,11 @@ import re
 from pathlib import Path
 from typing import Any
 
-from app.core.config import settings
-from app.services.ingestion.extract import STRUCTURED_EXTRACTION_VERSION, ExtractedSection
-from app.services.provider import estimate_tokens
-from app.services.text import clean_text
 from app.content.source_structure import analyze_source_structure, chunk_structure_metadata
+from app.core.config import settings
+from app.infra.gemini.usage import estimate_tokens
+from app.services.ingestion.extract import STRUCTURED_EXTRACTION_VERSION, ExtractedSection
+from app.services.text import clean_text
 
 SOURCE_EVIDENCE_PROPAGATION_VERSION = "source-evidence-propagation-v1"
 SOURCE_EVIDENCE_READY = "ready"

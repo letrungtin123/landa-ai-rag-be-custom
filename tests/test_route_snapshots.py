@@ -35,7 +35,7 @@ from fastapi import FastAPI
 from pydantic import SecretStr
 
 from app.core.config import settings
-from app.infra import gemini as gemini_infra
+from app.infra.gemini import pool as gemini_pool
 from app.infra.schema_check import SchemaCheckResult
 from app.main import app
 from app.schemas.common import AiUsage
@@ -361,7 +361,7 @@ def replay(case: dict[str, Any]) -> dict[str, Any]:
         finally:
             for dependency in overrides:
                 app.dependency_overrides.pop(dependency, None)
-            gemini_infra.client_pool.clear()
+            gemini_pool.client_pool.clear()
     content_type = response.headers.get("content-type", "")
     if content_type.startswith("application/json"):
         body: Any = normalize(response.json())

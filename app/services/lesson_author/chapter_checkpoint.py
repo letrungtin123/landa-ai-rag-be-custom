@@ -10,9 +10,9 @@ from time import perf_counter
 from typing import Any
 
 import asyncpg
-from app.core.errors import ServiceError
 
 from app.core.config import settings
+from app.core.errors import ServiceError
 from app.core.handled_exceptions import report_handled_exception
 from app.core.logging import SERVICE_LOGGER_NAME
 from app.schemas.lesson_author import RagLessonAuthorCheckpointRequest

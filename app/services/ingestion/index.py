@@ -12,8 +12,8 @@ from pathlib import Path
 from typing import Any
 
 import asyncpg
-from app.core.errors import ServiceError
 
+from app.content.source_structure import analyze_source_structure
 from app.core import metrics
 from app.core.concurrency import deadline_seconds
 from app.core.config import settings
@@ -23,9 +23,11 @@ from app.core.document_limits import (
     assert_tenant_storage_path,
     document_source_suffix,
 )
-from app.core.errors import AppError, DocumentLimitError
+from app.core.errors import AppError, DocumentLimitError, ServiceError
 from app.core.handled_exceptions import count_handled_exception
 from app.core.logging import SERVICE_LOGGER_NAME
+from app.infra.gemini.calls import normalize_embedding_model
+from app.infra.gemini.errors import http_error_detail
 from app.repositories import indexing as index_repository
 from app.repositories.indexing import delete_previous_structure_nodes_if_available, persist_structure_nodes_if_available
 from app.repositories.pgvector import vector_literal
@@ -37,9 +39,7 @@ from app.services.ingestion import extract as extraction
 from app.services.ingestion.chunking import build_chunks, build_index_diagnostics
 from app.services.ingestion.extract import ExtractedSection, index_document_temp_path
 from app.services.ingestion.storage import fetch_index_source
-from app.services.provider import http_error_detail, normalize_embedding_model
 from app.services.text import clean_text
-from app.content.source_structure import analyze_source_structure
 
 logger = logging.getLogger(SERVICE_LOGGER_NAME)
 

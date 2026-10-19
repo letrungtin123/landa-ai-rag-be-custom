@@ -438,7 +438,7 @@ class ProviderRetryLoopTests(unittest.TestCase):
         async def sleep(seconds: float) -> None:
             sleeps.append(seconds)
 
-        with patch("app.services.provider.asyncio.sleep", sleep):
+        with patch("app.infra.gemini.transport.asyncio.sleep", sleep):
             try:
                 result: Any = asyncio.run(provider_service.call_provider_with_timeout(
                     run, "m", on_provider_diagnostic=events.append, **options))

@@ -473,7 +473,7 @@ class EmbedTextsTests(unittest.TestCase):
             n = len(contents)
             return [[float(len(text))] for text in contents], AiUsage(embeddingTokens=2 * n, totalTokens=2 * n)
 
-        self.enterContext(patch("app.services.provider.embed_text_batch", fake_batch))
+        self.enterContext(patch("app.infra.gemini.calls.embed_text_batch", fake_batch))
 
     def test_empty_input_returns_empty_and_zero_usage_without_provider_call(self) -> None:
         self.assertEqual(run(provider_service.embed_texts("key", "gemini-embedding-001", [])), ([], AiUsage()))

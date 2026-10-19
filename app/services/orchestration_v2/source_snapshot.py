@@ -9,24 +9,24 @@ from typing import Any, Literal
 
 import asyncpg
 
-from app.core.logging import SERVICE_LOGGER_NAME, log_payload
-from app.instructional_density import (
-    INSTRUCTIONAL_DENSITY_POLICY_VERSION,
-    SOURCE_SCOPE_CHUNKS_PER_GROUP,
-    partition_chunk_facts_for_density,
-)
 from app.contracts.orchestration_v2.blueprint import canonical_hash as orchestration_v2_canonical_hash
 from app.contracts.orchestration_v2.provider import (
     SourceOutlineAuthorityV2,
     SourceOutlineChapterV2,
     SourceSnapshotFactV2,
 )
+from app.core.logging import SERVICE_LOGGER_NAME, log_payload
+from app.infra.gemini.calls import normalize_embedding_model
+from app.instructional_density import (
+    INSTRUCTIONAL_DENSITY_POLICY_VERSION,
+    SOURCE_SCOPE_CHUNKS_PER_GROUP,
+    partition_chunk_facts_for_density,
+)
 from app.repositories import source_snapshot as snapshot_repository
 from app.schemas.common import AiUsage
 from app.schemas.orchestration_v2 import RagLessonAuthorSourceSnapshotV2Request
 from app.services.ingestion.chunking import SOURCE_EVIDENCE_LEGACY_REVIEW_REQUIRED, SOURCE_EVIDENCE_READY
 from app.services.orchestration_v2.common import V2_LOG_FAMILY, _orchestration_v2_http_error
-from app.services.provider import normalize_embedding_model
 from app.services.retrieval.query import decode_json_object
 from app.services.retrieval.source_coverage import extract_source_coverage_facts
 from app.services.text import clean_text

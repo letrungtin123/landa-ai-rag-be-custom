@@ -6,9 +6,8 @@ import re
 from time import perf_counter
 from typing import Any
 
-from app.core.errors import ProviderError
-
 from app.core.config import settings
+from app.core.errors import ProviderError
 from app.services.lesson_author.proposal_validation import (
     MIN_LESSON_AUTHOR_HTML_TEXT_CHARS,
     _normalize_structural_title,

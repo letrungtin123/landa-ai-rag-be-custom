@@ -6,11 +6,9 @@ import logging
 from time import monotonic
 from typing import Any
 
-from app.core.errors import ServiceError
-
 from app.core import metrics
 from app.core.config import settings
-from app.core.errors import AppError
+from app.core.errors import AppError, ServiceError
 from app.core.handled_exceptions import report_handled_exception
 from app.core.logging import SERVICE_LOGGER_NAME, log_event, log_payload
 from app.idm.policy import IDM_PROMPT_POLICY_VERSION
@@ -25,17 +23,13 @@ from app.idm.runtime import (
     IdmTokenAllowance,
     current_provider_stage,
 )
+from app.infra.gemini.calls import require_provider_api_key
+from app.infra.gemini.errors import http_error_detail, provider_http_error_status, safe_provider_error_diagnostics
 from app.schemas.chat import RagChatRequest
 from app.schemas.common import AiUsage
 from app.services import provider
 from app.services import runtime as service_runtime
 from app.services.orchestration_v2.common import _orchestration_v2_http_error
-from app.services.provider import (
-    http_error_detail,
-    provider_http_error_status,
-    require_provider_api_key,
-    safe_provider_error_diagnostics,
-)
 
 logger = logging.getLogger(SERVICE_LOGGER_NAME)
 

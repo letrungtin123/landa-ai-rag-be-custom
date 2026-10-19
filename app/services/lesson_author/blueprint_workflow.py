@@ -11,15 +11,16 @@ from time import perf_counter
 from typing import Any, Literal
 
 import asyncpg
-from app.core.errors import ServiceError
 from google.genai import types
 
 from app.assessment_planner import compile_v5_assessment_plan, materialize_assessment_source_refs
 from app.assessment_selection_contract import VERSION as ASSESSMENT_SELECTION_CONTRACT_VERSION
 from app.assessment_selection_contract import build_assessment_selection_contract
 from app.core.config import settings
+from app.core.errors import ServiceError
 from app.core.handled_exceptions import report_handled_exception
 from app.core.logging import SERVICE_LOGGER_NAME
+from app.infra.gemini.usage import combine_usage
 from app.instructional_opportunities import VERSION as EVIDENCE_TREATMENT_VERSION
 from app.instructional_opportunities import compile_evidence_treatments
 from app.lesson_author_blueprint import (
@@ -84,7 +85,6 @@ from app.services.lesson_author.source_context import (
     create_v5_immutable_source_context,
 )
 from app.services.lesson_author.source_refs import update_blueprint_source_coverage
-from app.services.provider import combine_usage
 from app.services.retrieval import search as retrieval_search
 from app.services.retrieval.query import retrieval_limits
 from app.services.retrieval.search import build_retrieval_diagnostics, format_sources
