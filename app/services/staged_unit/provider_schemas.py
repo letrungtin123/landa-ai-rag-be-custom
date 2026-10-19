@@ -29,11 +29,11 @@ if TYPE_CHECKING:
 
 def build_lesson_author_skeleton_response_schema() -> types.Schema:
     """Constrain the planning pass to a small, parseable structure."""
-    string_schema: Callable[[str], types.Schema] = lambda description: types.Schema(
+    string_schema: Callable[[str], types.Schema] = lambda description: types.Schema(  # noqa: E731 - local schema helper
         type=types.Type.STRING,
         description=description,
     )
-    string_array_schema: Callable[[str], types.Schema] = lambda description: types.Schema(
+    string_array_schema: Callable[[str], types.Schema] = lambda description: types.Schema(  # noqa: E731 - local schema helper
         type=types.Type.ARRAY,
         description=description,
         items=string_schema("A source fact identifier."),
@@ -44,17 +44,28 @@ def build_lesson_author_skeleton_response_schema() -> types.Schema:
         properties={
             "type": string_schema("Learning component type selected from the source evidence."),
             "rationale": string_schema("One sentence explaining why this format fits the source facts."),
-            "purpose": string_schema("One instructional purpose: explain, assess, clarify, sequence, relationship, or terminology."),
+            "purpose": string_schema(
+                "One instructional purpose: explain, assess, clarify, sequence, relationship, or terminology."
+            ),
             "source_fact_ids": string_array_schema("Source fact identifiers supporting this format."),
-            "content_requirements": string_array_schema("Specific source facts, steps, or fidelity requirements this component must convey."),
-            "required_artifacts": types.Schema(type=types.Type.ARRAY, items=types.Schema(
-                type=types.Type.OBJECT,
-                required=["type"],
-                properties={
-                    "type": string_schema("ordered_list, checklist, table, warning, requirement, exception, or comparison"),
-                    "minimum_items": types.Schema(type=types.Type.INTEGER, description="Minimum source item count to preserve."),
-                },
-            )),
+            "content_requirements": string_array_schema(
+                "Specific source facts, steps, or fidelity requirements this component must convey."
+            ),
+            "required_artifacts": types.Schema(
+                type=types.Type.ARRAY,
+                items=types.Schema(
+                    type=types.Type.OBJECT,
+                    required=["type"],
+                    properties={
+                        "type": string_schema(
+                            "ordered_list, checklist, table, warning, requirement, exception, or comparison"
+                        ),
+                        "minimum_items": types.Schema(
+                            type=types.Type.INTEGER, description="Minimum source item count to preserve."
+                        ),
+                    },
+                ),
+            ),
         },
     )
     unit_schema = types.Schema(
@@ -116,11 +127,11 @@ def build_lesson_author_proposal_response_schema() -> types.Schema:
     mode is enabled.  Keep the schema permissive inside each component so the
     content validators remain the source of truth for quality rules.
     """
-    string_schema: Callable[[str], types.Schema] = lambda description: types.Schema(
+    string_schema: Callable[[str], types.Schema] = lambda description: types.Schema(  # noqa: E731 - local schema helper
         type=types.Type.STRING,
         description=description,
     )
-    string_array_schema: Callable[[str], types.Schema] = lambda description: types.Schema(
+    string_array_schema: Callable[[str], types.Schema] = lambda description: types.Schema(  # noqa: E731 - local schema helper
         type=types.Type.ARRAY,
         description=description,
         items=string_schema("A text item."),
@@ -167,7 +178,9 @@ def build_lesson_author_proposal_response_schema() -> types.Schema:
         properties={
             "type": string_schema("Learning component type."),
             "source_fact_ids": string_array_schema("Source fact identifiers supporting this component."),
-            "covered_source_fact_ids": string_array_schema("Source fact IDs that this generated component explicitly covers."),
+            "covered_source_fact_ids": string_array_schema(
+                "Source fact IDs that this generated component explicitly covers."
+            ),
             "selection_rationale": string_schema("Why this component format fits the source facts."),
             "title": string_schema("Component title."),
             "html": string_schema("Safe HTML learning content."),
@@ -253,11 +266,11 @@ def build_lesson_author_unit_response_schema(
     component_types: list[str] | None = None,
 ) -> types.Schema:
     """Schema for one bounded Stage-B call, limited to its selected types."""
-    string_schema: Callable[[str], types.Schema] = lambda description: types.Schema(
+    string_schema: Callable[[str], types.Schema] = lambda description: types.Schema(  # noqa: E731 - local schema helper
         type=types.Type.STRING,
         description=description,
     )
-    string_array_schema: Callable[[str], types.Schema] = lambda description: types.Schema(
+    string_array_schema: Callable[[str], types.Schema] = lambda description: types.Schema(  # noqa: E731 - local schema helper
         type=types.Type.ARRAY,
         description=description,
         items=string_schema("A text item."),
@@ -298,7 +311,9 @@ def build_lesson_author_unit_response_schema(
             "One selected learning component type: " + ", ".join(sorted(selected_types)) + ".",
         ),
         "source_fact_ids": string_array_schema("Source fact identifiers supporting this component."),
-        "covered_source_fact_ids": string_array_schema("Source fact IDs that this generated component explicitly covers."),
+        "covered_source_fact_ids": string_array_schema(
+            "Source fact IDs that this generated component explicitly covers."
+        ),
         "selection_rationale": string_schema("Why this already-selected component fits the source facts."),
         "title": string_schema("Component title."),
     }
@@ -312,18 +327,37 @@ def build_lesson_author_unit_response_schema(
             properties={
                 "heading": string_schema("Optional explanatory heading."),
                 "version": types.Schema(type=types.Type.INTEGER, description="2 for ordered semantic sections."),
-                "sections": types.Schema(type=types.Type.ARRAY, items=types.Schema(type=types.Type.OBJECT, properties={
-                    "heading": string_schema("Local section heading."),
-                    "learning_block_ids": string_array_schema("Exact approved teaching group references."),
-                    "blocks": types.Schema(type=types.Type.ARRAY, items=types.Schema(type=types.Type.OBJECT, properties={
-                        "kind": string_schema("paragraph, task, warning, bullets, steps or table."),
-                        "text": string_schema("Paragraph, task or warning."),
-                        "items": string_array_schema("Bullet or step items."),
-                        "rows": types.Schema(type=types.Type.ARRAY, items=types.Schema(type=types.Type.OBJECT, properties={
-                            "label": string_schema("Row label."), "value": string_schema("Associated explanation."),
-                        })),
-                    })),
-                })),
+                "sections": types.Schema(
+                    type=types.Type.ARRAY,
+                    items=types.Schema(
+                        type=types.Type.OBJECT,
+                        properties={
+                            "heading": string_schema("Local section heading."),
+                            "learning_block_ids": string_array_schema("Exact approved teaching group references."),
+                            "blocks": types.Schema(
+                                type=types.Type.ARRAY,
+                                items=types.Schema(
+                                    type=types.Type.OBJECT,
+                                    properties={
+                                        "kind": string_schema("paragraph, task, warning, bullets, steps or table."),
+                                        "text": string_schema("Paragraph, task or warning."),
+                                        "items": string_array_schema("Bullet or step items."),
+                                        "rows": types.Schema(
+                                            type=types.Type.ARRAY,
+                                            items=types.Schema(
+                                                type=types.Type.OBJECT,
+                                                properties={
+                                                    "label": string_schema("Row label."),
+                                                    "value": string_schema("Associated explanation."),
+                                                },
+                                            ),
+                                        ),
+                                    },
+                                ),
+                            ),
+                        },
+                    ),
+                ),
                 "paragraphs": string_array_schema("Explanatory paragraphs."),
                 "bullet_points": string_array_schema("Key points."),
                 "ordered_steps": string_array_schema("Read-only procedure steps."),
@@ -452,8 +486,12 @@ class StagedSemanticContent(BaseModel):
     paragraphs: list[Annotated[str, Field(min_length=1, max_length=2000)]] = Field(default_factory=list, max_length=12)
     version: int | None = None
     sections: list[StagedOrderedSection] = Field(default_factory=list, max_length=12)
-    bullet_points: list[Annotated[str, Field(min_length=1, max_length=800)]] = Field(default_factory=list, max_length=20)
-    ordered_steps: list[Annotated[str, Field(min_length=1, max_length=1000)]] = Field(default_factory=list, max_length=20)
+    bullet_points: list[Annotated[str, Field(min_length=1, max_length=800)]] = Field(
+        default_factory=list, max_length=20
+    )
+    ordered_steps: list[Annotated[str, Field(min_length=1, max_length=1000)]] = Field(
+        default_factory=list, max_length=20
+    )
     warnings: list[Annotated[str, Field(min_length=1, max_length=1000)]] = Field(default_factory=list, max_length=8)
     comparison_rows: list[StagedSemanticComparisonRow] = Field(default_factory=list, max_length=30)
 
@@ -542,7 +580,11 @@ def staged_component_payload_code(component: dict[str, Any]) -> str | None:
         if kind == "html":
             semantic = component.get("semantic_content")
             if semantic is not None:
-                if re.search(r"<\s*/?\s*(?:script|iframe|style|div|span)\b|\b(?:style|class|onerror|onclick)\s*=", json.dumps(semantic), re.I):
+                if re.search(
+                    r"<\s*/?\s*(?:script|iframe|style|div|span)\b|\b(?:style|class|onerror|onclick)\s*=",
+                    json.dumps(semantic),
+                    re.I,
+                ):
                     return "HTML_PRESENTATION_FORBIDDEN"
                 _text, failure = semantic_learning_visible_text(semantic)
                 return "HTML_SEMANTIC_INVALID" if failure else None
@@ -575,9 +617,16 @@ def staged_component_payload_code(component: dict[str, Any]) -> str | None:
             if len({x["text"].strip().casefold() for x in items}) != len(items):
                 return "SORTABLE_DUPLICATE_ITEM"
         elif kind == "la_crossword":
-            import unicodedata
+            import unicodedata  # noqa: PLC0415 - moved verbatim with its local import
             words = rows("words", StagedCrosswordWord, 3, 10)
-            normalized = [re.sub(r"[^A-Z0-9]", "", unicodedata.normalize("NFD", x["answer"].replace("đ", "D").replace("Đ", "D")).upper()) for x in words]
+            normalized = [
+                re.sub(
+                    r"[^A-Z0-9]",
+                    "",
+                    unicodedata.normalize("NFD", x["answer"].replace("đ", "D").replace("Đ", "D")).upper(),
+                )
+                for x in words
+            ]
             if any(not 2 <= len(x) <= 24 for x in normalized) or not all(nonempty(x["clue"]) for x in words):
                 return "CROSSWORD_TERM_INVALID"
             if len(set(normalized)) != len(normalized):
@@ -602,15 +651,69 @@ def staged_component_payload_code(component: dict[str, Any]) -> str | None:
 def staged_component_contract_prompt(component_types: list[str]) -> str:
     """Only selected contracts; storage/XML/layout/IDs remain server-owned."""
     contracts = {
-        "html": 'html: use semantic_content={"sections":[{"heading":"Local topic","learning_block_ids":["exact approved learning block ID"],"blocks":[{"kind":"paragraph","text":"Substantive explanation"},{"kind":"table","rows":[{"label":"Source category","value":"Correct associated explanation"}]}]}]}. Preserve section and block order. Build clear visual hierarchy with concise section headings, short paragraphs, lists for parallel ideas or steps, semantic tables for comparisons/data, task blocks for learner action, and warning blocks for cautions; avoid walls of text. Use kind paragraph/task/warning with text; bullets/steps with items (nonempty strings); table with rows ({label,value}). The server supplies version 2; do not emit version or any top-level heading, paragraphs, bullet_points, ordered_steps, warnings or comparison_rows. Only sections is permitted inside semantic_content. Omit inactive fields or leave arrays empty/text null. 1-12 sections, 1-12 blocks per section. Aggregate limits across ALL sections unchanged: paragraph+task 12/2000 chars, bullets 20/800, steps 20/1000, warnings 8/1000, table rows 30 (label500/value1000); headings240. Bind every approved teaching learning block to a section with substantive explanation, not only a title or list of names. Explain ALL members of named frameworks, including the last member. HTML must NEVER contain an FAQ / Frequently Asked Questions / Câu hỏi thường gặp / Hỏi đáp thường gặp section, repeated Q:/A: pairs, or details/summary FAQ markup. Convert source questions into ordinary explanatory teaching; only a selected la_faq component may contain FAQ content. Keep tables/checklists directly under their own heading. For source-backed Canvas/action plans add a task specifying what learners must produce and evidence-based completion criteria; do not invent company targets or pretend submissions are stored. No CSS/classes/scripts/assets, internal IDs in visible text, unsupported facts or fabricated examples. Server renders HTML; other component types omit semantic_content.',
-        "problem": 'problem: problem_type MUST be multiple_choice. Return one complete question and choices=[{"text":"source-grounded correct answer","correct":true},{"text":"plausible distinct distractor","correct":false}], with 3-6 distinct choices and EXACTLY one correct. Include a substantive explanation grounded in the taught evidence. Never emit multiple_select, dropdown, numerical, short_text, free-text answers, or raw problem XML.',
-        "la_faq": 'la_faq: items=[{"question":"anticipated question","answer":"source-grounded clarification"}], 2-8 distinct Q&A. Clarify conditions/exceptions/misconceptions, not repeat paragraphs. Place FAQ last in the unit.',
-        "la_sortable": 'la_sortable: question_text plus items=[{"text":"first step"},{"text":"second step"},{"text":"third step"}], 3-10 distinct items in SOURCE-CORRECT order. Only approved ordering practice. Do not fabricate dependencies or turn an unordered list into a sequence.',
-        "la_crossword": 'la_crossword: words=[{"answer":"TERM","clue":"source-backed definition","hint":"optional"}], 3-10 distinct terms. Normalized spelling 2-24 letters/digits. Preserve meaning across EN/VI. Do not generate coordinates or invent terminology.',
-        "la_diagram": 'la_diagram: name, nodes=[{"label":"source concept","shape":"rounded","tooltip":"optional"}], edges=[{"source":0,"target":1,"label":"source-supported relation"}]. Prefer 2-10 concise nodes over a crowded graph; 20 is the hard maximum. Use one short single-line label per node and edge: never emit literal \\n, /n, carriage returns or control characters. 1-40 edges; indices reference existing nodes; every node participates in a relationship. Shapes: rectangle/rounded/ellipse. Server supplies IDs, icons, spacing and orthogonal routing. Do not invent causal edges.',
+        "html": (
+            'html: use semantic_content={"sections":[{"heading":"Local topic","learning_block_ids":["exact approved '
+            'learning block ID"],"blocks":[{"kind":"paragraph","text":"Substantive '
+            'explanation"},{"kind":"table","rows":[{"label":"Source category","value":"Correct associated '
+            'explanation"}]}]}]}. Preserve section and block order. Build clear visual hierarchy with concise section '
+            'headings, short paragraphs, lists for parallel ideas or steps, semantic tables for comparisons/data, task '
+            'blocks for learner action, and warning blocks for cautions; avoid walls of text. Use kind '
+            'paragraph/task/warning with text; bullets/steps with items (nonempty strings); table with rows '
+            '({label,value}). The server supplies version 2; do not emit version or any top-level heading, paragraphs, '
+            'bullet_points, ordered_steps, warnings or comparison_rows. Only sections is permitted inside '
+            'semantic_content. Omit inactive fields or leave arrays empty/text null. 1-12 sections, 1-12 blocks per '
+            'section. Aggregate limits across ALL sections unchanged: paragraph+task 12/2000 chars, bullets 20/800, '
+            'steps 20/1000, warnings 8/1000, table rows 30 (label500/value1000); headings240. Bind every approved '
+            'teaching learning block to a section with substantive explanation, not only a title or list of names. '
+            'Explain ALL members of named frameworks, including the last member. HTML must NEVER contain an FAQ / '
+            'Frequently Asked Questions / Câu hỏi thường gặp / Hỏi đáp thường gặp section, repeated Q:/A: pairs, or '
+            'details/summary FAQ markup. Convert source questions into ordinary explanatory teaching; only a selected '
+            'la_faq component may contain FAQ content. Keep tables/checklists directly under their own heading. For '
+            'source-backed Canvas/action plans add a task specifying what learners must produce and evidence-based '
+            'completion criteria; do not invent company targets or pretend submissions are stored. No '
+            'CSS/classes/scripts/assets, internal IDs in visible text, unsupported facts or fabricated examples. '
+            'Server renders HTML; other component types omit semantic_content.'
+        ),
+        "problem": (
+            'problem: problem_type MUST be multiple_choice. Return one complete question and '
+            'choices=[{"text":"source-grounded correct answer","correct":true},{"text":"plausible distinct '
+            'distractor","correct":false}], with 3-6 distinct choices and EXACTLY one correct. Include a substantive '
+            'explanation grounded in the taught evidence. Never emit multiple_select, dropdown, numerical, short_text, '
+            'free-text answers, or raw problem XML.'
+        ),
+        "la_faq": (
+            'la_faq: items=[{"question":"anticipated question","answer":"source-grounded clarification"}], 2-8 '
+            'distinct Q&A. Clarify conditions/exceptions/misconceptions, not repeat paragraphs. Place FAQ last in the '
+            'unit.'
+        ),
+        "la_sortable": (
+            'la_sortable: question_text plus items=[{"text":"first step"},{"text":"second step"},{"text":"third '
+            'step"}], 3-10 distinct items in SOURCE-CORRECT order. Only approved ordering practice. Do not fabricate '
+            'dependencies or turn an unordered list into a sequence.'
+        ),
+        "la_crossword": (
+            'la_crossword: words=[{"answer":"TERM","clue":"source-backed definition","hint":"optional"}], 3-10 '
+            'distinct terms. Normalized spelling 2-24 letters/digits. Preserve meaning across EN/VI. Do not generate '
+            'coordinates or invent terminology.'
+        ),
+        "la_diagram": (
+            'la_diagram: name, nodes=[{"label":"source concept","shape":"rounded","tooltip":"optional"}], '
+            'edges=[{"source":0,"target":1,"label":"source-supported relation"}]. Prefer 2-10 concise nodes over a '
+            'crowded graph; 20 is the hard maximum. Use one short single-line label per node and edge: never emit '
+            'literal \\n, /n, carriage returns or control characters. 1-40 edges; indices reference existing nodes; '
+            'every node participates in a relationship. Shapes: rectangle/rounded/ellipse. Server supplies IDs, icons, '
+            'spacing and orthogonal routing. Do not invent causal edges.'
+        ),
     }
-    return lesson_instructional_quality_policy() + "\nCOMPONENT CONTRACT " + STAGED_COMPONENT_CONTRACT_VERSION + "\nOnly populate fields for the current component type. In the SDK's combined selected-types envelope, use null/empty arrays for inapplicable required fields.\n" + "\n".join(
-        contracts[t] for t in dict.fromkeys(component_types) if t in contracts
+    return (
+        lesson_instructional_quality_policy()
+        + "\nCOMPONENT CONTRACT "
+        + STAGED_COMPONENT_CONTRACT_VERSION
+        + (
+            "\nOnly populate fields for the current component type. In the SDK's combined selected-types envelope, use "
+            "null/empty arrays for inapplicable required fields.\n"
+        )
+        + "\n".join(contracts[t] for t in dict.fromkeys(component_types) if t in contracts)
     )
 
 
@@ -643,7 +746,14 @@ def build_staged_lesson_content_response_model(
 
     component_fields: dict[str, Any] = {
         "component_plan_id": (str | None, None),
-        "type": (Enum("StagedComponentType_" + "_".join(sorted(selected_types)), {t: t for t in sorted(selected_types)}, type=str), ...),
+        "type": (
+            Enum(
+                "StagedComponentType_" + "_".join(sorted(selected_types)),
+                {t: t for t in sorted(selected_types)},
+                type=str,
+            ),
+            ...,
+        ),
         "source_fact_ids": (list[str], ...),
         "covered_source_fact_ids": (list[str], ...),
         "supporting_evidence_fact_ids": (list[str], ...),
@@ -666,7 +776,7 @@ def build_staged_lesson_content_response_model(
     # generated response compact while preserving a concrete ARRAY.items
     # contract on the wire; downstream component validators remain strict
     # about arrays that are actually required by a selected component.
-    optional_array: Callable[[Any], tuple[Any, Any]] = lambda item_type: (
+    optional_array: Callable[[Any], tuple[Any, Any]] = lambda item_type: (  # noqa: E731 - local schema helper
         list[item_type], Field(default_factory=list))  # type: ignore[valid-type]  # runtime model
     if "problem" in selected_types:
         component_fields.update({
@@ -690,24 +800,38 @@ def build_staged_lesson_content_response_model(
     if "la_crossword" in selected_types:
         component_fields["words"] = optional_array(StagedCrosswordWord)
     if "la_diagram" in selected_types:
-        component_fields.update({
-            "name": (str | None, ...),
-            # Mixed-type envelopes must allow empty arrays on other types.
-            # A diagram-only repair can express its full cardinality contract.
-            "nodes": (list[StagedDiagramNode], Field(min_length=2, max_length=20)) if selected_types == {"la_diagram"} else optional_array(StagedDiagramNode),
-            "edges": (list[StagedDiagramEdge], Field(min_length=1, max_length=40)) if selected_types == {"la_diagram"} else optional_array(StagedDiagramEdge),
-        })
+        component_fields.update(
+            {
+                "name": (str | None, ...),
+                # Mixed-type envelopes must allow empty arrays on other types.
+                # A diagram-only repair can express its full cardinality contract.
+                "nodes": (list[StagedDiagramNode], Field(min_length=2, max_length=20))
+                if selected_types == {"la_diagram"}
+                else optional_array(StagedDiagramNode),
+                "edges": (list[StagedDiagramEdge], Field(min_length=1, max_length=40))
+                if selected_types == {"la_diagram"}
+                else optional_array(StagedDiagramEdge),
+            }
+        )
 
     if {"la_faq", "la_sortable"}.issubset(selected_types):
         # SDK 1.0.0 rejects anyOf. Explicit nullable fields are safe on the
         # wire; the per-type validator above requires the relevant fields.
-        item_model = create_model("StagedFaqOrSortableItem", question=(str | None, ...), answer=(str | None, ...), text=(str | None, ...))
+        item_model = create_model(
+            "StagedFaqOrSortableItem", question=(str | None, ...), answer=(str | None, ...), text=(str | None, ...)
+        )
         component_fields["items"] = optional_array(item_model)
 
     if payload_only:
         # A repair selects an already-authorized array address, not provenance.
         # Never ask Gemini to echo canonical fact IDs, type or unit metadata.
-        for key in ("type", "component_plan_id", "source_fact_ids", "covered_source_fact_ids", "supporting_evidence_fact_ids"):
+        for key in (
+            "type",
+            "component_plan_id",
+            "source_fact_ids",
+            "covered_source_fact_ids",
+            "supporting_evidence_fact_ids",
+        ):
             component_fields.pop(key, None)
         component_fields["component_index"] = (int, ...)
         if coverage_repair:
@@ -715,15 +839,24 @@ def build_staged_lesson_content_response_model(
             # authorized coverage targets may emit this optional field.
             component_fields["covered_source_fact_ids"] = (list[str], Field(default_factory=list))
             if coverage_allowed_ids:
-                allowed = Enum("StagedRepairCoverageReference", {f"F{i}": value for i, value in enumerate(dict.fromkeys(coverage_allowed_ids))}, type=str)  # type: ignore[misc]
+                allowed = Enum(  # type: ignore[misc]
+                    "StagedRepairCoverageReference",
+                    {f"F{i}": value for i, value in enumerate(dict.fromkeys(coverage_allowed_ids))},
+                    type=str,
+                )
                 component_fields["covered_source_fact_ids"] = (list[allowed], Field(default_factory=list))
-    component_name = ("StagedRepairPayload_" if payload_only else "StagedLessonComponent_") + "_".join(sorted(selected_types))
+    component_name = ("StagedRepairPayload_" if payload_only else "StagedLessonComponent_") + "_".join(
+        sorted(selected_types)
+    )
     component_model = create_model(component_name, **component_fields)
     if payload_only:
         return create_model("StagedComponentRepairDelta", components=(list[component_model], ...))  # type: ignore[valid-type]
     return create_model(
         "StagedLessonUnit_" + "_".join(sorted(selected_types)),
-        title=(Enum("StagedUnitTitle", {"APPROVED": expected_unit_title}, type=str) if expected_unit_title else str, ...),
+        title=(
+            Enum("StagedUnitTitle", {"APPROVED": expected_unit_title}, type=str) if expected_unit_title else str,
+            ...,
+        ),
         source_fact_ids=(list[str], ...),
         supporting_evidence_fact_ids=(list[str], ...),
         components=(list[component_model], ...),  # type: ignore[valid-type]
@@ -736,7 +869,9 @@ class StagedMultiRepairResponse(BaseModel):
     retain_raw_provider_text: ClassVar[bool] = True
 
 
-def build_staged_multi_repair_model(baseline: dict[str, Any], targets: list[int], coverage_targets: list[int]) -> type[BaseModel]:
+def build_staged_multi_repair_model(
+    baseline: dict[str, Any], targets: list[int], coverage_targets: list[int]
+) -> type[BaseModel]:
     """Required, separately typed addresses survive the SDK bounds projection.
 
     Single-target/legacy repair contracts remain unchanged. No provider-owned
@@ -789,7 +924,9 @@ def decode_staged_multi_repair(text: str, baseline: dict[str, Any], targets: lis
     if not isinstance(value, dict) or set(value) != {"components"}:
         raise LessonAuthorProposalValidationError("COMPONENT_REPAIR_ENVELOPE_FORBIDDEN")
     slots = value["components"]
-    diagnostics["response_container"] = "object" if isinstance(slots, dict) else "array" if isinstance(slots, list) else "other"
+    diagnostics["response_container"] = (
+        "object" if isinstance(slots, dict) else "array" if isinstance(slots, list) else "other"
+    )
     diagnostics["received_slot_count"] = len(slots) if isinstance(slots, (dict, list)) else None
     if not isinstance(slots, dict):
         raise LessonAuthorProposalValidationError("COMPONENT_REPAIR_SLOTS_REQUIRED")
@@ -825,8 +962,9 @@ def build_staged_instance_response_model(plans: list[dict[str, Any]]) -> type[Ba
         envelope = build_staged_lesson_content_response_model([kind])
         component = cast(Any, envelope.model_fields["components"].annotation).__args__[0]
         allowed = STAGED_COMPONENT_PAYLOAD_FIELDS[kind] | {"title", "selection_rationale", "covered_source_fact_ids"}
-        fields: dict[str, Any] = {key: (field.annotation, deepcopy(field)) for key, field in component.model_fields.items()
-                                  if key in allowed}
+        fields: dict[str, Any] = {
+            key: (field.annotation, deepcopy(field)) for key, field in component.model_fields.items() if key in allowed
+        }
         if kind == "la_faq":
             fields["items"] = (list[StagedFaqItem], Field(min_length=2, max_length=8))
         elif kind == "la_sortable":
@@ -844,7 +982,11 @@ def build_staged_instance_response_model(plans: list[dict[str, Any]]) -> type[Ba
         else:
             # References are model claims, not ownership. Exact approved values
             # constrain the wire; raw fallback and final validators stay strict.
-            allowed = Enum(f"StagedCoverageReference{index}", {f"F{i}": value for i, value in enumerate(plan["source_fact_ids"])}, type=str)  # type: ignore[misc,no-redef]
+            allowed = Enum(  # type: ignore[misc,no-redef]
+                f"StagedCoverageReference{index}",
+                {f"F{i}": value for i, value in enumerate(plan["source_fact_ids"])},
+                type=str,
+            )
             fields["covered_source_fact_ids"] = (list[allowed], ...)  # type: ignore[valid-type]
         slots[f"c{index}"] = (create_model(f"StagedInstance{index}_{kind}", **fields), ...)
     return create_model("StagedInstancePayloadUnit", components=(create_model("StagedInstanceSlots", **slots), ...))
@@ -868,14 +1010,22 @@ def bind_staged_instance_payload(value: Any, expected: dict[str, Any]) -> dict[s
         path = f"components[{index}]"
         if not isinstance(payload, dict):
             reject("INSTANCE_PAYLOAD_NOT_OBJECT", path)
-        allowed = STAGED_COMPONENT_PAYLOAD_FIELDS[plan["type"]] | {"title", "selection_rationale", "covered_source_fact_ids"}
+        allowed = STAGED_COMPONENT_PAYLOAD_FIELDS[plan["type"]] | {
+            "title",
+            "selection_rationale",
+            "covered_source_fact_ids",
+        }
         if set(payload) - allowed:
             reject("INSTANCE_FIELD_NOT_ALLOWED", path)
         components.append({**deepcopy(payload), "type": plan["type"], "component_plan_id": plan["component_plan_id"],
                            "source_fact_ids": list(plan.get("source_fact_ids", [])),
                            "supporting_evidence_fact_ids": list(plan.get("supporting_evidence_fact_ids", []))})
-    return {"title": expected["unit_title"], "source_fact_ids": list(expected.get("source_fact_ids", [])),
-            "supporting_evidence_fact_ids": list(expected.get("supporting_evidence_fact_ids", [])), "components": components}
+    return {
+        "title": expected["unit_title"],
+        "source_fact_ids": list(expected.get("source_fact_ids", [])),
+        "supporting_evidence_fact_ids": list(expected.get("supporting_evidence_fact_ids", [])),
+        "components": components,
+    }
 
 
 def staged_response_schema_diagnostics(response_schema: types.Schema | type[BaseModel] | object) -> dict[str, Any]:
@@ -941,7 +1091,7 @@ def staged_response_schema_diagnostics(response_schema: types.Schema | type[Base
         "array_field_count": array_count,
         "array_missing_items_count": len(missing_items),
         "nullable_array_count": len(nullable_arrays),
-        "safe_invalid_schema_paths": sorted((missing_items + nullable_arrays))[:12],
+        "safe_invalid_schema_paths": sorted(missing_items + nullable_arrays)[:12],
         "provider_schema_fingerprint": hashlib.sha256(canonical.encode("utf-8")).hexdigest()[:16],
     }
 

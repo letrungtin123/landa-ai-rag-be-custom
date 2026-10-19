@@ -32,8 +32,7 @@ def sh_list(name: str) -> list[str]:
 
 class GateScriptParityTests(unittest.TestCase):
     def test_both_scripts_check_the_same_paths(self) -> None:
-        for ps1, sh in (("StrictPaths", "strict_paths"), ("MypyStrictPaths", "mypy_strict_paths"),
-                        ("StrictTests", "strict_tests")):
+        for ps1, sh in (("StrictPaths", "strict_paths"), ("StrictTests", "strict_tests")):
             with self.subTest(list=ps1):
                 self.assertEqual(ps1_list(ps1), sh_list(sh))
                 self.assertTrue(all((REPO_ROOT / path).exists() for path in ps1_list(ps1)), ps1)

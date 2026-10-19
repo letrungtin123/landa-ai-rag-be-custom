@@ -9,7 +9,6 @@ from typing import Any, cast
 from pydantic import ValidationError
 
 from app.component_capabilities import validate_instance_plan
-from app.instructional_density import INSTRUCTIONAL_DENSITY_POLICY_VERSION
 from app.content.instructional_quality import (
     MIN_FAQ_ANSWER_CHARS,
     MIN_FAQ_QUESTION_CHARS,
@@ -18,6 +17,7 @@ from app.content.instructional_quality import (
 )
 from app.content.learner_content_purity import component_learner_text, learner_content_purity_finding
 from app.content.ordered_learning_content import semantic_shape_diagnostics
+from app.instructional_density import INSTRUCTIONAL_DENSITY_POLICY_VERSION
 from app.services.lesson_author.errors import LessonAuthorProposalValidationError
 from app.services.lesson_author.proposal_validation import (
     MIN_STAGED_LESSON_AUTHOR_HTML_TEXT_CHARS,
@@ -67,11 +67,13 @@ def staged_html_contains_faq(component: dict[str, Any]) -> bool:
     This intentionally targets structural FAQ signals, not an isolated
     pedagogical question, so reflective prompts remain valid HTML content.
     """
-    import unicodedata
+    import unicodedata  # noqa: PLC0415 - moved verbatim with its local import
 
     def normalized(value: Any) -> str:
         text = unicodedata.normalize("NFD", str(value or ""))
-        return re.sub(r"\s+", " ", "".join(char for char in text if unicodedata.category(char) != "Mn").casefold()).strip()
+        return re.sub(
+            r"\s+", " ", "".join(char for char in text if unicodedata.category(char) != "Mn").casefold()
+        ).strip()
 
     semantic = component.get("semantic_content")
     headings: list[str] = []
@@ -124,7 +126,7 @@ def _staged_semantic_artifact_count(semantic: Any, artifact_type: str) -> int:
     return 0
 
 
-def staged_instructional_finding(
+def staged_instructional_finding(  # noqa: PLR0917 - positional signature kept for its callers
     component: dict[str, Any],
     index: int,
     plan: dict[str, Any] | None = None,
@@ -142,7 +144,8 @@ def staged_instructional_finding(
         return fail(
             purity_code,
             "content",
-            "Learner-facing content contains source provenance or an internal identifier; provenance belongs only in server metadata.",
+            "Learner-facing content contains source provenance or an internal identifier; provenance belongs only in "
+            "server metadata.",
         )
     if kind == "html":
         source_locked = component.get("source_locked_fallback") is True
@@ -159,9 +162,18 @@ def staged_instructional_finding(
                 allowed = set(plan.get("learning_block_ids") or [])
                 referenced = {ref for section in semantic["sections"] for ref in section.get("learning_block_ids", [])}
                 if referenced - allowed:
-                    return fail("HTML_TEACHING_GROUP_OUT_OF_SCOPE", "semantic_content.sections", "Section references a teaching group outside this component plan.")
+                    return fail(
+                        "HTML_TEACHING_GROUP_OUT_OF_SCOPE",
+                        "semantic_content.sections",
+                        "Section references a teaching group outside this component plan.",
+                    )
                 if allowed - referenced:
-                    return fail("HTML_TEACHING_GROUP_MISSING", "semantic_content.sections", "Every approved teaching group needs its own visible explanation; a coverage ID declaration is not enough.")
+                    return fail(
+                        "HTML_TEACHING_GROUP_MISSING",
+                        "semantic_content.sections",
+                        "Every approved teaching group needs its own visible explanation; a coverage ID declaration is "
+                        "not enough.",
+                    )
         else:
             text = re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", html)).strip()
         source_chars = output_budget.get("source_content_chars") if isinstance(output_budget, dict) else None
@@ -186,7 +198,8 @@ def staged_instructional_finding(
             minimum_html_chars = source_relative_minimum
         if len(text) < minimum_html_chars:
             return fail("HTML_INSUFFICIENT_DEPTH", "semantic_content",
-                        f"Generated HTML explanation is too thin: minimum {minimum_html_chars} visible characters required.")
+                        f"Generated HTML explanation is too thin: minimum {minimum_html_chars} visible characters "
+                        "required.")
         if output_budget is not None:
             maximum_chars = output_budget.get("max_visible_chars")
             maximum_words = output_budget.get("max_words")
@@ -204,7 +217,8 @@ def staged_instructional_finding(
                 return fail(
                     "HTML_INSTRUCTIONAL_DENSITY_EXCEEDED",
                     "semantic_content",
-                    "Generated HTML exceeds the bounded teaching treatment for this unit; the source must remain split across coherent units.",
+                    "Generated HTML exceeds the bounded teaching treatment for this unit; the source must remain split "
+                    "across coherent units.",
                 )
         if contains_generic_review_language(text):
             return fail("HTML_GENERIC_REVIEW_COPY", "semantic_content",
@@ -216,7 +230,9 @@ def staged_instructional_finding(
             return fail("HTML_OCR_NOISE", "semantic_content", "Learner content contains repeated OCR noise.")
         normalized_segments = [
             re.sub(r"[^\w\d]+", " ", value.casefold()).strip()
-            for value in re.findall(r"<(?:p|li|th|td|blockquote)>\s*([^<]+?)\s*</", html if semantic is None else "", re.IGNORECASE)
+            for value in re.findall(
+                r"<(?:p|li|th|td|blockquote)>\s*([^<]+?)\s*</", html if semantic is None else "", re.IGNORECASE
+            )
         ]
         normalized_segments = [value for value in normalized_segments if len(value) >= 12]
         if len(normalized_segments) != len(set(normalized_segments)):
@@ -241,16 +257,29 @@ def staged_instructional_finding(
                 elif artifact_type in {"table", "comparison"}:
                     preserved_count = len(re.findall(r"<tr>", html, re.IGNORECASE))
                 elif artifact_type == "ordered_list":
-                    preserved_count = len(re.findall(r"<li>", "".join(re.findall(r"<ol>(.*?)</ol>", html, re.IGNORECASE | re.DOTALL)), re.IGNORECASE))
+                    preserved_count = len(
+                        re.findall(
+                            r"<li>",
+                            "".join(re.findall(r"<ol>(.*?)</ol>", html, re.IGNORECASE | re.DOTALL)),
+                            re.IGNORECASE,
+                        )
+                    )
                 elif artifact_type == "checklist":
-                    preserved_count = len(re.findall(r"<li>", "".join(re.findall(r"<ul>(.*?)</ul>", html, re.IGNORECASE | re.DOTALL)), re.IGNORECASE))
+                    preserved_count = len(
+                        re.findall(
+                            r"<li>",
+                            "".join(re.findall(r"<ul>(.*?)</ul>", html, re.IGNORECASE | re.DOTALL)),
+                            re.IGNORECASE,
+                        )
+                    )
                 else:
                     preserved_count = len(re.findall(r"<blockquote>", html, re.IGNORECASE))
                 if preserved_count < required_count:
                     return fail(
                         "REQUIRED_ARTIFACT_NOT_PRESERVED",
                         "semantic_content",
-                        f"The approved {artifact_type} source structure is absent or incomplete in generated teaching content.",
+                        f"The approved {artifact_type} source structure is absent or incomplete in generated teaching "
+                        "content.",
                     )
     elif kind == "problem":
         if component.get("problem_type") != "multiple_choice":
@@ -283,11 +312,19 @@ def staged_instructional_finding(
         # Current typed payload uses {text}; legacy source fallback uses strings.
         texts = [re.sub(r"\s+", " ", str((x.get("text") if isinstance(x, dict) else x) or "")).strip() for x in items]
         if len(texts) < 3 or any(len(x) < 14 for x in texts):
-            return fail("SORTABLE_STEP_INCOMPLETE", "items", "Sortable items must be at least three complete, meaningful ordered steps.")
+            return fail(
+                "SORTABLE_STEP_INCOMPLETE",
+                "items",
+                "Sortable items must be at least three complete, meaningful ordered steps.",
+            )
         if len({x.casefold() for x in texts}) != len(texts):
             return fail("SORTABLE_DUPLICATE_STEP", "items", "Sortable items must not repeat a source fragment.")
         if any(x[:1].islower() for x in texts):
-            return fail("SORTABLE_STEP_FRAGMENT", "items", "Sortable items contain a sentence fragment rather than a complete step.")
+            return fail(
+                "SORTABLE_STEP_FRAGMENT",
+                "items",
+                "Sortable items contain a sentence fragment rather than a complete step.",
+            )
         if contains_generic_review_language(" ".join(texts) + " " + str(component.get("question_text") or "")):
             return fail("SORTABLE_GENERIC_SOURCE_ORDER", "items",
                         "Sortable must represent a real procedure, not the display order of source text.")
@@ -326,14 +363,22 @@ def staged_instructional_finding(
     elif kind == "la_faq":
         items = cast(list[Any], component.get("items") if isinstance(component.get("items"), list) else [])
         if len(items) < 2:
-            return fail("FAQ_ITEM_COUNT_INVALID", "items", "FAQ requires at least two complete source-grounded question-and-answer items.")
+            return fail(
+                "FAQ_ITEM_COUNT_INVALID",
+                "items",
+                "FAQ requires at least two complete source-grounded question-and-answer items.",
+            )
         for i, item in enumerate(items):
             if not isinstance(item, dict):
                 return fail("FAQ_ITEM_INVALID", f"items[{i}]", "FAQ items must be question-and-answer objects.")
             question = re.sub(r"\s+", " ", str(item.get("question") or "")).strip()
             answer = re.sub(r"\s+", " ", str(item.get("answer") or "")).strip()
             if len(question) < MIN_FAQ_QUESTION_CHARS or not faq_answer_is_complete(answer):
-                return fail("FAQ_CLARIFICATION_INCOMPLETE", f"items[{i}]", "FAQ contains a partial source line rather than a complete answer.")
+                return fail(
+                    "FAQ_CLARIFICATION_INCOMPLETE",
+                    f"items[{i}]",
+                    "FAQ contains a partial source line rather than a complete answer.",
+                )
             if contains_generic_review_language(question + " " + answer):
                 return fail("FAQ_GENERIC_REVIEW_COPY", f"items[{i}]",
                             "FAQ must answer a learner question instead of describing source review.")
@@ -352,7 +397,9 @@ def staged_coverage_claim_diagnostic(component: dict[str, Any]) -> dict[str, Any
     values = claim if isinstance(claim, list) else []
     strings = [x for x in values if isinstance(x, str) and x.strip()]
     # A scalar string is not an array, but must not hide an unknown reference.
-    references = set(strings if isinstance(claim, list) else [claim] if isinstance(claim, str) and claim.strip() else [])
+    references = set(
+        strings if isinstance(claim, list) else [claim] if isinstance(claim, str) and claim.strip() else []
+    )
     reasons = []
     if "covered_source_fact_ids" not in component:
         reasons.append("FIELD_MISSING")
@@ -376,10 +423,22 @@ def staged_coverage_claim_diagnostic(component: dict[str, Any]) -> dict[str, Any
         reasons.append("MISSING_OWNED_REFERENCE")
     if not reasons:
         return None
-    return {"code": "INVALID_COVERAGE_ID_ARRAY" if shape_invalid else "COMPONENT_COVERAGE_OUT_OF_SCOPE" if unexpected else "COMPONENT_COVERAGE_INCOMPLETE",
-            "reason_codes": reasons, "item_count": len(values), "non_string_count": non_string,
-            "empty_string_count": empty, "duplicate_count": duplicates, "unexpected_count": unexpected,
-            "owned_count": len(owned), "covered_owned_count": len(owned & references), "missing_count": missing}
+    return {
+        "code": "INVALID_COVERAGE_ID_ARRAY"
+        if shape_invalid
+        else "COMPONENT_COVERAGE_OUT_OF_SCOPE"
+        if unexpected
+        else "COMPONENT_COVERAGE_INCOMPLETE",
+        "reason_codes": reasons,
+        "item_count": len(values),
+        "non_string_count": non_string,
+        "empty_string_count": empty,
+        "duplicate_count": duplicates,
+        "unexpected_count": unexpected,
+        "owned_count": len(owned),
+        "covered_owned_count": len(owned & references),
+        "missing_count": missing,
+    }
 
 
 def staged_coverage_claim_repairable(component: dict[str, Any]) -> bool:
@@ -392,11 +451,16 @@ def staged_coverage_claim_diagnostics(unit: Any) -> list[dict[str, Any]]:
     components = unit.get("components") if isinstance(unit, dict) else None
     if not isinstance(components, list):
         return []
-    return [{"component_index": i, "path": f"components[{i}].covered_source_fact_ids", **finding}
-            for i, c in enumerate(components) if isinstance(c, dict) and (finding := staged_coverage_claim_diagnostic(c))][:16]
+    return [
+        {"component_index": i, "path": f"components[{i}].covered_source_fact_ids", **finding}
+        for i, c in enumerate(components)
+        if isinstance(c, dict) and (finding := staged_coverage_claim_diagnostic(c))
+    ][:16]
 
 
-def staged_component_repair_guard(unit: Any, expected: dict[str, Any], *, allow_partial_coverage: bool = False) -> dict[str, Any] | None:
+def staged_component_repair_guard(
+    unit: Any, expected: dict[str, Any], *, allow_partial_coverage: bool = False
+) -> dict[str, Any] | None:
     """First exact authority rejection, safe to log; no provider values."""
     def fail(code: str, path: str, **counts: int) -> dict[str, Any]:
         return {"code": code, "path": path, "repairable": False, **counts}
@@ -408,8 +472,13 @@ def staged_component_repair_guard(unit: Any, expected: dict[str, Any], *, allow_
     components = unit.get("components")
     plans = expected.get("component_plan", [])
     if not isinstance(components, list) or len(components) != len(plans):
-        return fail("COMPONENT_COUNT_MISMATCH", "unit.components", expected_count=len(plans), actual_count=len(components) if isinstance(components, list) else 0)
-    for index, (c, p) in enumerate(zip(components, plans)):
+        return fail(
+            "COMPONENT_COUNT_MISMATCH",
+            "unit.components",
+            expected_count=len(plans),
+            actual_count=len(components) if isinstance(components, list) else 0,
+        )
+    for index, (c, p) in enumerate(zip(components, plans, strict=False)):
         path = f"components[{index}]"
         if not isinstance(c, dict) or c.get("type") != p.get("type"):
             return fail("COMPONENT_TYPE_PLAN_MISMATCH", path)
@@ -430,7 +499,11 @@ def staged_component_repair_guard(unit: Any, expected: dict[str, Any], *, allow_
         if not staged_fact_membership_equal(covered, covered):
             return fail("INVALID_COVERAGE_ID_ARRAY", f"{path}.covered_source_fact_ids")
         if not set(c.get("source_fact_ids", [])).issubset(covered) and not (allow_partial_coverage and covered):
-            return fail("COMPONENT_COVERAGE_INCOMPLETE", f"{path}.covered_source_fact_ids", missing_count=len(set(c.get("source_fact_ids", [])) - set(covered)))
+            return fail(
+                "COMPONENT_COVERAGE_INCOMPLETE",
+                f"{path}.covered_source_fact_ids",
+                missing_count=len(set(c.get("source_fact_ids", [])) - set(covered)),
+            )
         if not set(covered).issubset(expected.get("source_fact_ids", [])):
             return fail("COMPONENT_COVERAGE_OUT_OF_SCOPE", f"{path}.covered_source_fact_ids")
         if p.get("component_plan_id") and not p.get("source_fact_ids") and covered:
@@ -507,7 +580,13 @@ def merge_staged_component_payload_delta(baseline: dict[str, Any], delta: Any, t
         raise LessonAuthorProposalValidationError("COMPONENT_REPAIR_COVERAGE_TARGET_INVALID")
     coverage_updates: dict[int, list[str]] = {}
     wire_fields = set().union(*STAGED_COMPONENT_PAYLOAD_FIELDS.values()) | {"title", "selection_rationale"}
-    protected = {"type", "component_plan_id", "source_fact_ids", "covered_source_fact_ids", "supporting_evidence_fact_ids"}
+    protected = {
+        "type",
+        "component_plan_id",
+        "source_fact_ids",
+        "covered_source_fact_ids",
+        "supporting_evidence_fact_ids",
+    }
     for change in changes:
         if not isinstance(change, dict):
             raise LessonAuthorProposalValidationError("COMPONENT_REPAIR_NOT_OBJECT")
@@ -529,7 +608,7 @@ def merge_staged_component_payload_delta(baseline: dict[str, Any], delta: Any, t
                        for k in payload_fields):
                 raise LessonAuthorProposalValidationError("COMPONENT_REPAIR_COVERAGE_WITHOUT_CONTENT")
             coverage_updates[index] = list(cast(list[str], claim))
-            change = {k: v for k, v in change.items() if k != "covered_source_fact_ids"}
+            change = {k: v for k, v in change.items() if k != "covered_source_fact_ids"}  # noqa: PLW2901 - the loop narrows its own item
         if protected.intersection(change):
             raise LessonAuthorProposalValidationError("COMPONENT_REPAIR_PROTECTED_FIELD_EMITTED")
         if set(change) - wire_fields - {"component_index"}:
@@ -557,11 +636,17 @@ def merge_staged_component_repair(baseline: dict[str, Any], replacement: Any, ta
     if not isinstance(changes, list) or len(changes) != len(targets) or len(set(targets)) != len(targets):
         raise LessonAuthorProposalValidationError("COMPONENT_REPAIR_TARGET_COUNT_INVALID")
     result = deepcopy(baseline)
-    for index, change in zip(targets, changes):
+    for index, change in zip(targets, changes, strict=False):
         if not isinstance(change, dict) or not 0 <= index < len(result["components"]):
             raise LessonAuthorProposalValidationError("COMPONENT_REPAIR_TARGET_INVALID")
         original = baseline["components"][index]
-        protected = ("type", "component_plan_id", "source_fact_ids", "covered_source_fact_ids", "supporting_evidence_fact_ids")
+        protected = (
+            "type",
+            "component_plan_id",
+            "source_fact_ids",
+            "covered_source_fact_ids",
+            "supporting_evidence_fact_ids",
+        )
         if any(change.get(k, original.get(k)) != original.get(k) for k in protected):
             raise LessonAuthorProposalValidationError("COMPONENT_REPAIR_AUTHORITY_CHANGED")
         code = staged_component_payload_code({**original, **change})
@@ -570,7 +655,7 @@ def merge_staged_component_repair(baseline: dict[str, Any], replacement: Any, ta
         editable = STAGED_COMPONENT_PAYLOAD_FIELDS[original["type"]] | {"title", "selection_rationale"}
         wire_fields = set().union(*STAGED_COMPONENT_PAYLOAD_FIELDS.values())
         for key, value in change.items():
-            if key not in editable and key not in protected and value != original.get(key):
+            if key not in editable and key not in protected and value != original.get(key):  # noqa: SIM102 - two separate conditions
                 # The SDK envelope can require inapplicable null/empty fields.
                 # It cannot confer authority for metadata/provenance/fallback flags.
                 if key not in wire_fields or value not in (None, [], ""):
@@ -614,18 +699,21 @@ def merge_checkpoint_component_fallback(
     for index in normalized_targets:
         replacement = fallback_components[index]
         plan = plans[index]
-        if (not isinstance(replacement, dict) or not isinstance(plan, dict)
-                or replacement.get("type") != plan.get("type")
-                or replacement.get("component_plan_id") != plan.get("component_plan_id")
-                or not staged_fact_membership_equal(replacement.get("source_fact_ids", []), plan.get("source_fact_ids", []))
-                or not staged_fact_membership_equal(
-                    replacement.get("supporting_evidence_fact_ids", []),
-                    plan.get("supporting_evidence_fact_ids", []),
-                )
-                or not staged_fact_membership_equal(
-                    replacement.get("covered_source_fact_ids", []),
-                    plan.get("source_fact_ids", []),
-                )):
+        if (
+            not isinstance(replacement, dict)
+            or not isinstance(plan, dict)
+            or replacement.get("type") != plan.get("type")
+            or replacement.get("component_plan_id") != plan.get("component_plan_id")
+            or not staged_fact_membership_equal(replacement.get("source_fact_ids", []), plan.get("source_fact_ids", []))
+            or not staged_fact_membership_equal(
+                replacement.get("supporting_evidence_fact_ids", []),
+                plan.get("supporting_evidence_fact_ids", []),
+            )
+            or not staged_fact_membership_equal(
+                replacement.get("covered_source_fact_ids", []),
+                plan.get("source_fact_ids", []),
+            )
+        ):
             raise LessonAuthorProposalValidationError("COMPONENT_FAIL_SOFT_AUTHORITY_INVALID")
         result["components"][index] = deepcopy(replacement)
     return result
@@ -642,12 +730,23 @@ def staged_fact_membership_equal(actual: Any, approved: Any) -> bool:
 def staged_diagram_shape_diagnostics(component: dict[str, Any]) -> list[dict[str, Any]]:
     """Bounded, validator-owned paths/codes only; exclude values and messages."""
     findings: list[dict[str, Any]] = []
-    for field_name, model, minimum, maximum in (("nodes", StagedDiagramNode, 2, 20), ("edges", StagedDiagramEdge, 1, 40)):
+    for field_name, model, minimum, maximum in (
+        ("nodes", StagedDiagramNode, 2, 20),
+        ("edges", StagedDiagramEdge, 1, 40),
+    ):
         values = component.get(field_name)
         if not isinstance(values, list):
             findings.append({"path": field_name, "reason": "ARRAY_REQUIRED"})
         elif not minimum <= len(values) <= maximum:
-            findings.append({"path": field_name, "reason": "CARDINALITY", "actual_count": len(values), "minimum": minimum, "maximum": maximum})
+            findings.append(
+                {
+                    "path": field_name,
+                    "reason": "CARDINALITY",
+                    "actual_count": len(values),
+                    "minimum": minimum,
+                    "maximum": maximum,
+                }
+            )
         else:
             for index, value in enumerate(values):
                 try:
@@ -656,8 +755,13 @@ def staged_diagram_shape_diagnostics(component: dict[str, Any]) -> list[dict[str
                     for detail in error.errors(include_url=False, include_context=False, include_input=False):
                         loc = detail["loc"]
                         leaf = loc[0] if loc and loc[0] in model.model_fields else None
-                        reasons = {"missing": "FIELD_REQUIRED", "literal_error": "INVALID_ENUM", "string_too_long": "TEXT_TOO_LONG",
-                                   "string_too_short": "TEXT_TOO_SHORT", "greater_than_equal": "NEGATIVE_INDEX"}
+                        reasons = {
+                            "missing": "FIELD_REQUIRED",
+                            "literal_error": "INVALID_ENUM",
+                            "string_too_long": "TEXT_TOO_LONG",
+                            "string_too_short": "TEXT_TOO_SHORT",
+                            "greater_than_equal": "NEGATIVE_INDEX",
+                        }
                         findings.append({"path": f"{field_name}[{index}]" + (f".{leaf}" if leaf else ""),
                                          "reason": reasons.get(detail["type"], "FIELD_TYPE_INVALID")})
                         if len(findings) >= 8:
@@ -675,22 +779,38 @@ def staged_payload_diagnostics(unit: Any) -> list[dict[str, Any]]:
         code = staged_component_payload_code(component)
         if code:
             choices = component.get("choices")
-            result.append({
-                "component_index": index,
-                "component_type": normalize_staged_component_type(component.get("type")) or "unknown",
-                "code": code,
-                "choice_count": len(choices) if isinstance(choices, list) else 0,
-                "correct_choice_count": sum(isinstance(c, dict) and c.get("correct") is True for c in choices) if isinstance(choices, list) else 0,
-                # Validator-owned text describes shape/limits only, never values.
-                **({"semantic_shape_reason": semantic_learning_visible_text(component.get("semantic_content"))[1]}
-                   if code == "HTML_SEMANTIC_INVALID" else {}),
-                **({"semantic_shape": semantic_shape_diagnostics(component.get("semantic_content"))}
-                   if code == "HTML_SEMANTIC_INVALID" else {}),
-                **({"shape_findings": staged_diagram_shape_diagnostics(component)}
-                   if component.get("type") == "la_diagram" and code == "COMPONENT_PAYLOAD_SCHEMA_INVALID" else {}),
-                **({"shape_findings": staged_sortable_shape_diagnostics(component)}
-                   if component.get("type") == "la_sortable" and code == "COMPONENT_PAYLOAD_SCHEMA_INVALID" else {}),
-            })
+            result.append(
+                {
+                    "component_index": index,
+                    "component_type": normalize_staged_component_type(component.get("type")) or "unknown",
+                    "code": code,
+                    "choice_count": len(choices) if isinstance(choices, list) else 0,
+                    "correct_choice_count": sum(isinstance(c, dict) and c.get("correct") is True for c in choices)
+                    if isinstance(choices, list)
+                    else 0,
+                    # Validator-owned text describes shape/limits only, never values.
+                    **(
+                        {"semantic_shape_reason": semantic_learning_visible_text(component.get("semantic_content"))[1]}
+                        if code == "HTML_SEMANTIC_INVALID"
+                        else {}
+                    ),
+                    **(
+                        {"semantic_shape": semantic_shape_diagnostics(component.get("semantic_content"))}
+                        if code == "HTML_SEMANTIC_INVALID"
+                        else {}
+                    ),
+                    **(
+                        {"shape_findings": staged_diagram_shape_diagnostics(component)}
+                        if component.get("type") == "la_diagram" and code == "COMPONENT_PAYLOAD_SCHEMA_INVALID"
+                        else {}
+                    ),
+                    **(
+                        {"shape_findings": staged_sortable_shape_diagnostics(component)}
+                        if component.get("type") == "la_sortable" and code == "COMPONENT_PAYLOAD_SCHEMA_INVALID"
+                        else {}
+                    ),
+                }
+            )
     return result
 
 
@@ -708,7 +828,11 @@ def staged_sortable_shape_diagnostics(component: dict[str, Any]) -> list[dict[st
         except ValidationError as error:
             for detail in error.errors(include_url=False, include_context=False, include_input=False):
                 field = ".text" if detail["loc"] and detail["loc"][0] == "text" else ""
-                reason = {"missing": "FIELD_REQUIRED", "string_too_long": "TEXT_TOO_LONG", "string_too_short": "TEXT_TOO_SHORT"}.get(detail["type"], "FIELD_TYPE_INVALID")
+                reason = {
+                    "missing": "FIELD_REQUIRED",
+                    "string_too_long": "TEXT_TOO_LONG",
+                    "string_too_short": "TEXT_TOO_SHORT",
+                }.get(detail["type"], "FIELD_TYPE_INVALID")
                 findings.append({"path": f"items[{i}]{field}", "reason": reason})
                 if len(findings) == 8:
                     return findings
@@ -722,8 +846,11 @@ def staged_evidence_scope_diagnostics(unit: Any, expected: dict[str, Any]) -> li
     pairs = [("unit", unit, expected)]
     components = unit.get("components", [])
     if isinstance(components, list):
-        pairs += [(f"components[{i}]", c, p) for i, (c, p) in enumerate(zip(components, expected.get("component_plan", [])))
-                  if isinstance(c, dict) and isinstance(p, dict)]
+        pairs += [
+            (f"components[{i}]", c, p)
+            for i, (c, p) in enumerate(zip(components, expected.get("component_plan", []), strict=False))
+            if isinstance(c, dict) and isinstance(p, dict)
+        ]
     findings: list[dict[str, Any]] = []
     for path, actual, approved in pairs:
         for field_name in ("source_fact_ids", "supporting_evidence_fact_ids"):
@@ -732,10 +859,19 @@ def staged_evidence_scope_diagnostics(unit: Any, expected: dict[str, Any]) -> li
                 findings.append({"path": f"{path}.{field_name}", "reason": "INVALID_ID_ARRAY"})
             elif value != required:
                 got, want = set(value), set(required)
-                findings.append({"path": f"{path}.{field_name}", "reason": "ORDER_ONLY" if got == want and len(value) == len(required) else "MEMBERSHIP_MISMATCH",
-                                 "expected_count": len(required), "actual_count": len(value),
-                                 "missing_count": len(want - got), "unexpected_count": len(got - want),
-                                 "duplicate_count": len(value) - len(got)})
+                findings.append(
+                    {
+                        "path": f"{path}.{field_name}",
+                        "reason": "ORDER_ONLY"
+                        if got == want and len(value) == len(required)
+                        else "MEMBERSHIP_MISMATCH",
+                        "expected_count": len(required),
+                        "actual_count": len(value),
+                        "missing_count": len(want - got),
+                        "unexpected_count": len(got - want),
+                        "duplicate_count": len(value) - len(got),
+                    }
+                )
     return findings[:16]
 
 
@@ -754,10 +890,16 @@ def validate_staged_unit_content(
             for field in ("source_fact_ids", "supporting_evidence_fact_ids", "covered_source_fact_ids"):
                 ids = node.get(field, [])
                 if not staged_fact_membership_equal(ids, ids):
-                    repairable = bool(field == "covered_source_fact_ids" and path != "unit" and expected
-                                      and staged_component_repair_guard(unit, expected, allow_partial_coverage=True) is None
-                                      and staged_coverage_claim_repairable(node))
-                    return StagedUnitFinding(f"{path}.{field}: INVALID_FACT_ID_ARRAY", "INVALID_FACT_ID_ARRAY", f"{path}.{field}", repairable)
+                    repairable = bool(
+                        field == "covered_source_fact_ids"
+                        and path != "unit"
+                        and expected
+                        and staged_component_repair_guard(unit, expected, allow_partial_coverage=True) is None
+                        and staged_coverage_claim_repairable(node)
+                    )
+                    return StagedUnitFinding(
+                        f"{path}.{field}: INVALID_FACT_ID_ARRAY", "INVALID_FACT_ID_ARRAY", f"{path}.{field}", repairable
+                    )
                 if field == "covered_source_fact_ids" and path != "unit" and expected and node.get("source_fact_ids"):
                     finding = staged_coverage_claim_diagnostic(node)
                     if finding and finding["unexpected_count"]:
@@ -765,7 +907,12 @@ def validate_staged_unit_content(
                                                 "COMPONENT_COVERAGE_OUT_OF_SCOPE", f"{path}.{field}")
     if strict_payload:
         for finding in staged_payload_diagnostics(unit):
-            return StagedUnitFinding(f"components[{finding['component_index']}]: {finding['code']}", finding["code"], f"components[{finding['component_index']}]", True)
+            return StagedUnitFinding(
+                f"components[{finding['component_index']}]: {finding['code']}",
+                finding["code"],
+                f"components[{finding['component_index']}]",
+                True,
+            )
     candidate = {
         "chapters": [{
             "title": "staged",
@@ -775,7 +922,9 @@ def validate_staged_unit_content(
     try:
         validate_lesson_author_proposal_shape(candidate)
     except LessonAuthorProposalValidationError as error:
-        return StagedUnitFinding(re.sub(r"\s+", " ", str(error)).strip()[:240], error.code, error.path, error.repairable)
+        return StagedUnitFinding(
+            re.sub(r"\s+", " ", str(error)).strip()[:240], error.code, error.path, error.repairable
+        )
 
     if expected:
         expected_types = [
@@ -795,12 +944,18 @@ def validate_staged_unit_content(
                 validate_instance_plan(instance_plans)
             except ValueError as error:
                 return StagedUnitFinding(str(error), "APPROVED_COMPONENT_PLAN_INVALID", "unit.component_plan")
-            if [p.get("component_plan_id") for p in instance_plans] != [c.get("component_plan_id") for c in actual_components]:
-                return StagedUnitFinding("COMPONENT_PLAN_INSTANCE_MISMATCH", "COMPONENT_PLAN_INSTANCE_MISMATCH", "unit.components")
+            if [p.get("component_plan_id") for p in instance_plans] != [
+                c.get("component_plan_id") for c in actual_components
+            ]:
+                return StagedUnitFinding(
+                    "COMPONENT_PLAN_INSTANCE_MISMATCH", "COMPONENT_PLAN_INSTANCE_MISMATCH", "unit.components"
+                )
         if [value for value in actual_types if value] != [value for value in expected_types if value]:
             return StagedUnitFinding(
                 "Component formats do not match the approved source-based plan: "
-                f"expected {expected_types}, received {actual_types}.", "COMPONENT_TYPE_PLAN_MISMATCH", "unit.components"
+                f"expected {expected_types}, received {actual_types}.",
+                "COMPONENT_TYPE_PLAN_MISMATCH",
+                "unit.components",
             )
 
         expected_fact_ids = {
@@ -826,14 +981,22 @@ def validate_staged_unit_content(
                 details.append(f"missing {sorted(missing)[:4]}")
             if unexpected:
                 details.append(f"outside {sorted(unexpected)[:4]}")
-            return StagedUnitFinding("Unit source facts do not exactly match the approved Blueprint assignment: " + "; ".join(details), "UNIT_FACT_OWNERSHIP_MISMATCH", "unit.source_fact_ids")
+            return StagedUnitFinding(
+                "Unit source facts do not exactly match the approved Blueprint assignment: " + "; ".join(details),
+                "UNIT_FACT_OWNERSHIP_MISMATCH",
+                "unit.source_fact_ids",
+            )
         unit_supporting_evidence_fact_ids = {
             str(fact_id).strip()
             for fact_id in unit.get("supporting_evidence_fact_ids", [])
             if str(fact_id).strip()
         }
         if unit_supporting_evidence_fact_ids != expected_supporting_evidence_fact_ids:
-            return StagedUnitFinding("Unit supporting evidence does not exactly match the approved V5 evidence contract.", "UNIT_SUPPORTING_EVIDENCE_MISMATCH", "unit.supporting_evidence_fact_ids")
+            return StagedUnitFinding(
+                "Unit supporting evidence does not exactly match the approved V5 evidence contract.",
+                "UNIT_SUPPORTING_EVIDENCE_MISMATCH",
+                "unit.supporting_evidence_fact_ids",
+            )
         assigned_fact_ids: set[str] = set()
         html_fact_ids: set[str] = set()
         plan_fact_ids_by_type = {
@@ -878,18 +1041,38 @@ def validate_staged_unit_content(
                 if str(fact_id).strip()
             }
             expected_instance = instance_plans[component_index] if instance_contract else None
-            if expected_fact_ids and not component_fact_ids and not (expected_instance and expected_instance.get("supporting_evidence_fact_ids")):
-                return StagedUnitFinding("Every component must declare the source_fact_ids supporting it.", "COMPONENT_FACTS_MISSING", f"components[{component_index}].source_fact_ids")
+            if (
+                expected_fact_ids
+                and not component_fact_ids
+                and not (expected_instance and expected_instance.get("supporting_evidence_fact_ids"))
+            ):
+                return StagedUnitFinding(
+                    "Every component must declare the source_fact_ids supporting it.",
+                    "COMPONENT_FACTS_MISSING",
+                    f"components[{component_index}].source_fact_ids",
+                )
             invalid = component_fact_ids - expected_fact_ids
             if invalid:
-                return StagedUnitFinding(f"Component declared source facts outside its unit: {sorted(invalid)[:4]}.", "COMPONENT_FACT_OUT_OF_SCOPE", f"components[{component_index}].source_fact_ids")
+                return StagedUnitFinding(
+                    f"Component declared source facts outside its unit: {sorted(invalid)[:4]}.",
+                    "COMPONENT_FACT_OUT_OF_SCOPE",
+                    f"components[{component_index}].source_fact_ids",
+                )
             expected_component_fact_ids = plan_fact_ids_by_type.get(component_type, set())
             if expected_instance is not None:
                 expected_component_fact_ids = set(expected_instance.get("source_fact_ids", []))
                 if component_fact_ids != expected_component_fact_ids:
-                    return StagedUnitFinding("Component instance changed canonical ownership.", "COMPONENT_FACT_OWNERSHIP_MISMATCH", f"components[{component_index}].source_fact_ids")
+                    return StagedUnitFinding(
+                        "Component instance changed canonical ownership.",
+                        "COMPONENT_FACT_OWNERSHIP_MISMATCH",
+                        f"components[{component_index}].source_fact_ids",
+                    )
             if expected_component_fact_ids and component_fact_ids != expected_component_fact_ids:
-                return StagedUnitFinding("Component source facts do not match its approved Blueprint ownership contract.", "COMPONENT_FACT_OWNERSHIP_MISMATCH", f"components[{component_index}].source_fact_ids")
+                return StagedUnitFinding(
+                    "Component source facts do not match its approved Blueprint ownership contract.",
+                    "COMPONENT_FACT_OWNERSHIP_MISMATCH",
+                    f"components[{component_index}].source_fact_ids",
+                )
             expected_component_supporting_fact_ids = plan_supporting_fact_ids_by_type.get(component_type, set())
             if expected_instance is not None:
                 expected_component_supporting_fact_ids = set(expected_instance.get("supporting_evidence_fact_ids", []))
@@ -899,33 +1082,68 @@ def validate_staged_unit_content(
                 if str(fact_id).strip()
             }
             if component_supporting_fact_ids != expected_component_supporting_fact_ids:
-                return StagedUnitFinding("Component supporting evidence does not match its approved V5 evidence contract.", "COMPONENT_SUPPORTING_EVIDENCE_MISMATCH", f"components[{component_index}].supporting_evidence_fact_ids")
+                return StagedUnitFinding(
+                    "Component supporting evidence does not match its approved V5 evidence contract.",
+                    "COMPONENT_SUPPORTING_EVIDENCE_MISMATCH",
+                    f"components[{component_index}].supporting_evidence_fact_ids",
+                )
             if not expected_fact_ids and not component_supporting_fact_ids:
-                return StagedUnitFinding("Supporting-only component requires resolved read-only evidence.", "COMPONENT_SUPPORTING_EVIDENCE_MISSING", f"components[{component_index}].supporting_evidence_fact_ids")
+                return StagedUnitFinding(
+                    "Supporting-only component requires resolved read-only evidence.",
+                    "COMPONENT_SUPPORTING_EVIDENCE_MISSING",
+                    f"components[{component_index}].supporting_evidence_fact_ids",
+                )
             covered_fact_ids = {
                 str(fact_id).strip()
                 for fact_id in component.get("covered_source_fact_ids", [])
                 if str(fact_id).strip()
             }
             if expected_instance is not None and not expected_component_fact_ids and covered_fact_ids:
-                return StagedUnitFinding("Supporting assessment instance must not claim canonical coverage.", "SUPPORTING_COMPONENT_CLAIMS_OWNERSHIP", f"components[{component_index}].covered_source_fact_ids")
-            if enforce_component_ownership and expected_fact_ids and not covered_fact_ids and not (expected_instance and not expected_component_fact_ids):
-                return StagedUnitFinding("Every component must declare covered_source_fact_ids.", "COMPONENT_COVERAGE_MISSING", f"components[{component_index}].covered_source_fact_ids",
-                                        repairable=staged_component_repair_guard(unit, expected, allow_partial_coverage=True) is None)
+                return StagedUnitFinding(
+                    "Supporting assessment instance must not claim canonical coverage.",
+                    "SUPPORTING_COMPONENT_CLAIMS_OWNERSHIP",
+                    f"components[{component_index}].covered_source_fact_ids",
+                )
+            if (
+                enforce_component_ownership
+                and expected_fact_ids
+                and not covered_fact_ids
+                and not (expected_instance and not expected_component_fact_ids)
+            ):
+                return StagedUnitFinding(
+                    "Every component must declare covered_source_fact_ids.",
+                    "COMPONENT_COVERAGE_MISSING",
+                    f"components[{component_index}].covered_source_fact_ids",
+                    repairable=staged_component_repair_guard(unit, expected, allow_partial_coverage=True) is None,
+                )
             if enforce_component_ownership and not component_fact_ids.issubset(covered_fact_ids):
-                return StagedUnitFinding("Component covered_source_fact_ids must include every source_fact_id it owns.", "COMPONENT_COVERAGE_INCOMPLETE", f"components[{component_index}].covered_source_fact_ids", repairable=True)
+                return StagedUnitFinding(
+                    "Component covered_source_fact_ids must include every source_fact_id it owns.",
+                    "COMPONENT_COVERAGE_INCOMPLETE",
+                    f"components[{component_index}].covered_source_fact_ids",
+                    repairable=True,
+                )
             if enforce_component_ownership and covered_fact_ids - expected_fact_ids:
-                return StagedUnitFinding("Component covered_source_fact_ids contain facts outside its unit.", "COMPONENT_COVERAGE_OUT_OF_SCOPE", f"components[{component_index}].covered_source_fact_ids")
+                return StagedUnitFinding(
+                    "Component covered_source_fact_ids contain facts outside its unit.",
+                    "COMPONENT_COVERAGE_OUT_OF_SCOPE",
+                    f"components[{component_index}].covered_source_fact_ids",
+                )
             assigned_fact_ids.update(component_fact_ids)
             if normalize_staged_component_type(component.get("type")) == "html":
                 html_fact_ids.update(component_fact_ids)
         missing = expected_fact_ids - assigned_fact_ids
         if missing:
-            return StagedUnitFinding(f"Components do not collectively cover source facts: {sorted(missing)[:6]}.", "UNIT_COVERAGE_INCOMPLETE")
+            return StagedUnitFinding(
+                f"Components do not collectively cover source facts: {sorted(missing)[:6]}.", "UNIT_COVERAGE_INCOMPLETE"
+            )
         if not instance_contract:
             missing_from_html = expected_fact_ids - html_fact_ids
             if missing_from_html:
-                return StagedUnitFinding(f"HTML explanation does not cover assigned source facts: {sorted(missing_from_html)[:6]}.", "HTML_FACT_COVERAGE_INCOMPLETE")
+                return StagedUnitFinding(
+                    f"HTML explanation does not cover assigned source facts: {sorted(missing_from_html)[:6]}.",
+                    "HTML_FACT_COVERAGE_INCOMPLETE",
+                )
     return None
 
 

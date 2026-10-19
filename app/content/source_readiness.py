@@ -5,8 +5,9 @@ import json
 import math
 import re
 from collections import Counter
+from collections.abc import Iterable
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any
 
 SOURCE_READINESS_VERSION = "source-readiness-prototype-v3"
 MANUAL_REGION_REQUEST_VERSION = "source-region-request-v1"
@@ -73,7 +74,7 @@ def _rendered_region_revision(
     """Hash rendered region pixels so vector evidence invalidates with its source."""
 
     try:
-        import pymupdf
+        import pymupdf  # noqa: PLC0415 - parser library, loaded on first use
 
         pixmap = page.get_pixmap(clip=pymupdf.Rect(values), alpha=False)  # type: ignore[no-untyped-call]
     except (ImportError, AttributeError, RuntimeError, TypeError, ValueError):
@@ -233,7 +234,7 @@ def _text_corruption_signals(text: str) -> list[str]:
 
 def _meaningful_cell_text(value: Any) -> str:
     text = re.sub(r"\s+", " ", str(value or "")).strip()
-    if not text or re.fullmatch(r"[vV|¦._\-–—]+", text):
+    if not text or re.fullmatch(r"[vV|¦._\-–—]+", text):  # noqa: RUF001 - the glyph is intended
         return ""
     return text
 
@@ -252,7 +253,7 @@ def _union_bbox(values: Iterable[tuple[float, float, float, float]]) -> tuple[fl
 
 def _region_text(page: Any, bbox: tuple[float, float, float, float]) -> str:
     try:
-        import pymupdf
+        import pymupdf  # noqa: PLC0415 - parser library, loaded on first use
 
         value = page.get_text("text", clip=pymupdf.Rect(bbox), sort=True) or ""  # type: ignore[no-untyped-call]
     except (ImportError, AttributeError, TypeError, ValueError):
@@ -482,7 +483,7 @@ def _table_observations(
 def _sequence_observation(text: str) -> dict[str, Any]:
     numbered = len(re.findall(r"(?m)^\s*\d+[.)]\s+", text))
     bullets = len(re.findall(r"(?m)^\s*[•●▪✓✔☑]\s*", text))
-    acronym_steps = len(re.findall(r"(?:^|[;\n])\s*[A-Z]\s*[–—-]\s*\w", text))
+    acronym_steps = len(re.findall(r"(?:^|[;\n])\s*[A-Z]\s*[–—-]\s*\w", text))  # noqa: RUF001 - the glyph is intended
     arrow_chains = sum(
         1
         for line in text.splitlines()
@@ -689,7 +690,7 @@ def analyze_pdf_readiness(
     This is a CP3A prototype. It emits runtime observables and routing evidence;
     it never imports benchmark labels and does not claim semantic completeness.
     """
-    import pymupdf
+    import pymupdf  # noqa: PLC0415 - parser library, loaded on first use
 
     source_path = Path(path)
     with pymupdf.open(str(source_path)) as document:  # type: ignore[no-untyped-call]

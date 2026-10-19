@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import html
 import re
-from typing import Any, Iterable
+from collections.abc import Iterable
+from typing import Any
 
 from app.core.text import casefold_strip_marks_and_d as _fold
 
@@ -23,7 +24,7 @@ _SOURCE_ATTRIBUTION_RE = re.compile(
     r"|(?:\b(?:trong|inside)\s+(?:tài\s+liệu\s+nguồn|tai\s+lieu\s+nguon|source\s+document)\b)"
     r"|(?:\b(?:tài\s+liệu|tai\s+lieu|document|source)\s+"
     r"(?:nêu|neu|mô\s+tả|mo\s+ta|states?|describes?)\b)"
-    r"|(?:\b(?:nguồn|nguon|source|tài\s+liệu\s+nguồn|tai\s+lieu\s+nguon)\s*[:：])",
+    r"|(?:\b(?:nguồn|nguon|source|tài\s+liệu\s+nguồn|tai\s+lieu\s+nguon)\s*[:：])",  # noqa: RUF001 - the glyph is intended
     re.IGNORECASE,
 )
 _GENERIC_INTERNAL_ID_RE = re.compile(
@@ -37,7 +38,7 @@ _STANDALONE_LOCATOR_RE = re.compile(
     re.IGNORECASE,
 )
 _SOURCE_LABEL_ONLY_RE = re.compile(
-    r"^(?:nguồn|nguon|source|tài\s+liệu|tai\s+lieu|document)\s*[:：-]\s*.{0,220}$",
+    r"^(?:nguồn|nguon|source|tài\s+liệu|tai\s+lieu|document)\s*[:：-]\s*.{0,220}$",  # noqa: RUF001 - the glyph is intended
     re.IGNORECASE,
 )
 _ATTRIBUTION_ONLY_RE = re.compile(
@@ -48,10 +49,10 @@ _ATTRIBUTION_ONLY_RE = re.compile(
     re.IGNORECASE,
 )
 _LEADING_ATTRIBUTION_RE = re.compile(
-    r"^(?P<label>(?:giải\s+thích|giai\s+thich|explanation|rationale)\s*[:：]\s*)?"
+    r"^(?P<label>(?:giải\s+thích|giai\s+thich|explanation|rationale)\s*[:：]\s*)?"  # noqa: RUF001 - the glyph is intended
     r"(?:(?:theo|dựa\s+trên|dua\s+tren|trích\s+từ|trich\s+tu|according\s+to|based\s+on)\s+"
     r"(?:the\s+)?(?:tài\s+liệu(?:\s+nguồn)?|tai\s+lieu(?:\s+nguon)?|nguồn|nguon|source|document|file)"
-    r"\s*[,;:：-]\s*|"
+    r"\s*[,;:：-]\s*|"  # noqa: RUF001 - the glyph is intended
     r"(?:tài\s+liệu(?:\s+nguồn)?|tai\s+lieu(?:\s+nguon)?|document|source)\s+"
     r"(?:nêu|neu|mô\s+tả|mo\s+ta|yêu\s+cầu|yeu\s+cau|cho\s+biết|cho\s+biet|"
     r"states?|describes?|requires?)\s+(?:rằng\s+|rang\s+|that\s+)?)"
@@ -59,7 +60,7 @@ _LEADING_ATTRIBUTION_RE = re.compile(
     re.IGNORECASE,
 )
 _WRAPPED_SOURCE_FURNITURE_RE = re.compile(
-    r"[\[(]\s*(?:(?:nguồn|nguon|source|tài\s+liệu|tai\s+lieu|document|file)\s*[:：-]?\s*)?"
+    r"[\[(]\s*(?:(?:nguồn|nguon|source|tài\s+liệu|tai\s+lieu|document|file)\s*[:：-]?\s*)?"  # noqa: RUF001 - the glyph is intended
     r"(?:[^\])]{0,160}?\.(?:pdf|pptx?|docx?|xlsx?|csv|txt|rtf)|"
     r"(?:trang|page|slide|chunk|đoạn\s+nguồn|doan\s+nguon|mục\s+nguồn|muc\s+nguon)"
     r"\s*(?:số|so|number|no\.?|#)?\s*[:#-]?\s*\d{1,6}"
@@ -114,10 +115,10 @@ def sanitize_source_fact_for_learner(value: Any) -> str:
     text = re.sub(r"[\[(]\s*[\])]", " ", text)
     text = re.sub(r"\s+([,.;:!?])", r"\1", text)
     text = re.sub(r"(?:\s*[,;:|]\s*){2,}", "; ", text)
-    text = re.sub(r"\s+(?:[-–—]\s*)$", "", text)
-    text = re.sub(r"^(?:\s*[-–—,:;|]\s*)+|(?:\s*[-–—,:;|]\s*)+$", "", text)
+    text = re.sub(r"\s+(?:[-–—]\s*)$", "", text)  # noqa: RUF001 - the glyph is intended
+    text = re.sub(r"^(?:\s*[-–—,:;|]\s*)+|(?:\s*[-–—,:;|]\s*)+$", "", text)  # noqa: RUF001 - the glyph is intended
     text = re.sub(r"\s+", " ", text).strip()
-    if not text or _DANGLING_PROVENANCE_ONLY_RE.fullmatch(text.strip(" .,:;!?-–—")):
+    if not text or _DANGLING_PROVENANCE_ONLY_RE.fullmatch(text.strip(" .,:;!?-–—")):  # noqa: RUF001 - the glyph is intended
         return ""
     return text
 
@@ -201,14 +202,14 @@ def learner_content_purity_finding(
 def is_provenance_only_source_line(value: Any) -> bool:
     """Reject page furniture/citation rows without deleting substantive facts."""
 
-    text = _visible_text(value).strip(" .,:;|-–—")
+    text = _visible_text(value).strip(" .,:;|-–—")  # noqa: RUF001 - the glyph is intended
     if not text:
         return True
     if _STANDALONE_LOCATOR_RE.fullmatch(text):
         return True
     if _FILE_NAME_RE.fullmatch(text):
         return True
-    if _SOURCE_LABEL_ONLY_RE.fullmatch(text) and (
+    if _SOURCE_LABEL_ONLY_RE.fullmatch(text) and (  # noqa: SIM103 - kept explicit
         _FILE_NAME_RE.search(text) or _SOURCE_LOCATOR_RE.search(text) or len(text.split()) <= 12
     ):
         return True

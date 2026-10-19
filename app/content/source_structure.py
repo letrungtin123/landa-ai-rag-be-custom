@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 import re
+from collections.abc import Iterable
 from dataclasses import dataclass
-from typing import Any, Iterable
+from typing import Any
 
 PARSER_VERSION = "source-structure-v3"
 MAX_NODE_TITLE_CHARS = 220
@@ -154,7 +155,11 @@ def _chapter_table_with_body_anchors(material: list[Any]) -> tuple[list[dict[str
     for page, lines in pages.items():
         labels = [match for line in lines if (match := CHAPTER_HEADING_RE.match(line))]
         # The traditional dotted/page-number TOC retains its existing parser.
-        if any(marker(line) for line in lines) and len(labels) >= 2 and not any(TOC_LINE_RE.match(line) for line in lines):
+        if (
+            any(marker(line) for line in lines)
+            and len(labels) >= 2
+            and not any(TOC_LINE_RE.match(line) for line in lines)
+        ):
             tables[page] = labels
     if not tables:
         return [], False, True
@@ -587,7 +592,9 @@ def structure_outline(structure: dict[str, Any], *, max_chars: int = 12000, loca
         suffix = f" (trang {page})" if page else ""
         line = f"{indent}[{ref}] {prefix}{title}{suffix}"
         if sum(len(item) + 1 for item in lines) + len(line) > max_chars:
-            lines.append("... cấu trúc nguồn đã được rút gọn ..." if locale != "en" else "... source structure truncated ...")
+            lines.append(
+                "... cấu trúc nguồn đã được rút gọn ..." if locale != "en" else "... source structure truncated ..."
+            )
             break
         lines.append(line)
     return "\n".join(lines)

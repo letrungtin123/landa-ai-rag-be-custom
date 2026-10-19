@@ -2,8 +2,26 @@
 from copy import deepcopy
 from typing import Any
 
-FIELDS = {"paragraph": "paragraphs", "bullets": "bullet_points", "steps": "ordered_steps", "warning": "warnings", "table": "comparison_rows", "task": "paragraphs"}
-LEGACY_FIELDS = ("heading", "paragraphs", "bullet_points", "ordered_steps", "warnings", "comparison_rows", "bullets", "steps", "warning", "table_rows")
+FIELDS = {
+    "paragraph": "paragraphs",
+    "bullets": "bullet_points",
+    "steps": "ordered_steps",
+    "warning": "warnings",
+    "table": "comparison_rows",
+    "task": "paragraphs",
+}
+LEGACY_FIELDS = (
+    "heading",
+    "paragraphs",
+    "bullet_points",
+    "ordered_steps",
+    "warnings",
+    "comparison_rows",
+    "bullets",
+    "steps",
+    "warning",
+    "table_rows",
+)
 
 
 class ProviderSemanticVersionError(ValueError):
@@ -15,12 +33,18 @@ def semantic_shape_diagnostics(value: Any) -> dict[str, Any]:
     content = value if isinstance(value, dict) else {}
     sections = content.get("sections")
     return {
-        "semantic_version": content.get("version") if type(content.get("version")) is int and content["version"] in (1, 2) else "missing_or_invalid",
+        "semantic_version": content.get("version")
+        if type(content.get("version")) is int and content["version"] in (1, 2)
+        else "missing_or_invalid",
         "legacy_fields_present": [key for key in LEGACY_FIELDS if key in content],
         "legacy_fields_populated": [key for key in LEGACY_FIELDS if content.get(key)],
         "unknown_field_count": len(set(content) - {"version", "sections", *LEGACY_FIELDS}),
         "section_count": len(sections) if isinstance(sections, list) else 0,
-        "block_count": sum(len(s["blocks"]) for s in sections if isinstance(s, dict) and isinstance(s.get("blocks"), list)) if isinstance(sections, list) else 0,
+        "block_count": sum(
+            len(s["blocks"]) for s in sections if isinstance(s, dict) and isinstance(s.get("blocks"), list)
+        )
+        if isinstance(sections, list)
+        else 0,
     }
 
 
@@ -69,7 +93,9 @@ def ordered_content_fields(value: Any) -> list[tuple[str, str]]:
             if block["kind"] in {"paragraph", "warning", "task"}:
                 result.append((f"{path}.text", block["text"]))
             elif block["kind"] == "table":
-                result.extend((f"{path}.rows[{ri}]", row["label"] + " " + row["value"]) for ri, row in enumerate(block["rows"]))
+                result.extend(
+                    (f"{path}.rows[{ri}]", row["label"] + " " + row["value"]) for ri, row in enumerate(block["rows"])
+                )
             else:
                 result.extend((f"{path}.items[{ii}]", item) for ii, item in enumerate(block["items"]))
     return result
@@ -85,9 +111,32 @@ def flatten_ordered_content(value: dict[str, Any]) -> dict[str, Any]:
         if value.get("version") not in (None, 1) or value.get("sections"):
             raise ValueError("Unsupported semantic content version.")
         return value
-    if any(value.get(k) for k in ("heading", "paragraphs", "bullet_points", "ordered_steps", "warnings", "comparison_rows", "bullets", "steps", "warning", "table_rows")):
+    if any(
+        value.get(k)
+        for k in (
+            "heading",
+            "paragraphs",
+            "bullet_points",
+            "ordered_steps",
+            "warnings",
+            "comparison_rows",
+            "bullets",
+            "steps",
+            "warning",
+            "table_rows",
+        )
+    ):
         raise ValueError("Mixed ordered and legacy semantic content.")
-    if set(value) - {"version", "sections", "heading", "paragraphs", "bullet_points", "ordered_steps", "warnings", "comparison_rows"}:
+    if set(value) - {
+        "version",
+        "sections",
+        "heading",
+        "paragraphs",
+        "bullet_points",
+        "ordered_steps",
+        "warnings",
+        "comparison_rows",
+    }:
         raise ValueError("Unknown ordered content field.")
     sections = value.get("sections")
     if not isinstance(sections, list) or not 1 <= len(sections) <= 12:
@@ -100,13 +149,22 @@ def flatten_ordered_content(value: dict[str, Any]) -> dict[str, Any]:
         if not isinstance(heading, str) or not heading.strip() or len(heading.strip()) > 240:
             raise ValueError("Section heading must be 1-240 characters.")
         refs = section.get("learning_block_ids", [])
-        if not isinstance(refs, list) or len(refs) > 24 or any(not isinstance(r, str) or not r.strip() or len(r) > 160 for r in refs) or len(set(refs)) != len(refs):
+        if (
+            not isinstance(refs, list)
+            or len(refs) > 24
+            or any(not isinstance(r, str) or not r.strip() or len(r) > 160 for r in refs)
+            or len(set(refs)) != len(refs)
+        ):
             raise ValueError("Invalid section learning block references.")
         blocks = section.get("blocks")
         if not isinstance(blocks, list) or not 1 <= len(blocks) <= 12:
             raise ValueError("Section requires 1-12 ordered blocks.")
         for block in blocks:
-            if not isinstance(block, dict) or block.get("kind") not in FIELDS or set(block) - {"kind", "text", "items", "rows"}:
+            if (
+                not isinstance(block, dict)
+                or block.get("kind") not in FIELDS
+                or set(block) - {"kind", "text", "items", "rows"}
+            ):
                 raise ValueError("Unknown ordered block kind or field.")
             kind = block["kind"]
             field = "rows" if kind == "table" else "items" if kind in {"bullets", "steps"} else "text"

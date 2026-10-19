@@ -21,6 +21,10 @@ ignore = [
 "tests/**/*.py" = ["S101", "S105", "S106", "PLR2004"]
 # Repository functions take their statement's $n parameters positionally, in placeholder order.
 "app/repositories/*.py" = ["PLR0917"]
+# Heuristic and schema code moved verbatim out of the legacy modules (refactor wave 2, step 2.1) keeps its
+# thresholds inline; naming them is a follow-up. Every other rule applies.
+"app/content/*.py" = ["PLR2004"]
+"app/services/staged_unit/*.py" = ["PLR2004"]
 
 [tool.mypy]
 python_version = "3.12"

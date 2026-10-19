@@ -4,7 +4,8 @@ import hashlib
 import html
 import re
 import unicodedata
-from typing import Any, Iterable
+from collections.abc import Iterable
+from typing import Any
 
 from app.content.learner_content_purity import (
     is_provenance_only_source_line,
@@ -86,7 +87,7 @@ def is_non_instructional_source_line(value: Any, *, preserve_table_numeric: bool
         return True
     if TABLE_ROW_RE.match(text):
         return False
-    folded = _fold(text).strip(" .,:;!?-_–—")
+    folded = _fold(text).strip(" .,:;!?-_–—")  # noqa: RUF001 - the glyph is intended
     if folded in _NON_INSTRUCTIONAL_EXACT:
         return True
     if _URL_ONLY_RE.fullmatch(text) or _EMAIL_ONLY_RE.fullmatch(text):
@@ -101,7 +102,7 @@ def is_non_instructional_source_line(value: Any, *, preserve_table_numeric: bool
     digits = sum(char.isdigit() for char in text)
     if letters == 0:
         return not (preserve_table_numeric and digits > 0)
-    if letters < 3 and len(text) > 8:
+    if letters < 3 and len(text) > 8:  # noqa: SIM103 - kept explicit
         return True
     return False
 
@@ -321,7 +322,9 @@ def render_source_locked_html(
         header = normalized_rows[0]
         body = normalized_rows[1:]
         parts.append(f"<h3>{html.escape('Bảng dữ liệu' if locale != 'en' else 'Structured data')}</h3>")
-        parts.append("<table><thead><tr>" + "".join(f"<th>{html.escape(cell)}</th>" for cell in header) + "</tr></thead>")
+        parts.append(
+            "<table><thead><tr>" + "".join(f"<th>{html.escape(cell)}</th>" for cell in header) + "</tr></thead>"
+        )
         if body:
             parts.append("<tbody>" + "".join(
                 "<tr>" + "".join(f"<td>{html.escape(cell)}</td>" for cell in row) + "</tr>"
@@ -374,7 +377,7 @@ def source_term_definitions(values: Iterable[Any]) -> list[tuple[str, str]]:
         match = TERM_DEFINITION_RE.match(value)
         if not match:
             continue
-        term = normalize_visible_text(match.group(1)).strip(" .;,-–—")
+        term = normalize_visible_text(match.group(1)).strip(" .;,-–—")  # noqa: RUF001 - the glyph is intended
         definition = normalize_visible_text(match.group(2)).strip()
         if not term or len(term.split()) > 8 or re.match(r"^(?:step|bước|buoc)\b", _fold(term)):
             continue

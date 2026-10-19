@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 import re
-from typing import Any, Iterable, Literal, cast
+from collections.abc import Iterable
+from typing import Any, Literal, cast
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from app.hashing import canonical_hash as canonical_hash
 from app.content.instructional_quality import ordered_source_steps
+from app.hashing import canonical_hash as canonical_hash  # noqa: PLC0414 - explicit re-export
 
 SOURCE_EVIDENCE_BUNDLE_VERSION = "source-evidence-bundle-v1"
 SOURCE_EVIDENCE_ASSEMBLER_VERSION = "source-evidence-assembler-v1"
@@ -76,7 +77,7 @@ class SourceEvidenceElementV1(BaseModel):
     element_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
 
     @model_validator(mode="after")
-    def validate_element(self) -> "SourceEvidenceElementV1":
+    def validate_element(self) -> SourceEvidenceElementV1:
         if len(set(self.source_fact_ids)) != len(self.source_fact_ids) or any(
             not value or len(value) > 255 for value in self.source_fact_ids
         ):
@@ -106,7 +107,7 @@ class SourceEvidenceBundleV1(BaseModel):
     bundle_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
 
     @model_validator(mode="after")
-    def validate_bundle(self) -> "SourceEvidenceBundleV1":
+    def validate_bundle(self) -> SourceEvidenceBundleV1:
         ids = [element.evidence_id for element in self.elements]
         if len(ids) != len(set(ids)):
             raise ValueError("evidence identifiers must be unique")
@@ -433,7 +434,7 @@ def _hierarchy_elements(facts: list[Any]) -> list[SourceEvidenceElementV1]:
         else:
             segments = [
                 part.strip()
-                for part in re.split(r"\s*[›>]\s*", str(raw_path or ""))
+                for part in re.split(r"\s*[›>]\s*", str(raw_path or ""))  # noqa: RUF001 - the glyph is intended
             ]
         segments = [part[:500] for part in segments if part]
         if not segments:
