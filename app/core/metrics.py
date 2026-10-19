@@ -121,6 +121,14 @@ DEADLINE_EXCEEDED = Counter(
     ("route",),
     registry=REGISTRY,
 )
+# IDM generation answers that would not validate against their published response model (observed only;
+# app.services.response_contracts). Labels: the three route templates, or "other".
+RESPONSE_CONTRACT_MISMATCHES = Counter(
+    "ai_rag_response_contract_mismatch_total",
+    "Generation answers that do not fit their published response model, by route template.",
+    ("route",),
+    registry=REGISTRY,
+)
 # Traffic of the legacy AI ID V1 routes (app.services.legacy_routes), watched before they are removed.
 LEGACY_ROUTE_CALLS = Counter(
     "ai_rag_legacy_route_calls_total",

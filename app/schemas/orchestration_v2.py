@@ -132,10 +132,10 @@ class SourceSnapshotV2Response(BaseModel):
 
 
 # ---- generation responses (step 2.6) --------------------------------------------------------------------------------
-# These models describe the dicts the services already return. FastAPI serializes them with the same pydantic-core
-# JSON encoder it used for the untyped ``dict[str, Any]`` answers, and the field order is the wire order, so the
-# bytes are unchanged. An optional add-on field is omitted when absent (never sent as null), exactly as the services
-# leave the key out.
+# These models are the published contract of the dicts the services already return (field order is the wire order;
+# an optional add-on field is omitted when absent, never sent as null, exactly as the services leave the key out).
+# The routes still answer the service dict unvalidated; app.services.response_contracts checks it against these
+# models without changing it and only counts and logs a mismatch.
 UsageSource = Literal["provider", "reserved_upper_bound", "deterministic_fallback"]
 ContentOrigin = Literal["provider_validated", "structured_fallback"]
 QualityState = Literal["validated", "review_required"]

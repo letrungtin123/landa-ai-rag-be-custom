@@ -11,7 +11,7 @@ $StrictPaths = @(
     "app/core", "app/infra", "app/idm", "app/prompt_safety.py", "app/__main__.py",
     "app/main.py", "app/api", "app/schemas", "app/repositories",
     "app/services/runtime.py", "app/services/meta.py", "app/services/deadlines.py", "app/services/text.py",
-    "app/services/legacy_routes.py",
+    "app/services/legacy_routes.py", "app/services/response_contracts.py",
     "app/hashing.py", "app/contract_bridge.py"
 )
 # Service code moved verbatim out of app/main.py in PRD-2, and the shared core moved verbatim out of the
@@ -46,7 +46,8 @@ $StrictTests = @(
     "tests/test_core_text.py",
     "tests/test_contract_bridge.py",
     "tests/test_provider_wire_shared.py",
-    "tests/test_legacy_route_usage.py"
+    "tests/test_legacy_route_usage.py",
+    "tests/test_response_contract_observation.py"
 )
 # Every IDM test file is held to the strict lint profile.
 $StrictTests += @(Get-ChildItem -Path (Join-Path $RepoRoot "tests") -Filter "test_idm_*.py" |

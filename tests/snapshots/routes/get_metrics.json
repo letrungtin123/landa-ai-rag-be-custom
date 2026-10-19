@@ -20,7 +20,8 @@
    "ai_rag_limiter_rejections_total",
    "ai_rag_provider_call_duration_seconds",
    "ai_rag_provider_calls_total",
-   "ai_rag_provider_tokens_total"
+   "ai_rag_provider_tokens_total",
+   "ai_rag_response_contract_mismatch_total"
   ],
   "db_calls": [],
   "provider_calls": [],

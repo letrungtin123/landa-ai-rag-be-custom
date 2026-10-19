@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Annotated
+from typing import Annotated, Any
 
 import asyncpg
 from fastapi import Depends, FastAPI
@@ -28,6 +28,7 @@ from app.services.orchestration_v2 import chapter_shard as chapter_shard_service
 from app.services.orchestration_v2 import course_skeleton as course_skeleton_service
 from app.services.orchestration_v2 import source_snapshot as source_snapshot_service
 from app.services.orchestration_v2 import unit as unit_service
+from app.services.response_contracts import observe_response_contract
 
 
 async def lesson_author_orchestration_v2_source_snapshot(
@@ -39,31 +40,38 @@ async def lesson_author_orchestration_v2_source_snapshot(
     )
 
 
+# The generation routes answer the service dict exactly as before the typed contracts (FastAPI's dict[str, Any]
+# encoder). Their published models check the same dict for observation only: the check never raises and never
+# changes the answer. It runs inline (about 0.2 ms for a 40 KB course design) rather than as a background task, which
+# the disconnect-cancellation middleware would cancel once the body is sent.
 async def lesson_author_orchestration_v2_course_skeleton(
     request: RagLessonAuthorCourseSkeletonV2Request,
-) -> CourseSkeletonV2Response:
+) -> dict[str, Any]:
     if request.idm is None:
         record_legacy_route_call(COURSE_SKELETON_ROUTE)
-    return CourseSkeletonV2Response.model_validate(
-        await course_skeleton_service.lesson_author_orchestration_v2_course_skeleton(request),
-    )
+    result = await course_skeleton_service.lesson_author_orchestration_v2_course_skeleton(request)
+    observe_response_contract(COURSE_SKELETON_ROUTE, CourseSkeletonV2Response, result)
+    return result
 
 
 async def lesson_author_orchestration_v2_chapter_shard(
     request: RagLessonAuthorChapterShardV2Request,
-) -> ChapterShardV2Response:
+) -> dict[str, Any]:
     if request.idm_module_context is None:
         record_legacy_route_call(CHAPTER_SHARD_ROUTE)
-    return ChapterShardV2Response.model_validate(
-        await chapter_shard_service.lesson_author_orchestration_v2_chapter_shard(request),
-    )
+    result = await chapter_shard_service.lesson_author_orchestration_v2_chapter_shard(request)
+    observe_response_contract(CHAPTER_SHARD_ROUTE, ChapterShardV2Response, result)
+    return result
 
 
-async def lesson_author_orchestration_v2_unit(request: RagLessonAuthorUnitV2Request) -> UnitV2Response:
+async def lesson_author_orchestration_v2_unit(
+    request: RagLessonAuthorUnitV2Request,
+) -> dict[str, Any]:
     if request.unit_contract.idm_unit_brief is None:
         record_legacy_route_call(UNIT_ROUTE)
-    return UnitV2Response.model_validate(await unit_service.lesson_author_orchestration_v2_unit(request))
-
+    result = await unit_service.lesson_author_orchestration_v2_unit(request)
+    observe_response_contract(UNIT_ROUTE, UnitV2Response, result)
+    return result
 
 
 def register(app: FastAPI) -> None:

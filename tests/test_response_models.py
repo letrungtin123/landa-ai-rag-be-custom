@@ -118,9 +118,9 @@ class ResponseModelTests(unittest.TestCase):
         self.assertEqual(models["/v1/kb/delete"], DeleteResponse)
         self.assertEqual(models["/v1/chat"], ChatResponse)
         self.assertEqual(models["/v1/lesson-author/orchestration-v2/source-snapshot"], SourceSnapshotV2Response)
-        self.assertEqual(models["/v1/lesson-author/orchestration-v2/course-skeleton"], CourseSkeletonV2Response)
-        self.assertEqual(models["/v1/lesson-author/orchestration-v2/chapter-shard"], ChapterShardV2Response)
-        self.assertEqual(models["/v1/lesson-author/orchestration-v2/unit"], UnitV2Response)
+        # The generation routes answer the unvalidated service dict; their models are observed after the answer.
+        for name in ("course-skeleton", "chapter-shard", "unit"):
+            self.assertEqual(models[f"/v1/lesson-author/orchestration-v2/{name}"], dict[str, Any])
 
     def test_generation_responses_keep_the_untyped_wire_bytes(self) -> None:
         # Before step 2.6 these routes declared ``dict[str, Any]``, so FastAPI encoded the service dict with that

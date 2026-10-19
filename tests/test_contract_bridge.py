@@ -14,6 +14,7 @@ from pydantic import BaseModel
 from app import contract_bridge, main
 from app.contract_bridge import CONTRACT_SCHEMA_PATH, ROUTE_CONTRACTS, contract_schema_text, write_contract_schema
 from app.schemas.chat import RagRequestBase
+from app.services.response_contracts import OBSERVED_ROUTES
 
 REGENERATE = "python -m app.contract_bridge"
 
@@ -44,8 +45,9 @@ class ContractBridgeTests(unittest.TestCase):
         for path, (request_model, response_type) in ROUTE_CONTRACTS.items():
             with self.subTest(path=path):
                 self.assertIs(body_model(routes[path]), request_model)
-                # An untyped route still declares ``dict[str, Any]`` (its return annotation).
-                self.assertEqual(routes[path].response_model, response_type or dict[str, Any])
+                # An untyped route, and an observed generation route, answer through ``dict[str, Any]``.
+                runtime = dict[str, Any] if response_type is None or path in OBSERVED_ROUTES else response_type
+                self.assertEqual(routes[path].response_model, runtime)
 
     def test_every_route_has_its_own_top_level_request_model(self) -> None:
         # No route body inherits another route's body model; shared fields live in non-route bases.
