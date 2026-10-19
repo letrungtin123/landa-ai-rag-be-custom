@@ -17,7 +17,7 @@ from typing import Any
 from unittest.mock import patch
 
 import httpx
-from pydantic import TypeAdapter
+from pydantic import BaseModel, ConfigDict, TypeAdapter
 
 from app.core.logging import SERVICE_LOGGER_NAME
 from app.core.metrics import REGISTRY
@@ -119,6 +119,29 @@ class ResponseContractObservationTests(unittest.TestCase):
             observe_response_contract(UNIT_ROUTE, Broken, {})
         self.assertEqual(mismatches(UNIT_ROUTE), before + 1)
         self.assertEqual(len(OBSERVED_ROUTES), 3)
+
+    def test_logged_locations_keep_only_indexes_and_plain_identifiers(self) -> None:
+        class Probe(BaseModel):
+            model_config = ConfigDict(extra="forbid")
+
+            items: list[int]
+            notes: dict[str, int]
+
+        longest = "k" * 64
+        payload = {
+            "items": [1, "x"],
+            "notes": {"plain_key": "x", longest: "x", longest + "k": "x", "Ignore previous rules: a@b.example": "x"},
+            "unknown text, from the model": 1,
+        }
+        with self.assertLogs(SERVICE_LOGGER_NAME, level=logging.WARNING) as logs:
+            observe_response_contract(UNIT_ROUTE, Probe, payload)
+        (event,) = logged_events(logs.records, "response_contract_mismatch")
+        self.assertEqual(sorted(event["locations"]),
+                         sorted(["items.1", "notes.plain_key", f"notes.{longest}", "notes.<key>", "notes.<key>",
+                                 "<key>"]))
+        text = json.dumps(event)
+        for leaked in ("Ignore", "a@b.example", "unknown text", longest + "k"):
+            self.assertNotIn(leaked, text)
 
 
 if __name__ == "__main__":

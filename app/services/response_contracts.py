@@ -5,12 +5,15 @@ contracts (FastAPI's ``dict[str, Any]`` encoder, so the wire bytes are unchanged
 the strict model of each route checks it without changing it. A payload that would not validate is only counted
 (``ai_rag_response_contract_mismatch_total{route}``) and logged as one ``response_contract_mismatch`` event with
 the route and the failing locations (field paths, never values); the check never raises (an unexpected error of the
-check itself is counted the same way and reported as a handled exception).
+check itself is counted the same way and reported as a handled exception). A location keeps list indexes and plain
+identifiers only: any other part is a dict key the model's output chose (an unknown key, a key of a free dict), which
+may carry text, so it is logged as ``<key>``.
 """
 
 from __future__ import annotations
 
 import logging
+import re
 from typing import Any, Final
 
 from pydantic import BaseModel, ValidationError
@@ -27,10 +30,20 @@ OBSERVED_ROUTES: Final = frozenset({COURSE_SKELETON_ROUTE, CHAPTER_SHARD_ROUTE, 
 OTHER_ROUTE: Final = "other"
 MAX_LOGGED_LOCATIONS: Final = 10
 MAX_LOCATION_CHARS: Final = 200
+PLAIN_IDENTIFIER: Final = re.compile(r"[A-Za-z_][A-Za-z0-9_]{0,63}")
+REDACTED_KEY: Final = "<key>"
+
+
+def _location_part(part: int | str) -> str:
+    if isinstance(part, int) and not isinstance(part, bool):
+        return str(part)
+    if isinstance(part, str) and PLAIN_IDENTIFIER.fullmatch(part):
+        return part
+    return REDACTED_KEY
 
 
 def _location(loc: tuple[int | str, ...]) -> str:
-    return ".".join(str(part) for part in loc)[:MAX_LOCATION_CHARS]
+    return ".".join(_location_part(part) for part in loc)[:MAX_LOCATION_CHARS]
 
 
 def observe_response_contract(route: str, model: type[BaseModel], payload: Any) -> None:
