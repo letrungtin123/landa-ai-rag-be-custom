@@ -46,12 +46,7 @@ class Allowance(NamedTuple):
 # Strict-code offenders when the STD-5 limits were enforced (refactor wave 1, 2026-10-18), at their size then.
 # An entry only shrinks: the test fails when the file or function grows past its size here (lower the number
 # when it shrinks) and when it fits the limit again (remove the entry). New code never gets an entry.
-FILE_SIZE_ALLOWLIST: dict[str, Allowance] = {
-    # app.idm.prompts is a whole-module entry of the prompt manifest (its full text is hashed), so moving any line
-    # out of it changes prompt_templates_hash: it is split together with a reviewed manifest update.
-    "idm/prompts.py": Allowance(973, "the builders of every IDM stage prompt (spec Appendix A)",
-                                "one prompt module per stage, with a reviewed prompt manifest update"),
-}
+FILE_SIZE_ALLOWLIST: dict[str, Allowance] = {}
 FUNCTION_SIZE_ALLOWLIST: dict[str, Allowance] = {
     "idm/module_design.py::run_idm_module_design": Allowance(214, "W3/W4 call, repair loop, salvage and assembly",
                                                              "wave 2 (2.5)"),
@@ -64,7 +59,7 @@ FUNCTION_SIZE_ALLOWLIST: dict[str, Allowance] = {
     "idm/notes.py::build_course_notes": Allowance(129, "every course-note line in one builder", "wave 2 (2.5)"),
     "idm/course_design.py::run_idm_course_design": Allowance(127, "W1 map/reduce, W2, W4 and assembly",
                                                              "wave 2 (2.5)"),
-    "idm/prompts.py::unit_writer_prompt": Allowance(124, "the W5 writer prompt template", "wave 2 (2.5)"),
+    "idm/prompts_unit.py::unit_writer_prompt": Allowance(124, "the W5 writer prompt template", "wave 2 (2.5)"),
 }
 
 

@@ -28,7 +28,11 @@ from typing import Any, Final
 PROMPT_TEMPLATE_SOURCES: Final = (
     # Prompt-only modules: every line is template text or the code that lays it out.
     "app.prompt_safety",
-    "app.idm.prompts",
+    "app.idm.prompts_common",
+    "app.idm.prompts_course",
+    "app.idm.prompts_module",
+    "app.idm.prompts_unit",
+    "app.idm.prompts_judge",
     "app.idm.purpose",
     # Rule text that the stages put into prompts.
     "app.idm.fidelity:w2_treatment_rules",

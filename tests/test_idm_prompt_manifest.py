@@ -37,6 +37,18 @@ NOT_PROMPT_TEXT = {
     "runtime:estimate_prompt_tokens",  # token estimate of a prompt
     "signals:states_rule",  # classifies source text
 }
+# Reviewed values of prompt_templates_hash, oldest first; the last one is the manifest's. Append an entry with the
+# reason whenever the manifest is re-recorded.
+HASH_HISTORY: tuple[tuple[str, str], ...] = (
+    ("dbf793b05060b7c86ab73066ccfe54ff1ed5ee88b4c4e2026419083c03f94ca0",
+     "bd9d3d4: the manifest is introduced"),
+    # Owner-approved split of app/idm/prompts.py by stage (refactor step 2.5) into prompts_common, prompts_course,
+    # prompts_module, prompts_unit and prompts_judge (app.idm.prompts re-exports them). Lines moved verbatim; the
+    # rendered prompts are byte-identical (tests/test_idm_prompt_outputs.py, recorded before the split). Only the
+    # hashed sources moved, so the hash changed while the prompt content did not.
+    ("7954ecdcecab92fd9b419b6db3ef383e8ca76fb4839ef934281a8dd62a1acb61",
+     "prompts.py split by stage: same prompt content, sources in five modules"),
+)
 PROMPT_NAME = re.compile(r"(prompt|_rules?$|_suffix$|rule_lines?$|_hint$|^rule_line$|_cue_line$)")
 
 
@@ -78,6 +90,11 @@ class PromptManifestTests(unittest.TestCase):
         self.assertEqual(changed, [], f"Prompt templates changed: {changed}. Review the change, then run "
                                       f"{UPDATE_ENV}=1 python -m pytest tests/test_idm_prompt_manifest.py")
         self.assertEqual(current, recorded)
+
+    def test_hash_history_ends_with_the_reviewed_manifest(self) -> None:
+        recorded: dict[str, Any] = json.loads(MANIFEST.read_text(encoding="utf-8"))
+        self.assertEqual(HASH_HISTORY[-1][0], recorded["prompt_templates_hash"])
+        self.assertEqual(len({value for value, _ in HASH_HISTORY}), len(HASH_HISTORY))
 
     def test_every_prompt_builder_of_the_package_is_covered(self) -> None:
         modules = {entry.removeprefix("app.idm.") for entry in PROMPT_TEMPLATE_SOURCES if ":" not in entry}

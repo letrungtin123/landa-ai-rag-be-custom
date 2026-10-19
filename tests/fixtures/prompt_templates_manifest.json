@@ -1,6 +1,6 @@
 {
  "prompt_policy_version": "idm-prompt-1",
- "prompt_templates_hash": "dbf793b05060b7c86ab73066ccfe54ff1ed5ee88b4c4e2026419083c03f94ca0",
+ "prompt_templates_hash": "7954ecdcecab92fd9b419b6db3ef383e8ca76fb4839ef934281a8dd62a1acb61",
  "sources": {
   "app.idm.example_roles:role_rule": "ade567182c9b222f982cc9e9c3371c58f59ae9cec5cab401dd514e800daa83c1",
   "app.idm.faq_checks:FaqChecker.plan_hint": "a4bba0bf2bf5959893d32f5dce7ceb4172f67a822559e39bc64a827803aa8bae",
@@ -12,7 +12,11 @@
   "app.idm.preserve_lines:heading_hint": "8137506e4c8330055e5e5cf9248a126a563cedd41ff1e2c58bae68cf2d1d5b55",
   "app.idm.preserve_segment:_prompt_line": "bf7e018068060594fa5e2b8540bf07ece6c0cea914d5e76e12f78b5094e29ebd",
   "app.idm.preserve_segment:segment_prompt": "6bfe753b5f192268dcc2463a5720f343f7879d2548a8c68ae6295ebb43709bac",
-  "app.idm.prompts": "351d99e2214a10cee42c1bfe770f57fde1f7e7bd673100d141157404f863e0d0",
+  "app.idm.prompts_common": "6036060a44d63ffa64166c7bf53976b83e215a3f1d53a61a758f3f28d5213f39",
+  "app.idm.prompts_course": "eab8f075473154e5234d828a449ce43e41ded059279009860171aeca91b0334b",
+  "app.idm.prompts_judge": "8fb1c872913bf4e7e7c794f69021dca8dc1d958f56d4efd43eeb6293b883ab29",
+  "app.idm.prompts_module": "4308ebe7bfaf96040e42f953cfdfaf55990b38f27c5deee222e48f88401a1353",
+  "app.idm.prompts_unit": "b3d2d2f4004aee8b3bf31edecca32cf1e39fa375e91ee6c6c28ea2a88acde6fe",
   "app.idm.purpose": "e5ea3b9c534b64a42b26b72900e5dd37ceac9bb80ec3b4dcf8f4468fc19805be",
   "app.idm.storyboard:IdmUnitWriter.acceptance_rule_lines": "ae3dd87886fd4ccd5eb2cb9fcf7673e60ec7b6a0a4ba8105ddc37bf4b3792495",
   "app.idm.storyboard:IdmUnitWriter.callout_rule_line": "fd79b7abec8087ea59f61761fbdfa4690047f37f53fb379d1f5d3329efe12262",
