@@ -12,6 +12,7 @@ from typing import Any
 import asyncpg
 from google.genai import types
 
+from app.content.provider_json import parse_provider_json_object
 from app.core.config import settings
 from app.core.errors import ServiceError
 from app.core.logging import SERVICE_LOGGER_NAME
@@ -33,7 +34,6 @@ from app.services.lesson_author.lesson_generation import (
 from app.services.lesson_author.prompts import build_lesson_author_prompt
 from app.services.lesson_author.proposal_validation import (
     normalize_lesson_author_proposal_tree,
-    parse_lesson_author_json,
     validate_lesson_author_proposal_shape,
 )
 from app.services.lesson_author.source_refs import (
@@ -256,7 +256,7 @@ async def _lesson_author_proposal(
                 )
                 total_generation_usage = combine_usage(total_generation_usage, generation_usage)
                 try:
-                    candidate = normalize_lesson_author_proposal_tree(parse_lesson_author_json(text, "proposal"))
+                    candidate = normalize_lesson_author_proposal_tree(parse_provider_json_object(text, "proposal"))
                     validate_lesson_author_proposal_shape(candidate)
                     allowed_source_refs = set(structure_context.get("known_source_refs", set()))
                     candidate, dropped_refs = drop_invalid_lesson_author_proposal_source_refs(candidate, allowed_source_refs)
@@ -296,7 +296,7 @@ async def _lesson_author_proposal(
             thinking_config=types.ThinkingConfig(include_thoughts=False),
         )
         try:
-            payload = parse_lesson_author_json(text, "lesson repair")
+            payload = parse_provider_json_object(text, "lesson repair")
             repaired = apply_lesson_generation_repair_patches(candidate, targets, payload)
         except WorkflowFailure as error:
             logger.warning(

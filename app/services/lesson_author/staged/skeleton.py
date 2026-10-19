@@ -2,13 +2,11 @@
 
 from __future__ import annotations
 
-import json
 import re
 from typing import Any
 
 from app.component_capabilities import validate_instance_plan
 from app.content.source_structure import strip_source_range_suffix
-from app.core.errors import ServiceError
 from app.instructional_density import INSTRUCTIONAL_DENSITY_POLICY_VERSION
 from app.schemas.lesson_author import RagLessonAuthorProposalBase
 from app.services.lesson_author.architecture_shape import (
@@ -24,21 +22,6 @@ from app.services.lesson_author.staged.plan import (
     ensure_staged_chapter_component_diversity,
     normalize_staged_component_type,
 )
-
-
-def parse_lesson_author_json_value(text: str, label: str) -> Any:
-    """Parse the first complete JSON value without accepting trailing prose."""
-    decoder = json.JSONDecoder()
-    for index, character in enumerate(text):
-        if character not in "[{":
-            continue
-        try:
-            value, _end = decoder.raw_decode(text[index:])
-        except json.JSONDecodeError:
-            continue
-        if isinstance(value, (dict, list)):
-            return value
-    raise ServiceError(status_code=502, detail=f"AI không trả JSON {label} hợp lệ.")
 
 
 def should_stage_lesson_author_proposal(

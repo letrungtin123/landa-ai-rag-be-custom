@@ -4,39 +4,13 @@ The combined component schema's value bounds cause a provider rejection in the
 synthetic UAT reproduction. Keep types/required/enum/nullable/object structure on
 the wire, and enforce value bounds locally. Do not use this for Course Architect.
 """
-from collections import Counter
-from copy import deepcopy
 from typing import Any
 
 from pydantic import BaseModel
 
+from app.contracts.schema_projection import STAGED_WIRE, project_provider_schema, provider_wire_model
+
 STAGED_SCHEMA_PROJECTION_VERSION = "staged-wire-shape-1"
-VALUE_BOUNDS = frozenset({"minItems", "maxItems", "minLength", "maxLength", "minimum", "maximum"})
-
-
-def _project_schema(schema: dict[str, Any]) -> tuple[dict[str, Any], dict[str, int]]:
-    result = deepcopy(schema)
-    removed: Counter[str] = Counter()
-
-    def visit(node: dict[str, Any]) -> None:
-        for key in VALUE_BOUNDS:
-            if key in node:
-                removed[key] += 1
-                del node[key]
-        # Walk schema nodes, never property names or examples/default values.
-        for key in ("properties", "$defs"):
-            for child in node.get(key, {}).values():
-                if isinstance(child, dict):
-                    visit(child)
-        if isinstance(node.get("items"), dict):
-            visit(node["items"])
-        for key in ("anyOf", "allOf", "oneOf"):
-            for child in node.get(key, []):
-                if isinstance(child, dict):
-                    visit(child)
-
-    visit(result)
-    return result, dict(sorted(removed.items()))
 
 
 def staged_provider_response_model(server_model: type[BaseModel]) -> tuple[type[BaseModel], dict[str, Any]]:
@@ -46,20 +20,9 @@ def staged_provider_response_model(server_model: type[BaseModel]) -> tuple[type[
     branch. Invalid content still proceeds to the existing bounded local repair
     or fail-closed path; no validation result is converted to success here.
     """
-    _, removed = _project_schema(server_model.model_json_schema())
-
-    class StagedProviderWire(server_model):
-        @classmethod
-        def model_json_schema(cls, *args: Any, **kwargs: Any) -> dict[str, Any]:
-            projected = _project_schema(super().model_json_schema(*args, **kwargs))[0]
-            # Dynamic subclasses have a different root title under newer
-            # Pydantic versions. Keep the server model title so the provider
-            # projection changes only unsupported value bounds.
-            if "title" in projected:
-                projected["title"] = server_model.__name__
-            return projected
-
-    return StagedProviderWire, {
+    _, removed = project_provider_schema(server_model.model_json_schema(), STAGED_WIRE)
+    wire = provider_wire_model(server_model, STAGED_WIRE, name="StagedProviderWire")
+    return wire, {
         "schema_projection_version": STAGED_SCHEMA_PROJECTION_VERSION,
         "server_validation_unchanged": True,
         "projected_declared_bound_counts": removed,

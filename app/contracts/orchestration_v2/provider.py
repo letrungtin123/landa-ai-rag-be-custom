@@ -3,7 +3,6 @@ from __future__ import annotations
 import json
 import re
 from collections import Counter
-from copy import deepcopy
 from typing import Any, Literal, cast
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
@@ -34,6 +33,7 @@ from app.contracts.orchestration_v2.blueprint import (
     UnitArchitectureV2,
     canonical_hash,
 )
+from app.contracts.schema_projection import ORCHESTRATION_V2_WIRE, project_provider_schema, provider_wire_model
 from app.prompt_safety import UNTRUSTED_JSON_CONTEXT_RULE
 from app.content.source_evidence_bundle import (
     build_degraded_source_evidence_bundle,
@@ -47,74 +47,6 @@ MAX_V3_ARCHITECTURE_SHARD_SOURCE_CHARS = 60_000
 MAX_UNIT_SOURCE_FACTS = 32_768
 COMPONENT_PLAN_ID_PATTERN = r"^cp2_[a-f0-9]{32}$"
 ORCHESTRATION_V2_PROVIDER_SCHEMA_PROJECTION_VERSION = "orchestration-v2-google-wire-2"
-ORCHESTRATION_V2_PROVIDER_UNSUPPORTED_BOUNDS = frozenset({
-    "minItems",
-    "maxItems",
-    "minLength",
-    "maxLength",
-    "minimum",
-    "maximum",
-})
-
-
-def _project_orchestration_v2_provider_schema(
-    schema: dict[str, Any],
-) -> tuple[dict[str, Any], dict[str, int]]:
-    """Build the SDK wire schema without weakening server validation.
-
-    Google structured output accepts only a documented JSON Schema subset.
-    Pydantic's strict server models emit ``additionalProperties`` plus value
-    bounds which have already been observed to trigger provider-side
-    ``INVALID_ARGUMENT`` responses for this contract. Remove those keywords
-    from the provider wire only. The authoritative Pydantic models remain
-    unchanged and enforce every bound after generation.
-    """
-
-    result = deepcopy(schema)
-    definitions = result.get("$defs", {})
-    removed: Counter[str] = Counter()
-
-    def visit(node: dict[str, Any]) -> None:
-        if "additionalProperties" in node:
-            removed["additionalProperties"] += 1
-            del node["additionalProperties"]
-        for keyword in ORCHESTRATION_V2_PROVIDER_UNSUPPORTED_BOUNDS:
-            if keyword in node:
-                removed[keyword] += 1
-                del node[keyword]
-        # Keep nullable nested objects explicit on the provider wire. Pydantic
-        # emits ``anyOf([$ref, null])`` for this shape; inlining only that exact
-        # reference avoids SDK/version-specific conversion differences while
-        # preserving the authoritative local model and nullable semantics.
-        any_of = node.get("anyOf")
-        if isinstance(any_of, list) and len(any_of) == 2:
-            null_members = [item for item in any_of if isinstance(item, dict) and item.get("type") == "null"]
-            value_members = [item for item in any_of if item not in null_members]
-            if len(null_members) == 1 and len(value_members) == 1 and isinstance(value_members[0], dict):
-                ref = value_members[0].get("$ref")
-                prefix = "#/$defs/"
-                target = definitions.get(ref[len(prefix):]) if isinstance(ref, str) and ref.startswith(prefix) else None
-                if isinstance(target, dict):
-                    siblings = {key: value for key, value in node.items() if key != "anyOf"}
-                    node.clear()
-                    node.update(deepcopy(target))
-                    node.update(siblings)
-                    node["nullable"] = True
-                    removed["nullableRefAnyOf"] += 1
-        # Walk schema values, never property names or arbitrary examples.
-        for key in ("properties", "$defs", "definitions"):
-            for child in node.get(key, {}).values():
-                if isinstance(child, dict):
-                    visit(child)
-        if isinstance(node.get("items"), dict):
-            visit(node["items"])
-        for key in ("anyOf", "allOf", "oneOf", "prefixItems"):
-            for child in node.get(key, []):
-                if isinstance(child, dict):
-                    visit(child)
-
-    visit(result)
-    return result, dict(sorted(removed.items()))
 
 
 def orchestration_v2_provider_response_model(
@@ -122,23 +54,9 @@ def orchestration_v2_provider_response_model(
 ) -> tuple[type[BaseModel], dict[str, Any]]:
     """Return a provider-only schema projection backed by strict validation."""
 
-    _, removed = _project_orchestration_v2_provider_schema(server_model.model_json_schema())
-
-    class OrchestrationV2ProviderWire(server_model):  # type: ignore[misc,valid-type]  # dynamic base class
-        @classmethod
-        def model_json_schema(cls, *args: Any, **kwargs: Any) -> dict[str, Any]:
-            projected = _project_orchestration_v2_provider_schema(
-                super().model_json_schema(*args, **kwargs),
-            )[0]
-            # A dynamic subclass changes Pydantic's root title. Keep the
-            # server model title so projection metadata is the only wire delta.
-            if "title" in projected:
-                projected["title"] = server_model.__name__
-            return projected
-
-    OrchestrationV2ProviderWire.__name__ = f"{server_model.__name__}ProviderWire"
-    OrchestrationV2ProviderWire.__qualname__ = OrchestrationV2ProviderWire.__name__
-    return OrchestrationV2ProviderWire, {
+    _, removed = project_provider_schema(server_model.model_json_schema(), ORCHESTRATION_V2_WIRE)
+    wire = provider_wire_model(server_model, ORCHESTRATION_V2_WIRE, name=f"{server_model.__name__}ProviderWire")
+    return wire, {
         "schema_projection_version": ORCHESTRATION_V2_PROVIDER_SCHEMA_PROJECTION_VERSION,
         "server_validation_unchanged": True,
         "projected_unsupported_keyword_counts": removed,

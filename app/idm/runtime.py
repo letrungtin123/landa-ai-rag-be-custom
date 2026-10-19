@@ -20,11 +20,11 @@ from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass, field
-from typing import Any, Final, Literal, Protocol
+from typing import Any, Final, Literal, Protocol, cast
 
 from pydantic import BaseModel, ValidationError
 
-from app.contracts.orchestration_v2.provider import _project_orchestration_v2_provider_schema
+from app.contracts.schema_projection import ORCHESTRATION_V2_WIRE, provider_wire_model
 from app.core.logging import log_event
 from app.idm.coerce import coerce_provider_answer
 from app.idm.policy import (
@@ -219,21 +219,12 @@ def idm_provider_response_model[ModelT: BaseModel](server_model: type[ModelT]) -
             for value in node:
                 strip_patterns(value)
 
-    class IdmProviderWire(server_model):  # type: ignore[valid-type,misc]
-        @classmethod
-        def model_json_schema(cls, *args: Any, **kwargs: Any) -> dict[str, Any]:
-            projected = _project_orchestration_v2_provider_schema(super().model_json_schema(*args, **kwargs))[0]
-            strip_patterns(projected)
-            if "title" in projected:
-                projected["title"] = server_model.__name__
-            return projected
-
-    IdmProviderWire.__name__ = f"{server_model.__name__}IdmWire"
-    IdmProviderWire.__qualname__ = IdmProviderWire.__name__
+    wire = provider_wire_model(server_model, ORCHESTRATION_V2_WIRE, name=f"{server_model.__name__}IdmWire",
+                               finish=strip_patterns)
     if cacheable:
         # Per-request writer/repair models are created fresh; caching them would leak.
-        _WIRE_CACHE[server_model] = IdmProviderWire
-    return IdmProviderWire
+        _WIRE_CACHE[server_model] = wire
+    return cast("type[ModelT]", wire)
 
 
 def estimate_prompt_tokens(prompt: str) -> int:

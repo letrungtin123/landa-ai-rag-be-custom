@@ -14,6 +14,7 @@ from pydantic import BaseModel
 
 from app.content.learner_content_purity import build_learner_content_purity_context
 from app.content.ordered_learning_content import ProviderSemanticVersionError, bind_provider_semantic_versions
+from app.content.provider_json import parse_first_provider_json_value
 from app.core.errors import ServiceError
 from app.core.handled_exceptions import report_handled_exception
 from app.core.logging import SERVICE_LOGGER_NAME
@@ -46,7 +47,6 @@ from app.services.lesson_author.staged.skeleton import (
     _apply_blueprint_architecture_to_skeleton,
     extract_lesson_author_unit_batches,
     match_staged_unit_by_title,
-    parse_lesson_author_json_value,
     staged_unit_candidates,
     staged_unit_match_diagnostics,
     validate_staged_skeleton_source_facts,
@@ -413,7 +413,7 @@ async def generate_staged_lesson_author_proposal(
         return content_text, content_usage
 
     def parse_and_validate_skeleton(value: str, label: str) -> tuple[dict[str, Any], list[list[dict[str, Any]]]]:
-        parsed = parse_lesson_author_json_value(value, label)
+        parsed = parse_first_provider_json_value(value, label)
         normalized = normalize_lesson_author_proposal_tree(
             parsed if isinstance(parsed, dict) else {},
         )
@@ -645,7 +645,7 @@ async def generate_staged_lesson_author_proposal(
         )
         total_usage = combine_usage(total_usage, content_usage)
         try:
-            parsed = bind_provider_semantic_versions(parse_lesson_author_json_value(content_text, f"content batch {batch_index}"))
+            parsed = bind_provider_semantic_versions(parse_first_provider_json_value(content_text, f"content batch {batch_index}"))
         except ProviderSemanticVersionError as error:
             raise WorkflowFailure("LESSON_VALIDATION_FAILED", "Invalid staged HTML format.",
                                   internal_code=str(error), failure_stage="staged_content_validation") from None
@@ -820,7 +820,7 @@ async def generate_staged_lesson_author_proposal(
                     total_usage = combine_usage(total_usage, recovery_usage)
                     recovery_value = bind_provider_semantic_versions(decode_staged_multi_repair(
                         recovery_text, repair_baseline, repair_targets, coverage_targets, recovery_slot_diagnostics,
-                    ) if multi_repair_slots else parse_lesson_author_json_value(
+                    ) if multi_repair_slots else parse_first_provider_json_value(
                         recovery_text,
                         f"content unit recovery {batch_index}",
                     ))

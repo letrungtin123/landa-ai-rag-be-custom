@@ -8,25 +8,8 @@ from typing import Any
 
 from app.content.ordered_learning_content import flatten_ordered_content
 from app.content.source_structure import strip_source_range_suffix
-from app.core.errors import ServiceError
 from app.services.lesson_author.errors import LessonAuthorProposalValidationError
 from app.workflows.contracts import WorkflowFailure
-
-
-def parse_lesson_author_json(text: str, label: str) -> dict[str, Any]:
-    try:
-        parsed = json.loads(text)
-    except json.JSONDecodeError:
-        match = re.search(r"\{.*\}", text, flags=re.DOTALL)
-        if not match:
-            raise ServiceError(status_code=502, detail=f"AI không trả JSON {label} hợp lệ.")
-        try:
-            parsed = json.loads(match.group(0))
-        except json.JSONDecodeError as exc:
-            raise ServiceError(status_code=502, detail=f"AI không trả JSON {label} hợp lệ.") from exc
-    if not isinstance(parsed, dict):
-        raise ServiceError(status_code=502, detail=f"AI không trả JSON {label} dạng object hợp lệ.")
-    return parsed
 
 
 def parse_course_architecture_repair_payload(text: str) -> dict[str, Any]:
