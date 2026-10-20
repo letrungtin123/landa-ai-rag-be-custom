@@ -27,6 +27,7 @@ from app.idm.contracts import (
     Treatment,
 )
 from app.idm.fidelity import TREATMENT_POLICY_CODE, enforce_treatments, purpose_mode, w2_treatment_rules
+from app.idm.org_context import design_block
 from app.idm.policy import IDM_W2_MAX_OUTPUT_TOKENS, IDM_W2_SINGLE_CALL_MAX_BLOCKS, THINKING_W2
 from app.idm.prompts import COMPACT_W2, answer_repair, repair_suffix, w2_blueprint_prompt
 from app.idm.purpose import (
@@ -448,6 +449,7 @@ async def run_w2(
             must_dos=[item.model_dump(mode="json") for item in must_dos],
             catalog=blueprint_catalog(batch, [link for link in links if link.block_id in batch_ids]),
             purpose_rules=rules, background_rule=background, treatment_rules=w2_treatment_rules(mode),
+            organization_context=design_block(context.organization_context),
         )
         accepted: list[IdmBlueprintRowV1] | None = None
         repair = ""

@@ -44,6 +44,7 @@ from app.idm.module_design_salvage import (
     _salvage,
 )
 from app.idm.module_layout import build_module_scope, fallback_lesson, project_shard
+from app.idm.org_context import design_block
 from app.idm.policy import (
     IDM_MODULE_CONTENT_ATTEMPTS,
     IDM_MODULE_MAX_OUTPUT_TOKENS,
@@ -101,11 +102,8 @@ async def run_idm_module_design(
         },
         lesson_plans=[lesson.model_dump(mode="json") for lesson in scope.lesson_plans],
         audience=context.target_audience.description,
-        objectives=[
-            item.model_dump(mode="json")
-            for item in context.learning_objectives
-            if item.lo_id in set(context.module.lo_ids)
-        ]
+        objectives=[item.model_dump(mode="json") for item in context.learning_objectives
+                    if item.lo_id in set(context.module.lo_ids)]
         or [item.model_dump(mode="json") for item in context.learning_objectives],
         must_dos=[item.model_dump(mode="json") for item in context.must_dos if item.must_do_id in lesson_md],
         course_blocks=_course_blocks_payload(scope),
@@ -115,6 +113,7 @@ async def run_idm_module_design(
         # QLT-5: the design's purpose keeps the lessons on what the course is for (none for a contract-1 design).
         purpose_rules=module_purpose_rules(context.purpose), course_purpose=purpose_brief(context.purpose),
         fidelity_rules=module_fidelity_rules(mode, scope.locale),
+        organization_context=design_block(context.project_context.organization_context),
     )
     accepted: dict[str, IdmLessonDesignV1] = {}
     seen_practices: dict[str, list[IdmPracticeTaskV1]] = {}

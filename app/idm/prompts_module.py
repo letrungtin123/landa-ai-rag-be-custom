@@ -31,10 +31,12 @@ def module_prompt(
     purpose_rules: str = "",
     course_purpose: dict[str, Any] | None = None,
     fidelity_rules: str = "",
+    organization_context: str = "",
 ) -> str:
     """``purpose_rules``: ``app.idm.purpose.module_purpose_rules`` (empty for profiles that keep the general
     rules); ``course_purpose``: the design's purpose as plan data; ``fidelity_rules``:
-    ``app.idm.fidelity.module_fidelity_rules`` (empty unless the content mode is explain)."""
+    ``app.idm.fidelity.module_fidelity_rules`` (empty unless the content mode is explain); ``organization_context``:
+    ``app.idm.org_context.design_block`` (empty without an organization context)."""
 
     scenario_clause = (
         "; a multi-turn conversation where each reply changes the outcome -> la_scenario_chat" if scenario_chat else ""
@@ -45,7 +47,7 @@ def module_prompt(
     return preamble(locale) + f"""
 TASK: For ONE module, design each listed lesson (Week 3 Instructional Treatment + Week 4 lesson layout).
 Return the lessons in exactly the order and with exactly the lesson_key values of LESSONS.
-{purpose_rules}{fidelity_rules}For each lesson:
+{purpose_rules}{fidelity_rules}{organization_context}For each lesson:
 1. PRACTICE FIRST. Write 1-3 practice tasks as one sentence
    "Cho [bối cảnh/đầu vào], người học [hành động] để [kết quả/quyết định]"
    ("Given [context/input], the learner [action] to produce/decide [result]"), plus context_input,

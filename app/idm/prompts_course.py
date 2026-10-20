@@ -83,13 +83,14 @@ SECTION={section_id}
 
 
 def w1_reduce_prompt(locale: Locale, *, project_context: dict[str, Any], catalog: list[dict[str, Any]],
-                     purpose_step: str = "") -> str:
-    """``purpose_step`` (``app.idm.purpose.w1_purpose_step``): the author intent block and the purpose profiles."""
+                     purpose_step: str = "", organization_context: str = "") -> str:
+    """``purpose_step`` (``app.idm.purpose.w1_purpose_step``): the author intent block and the purpose profiles;
+    ``organization_context``: ``app.idm.org_context.design_block`` (empty without an organization context)."""
 
     return preamble(locale) + f"""
 TASK: Consolidate the section Content Maps into ONE course-level SME Content Map, decide the course purpose, then
 propose the learning objectives and the Must Do list for that purpose.
-{purpose_step}
+{purpose_step}{organization_context}
 1. Merge duplicate blocks across sections (same purpose): keep one block_id, list the merged ids, give a reason.
    Flag cross-section conflicts (blocks that give different instructions) with a specific SME question.
 2. Target audience: if PROJECT_CONTEXT.target_audience is null, propose one that fits the course purpose (role,
@@ -129,16 +130,18 @@ def w2_blueprint_prompt(
     purpose_rules: str = "",
     background_rule: str = DEFAULT_BACKGROUND_RULE,
     treatment_rules: str = "",
+    organization_context: str = "",
 ) -> str:
     """``purpose_rules``/``background_rule``: ``app.idm.purpose.w2_purpose_rules`` (the author intent and what the
     course purpose keeps); the defaults are the job-performance rules of the general profile. ``treatment_rules``:
-    ``app.idm.fidelity.w2_treatment_rules`` (every treatment defined, then the content mode; default structured)."""
+    ``app.idm.fidelity.w2_treatment_rules`` (every treatment defined, then the content mode; default structured).
+    ``organization_context``: ``app.idm.org_context.design_block`` (empty without an organization context)."""
 
     treatments = treatment_rules or w2_treatment_rules(DEFAULT_MODE)
 
     return preamble(locale) + f"""
 TASK: Week 2 - decide, for EVERY block in BLOCK_CATALOG, what happens to it. Return exactly one row per block.
-{purpose_rules}Decision flow (apply in order):
+{purpose_rules}{organization_context}Decision flow (apply in order):
   a. Does the block serve an objective or a Must Do? No -> nice_to_know (useful but not needed) or remove
      (unrelated, outdated, duplicated, wrong audience, too specialised).
   b. Must the learner REMEMBER it to perform the Must Do correctly? No -> reference with treatment
@@ -185,13 +188,16 @@ def w4_course_prompt(
     course_purpose: dict[str, Any] | None = None,
     titles: str = DEFAULT_TITLE_RULE,
     summary: str = DEFAULT_SUMMARY_RULE,
+    organization_context: str = "",
 ) -> str:
     """``purpose_rules``, ``titles`` and ``summary`` come from ``app.idm.purpose`` (server-owned); ``course_purpose``
-    is plan data (profile and the W1-reduce summary)."""
+    is plan data (profile and the W1-reduce summary); ``organization_context``: ``app.idm.org_context.design_block``
+    (empty without an organization context)."""
 
+    rules = purpose_rules + organization_context
     return preamble(locale) + f"""
 TASK: Week 4 (course level) - group Must Dos into Modules and Lessons and order them.
-{purpose_rules}- Module = lessons serving one larger performance. Lesson = helps the learner do ONE main Must Do; a
+{rules}- Module = lessons serving one larger performance. Lesson = helps the learner do ONE main Must Do; a
   closely related second Must Do may share the lesson only when it uses the same practice and the same support at
   the same moment. One objective may need several lessons. Each lesson lists the course blocks it uses; every course
   block and every reference block belongs to exactly one lesson; the content_chars of one lesson's blocks add up

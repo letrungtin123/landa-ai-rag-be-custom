@@ -26,6 +26,7 @@ from app.idm.contracts import (
     IdmW1ReduceResponseV1,
     IdmW1SectionResponseV1,
 )
+from app.idm.org_context import design_block
 from app.idm.policy import (
     BROAD_SME_QUESTION_PATTERN,
     IDM_BLOCK_TOO_SMALL_CHARS,
@@ -681,7 +682,8 @@ async def run_w1_reduce(
 ) -> tuple[IdmW1ReduceResponseV1, StageOriginLiteral, dict[str, int]]:
     prompt = w1_reduce_prompt(runtime.locale, project_context=prompt_project_context(context),
                               catalog=reduce_catalog(blocks, index.text if index is not None else None),
-                              purpose_step=w1_purpose_step(context))
+                              purpose_step=w1_purpose_step(context),
+                              organization_context=design_block(context.organization_context))
     action_blocks = {block.block_id for block in blocks if index is not None and action_items(block, index.text)}
     codes: Counter[str] = Counter()
     repair = ""

@@ -48,7 +48,7 @@ class Allowance(NamedTuple):
 # when it shrinks) and when it fits the limit again (remove the entry). New code never gets an entry.
 FILE_SIZE_ALLOWLIST: dict[str, Allowance] = {}
 FUNCTION_SIZE_ALLOWLIST: dict[str, Allowance] = {
-    "idm/module_design.py::run_idm_module_design": Allowance(214, "W3/W4 call, repair loop, salvage and assembly",
+    "idm/module_design.py::run_idm_module_design": Allowance(212, "W3/W4 call, repair loop, salvage and assembly",
                                                              "wave 2 (2.5)"),
     "idm/qa.py::build_unit_author_note": Allowance(132, "every author-note line of a unit in one builder",
                                                    "wave 2 (2.5)"),

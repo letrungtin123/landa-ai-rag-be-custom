@@ -20,7 +20,10 @@ def judge_prompt(
     plan_summary: dict[str, Any],
     facts: Iterable[tuple[str, str, Sequence[str] | None]],
     unit_content: list[dict[str, Any]],
+    organization_context: str = "",
 ) -> str:
+    """``organization_context``: ``app.idm.org_context.judge_block`` (empty without an organization context)."""
+
     return preamble(locale) + f"""
 TASK: Review ONE generated unit against its approved plan as a senior instructional-design reviewer. Do not
 rewrite content. For each criterion return pass | minor | major | critical (or not_applicable, only as allowed
@@ -70,7 +73,7 @@ another unit of the lesson is never a finding here.
 Return one finding per criterion (Q1-Q13). verdict = pass (no major/critical) | review_required (any major) |
 reject (any critical); not_applicable never counts.
 
-{untrusted_block("PLAN_CONTEXT", "PLAN=" + _json(plan_summary))}
+{organization_context}{untrusted_block("PLAN_CONTEXT", "PLAN=" + _json(plan_summary))}
 {untrusted_block("SOURCE_FACTS", learner_fact_lines(facts))}
 {untrusted_block("UNIT_CONTENT", _json(unit_content))}
 """

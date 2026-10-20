@@ -295,5 +295,78 @@
    "sha256": "0fe5772a9f547efa54d37a93baa1cb15266b3ca28fdb5881845d458f0d58e5c7",
    "chars": 16454
   }
+ },
+ "organization_context": {
+  "course_design": [
+   {
+    "schema": "IdmW1ReduceResponseV1",
+    "sha256": "7d7d3d47321e8030e2eed9891752d39b9d2f751afb3b5c53ac466d08e73843f9",
+    "chars": 15744
+   },
+   {
+    "schema": "IdmW1SectionResponseV1",
+    "sha256": "41e3daa0c37645ede54c66338c3c31accca26ca158d6f50a607f10465f7abe97",
+    "chars": 10916
+   },
+   {
+    "schema": "IdmW2BlueprintResponseV1",
+    "sha256": "7856c57e94634124c5633080b08ed7923681277f361264a062db93f898b05206",
+    "chars": 14821
+   },
+   {
+    "schema": "IdmW4CourseResponseV1",
+    "sha256": "46911dc4023a381fd32ab9416a4c2948e712ed9dbb06df28ad3691af24e7f8c2",
+    "chars": 12597
+   }
+  ],
+  "modules": {
+   "mod_01": [
+    {
+     "schema": "IdmW3W4ModuleResponseV1",
+     "sha256": "c2b3b69eff0775854cf28ce0bb617a30ede6e55a587c18dd411fb7ebf94ce4b0",
+     "chars": 16537
+    }
+   ],
+   "mod_02": [
+    {
+     "schema": "IdmW3W4ModuleResponseV1",
+     "sha256": "c30e0ecd31e1b47f83dc1d15c540a0846c392622eae5b6577e6cfaf2fe1b2a12",
+     "chars": 15652
+    }
+   ],
+   "mod_03": [
+    {
+     "schema": "IdmW3W4ModuleResponseV1",
+     "sha256": "a4bdf98e5e2da4be2897847facb14b13731ceea84a67908d069fc4e1f2053243",
+     "chars": 17328
+    }
+   ]
+  },
+  "units": {
+   "escalate": [
+    {
+     "schema": "StagedInstancePayloadUnitIdmWire",
+     "sha256": "dc45226352cb97f6006b1cf2fa558d5dbc63a138aea7b5faaef5d16b682d1d41",
+     "chars": 18008
+    },
+    {
+     "schema": "IdmJudgeResponseV1IdmWire",
+     "sha256": "14e04f6ac60dcf23ee108af78ae73bb60b29fbb4e6bf12c92e033e6de8478bf6",
+     "chars": 10324
+    }
+   ],
+   "severity": [
+    {
+     "schema": "StagedInstancePayloadUnitIdmWire",
+     "sha256": "47b55b28b655906a917729c64e0a6ff814094ee4e340da859e0782dd6a65b733",
+     "chars": 15865
+    },
+    {
+     "schema": "IdmJudgeResponseV1IdmWire",
+     "sha256": "6c149bee75fabf65a0e879ceb6b1504c30bdd6c0b2e9db253918746b4ee432f0",
+     "chars": 9832
+    }
+   ]
+  }
  }
 }

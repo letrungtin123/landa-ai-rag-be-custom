@@ -29,6 +29,14 @@ from app.idm.prompts_common import (
 )
 from app.prompt_safety import untrusted_block
 
+_PURPOSE_LINE: Final = ("- Keep the unit on COURSE_PURPOSE (what the course is for and for whom): choose the wording, "
+                        "emphasis and examples that serve it; it never adds facts.\n")
+
+
+def _opening_line(example_opening: str) -> str:
+    return (f'; in this unit the first drafted example or case opens with "{example_opening}" (still about the '
+            "learner's own role)" if example_opening else "")
+
 
 def unit_writer_prompt(
     locale: Locale,
@@ -48,16 +56,16 @@ def unit_writer_prompt(
     fidelity_rules: str = "",
     faq_rules: str = "",
     example_opening: str = "",
+    organization_context: str = "",
 ) -> str:
     """``fidelity_rules``: ``app.idm.fidelity.writer_fidelity_rules`` (the content mode; default structured);
     ``faq_rules``: ``app.idm.faq_checks.faq_writer_rules`` for a unit with an la_faq slot (QLT-5 D), else empty;
-    ``example_opening`` (QLT-9): how this unit opens its first drafted example or case (``example_opening``)."""
+    ``example_opening`` (QLT-9): how this unit opens its first drafted example or case (``example_opening``);
+    ``organization_context``: ``app.idm.org_context.writer_block`` (empty without an organization context)."""
 
     content_mode = fidelity_rules or writer_fidelity_rules(DEFAULT_MODE, locale)
-    opening_line = (f'; in this unit the first drafted example or case opens with "{example_opening}" (still about the '
-                    "learner's own role)" if example_opening else "")
-    purpose_line = ("- Keep the unit on COURSE_PURPOSE (what the course is for and for whom): choose the wording, "
-                    "emphasis and examples that serve it; it never adds facts.\n" if course_purpose else "")
+    opening_line = _opening_line(example_opening)
+    purpose_line = _PURPOSE_LINE if course_purpose else ""
     return preamble(locale) + f"""
 TASK: Week 5 - write the development-ready storyboard content for ONE unit. The plan is approved; do not
 redesign it. Produce exactly the component slots in UNIT_BRIEF (c0, c1, ...), in order, as payloads matching the
@@ -140,7 +148,7 @@ Writing rules (learner-facing, {locale_name(locale)}):
 - covered_source_fact_ids: list exactly the owned fact keys given for that slot.
 - title of each slot: a short learner-facing title; selection_rationale: one sentence for the author.
 
-{untrusted_block("PLAN_CONTEXT", chr(10).join([
+{organization_context}{untrusted_block("PLAN_CONTEXT", chr(10).join([
     "COURSE=" + _json(course_title),
     *(["COURSE_PURPOSE=" + _json(course_purpose)] if course_purpose else []),
     "TARGET_AUDIENCE=" + _json(audience),

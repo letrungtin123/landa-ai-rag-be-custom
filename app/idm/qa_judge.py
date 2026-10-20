@@ -138,11 +138,13 @@ async def run_judge(
     unit: dict[str, Any],
     practice_slot: bool = True,
     faq_slot: bool = True,
+    organization_context: str = "",
 ) -> JudgeOutcome:
     """One bounded judge call; never raises for provider/budget/response problems.
 
     ``practice_slot`` is False for a unit without a practice or question slot: its practice criteria
     are not applicable (QC course 364564, N7); ``faq_slot`` is False for a unit without an la_faq slot (Q13).
+    ``organization_context``: ``app.idm.org_context.judge_block`` (empty without an organization context).
     """
 
     if mode == "off":
@@ -150,7 +152,8 @@ async def run_judge(
     if runtime.remaining_seconds() < IDM_JUDGE_MIN_REMAINING_SECONDS:
         return JudgeOutcome("skipped_budget")
     prompt = judge_prompt(runtime.locale, plan_summary=plan_summary,
-                          facts=[(key, text, None) for key, text in facts], unit_content=learner_view(unit))
+                          facts=[(key, text, None) for key, text in facts], unit_content=learner_view(unit),
+                          organization_context=organization_context)
     try:
         response = await idm_call(runtime, stage="idm_w6_judge", prompt=prompt, response_model=IdmJudgeResponseV1,
                                   max_output_tokens=IDM_JUDGE_MAX_OUTPUT_TOKENS, thinking_level=THINKING_W6,

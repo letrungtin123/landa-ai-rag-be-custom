@@ -41,6 +41,7 @@ from app.idm.notes import (
     build_lesson_notes,
     build_module_notes,
 )
+from app.idm.org_context import design_block
 from app.idm.policy import (
     IDM_CONTRACT_VERSION,
     IDM_DURATION_OVER_TARGET_RATIO,
@@ -391,6 +392,7 @@ async def run_w4(
         blocked_must_dos=list(blocked), duration_target_minutes=context.duration_target_minutes,
         purpose_rules=w4_purpose_rules(context, purpose), course_purpose=purpose_brief(purpose),
         titles=title_rule(purpose), summary=summary_rule(purpose),
+        organization_context=design_block(context.organization_context),
     )
     codes: Counter[str] = Counter()
     repair = ""

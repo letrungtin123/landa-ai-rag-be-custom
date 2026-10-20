@@ -20,7 +20,7 @@ from typing import Final, Literal
 
 from app.idm.author_brief import (
     BRIEF_AUDIENCE_STEP,
-    BRIEF_CONTEXT_KEYS,
+    NON_PLAN_CONTEXT_KEYS,
     author_brief,
     author_intent_block,
     author_purpose_summary,
@@ -543,7 +543,7 @@ def prompt_project_context(context: IdmProjectContextV1) -> dict[str, object]:
     document data."""
 
     return {key: value for key, value in context.model_dump(mode="json").items()
-            if key not in {"course_title_hint", "course_description", *BRIEF_CONTEXT_KEYS}}
+            if key not in {"course_title_hint", "course_description", *NON_PLAN_CONTEXT_KEYS}}
 
 
 def _profile_lines(spec: PurposeSpec) -> str:

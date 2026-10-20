@@ -5,7 +5,8 @@
 * every prompt the golden flows send to the provider: the course design (W1 map per section, W1 reduce, W2, W4),
   the module design of every chapter, and units through ``/unit`` (writer + judge, the writer's repair prompts
   after malformed answers, a writer failure);
-* every public builder of ``app.idm.prompts`` called directly with golden inputs (both locales).
+* every public builder of ``app.idm.prompts`` called directly with golden inputs (both locales);
+* ``organization_context`` (ORG_CONTEXT spec §4): the same flows for a run with an organization context.
 
 It was recorded before ``app/idm/prompts.py`` was split by stage, so a split that moves code without changing any
 character keeps this test green. Re-record only after a deliberate prompt change, together with the reviewed
@@ -32,12 +33,14 @@ from app import main
 from app.api import deps as api_deps
 from app.core.config import settings
 from app.idm import prompts
+from app.idm.contracts import IdmModuleContextV1, brief_hash_of
 from app.idm.course_design import run_idm_course_design
 from app.idm.html_rules import DENSITY_CODE, HtmlRuleViolation
 from app.idm.module_design import run_idm_module_design
 from tests import idm_golden as g
 from tests.golden import idm_golden_module as gm
-from tests.support.idm_test_support import ALLOWANCE, golden_design, make_runtime
+from tests.support.idm_test_support import ALLOWANCE, golden_design, make_runtime, rehash_contract
+from tests.support.org_context_support import org_context
 from tests.unit.idm.test_idm_storyboard import (
     JUDGE,
     WRITER,
@@ -65,12 +68,12 @@ def provider_prompts(calls: list[dict[str, Any]], schema_key: str) -> list[dict[
                   key=lambda item: (item["schema"], item["sha256"]))
 
 
-def course_design_prompts() -> list[dict[str, Any]]:
+def course_design_prompts(project_context: dict[str, Any] | None = None) -> list[dict[str, Any]]:
     from app.idm.contracts import IdmCourseSkeletonRequestV1  # noqa: PLC0415  # test-local import
 
     provider = g.golden_provider()
     request = IdmCourseSkeletonRequestV1.model_validate({
-        "pipeline_version": "idm-1", "project_context": g.project_context(),
+        "pipeline_version": "idm-1", "project_context": project_context or g.project_context(),
         "source_facts": [fact.model_dump() for fact in g.source_facts()],
         "token_allowance": {"input_tokens": ALLOWANCE[0], "output_tokens": ALLOWANCE[1]},
         "remaining_budget_ms": 500_000,
@@ -80,11 +83,14 @@ def course_design_prompts() -> list[dict[str, Any]]:
     return provider_prompts(provider.calls, "schema")
 
 
-def module_prompts() -> dict[str, list[dict[str, Any]]]:
+def module_prompts(organization_context: dict[str, Any] | None = None) -> dict[str, list[dict[str, Any]]]:
     design, skeleton = golden_design()
     out: dict[str, list[dict[str, Any]]] = {}
     for chapter_index, module in enumerate(design.modules):
         context, plan, facts = gm.module_context(design, skeleton, chapter_index, g.source_facts())
+        if organization_context is not None:
+            project = {**context.project_context.model_dump(mode="json"), "organization_context": organization_context}
+            context = IdmModuleContextV1.model_validate({**context.model_dump(mode="json"), "project_context": project})
         answer = copy.deepcopy(gm.MODULE_RESPONSES[module.module_key])
         provider = g.FakeIdmProvider({"IdmW3W4ModuleResponseV1": [answer]})
         asyncio.run(run_idm_module_design(context=context, skeleton=skeleton, plan=plan, facts=facts,
@@ -102,7 +108,15 @@ async def post_unit(body: dict[str, Any], provider: FakeGenerate) -> None:
         raise AssertionError(reply.text)
 
 
-def unit_prompts() -> dict[str, list[dict[str, Any]]]:
+def with_organization_context(body: dict[str, Any], wire: dict[str, Any]) -> dict[str, Any]:
+    brief = body["unit_contract"]["idm_unit_brief"]
+    brief["organization_context"] = wire
+    brief["brief_hash"] = brief_hash_of(brief)
+    rehash_contract(body["unit_contract"])
+    return body
+
+
+def unit_prompts(organization_context: dict[str, Any] | None = None) -> dict[str, list[dict[str, Any]]]:
     out: dict[str, list[dict[str, Any]]] = {}
     severity = severity_body()
     good = severity_writer(severity)
@@ -118,6 +132,9 @@ def unit_prompts() -> dict[str, list[dict[str, Any]]]:
                                      "c0": {**good["components"]["c0"], "semantic_content": None}}}] * 4,
             JUDGE: [judge()] * 2})),
     }
+    if organization_context is not None:
+        cases = {name: (with_organization_context(copy.deepcopy(body), organization_context), provider)
+                 for name, (body, provider) in cases.items() if name in {"escalate", "severity"}}
     main.app.dependency_overrides[api_deps.require_internal_token] = lambda: None
     try:
         for name, (body, provider) in cases.items():
@@ -168,12 +185,24 @@ def direct_builders() -> dict[str, dict[str, Any]]:
     return {name: fingerprint(text) for name, text in rendered.items()}
 
 
+def organization_context_prompts() -> dict[str, Any]:
+    """The golden flows of a run with an organization context (ORG_CONTEXT spec §4)."""
+
+    wire = org_context()
+    return {
+        "course_design": course_design_prompts({**g.project_context(), "organization_context": wire}),
+        "modules": module_prompts(wire),
+        "units": unit_prompts(wire),
+    }
+
+
 def render_all() -> dict[str, Any]:
     return {
         "course_design": course_design_prompts(),
         "modules": module_prompts(),
         "units": unit_prompts(),
         "builders": direct_builders(),
+        "organization_context": organization_context_prompts(),
     }
 
 
@@ -183,7 +212,7 @@ class IdmPromptOutputTests(unittest.TestCase):
         if os.environ.get(UPDATE_ENV) == "1":
             FIXTURE.write_text(json.dumps(current, ensure_ascii=False, indent=1) + "\n", encoding="utf-8", newline="\n")
         recorded = json.loads(FIXTURE.read_text(encoding="utf-8"))
-        for section in ("course_design", "modules", "units", "builders"):
+        for section in ("course_design", "modules", "units", "builders", "organization_context"):
             with self.subTest(section=section):
                 self.assertEqual(current[section], recorded[section])
 

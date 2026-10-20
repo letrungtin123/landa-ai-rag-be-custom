@@ -500,13 +500,17 @@ class FidelityChecker:
     known: KnownFacts
     # QLT-7: the roles of the course audience; a drafted example about a person of another level is a finding.
     roles: AudienceRoles = field(default_factory=lambda: AudienceRoles(frozenset(), ()))
+    # The word pairs whose numbering is a fact (``numbered_words``); None: every pair of ``known``. Terms of the
+    # organization context may be repeated, but a glossary "Cấp 1" never stops a slot from numbering its own list.
+    numbering: frozenset[tuple[str, str]] | None = None
 
     @classmethod
     def build(cls, brief: IdmUnitBriefV1, fact_text: Mapping[str, str], evidence: EvidenceIndex, *,
-              plan_texts: Iterable[str], locale: str) -> FidelityChecker:
+              plan_texts: Iterable[str], locale: str, background_texts: Iterable[str] = ()) -> FidelityChecker:
         """``fact_text``: the unit's source facts; ``evidence``: everything the writer was given; ``plan_texts``:
         the approved plan (titles, purpose, server-written support briefs), whose numbers and names may be
-        repeated."""
+        repeated; ``background_texts``: the organization context's terms (``app.idm.org_context.plan_terms``), plan
+        text too, except that their numbering is not the facts'."""
 
         teaching = frozenset(teaching_slots(brief))
         everything = list(fact_text.values())
@@ -518,9 +522,12 @@ class FidelityChecker:
             grams[index] = EvidenceGrams([fact_text[key] for key in keys] if keys else everything)
         keep_only = frozenset(index for index in teaching if brief.components[index].treatments
                               and {item.treatment for item in brief.components[index].treatments} == {"keep"})
+        plan, background = list(plan_texts), list(background_texts)
+        known = KnownFacts.of((), plan_texts=plan, evidence=evidence)
         return cls(brief_mode(brief), locale, teaching, keep_only, grams,
-                   KnownFacts.of((), plan_texts=plan_texts, evidence=evidence),
-                   audience_roles(brief.target_audience, brief.purpose_profile, locale))
+                   KnownFacts.of((), plan_texts=[*plan, *background], evidence=evidence) if background else known,
+                   audience_roles(brief.target_audience, brief.purpose_profile, locale),
+                   numbering=known.pairs if background else None)
 
     def report(self, index: int, component: Mapping[str, Any]) -> CopyReport:
         return copy_report(component, self.slot_grams[index])
@@ -548,8 +555,8 @@ class FidelityChecker:
     def numbered_words(self) -> frozenset[str]:
         """Folded words the facts or the plan write a number right after ("Bậc 01"): their numbering is a fact."""
 
-        return frozenset(first for first, second in self.known.pairs
-                         if second.isdigit() and len(second) <= _LABEL_DIGITS)
+        pairs = self.known.pairs if self.numbering is None else self.numbering
+        return frozenset(first for first, second in pairs if second.isdigit() and len(second) <= _LABEL_DIGITS)
 
     def list_labels(self, component: Mapping[str, Any]) -> dict[str, int]:
         """Label key -> last number of each list-label sequence the slot opens its items, rows, texts or headings with,

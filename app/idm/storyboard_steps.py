@@ -32,6 +32,7 @@ from app.idm.mcq import (
     question_ordinal,
 )
 from app.idm.node_acceptance import AcceptanceFinding, acceptance_log, node_acceptance_findings
+from app.idm.org_context import plan_terms
 from app.idm.policy import FAQ_COMPONENT_TYPE, FAQ_DEEP_TYPES, IDM_FAQ_MIN_ITEMS, WORKSHEET_COMPONENT_TYPE
 from app.idm.qa import (
     CALLOUT_TO_PROSE_CODE,
@@ -99,12 +100,14 @@ class IdmUnitWriterSteps:
         plan_texts = [brief.course_title, brief.module_title, brief.lesson_title, brief.lesson_objective,
                       brief.unit_purpose, contract.unit_title, *(slot.title for slot in brief.components),
                       *server_briefs, brief.target_audience]
+        # The organization context's glossary terms, product and learner-group names are plan text, never evidence.
+        background = plan_terms(brief.organization_context)
         self.fidelity = FidelityChecker.build(brief, self.text_by_id, self.evidence, locale=runtime.locale,
-                                              plan_texts=plan_texts)
+                                              plan_texts=plan_texts, background_texts=background)
         # QLT-5 D: the FAQ plan and the facts each FAQ answer is grounded in (its anchors, not the whole lesson).
         self.faq = FaqChecker.build(
             brief, {**{item.fact_key: item.fact_text for item in brief.lesson_context_facts}, **self.text_by_id},
-            plan_texts=[*plan_texts, *brief.lesson_practice_sentences])
+            plan_texts=[*plan_texts, *brief.lesson_practice_sentences, *background])
         self.has_faq = any(slot.type == FAQ_COMPONENT_TYPE for slot in brief.components)
         # QLT-7: the table rows of the facts (a contested key is read against them too) and the sentence case of the
         # slot titles, keeping the proper names the facts and the plan write.

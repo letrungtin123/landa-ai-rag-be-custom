@@ -53,6 +53,12 @@ HASH_HISTORY: tuple[tuple[str, str], ...] = (
     # a new fact or a contested key adds its SECOND ATTEMPT line (SECOND_REPAIR_TEXT, second_repair_line).
     ("687191d16626ff02485edc88d1d5718f09295c6edb6e223b3be88a20ad40ded5",
      "new-fact repair lines quote their tokens; second targeted repair lines"),
+    # Organization context (ORG_CONTEXT spec §4): the ORGANIZATION_CONTEXT block (app.idm.org_context) gets an optional
+    # slot in W1-reduce, W2, W4, the module stage, the W5 writer and the W6 judge, empty without a context (the rendered
+    # prompts of runs without one are byte-identical: tests/golden/test_idm_prompt_outputs.py); PROJECT_CONTEXT leaves
+    # the key out (author_brief.NON_PLAN_CONTEXT_KEYS); two writer lines moved to module constants unchanged.
+    ("cec80c040c1329b89ce09cdca144e880d9c40d12942c506a47935ad558bcf924",
+     "organization context block slots; no change without a context"),
 )
 PROMPT_NAME = re.compile(r"(prompt|_rules?$|_suffix$|rule_lines?$|_hint$|^rule_line$|_cue_line$)")
 

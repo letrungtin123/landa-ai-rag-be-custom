@@ -49,6 +49,7 @@ from app.idm.framework import framework_coverage
 from app.idm.html_rules import DENSITY_CODE
 from app.idm.mcq import ANSWER_LENGTH_CUE_CODE, OPTION_LETTERS, option_length_stats
 from app.idm.node_acceptance import AcceptanceFinding, acceptance_log
+from app.idm.org_context import writer_block
 from app.idm.policy import (
     FAQ_DEEP_TYPES,
     IDM_MCQ_LENGTH_TARGET_RATIO,
@@ -176,6 +177,7 @@ class IdmUnitWriter(IdmUnitRepairSteps):
             fidelity_rules=writer_fidelity_rules(self.mode, self.runtime.locale, self.fidelity.roles),
             faq_rules=faq_writer_rules(self.mode) if self.has_faq else "",
             example_opening=example_opening(self.contract.unit_path, self.runtime.locale),
+            organization_context=writer_block(brief.organization_context),
         )
 
     def rule_lines(self, unit: dict[str, Any], issues: Sequence[tuple[str, int]],

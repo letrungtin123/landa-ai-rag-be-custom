@@ -13,6 +13,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 from app.idm.budget import judge_repair_fits, repair_thinking_for
+from app.idm.org_context import judge_block
 from app.idm.policy import THINKING_W5
 from app.idm.qa import (
     NOTICE_REASONS,
@@ -72,8 +73,9 @@ def judge_inputs(writer: IdmUnitWriter) -> tuple[dict[str, Any], list[tuple[str,
 async def judge_and_repair(writer: IdmUnitWriter, draft: _Draft, mode: JudgeMode) -> tuple[_Draft, JudgeOutcome]:
     summary, facts = judge_inputs(writer)
     practice_slot = has_practice_slot(writer.brief)
+    background = judge_block(writer.brief.organization_context)
     judge = await run_judge(writer.runtime, mode=mode, plan_summary=summary, facts=facts, unit=draft.unit,
-                            practice_slot=practice_slot, faq_slot=writer.has_faq)
+                            practice_slot=practice_slot, faq_slot=writer.has_faq, organization_context=background)
     targets = [index for index in repair_targets(judge.findings) if index not in draft.fallback_slots]
     if mode != "repair" or not targets:
         return draft, judge
@@ -100,7 +102,7 @@ async def judge_and_repair(writer: IdmUnitWriter, draft: _Draft, mode: JudgeMode
         return draft, judge
     repaired = writer.refresh_review_marks(repaired)
     second = await run_judge(writer.runtime, mode=mode, plan_summary=summary, facts=facts, unit=repaired.unit,
-                             practice_slot=practice_slot, faq_slot=writer.has_faq)
+                             practice_slot=practice_slot, faq_slot=writer.has_faq, organization_context=background)
     if second.status in {"pass", "review_required", "reject"} and (
             blocking_count(second.findings) < blocking_count(judge.findings)):
         return repaired, second

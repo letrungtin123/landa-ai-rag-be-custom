@@ -2227,6 +2227,151 @@
    "title": "IdmMustDoV1",
    "type": "object"
   },
+  "IdmOrgGlossaryTermV1": {
+   "additionalProperties": false,
+   "properties": {
+    "term": {
+     "maxLength": 80,
+     "minLength": 1,
+     "title": "Term",
+     "type": "string"
+    },
+    "meaning": {
+     "maxLength": 300,
+     "minLength": 1,
+     "title": "Meaning",
+     "type": "string"
+    }
+   },
+   "required": [
+    "term",
+    "meaning"
+   ],
+   "title": "IdmOrgGlossaryTermV1",
+   "type": "object"
+  },
+  "IdmOrgLearnerGroupV1": {
+   "additionalProperties": false,
+   "properties": {
+    "name": {
+     "maxLength": 100,
+     "minLength": 1,
+     "title": "Name",
+     "type": "string"
+    },
+    "description": {
+     "maxLength": 300,
+     "title": "Description",
+     "type": "string"
+    }
+   },
+   "required": [
+    "name",
+    "description"
+   ],
+   "title": "IdmOrgLearnerGroupV1",
+   "type": "object"
+  },
+  "IdmOrgProfileV1": {
+   "additionalProperties": false,
+   "description": "The organization profile v1: background for the course design, never course knowledge. All seven keys are\nalways present; the total length of its strings is at most 6000 characters.",
+   "properties": {
+    "organization_summary": {
+     "maxLength": 800,
+     "title": "Organization Summary",
+     "type": "string"
+    },
+    "products_services": {
+     "items": {
+      "maxLength": 200,
+      "minLength": 1,
+      "type": "string"
+     },
+     "maxItems": 15,
+     "title": "Products Services",
+     "type": "array"
+    },
+    "learner_groups": {
+     "items": {
+      "$ref": "#/$defs/IdmOrgLearnerGroupV1"
+     },
+     "maxItems": 12,
+     "title": "Learner Groups",
+     "type": "array"
+    },
+    "glossary": {
+     "items": {
+      "$ref": "#/$defs/IdmOrgGlossaryTermV1"
+     },
+     "maxItems": 40,
+     "title": "Glossary",
+     "type": "array"
+    },
+    "key_processes": {
+     "items": {
+      "maxLength": 300,
+      "minLength": 1,
+      "type": "string"
+     },
+     "maxItems": 15,
+     "title": "Key Processes",
+     "type": "array"
+    },
+    "culture_tone": {
+     "maxLength": 600,
+     "title": "Culture Tone",
+     "type": "string"
+    },
+    "design_conventions": {
+     "items": {
+      "maxLength": 200,
+      "minLength": 1,
+      "type": "string"
+     },
+     "maxItems": 10,
+     "title": "Design Conventions",
+     "type": "array"
+    }
+   },
+   "required": [
+    "organization_summary",
+    "products_services",
+    "learner_groups",
+    "glossary",
+    "key_processes",
+    "culture_tone",
+    "design_conventions"
+   ],
+   "title": "IdmOrgProfileV1",
+   "type": "object"
+  },
+  "IdmOrganizationContextV1": {
+   "additionalProperties": false,
+   "description": "The confirmed profile version a run froze at launch: exactly the workspace's ``organization_context`` column.\n``profile_hash`` is Node's ``canonicalJson`` hash of ``profile``; a profile that does not match it is a contract\nerror.",
+   "properties": {
+    "profile_version": {
+     "maximum": 2147483647,
+     "minimum": 1,
+     "title": "Profile Version",
+     "type": "integer"
+    },
+    "profile_hash": {
+     "pattern": "^[0-9a-f]{64}$",
+     "title": "Profile Hash",
+     "type": "string"
+    },
+    "profile": {
+     "$ref": "#/$defs/IdmOrgProfileV1"
+    }
+   },
+   "required": [
+    "profile_version",
+    "profile_hash",
+    "profile"
+   ],
+   "title": "IdmOrganizationContextV1",
+   "type": "object"
+  },
   "IdmPracticeTaskV1": {
    "additionalProperties": false,
    "properties": {
@@ -2327,7 +2472,7 @@
   },
   "IdmProjectContextV1": {
    "additionalProperties": false,
-   "description": "``course_title_hint`` and ``course_description`` are the author's intent (the CMS course name and\ndescription, sanitised by Node). They are data for the prompts, never instructions (QLT-5 A); a request\nof contract 1 has no description and reads as ``None``. Contract 3 (QLT-6) adds the launch brief\n(``app.idm.author_brief``): ``design_mode`` and, for a designed course, the ``learner_audience`` and\n``course_purpose`` the author entered when starting AI ID; a request of contract 1 or 2 reads them as ``None``.",
+   "description": "``course_title_hint`` and ``course_description`` are the author's intent (the CMS course name and\ndescription, sanitised by Node). They are data for the prompts, never instructions (QLT-5 A); a request\nof contract 1 has no description and reads as ``None``. Contract 3 (QLT-6) adds the launch brief\n(``app.idm.author_brief``): ``design_mode`` and, for a designed course, the ``learner_audience`` and\n``course_purpose`` the author entered when starting AI ID; a request of contract 1 or 2 reads them as ``None``.\n``organization_context`` (still contract 3, optional): the organization profile the run froze at launch\n(``app.idm.org_context``); it reaches the prompts only in its own ORGANIZATION_CONTEXT block, never in\nPROJECT_CONTEXT, and is echoed exactly as received.",
    "properties": {
     "locale": {
      "enum": [
@@ -2450,6 +2595,17 @@
      ],
      "default": null,
      "title": "Duration Target Minutes"
+    },
+    "organization_context": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/IdmOrganizationContextV1"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null
     }
    },
    "required": [

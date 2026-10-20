@@ -23,6 +23,9 @@ from app.prompt_safety import untrusted_block
 INTENT_TAG: Final = "AUTHOR_COURSE_INTENT"
 # Project-context keys of the brief. They reach a prompt only in AUTHOR_COURSE_INTENT, never in PROJECT_CONTEXT.
 BRIEF_CONTEXT_KEYS: Final = frozenset({"design_mode", "learner_audience", "course_purpose"})
+# Every project-context key that never reaches PROJECT_CONTEXT: the brief, and the organization context, which has its
+# own ORGANIZATION_CONTEXT block (``app.idm.org_context``) in the stages that use it.
+NON_PLAN_CONTEXT_KEYS: Final = BRIEF_CONTEXT_KEYS | {"organization_context"}
 _TITLE_MAX_CHARS: Final = 500
 _DESCRIPTION_MAX_CHARS: Final = 2000
 # ``IdmAudienceV1.description`` and ``IdmPurposeV1.summary`` need at least this many characters; a shorter author

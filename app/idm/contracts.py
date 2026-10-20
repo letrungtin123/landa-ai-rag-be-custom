@@ -20,6 +20,7 @@ from app.contracts.orchestration_v2.blueprint import (
 )
 from app.contracts.orchestration_v2.provider import SourceSnapshotFactV2
 from app.hashing import js_canonical_hash
+from app.idm.org_profile import IdmOrganizationContextV1
 
 # --- Enums (spec §6.1) -------------------------------------------------------------------
 Intent = Literal["know", "do", "decide"]
@@ -118,12 +119,24 @@ class IdmSourceDocumentRefV1(IdmModel):
     type: str | None = Field(default=None, max_length=40)
 
 
+def _without_absent_organization_context(data: Any) -> Any:
+    """A project context or unit brief without an organization context serialises as before it existed (no key), so
+    the hashes and prompts of runs without one do not change."""
+
+    if isinstance(data, dict) and data.get("organization_context") is None:
+        data.pop("organization_context", None)
+    return data
+
+
 class IdmProjectContextV1(IdmModel):
     """``course_title_hint`` and ``course_description`` are the author's intent (the CMS course name and
     description, sanitised by Node). They are data for the prompts, never instructions (QLT-5 A); a request
     of contract 1 has no description and reads as ``None``. Contract 3 (QLT-6) adds the launch brief
     (``app.idm.author_brief``): ``design_mode`` and, for a designed course, the ``learner_audience`` and
-    ``course_purpose`` the author entered when starting AI ID; a request of contract 1 or 2 reads them as ``None``."""
+    ``course_purpose`` the author entered when starting AI ID; a request of contract 1 or 2 reads them as ``None``.
+    ``organization_context`` (still contract 3, optional): the organization profile the run froze at launch
+    (``app.idm.org_context``); it reaches the prompts only in its own ORGANIZATION_CONTEXT block, never in
+    PROJECT_CONTEXT, and is echoed exactly as received."""
 
     locale: Locale
     course_title_hint: str | None = Field(default=None, max_length=500)
@@ -135,6 +148,11 @@ class IdmProjectContextV1(IdmModel):
     target_audience: str | None = Field(default=None, max_length=2000)
     learning_objectives: list[Line500] = Field(default_factory=list, max_length=8)
     duration_target_minutes: int | None = Field(default=None, ge=5, le=600)
+    organization_context: IdmOrganizationContextV1 | None = None
+
+    @model_serializer(mode="wrap")
+    def _serialize(self, handler: SerializerFunctionWrapHandler) -> Any:
+        return _without_absent_organization_context(handler(self))
 
 
 class IdmFactSignalV1(IdmModel):
@@ -582,7 +600,8 @@ class IdmUnitBriefV1(IdmModel):
     from a contract-1 design (no purpose) leaves them out or null. ``fidelity_mode`` is the design purpose's content
     mode (QLT-5 C); absent or null reads as "structured", today's behaviour. ``faq_material`` (QLT-5 D) is set only for
     a unit with an la_faq slot. ``design_mode`` (contract 3, QLT-6) is how the author started AI ID; absent or null in
-    a brief built from an older design."""
+    a brief built from an older design. ``organization_context`` (optional, contract 3): the organization profile of
+    the design's project context; absent when the run has none."""
 
     pipeline_version: Literal["idm-1"]
     course_title: str = Field(min_length=1, max_length=500)
@@ -603,7 +622,12 @@ class IdmUnitBriefV1(IdmModel):
     lesson_context_facts: list[IdmContextFactV1] = Field(default_factory=list, max_length=80)
     job_aid_signpost: str | None = Field(default=None, max_length=300)
     faq_material: IdmFaqMaterialV1 | None = None
+    organization_context: IdmOrganizationContextV1 | None = None
     brief_hash: Sha256
+
+    @model_serializer(mode="wrap")
+    def _serialize(self, handler: SerializerFunctionWrapHandler) -> Any:
+        return _without_absent_organization_context(handler(self))
 
 
 class IdmJudgeFindingV1(IdmModel):
