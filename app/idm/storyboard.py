@@ -599,6 +599,8 @@ def _whole_fallback(writer: IdmUnitWriter) -> dict[str, Any]:
     if rejected:
         _log_node_rejection(writer, "whole_fallback", rejected)
         raise IdmStageError(_FALLBACK_INVALID)
+    for index in range(len(writer.plans)):  # an FAQ that says one sentence twice is a reason in the note
+        writer.repeated_faq_fallback(index)
     record_deterministic_fallback(writer.runtime, stage="idm_w5_unit", code="IDM_W5_UNIT_FALLBACK")
     return dict(source)
 

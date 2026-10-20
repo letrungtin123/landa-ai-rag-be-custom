@@ -74,6 +74,7 @@ from app.idm.qa_judge import (
     settle_applicability,
     worst_counts,
 )
+from app.idm.source_locked import FAQ_FALLBACK_REPEATED_CODE
 from app.idm.text import sanitize_author_text
 
 _CRITERION_LABEL_VI: Final = {
@@ -153,6 +154,7 @@ _CODE_TEXT_VI: Final[dict[str, str]] = {
     "IDM_W5_INSTANCE_INVALID": "AI trả lời sai định dạng",
     "IDM_RESPONSE_TRUNCATED": "câu trả lời của AI bị cắt",
     "IDM_W5_FALLBACK_ONLY": "lần chạy lại không dùng AI",
+    FAQ_FALLBACK_REPEATED_CODE: "hỏi đáp dự phòng lặp lại cùng một câu của tài liệu",
 }
 _CODE_TEXT_EN: Final[dict[str, str]] = {
     ANSWER_LEAK_CODE: "an option gives the answer away",
@@ -189,6 +191,7 @@ _CODE_TEXT_EN: Final[dict[str, str]] = {
     "IDM_W5_INSTANCE_INVALID": "an AI answer in the wrong format",
     "IDM_RESPONSE_TRUNCATED": "a cut AI answer",
     "IDM_W5_FALLBACK_ONLY": "a rerun without AI",
+    FAQ_FALLBACK_REPEATED_CODE: "a fallback FAQ that repeats one source sentence",
 }
 # A code without its own words, by family.
 _CODE_FAMILY_VI: Final = (("HTML_", "lỗi định dạng phần lý thuyết"), ("DIAGRAM_", "lỗi sơ đồ"),

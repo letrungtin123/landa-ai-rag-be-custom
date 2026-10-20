@@ -607,6 +607,8 @@ class WorksheetBudgetTests(StoryboardEndpointTestCase):
             "NĂNG LỰC BIC": "Năng lực BIC", "PDCA VÀ RACI": "PDCA và RACI", "QUY TRÌNH 5S": "Quy trình 5S",
             "HÓA ĐƠN VAT": "Hóa đơn VAT", "TRANG BỊ PPE": "Trang bị PPE", "PHƯƠNG ÁN B": "Phương án B",
             "GỬI EMAIL CHO KHÁCH": "Gửi email cho khách", "WHY CHANGE": "Why change",
+            # Listed abbreviations that are also ordinary words read as words in a Vietnamese label.
+            "KIỂM TRA EMAIL": "Kiểm tra email", "SẠC PIN DỰ PHÒNG": "Sạc pin dự phòng",
         }
         for label, shown in labels.items():
             with self.subTest(label=label):

@@ -47,6 +47,7 @@ from app.idm.qa import (
     ungrounded_callouts,
 )
 from app.idm.runtime import IdmResponseInvalidError, IdmRuntime, ThinkingLevel, log_stage, record_deterministic_fallback
+from app.idm.source_locked import FAQ_FALLBACK_REPEATED_CODE, faq_answers_repeat
 from app.idm.storyboard_context import (
     _MAX_LOGGED_DETAILS,
     _MS,
@@ -145,6 +146,8 @@ class IdmUnitWriterSteps:
         self.faq_items_invalid = 0
         # Ungrounded callouts turned into plain paragraphs after the repair could not ground them (N9).
         self.callouts_converted = 0
+        # Slots whose source-locked FAQ repeats one sentence (logged once each).
+        self.faq_fallback_repeated: set[int] = set()
         self.budget: dict[str, Any] = self.expected["instructional_output_budget"]
         self.min_html_chars = minimum_visible_chars(self.budget.get("source_content_chars"))
         # Deterministic html fixes applied before validation (counted, never content).
@@ -378,10 +381,28 @@ class IdmUnitWriterSteps:
                                              practice.sentence if practice else None, self.runtime.locale)
         return {**base, "html": structured} if structured else None
 
+    def repeated_faq_fallback(self, index: int) -> list[str]:
+        """``[FAQ_FALLBACK_REPEATED_CODE]`` when the source-locked FAQ of slot ``index`` says one sentence twice (its
+        facts hold a single item, and ``idm_source_faq`` keeps the slot buildable): a reason for author review, logged
+        once per slot (the slot index only, never content)."""
+
+        component = self.fallback_component(index)
+        if (component is None or component.get("type") != FAQ_COMPONENT_TYPE
+                or not faq_answers_repeat(component.get("items"))):
+            return []
+        if index not in self.faq_fallback_repeated:
+            self.faq_fallback_repeated.add(index)
+            self.codes.append(FAQ_FALLBACK_REPEATED_CODE)
+            log_stage("idm_unit_faq_fallback_repeated", {
+                "correlation_id": self.runtime.correlation_id, "unit_path": self.contract.unit_path, "slot": index,
+            })
+        return [FAQ_FALLBACK_REPEATED_CODE]
+
     def fallback_slot(self, draft: _Draft, index: int, reasons: Sequence[str] = ()) -> _Draft | None:
         component = self.fallback_component(index)
         if component is None:
             return None
+        reasons = [*reasons, *self.repeated_faq_fallback(index)]
         components = list(draft.unit["components"])
         worksheet = self.worksheet_fallback(index)
         if worksheet is not None:
