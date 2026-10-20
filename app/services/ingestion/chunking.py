@@ -15,6 +15,10 @@ from app.services.ingestion.extract import STRUCTURED_EXTRACTION_VERSION, Extrac
 from app.services.text import clean_text
 
 SOURCE_EVIDENCE_PROPAGATION_VERSION = "source-evidence-propagation-v1"
+# Version of the chunk splitting and chunk metadata below, part of the index fingerprint
+# (fingerprint.py). A change that alters the stored chunks changes the fingerprint by itself;
+# bumping this also rebuilds the documents whose chunks come out the same.
+CHUNKER_VERSION = "chunker-v1"
 SOURCE_EVIDENCE_READY = "ready"
 SOURCE_EVIDENCE_LEGACY_REVIEW_REQUIRED = "legacy_review_required"
 

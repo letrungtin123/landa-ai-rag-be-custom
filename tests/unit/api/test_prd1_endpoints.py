@@ -255,6 +255,7 @@ class IndexRuntimeTests(unittest.TestCase):
 
         with (
             patch.object(index_repository, "load_document", AsyncMock(return_value=row)),
+            patch.object(index_repository, "load_active_index", AsyncMock(return_value=None)),
             patch.object(index_repository, "start_index_row",
                          AsyncMock(return_value="55555555-5555-4555-8555-555555555555")),
             patch.object(index_repository, "mark_index_error", mark),
@@ -293,6 +294,7 @@ class IndexRuntimeTests(unittest.TestCase):
         try:
             with (
                 patch.object(index_repository, "load_document", AsyncMock(return_value=row)),
+                patch.object(index_repository, "load_active_index", AsyncMock(return_value=None)),
                 patch.object(index_repository, "start_index_row",
                              AsyncMock(return_value="55555555-5555-4555-8555-555555555555")),
                 patch.object(index_repository, "mark_index_error", AsyncMock()),

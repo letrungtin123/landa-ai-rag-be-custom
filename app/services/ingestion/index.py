@@ -3,8 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-import hashlib
-import json
 import logging
 import re
 import tempfile
@@ -32,12 +30,13 @@ from app.repositories import indexing as index_repository
 from app.repositories.indexing import delete_previous_structure_nodes_if_available, persist_structure_nodes_if_available
 from app.repositories.pgvector import vector_literal
 from app.schemas.common import AiUsage
-from app.schemas.kb import RagIndexRequest
+from app.schemas.kb import INDEX_SKIP_REASON_UNCHANGED, RagIndexRequest
 from app.services import provider
 from app.services import runtime as service_runtime
 from app.services.ingestion import extract as extraction
 from app.services.ingestion.chunking import build_chunks, build_index_diagnostics
 from app.services.ingestion.extract import ExtractedSection, index_document_temp_path
+from app.services.ingestion.fingerprint import EMBEDDING_TASK_TYPE, index_fingerprint, stored_chunk_values
 from app.services.ingestion.storage import fetch_index_source
 from app.services.text import clean_text
 
@@ -49,6 +48,9 @@ SAFE_ERROR_CODE_PATTERN = re.compile(r"^[A-Z][A-Z0-9_]{2,95}$")
 
 # Provider answers after which the same index request may succeed later (F5).
 RETRYABLE_PROVIDER_HTTP_STATUSES = frozenset({429, 502, 503, 504})
+
+# A newer index of the same document started while this one ran: the newer one wins.
+SUPERSEDED_INDEX_MESSAGE = "Phiên học tài liệu đã bị thay thế bởi phiên mới hơn."
 
 
 def retryable_provider_failure(exc: BaseException) -> AppError | None:
@@ -64,6 +66,46 @@ def retryable_provider_failure(exc: BaseException) -> AppError | None:
         message if isinstance(message, str) and message.strip()
         else "AI provider hiện không khả dụng. Vui lòng thử lại sau.",
     )
+
+
+async def _reusable_index_id(
+    pool: asyncpg.Pool, row: asyncpg.Record, request: RagIndexRequest, embedding_model: str,
+) -> str | None:
+    """The active index this request could turn out to match, or ``None`` when it must rebuild anyway.
+
+    Only an idle document qualifies: while another index runs, this request takes its row at once and
+    supersedes it, exactly as before.
+    """
+    active = await index_repository.load_active_index(pool, row, embedding_model, request.embedding_dimensions)
+    if active is None or active["index_running"]:
+        return None
+    return str(active["index_id"])
+
+
+async def _claim_deferred_index(
+    pool: asyncpg.Pool,
+    row: asyncpg.Record,
+    request: RagIndexRequest,
+    embedding_model: str,
+    *,
+    reusable_index_id: str | None,
+    fingerprint: str,
+    chunk_count: int,
+) -> str | None:
+    """Re-check the document's indexes now that the fingerprint is known, before any provider call.
+
+    ``None``: the active index holds exactly what this request would build, so nothing is rebuilt.
+    Otherwise this request takes its index row now, unless another index started since the first
+    check (it is running, or it already replaced the active index): that one wins, as it would have
+    superseded this request's running row.
+    """
+    current = await index_repository.load_active_index(pool, row, embedding_model, request.embedding_dimensions)
+    if current is not None and not current["index_running"]:
+        if current["content_sha256"] == fingerprint and current["chunk_count"] == chunk_count:
+            return None
+        if str(current["index_id"]) == reusable_index_id:
+            return await index_repository.start_index_row(pool, row, embedding_model)
+    raise ValueError(SUPERSEDED_INDEX_MESSAGE)
 
 
 async def index_document(request: RagIndexRequest, pool: asyncpg.Pool) -> dict[str, Any]:
@@ -84,6 +126,10 @@ async def _index_document(request: RagIndexRequest, pool: asyncpg.Pool) -> dict[
         raise ServiceError(status_code=400, detail="Tài liệu không có file nguồn hoặc nội dung để học.")
 
     index_id: str | None = None
+    # The active index this request may turn out to match. When it is set the request takes no index
+    # row before the fingerprint shows a rebuild is needed (_claim_deferred_index); a failure before
+    # that leaves the document's indexes untouched (the error code is still logged and answered).
+    reusable_index_id: str | None = None
     raw_bytes: int | None = None
     effective_embedding_model = normalize_embedding_model(request.embedding_model)
     deadline = asyncio.timeout(deadline_seconds(settings.index_deadline_ms))
@@ -108,7 +154,11 @@ async def _index_document(request: RagIndexRequest, pool: asyncpg.Pool) -> dict[
                 else:
                     raw_bytes = len(str(row["content"] or "").encode("utf-8"))
                     assert_document_size(raw_bytes, maximum=settings.max_document_bytes)
-                index_id = await index_repository.start_index_row(pool, row, effective_embedding_model)
+                if not request.force:
+                    reusable_index_id = await _reusable_index_id(pool, row, request, effective_embedding_model)
+                if reusable_index_id is None:
+                    # Nothing to reuse (or forced): take the index row now, superseding a running one.
+                    index_id = await index_repository.start_index_row(pool, row, effective_embedding_model)
                 if source_path is not None:
                     sections = await service_runtime.concurrency.run_extraction(
                         extraction.extract_sections, source_path, source_path.name
@@ -135,13 +185,43 @@ async def _index_document(request: RagIndexRequest, pool: asyncpg.Pool) -> dict[
                 extra={"event": "rag_index_chunked", "tenant_id": request.tenant_id,
                        "document_id": request.document_id, "chunk_count": len(chunks)},
             )
+            learned: dict[str, Any] = {
+                "status": "learned",
+                "chunk_count": len(chunks),
+                "structure_source": structure.get("structure_source"),
+                "structure_confidence": structure.get("confidence"),
+                "structure_node_count": len(structure.get("nodes", [])),
+                "diagnostics": index_diagnostics,
+            }
+            stored_chunks = stored_chunk_values(row, chunks)
+            fingerprint = await service_runtime.concurrency.run_cpu(
+                index_fingerprint,
+                embedding_model=effective_embedding_model,
+                embedding_dimensions=request.embedding_dimensions,
+                structure=structure,
+                chunks=stored_chunks,
+            )
+            if index_id is None:  # deferred: reusable_index_id is set
+                index_id = await _claim_deferred_index(
+                    pool, row, request, effective_embedding_model,
+                    reusable_index_id=reusable_index_id, fingerprint=fingerprint, chunk_count=len(chunks),
+                )
+                if index_id is None:
+                    logger.info(
+                        "rag_index_skipped",
+                        extra={"event": "rag_index_skipped", "tenant_id": request.tenant_id,
+                               "document_id": request.document_id, "index_id": reusable_index_id,
+                               "chunk_count": len(chunks), "reason": INDEX_SKIP_REASON_UNCHANGED},
+                    )
+                    return {**learned, "usage": AiUsage().model_dump(), "skipped": True,
+                            "skip_reason": INDEX_SKIP_REASON_UNCHANGED}
 
             with metrics.provider_stage("index_embedding"):
                 embeddings, embedding_usage = await provider.embed_texts(
                     request.api_key,
                     effective_embedding_model,
                     [chunk["content"] for chunk in chunks],
-                    task_type="RETRIEVAL_DOCUMENT",
+                    task_type=EMBEDDING_TASK_TYPE,
                     output_dimensionality=request.embedding_dimensions,
                 )
             if len(embeddings) != len(chunks):
@@ -152,45 +232,25 @@ async def _index_document(request: RagIndexRequest, pool: asyncpg.Pool) -> dict[
                        "document_id": request.document_id, "embedding_count": len(embeddings)},
             )
 
-            content_sha = hashlib.sha256("\n\n".join(chunk["content"] for chunk in chunks).encode("utf-8")).hexdigest()
             async with pool.acquire() as conn:  # noqa: SIM117 - the transaction is the inner block
                 async with conn.transaction():
                     index_status = await index_repository.lock_index_status(conn, index_id, row["id"])
                     if index_status != "running":
-                        raise ValueError("Phiên học tài liệu đã bị thay thế bởi phiên mới hơn.")
+                        raise ValueError(SUPERSEDED_INDEX_MESSAGE)
                     # One pipelined executemany inside the same transaction (SEP-1 #7): one round trip
                     # per batch instead of one per chunk when the database is on another server.
                     await index_repository.insert_chunks(
                         conn,
                         [
-                            (
-                                row["tenant_id"],
-                                row["kb_id"],
-                                row["id"],
-                                index_id,
-                                chunk_no,
-                                chunk["content"],
-                                chunk["content_hash"],
-                                chunk["token_count"],
-                                chunk["page"],
-                                chunk["section"],
-                                json.dumps(
-                                    {
-                                        "source_name": row["name"],
-                                        "document_type": row["type"],
-                                        **(chunk.get("metadata") or {}),
-                                    },
-                                    ensure_ascii=False,
-                                ),
-                                vector_literal(embedding),
-                            )
-                            for chunk_no, (chunk, embedding) in enumerate(zip(chunks, embeddings, strict=False))
+                            (row["tenant_id"], row["kb_id"], row["id"], index_id, *stored, vector_literal(embedding))
+                            for stored, embedding in zip(stored_chunks, embeddings, strict=False)
                         ],
                     )
                     await persist_structure_nodes_if_available(conn, row, index_id, structure)
                     await delete_previous_structure_nodes_if_available(conn, row, index_id)
                     await index_repository.deactivate_other_indexes(conn, row["id"], index_id)
-                    await index_repository.mark_index_learned(conn, index_id, row["id"], content_sha, len(chunks))
+                    # content_sha256 holds the index fingerprint (fingerprint.py) a later re-index compares.
+                    await index_repository.mark_index_learned(conn, index_id, row["id"], fingerprint, len(chunks))
                     await index_repository.delete_inactive_indexes(conn, row["id"], index_id)
 
             logger.info(
@@ -198,15 +258,7 @@ async def _index_document(request: RagIndexRequest, pool: asyncpg.Pool) -> dict[
                 extra={"event": "rag_index_completed", "tenant_id": request.tenant_id,
                        "document_id": request.document_id, "chunk_count": len(chunks)},
             )
-            return {
-                "status": "learned",
-                "chunk_count": len(chunks),
-                "structure_source": structure.get("structure_source"),
-                "structure_confidence": structure.get("confidence"),
-                "structure_node_count": len(structure.get("nodes", [])),
-                "diagnostics": index_diagnostics,
-                "usage": embedding_usage.model_dump(),
-            }
+            return {**learned, "usage": embedding_usage.model_dump()}
     except Exception as exc:
         retryable = retryable_provider_failure(exc)
         if isinstance(exc, TimeoutError) and deadline.expired():

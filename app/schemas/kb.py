@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, SecretStr, TypeAdapter, field_validator
+from pydantic.json_schema import SkipJsonSchema
 
 from app.schemas.common import validate_uuid_string
 
@@ -19,6 +20,9 @@ class RagIndexRequest(BaseModel):
     # SEP-1: short-lived URL the backend signed for kb_documents.file_path. It embeds a bearer
     # token, so it is a secret (never logged, never echoed). Absent: legacy service-key download.
     source_download_url: SecretStr | None = Field(default=None, repr=False, max_length=8_192)
+    # Rebuild even when the document's active index already matches this request (an admin "learn
+    # again"). By default an unchanged index is kept and answered as skipped, with zero usage.
+    force: bool = False
 
     @field_validator("tenant_id", "kb_id", "document_id")
     @classmethod
@@ -48,6 +52,14 @@ class RagDeleteKbRequest(BaseModel):
 
 
 # ---- responses (field order is the wire order) ------------------------------------------------
+# ``skip_reason`` of an index request answered by the document's unchanged active index.
+INDEX_SKIP_REASON_UNCHANGED = "INDEX_UNCHANGED"
+
+
+def _absent(value: object) -> bool:
+    return value is None
+
+
 class IndexLearnedResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -58,6 +70,10 @@ class IndexLearnedResponse(BaseModel):
     structure_node_count: int
     diagnostics: dict[str, Any]
     usage: dict[str, Any]
+    # Present only when the active index already held exactly what this request would build: nothing
+    # was embedded or written and ``usage`` is zero. Absent on every rebuilt index.
+    skipped: Literal[True] | SkipJsonSchema[None] = Field(default=None, exclude_if=_absent)
+    skip_reason: Literal["INDEX_UNCHANGED"] | SkipJsonSchema[None] = Field(default=None, exclude_if=_absent)
 
 
 class IndexFailedResponse(BaseModel):
