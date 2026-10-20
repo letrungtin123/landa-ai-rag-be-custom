@@ -209,6 +209,14 @@ def unit_findings(body: dict[str, Any], unit: dict[str, Any]) -> tuple[tuple[str
     return (None if finding is None else (finding.code, finding.path)), [item.as_log() for item in node]
 
 
+def repeated_answers(answers: list[str]) -> list[int]:
+    """Positions of the answers another answer of the same FAQ holds whole."""
+
+    texts = [" ".join(answer.split()) for answer in answers]
+    return [index for index, text in enumerate(texts)
+            if any(other != index and text in texts[other] for other in range(len(texts)))]
+
+
 # --- tests -----------------------------------------------------------------------------------------
 class FallbackMatrixTests(StoryboardEndpointTestCase):
     def test_matrix_covers_every_slot_type(self) -> None:
@@ -235,6 +243,10 @@ class FallbackMatrixTests(StoryboardEndpointTestCase):
         self.assert_fallback_envelope(body, data)
         unit = data["unit"]
         self.assertEqual(unit_findings(body, unit), (None, []))
+        # A source-locked FAQ says each source sentence once (not "Lưu ý: X" and then "X" again).
+        for component in unit["components"]:
+            if component["type"] == "la_faq":
+                self.assertEqual(repeated_answers([item["answer"] for item in component["items"]]), [])
         if case.html_marker is not None:
             self.assertIn(case.html_marker, unit["components"][case.index]["html"])
 

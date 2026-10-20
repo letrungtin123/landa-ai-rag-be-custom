@@ -248,6 +248,28 @@ class SourceFaqTests(unittest.TestCase):
         prose = ["Một câu văn xuôi không có nhãn nào ở đầu câu cả."]
         self.assertIsNone(idm_source_faq("Thực hành", prose, locale="vi"))
 
+    def test_a_labelled_caution_is_one_item_with_its_whole_sentence(self) -> None:
+        # "Lưu ý: X" is an explicit caution (kept whole, the legacy rule) and a "Label: definition" fact; its
+        # definition came back as a second item ("X" under "Điểm thứ 2 ..."), so the learner read X twice.
+        caution_vi = "Lưu ý: Không được bỏ qua bước kiểm tra an toàn trước khi vận hành máy ép."
+        rule_vi = "Quy luật chi phí: Đầu tư 1 đồng cho phòng ngừa lỗi từ đầu tiết kiệm 10 đồng chi phí kiểm tra."
+        caution_en = "When: Before every shift and after each tool change, check that the guard is closed."
+        rule_en = "Cost rule: One unit spent on prevention saves ten units of later inspection."
+        cases = {
+            "vi": ("Vận hành máy ép", [caution_vi, rule_vi], [
+                ("Người học cần ghi nhớ gì về 'Vận hành máy ép'?", caution_vi),
+                ("Người học cần hiểu gì về Quy luật chi phí?", rule_vi.removeprefix("Quy luật chi phí: "))]),
+            "en": ("Press safety", [caution_en, rule_en], [
+                ("What should learners remember about 'Press safety'?", caution_en),
+                ("What should learners understand about Cost rule?", rule_en.removeprefix("Cost rule: "))]),
+        }
+        for locale, (title, facts, expected) in cases.items():
+            with self.subTest(locale=locale):
+                items = idm_source_faq(title, facts, locale=locale) or []
+                self.assertEqual([(item["question"], item["answer"]) for item in items], expected)
+                # A lone caution is no FAQ: its two items would be one sentence twice.
+                self.assertIsNone(idm_source_faq(title, facts[:1], locale=locale))
+
 
 class WriterIntegrationTests(StoryboardEndpointTestCase):
     async def test_worksheet_repeating_template_cells_is_accepted_without_repair(self) -> None:

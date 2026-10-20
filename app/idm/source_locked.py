@@ -428,11 +428,14 @@ def idm_source_faq(title: str, values: Iterable[Any], *, locale: str) -> list[di
     Each answer is one complete source sentence: an explicit condition/exception first (the
     legacy rule), then the definition of a labelled fact ("Quy luật chi phí: Đầu tư 1 đồng ...").
     The question only names the label, so no claim is added; title-case headings are skipped.
+    A source fact gives at most one item: a labelled caution ("Lưu ý: Không được ...") is both a
+    condition and a labelled fact, and keeps its whole sentence.
     """
 
     facts = clean_source_facts(list(values), preserve_table_numeric=True)
-    pairs = [(_LEAD_LABEL_RE.split(answer, maxsplit=1)[0].strip(), answer)
-             for answer in source_clarification_signals(facts)]
+    # (source fact, label, answer text), in the order the items are chosen.
+    candidates = [(answer, _LEAD_LABEL_RE.split(answer, maxsplit=1)[0].strip(), answer)
+                  for answer in source_clarification_signals(facts)]
     for value in facts:
         if TABLE_ROW_RE.match(value) or ORDERED_STEP_RE.match(value):
             continue
@@ -443,17 +446,21 @@ def idm_source_faq(title: str, values: Iterable[Any], *, locale: str) -> list[di
         definition = normalize_visible_text(match.group(2)).strip()
         if (label and len(label.split()) <= _LABEL_MAX_WORDS and faq_answer_is_complete(definition)
                 and _sentence_like(definition)):
-            pairs.append((label, definition))
+            candidates.append((value, label, definition))
     items: list[dict[str, str]] = []
     answers: set[str] = set()
     questions: set[str] = set()
-    for label, text in pairs:
+    sources: set[str] = set()
+    for source, label, text in candidates:
         answer = text[:_FAQ_MAX_ANSWER_CHARS].strip()
         question = _faq_question(label, title, len(items), locale)
-        if (not _key(answer) or _key(answer) in answers or _key(question) in questions
+        # The definition of a caution that is already an item repeated its sentence without the label
+        # ("Lưu ý: X" and then "X" under a second question): its source fact is used once.
+        if (_key(source) in sources or not _key(answer) or _key(answer) in answers or _key(question) in questions
                 or len(question) < MIN_FAQ_QUESTION_CHARS or not faq_answer_is_complete(answer)
                 or _FAQ_UNSAFE_RE.search(question + answer)):
             continue
+        sources.add(_key(source))
         answers.add(_key(answer))
         questions.add(_key(question))
         items.append({"question": question, "answer": answer})
