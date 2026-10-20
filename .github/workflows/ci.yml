@@ -1,7 +1,9 @@
 # CI for landa-ai-rag (SEP-3): quality gate -> image build -> container smoke -> SBOM -> scan
-# -> push to Amazon ECR (main and v* tags only, via GitHub OIDC; no long-lived AWS keys).
+# -> push to Amazon ECR (main and v* tags only, via GitHub OIDC; no long-lived AWS keys), and only when
+# vars.ECR_PUBLISH_ENABLED is "true": AWS is on hold, so without it nothing is sent to AWS.
 #
 # Repository settings to fill (Settings -> Secrets and variables -> Actions):
+#   vars.ECR_PUBLISH_ENABLED     "true" to push images to ECR (default: off, nothing sent to AWS)
 #   vars.AWS_REGION              e.g. ap-southeast-1                      (placeholder: <aws-region>)
 #   vars.AWS_ECR_PUSH_ROLE_ARN   arn:aws:iam::<account-id>:role/<github-oidc-ecr-push>
 #   vars.ECR_REPOSITORY          default landa-ai-rag
@@ -12,8 +14,8 @@
 #   secrets.BACKEND_REPO_TOKEN   read-only fine-grained token for the backend repo (optional; without
 #                                it the one Node cross-language test is deselected with a warning)
 #
-# Supply chain: actions are pinned by major/minor version. Before production, pin every `uses:` to a
-# full commit SHA (keep the version as a trailing comment) - marked "pin-sha" below.
+# Supply chain: every `uses:` is pinned to a full commit SHA and the Postgres service image to a digest,
+# each with its version as a trailing comment (resolved 2026-10-20). To update one, resolve the new tag and change both.
 
 name: ci
 
@@ -51,14 +53,14 @@ jobs:
       # The cross-language test resolves the backend as a sibling directory
       # (tests/unit/legacy/test_instructional_opportunities.py: Path(__file__).parents[4] / "landa-backend").
       - name: Checkout AI service
-        uses: actions/checkout@v5 # pin-sha
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
           path: landa-ai-rag
           persist-credentials: false
 
       - name: Checkout backend (cross-language test)
         if: env.HAS_BACKEND_CHECKOUT == 'true'
-        uses: actions/checkout@v5 # pin-sha
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
           repository: ${{ vars.BACKEND_REPOSITORY || 'letrungtin123/landa-supabase-be-custom' }}
           ref: ${{ vars.BACKEND_REF || 'main' }}
@@ -68,7 +70,7 @@ jobs:
 
       - name: Set up Node
         if: env.HAS_BACKEND_CHECKOUT == 'true'
-        uses: actions/setup-node@v5 # pin-sha
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
         with:
           node-version: ${{ vars.BACKEND_NODE_VERSION || '24' }}
           cache: npm
@@ -86,7 +88,7 @@ jobs:
           echo "PYTEST_ADDOPTS=--deselect tests/unit/legacy/test_instructional_opportunities.py::InstructionalOpportunityTests::test_node_registry_maps_discovered_treatments_permissions_and_faq_last" >> "$GITHUB_ENV"
 
       - name: Set up Python
-        uses: actions/setup-python@v6 # pin-sha
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
         with:
           python-version-file: landa-ai-rag/.python-version
           cache: pip
@@ -120,11 +122,11 @@ jobs:
       contents: read
       id-token: write # OIDC to AWS; only used by the publish steps
     env:
-      PUBLISH: ${{ github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')) }}
+      PUBLISH: ${{ vars.ECR_PUBLISH_ENABLED == 'true' && github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')) }}
     services:
       # Throwaway database for the container smoke test (trust auth, runner-local only).
       postgres:
-        image: postgres:17-alpine # pin-sha (digest)
+        image: postgres:17-alpine@sha256:b0f9560a2de083e2cc7382e75f808c7381a32852a7ec49117deedb300e552b24 # 17-alpine
         env:
           POSTGRES_HOST_AUTH_METHOD: trust
         ports:
@@ -136,7 +138,7 @@ jobs:
           --health-retries 20
     steps:
       - name: Checkout
-        uses: actions/checkout@v5 # pin-sha
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
           persist-credentials: false
 
@@ -148,11 +150,11 @@ jobs:
           fi
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3 # pin-sha
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
 
       - name: Image tags (git sha + branch/tag)
         id: meta
-        uses: docker/metadata-action@v5 # pin-sha
+        uses: docker/metadata-action@c299e40c65443455700f0fdfc63efafe5b349051 # v5.10.0
         with:
           images: ${{ env.IMAGE_NAME }}
           tags: |
@@ -162,7 +164,7 @@ jobs:
             type=ref,event=pr
 
       - name: Build runtime image (load locally, no push)
-        uses: docker/build-push-action@v6 # pin-sha
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6.19.2
         with:
           context: .
           target: runtime
@@ -218,7 +220,7 @@ jobs:
         run: docker rm -f ai-rag-smoke >/dev/null 2>&1 || true
 
       - name: SBOM (SPDX JSON)
-        uses: anchore/sbom-action@v0 # pin-sha
+        uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0.24.0
         with:
           image: ${{ env.IMAGE_NAME }}:ci
           format: spdx-json
@@ -226,7 +228,7 @@ jobs:
           artifact-name: sbom-${{ github.sha }}.spdx.json
 
       - name: Vulnerability and secret scan (fail on fixable HIGH/CRITICAL)
-        uses: aquasecurity/trivy-action@0.33.1 # pin-sha
+        uses: aquasecurity/trivy-action@b6643a29fecd7f34b3597bc6acb0a98b03d33ff8 # v0.33.1
         with:
           image-ref: ${{ env.IMAGE_NAME }}:ci
           scanners: vuln,secret
@@ -246,7 +248,7 @@ jobs:
 
       - name: Configure AWS credentials (OIDC)
         if: env.PUBLISH == 'true'
-        uses: aws-actions/configure-aws-credentials@v5 # pin-sha
+        uses: aws-actions/configure-aws-credentials@61815dcd50bd041e203e49132bacad1fd04d2708 # v5.1.1
         with:
           role-to-assume: ${{ env.AWS_ECR_PUSH_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
@@ -255,7 +257,7 @@ jobs:
       - name: Log in to Amazon ECR
         if: env.PUBLISH == 'true'
         id: ecr
-        uses: aws-actions/amazon-ecr-login@v2 # pin-sha
+        uses: aws-actions/amazon-ecr-login@03f1aad4c6c7ffd436567f42f9384779290529bd # v2.1.7
 
       # Pushes the exact image that passed the smoke test and the scan (no rebuild).
       - name: Push to ECR
