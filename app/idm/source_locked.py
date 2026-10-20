@@ -13,7 +13,7 @@ pipeline and stay byte-identical (spec §11.6); IDM units get these variants thr
   answer form), shows at most four options and explains why the other options are wrong.
 * FAQ: explicit source conditions first (the legacy rule), then labelled source definitions
   ("Label: complete sentence"); each answer is the source sentence itself (run c2e5ac41: a
-  worksheet unit whose FAQ had no rebuild failed its ``fallback_only`` retry with 422).
+  worksheet unit whose FAQ had no rebuild failed its ``fallback_only`` retry with 422), said once.
 
 Both stay deterministic and never add a claim the source does not make.
 """
@@ -410,6 +410,8 @@ _FAQ_LABEL_TRIM: Final = " .;,-*" + chr(0x2013) + chr(0x2014) + chr(0x2022)
 _FAQ_UNSAFE_RE: Final = re.compile("[<>" + "".join(chr(code) for code in (*range(0x00, 0x09), 0x0B, 0x0C,
                                                                            *range(0x0E, 0x20))) + "]")
 _LEAD_LABEL_RE: Final = re.compile(r"[:.!?]")
+# A source-locked FAQ kept with one sentence twice because the facts hold no second item (see idm_source_faq).
+FAQ_FALLBACK_REPEATED_CODE: Final = "IDM_W5_FAQ_FALLBACK_REPEATED"
 
 
 def _faq_question(label: str, title: str, index: int, locale: str) -> str:
@@ -422,17 +424,12 @@ def _faq_question(label: str, title: str, index: int, locale: str) -> str:
             else f"Điểm thứ {index + 1} cần lưu ý trong '{title}' là gì?")
 
 
-def idm_source_faq(title: str, values: Iterable[Any], *, locale: str) -> list[dict[str, str]] | None:
-    """FAQ items of a source-locked IDM ``la_faq`` slot (or ``None`` below two items).
+def _faq_candidates(facts: list[str]) -> list[tuple[str, str, str]]:
+    """(source fact, label the question names, answer text) in the order items are chosen: explicit
+    conditions first, whole sentence (the legacy rule), then the definitions of labelled facts."""
 
-    Each answer is one complete source sentence: an explicit condition/exception first (the
-    legacy rule), then the definition of a labelled fact ("Quy luật chi phí: Đầu tư 1 đồng ...").
-    The question only names the label, so no claim is added; title-case headings are skipped.
-    """
-
-    facts = clean_source_facts(list(values), preserve_table_numeric=True)
-    pairs = [(_LEAD_LABEL_RE.split(answer, maxsplit=1)[0].strip(), answer)
-             for answer in source_clarification_signals(facts)]
+    candidates = [(answer, _LEAD_LABEL_RE.split(answer, maxsplit=1)[0].strip(), answer)
+                  for answer in source_clarification_signals(facts)]
     for value in facts:
         if TABLE_ROW_RE.match(value) or ORDERED_STEP_RE.match(value):
             continue
@@ -443,21 +440,91 @@ def idm_source_faq(title: str, values: Iterable[Any], *, locale: str) -> list[di
         definition = normalize_visible_text(match.group(2)).strip()
         if (label and len(label.split()) <= _LABEL_MAX_WORDS and faq_answer_is_complete(definition)
                 and _sentence_like(definition)):
-            pairs.append((label, definition))
+            candidates.append((value, label, definition))
+    return candidates
+
+
+def _repeats(answer: str, others: Iterable[str]) -> bool:
+    """``answer`` says what one of ``others`` says, or the reverse ("Lưu ý: X" and "X")."""
+
+    key = f" {_key(answer)} "
+    return any(key in f" {_key(other)} " or f" {_key(other)} " in key for other in others)
+
+
+def _faq_item(items: list[dict[str, str]], label: str, text: str, title: str, locale: str, *,
+              distinct: bool) -> dict[str, str] | None:
+    """The next item for ``text`` under the source-locked rules, or ``None``; ``distinct``: it must not say
+    what an item already says."""
+
+    answer = text[:_FAQ_MAX_ANSWER_CHARS].strip()
+    question = _faq_question(label, title, len(items), locale)
+    if (not _key(answer) or _key(answer) in {_key(item["answer"]) for item in items}
+            or _key(question) in {_key(item["question"]) for item in items}
+            or len(question) < MIN_FAQ_QUESTION_CHARS or not faq_answer_is_complete(answer)
+            or _FAQ_UNSAFE_RE.search(question + answer)
+            or (distinct and _repeats(answer, (item["answer"] for item in items)))):
+        return None
+    return {"question": question, "answer": answer}
+
+
+def _faq_items(candidates: list[tuple[str, str, str]], title: str, locale: str, *,
+               distinct: bool) -> list[dict[str, str]]:
+    """Up to ``_FAQ_MAX_ITEMS`` items; ``distinct``: one per source fact, none repeating another (without it,
+    the rule of commit d4ff677, where "Lưu ý: X" also gave "X" as a second item)."""
+
     items: list[dict[str, str]] = []
-    answers: set[str] = set()
-    questions: set[str] = set()
-    for label, text in pairs:
-        answer = text[:_FAQ_MAX_ANSWER_CHARS].strip()
-        question = _faq_question(label, title, len(items), locale)
-        if (not _key(answer) or _key(answer) in answers or _key(question) in questions
-                or len(question) < MIN_FAQ_QUESTION_CHARS or not faq_answer_is_complete(answer)
-                or _FAQ_UNSAFE_RE.search(question + answer)):
+    sources: set[str] = set()
+    for source, label, text in candidates:
+        if distinct and _key(source) in sources:
             continue
-        answers.add(_key(answer))
-        questions.add(_key(question))
-        items.append({"question": question, "answer": answer})
+        item = _faq_item(items, label, text, title, locale, distinct=distinct)
+        if item is None:
+            continue
+        sources.add(_key(source))
+        items.append(item)
         if len(items) == _FAQ_MAX_ITEMS:
             break
-    return items if len(items) >= _FAQ_MIN_ITEMS else None
+    return items
 
+
+def faq_answers_repeat(items: Any) -> bool:
+    """One answer of an FAQ payload says what another says (the kept repeat of a lone caution)."""
+
+    if not isinstance(items, list):
+        return False
+    answers = [str(item.get("answer") or "") for item in items if isinstance(item, dict)]
+    return any(_repeats(answer, answers[:index]) for index, answer in enumerate(answers))
+
+
+def idm_source_faq(title: str, values: Iterable[Any], *, locale: str,
+                   unit_values: Iterable[Any] = ()) -> list[dict[str, str]] | None:
+    """FAQ items of a source-locked IDM ``la_faq`` slot (or ``None`` below two items).
+
+    Each answer is one complete source sentence: an explicit condition/exception first (the
+    legacy rule), then the definition of a labelled fact ("Quy luật chi phí: Đầu tư 1 đồng ...").
+    The question only names the label, so no claim is added; title-case headings are skipped.
+    A source fact gives at most one item and no answer repeats another: a labelled caution
+    ("Lưu ý: Không được ...") is both a condition and a labelled fact, and keeps its whole sentence.
+
+    A slot that the rule without that check could build stays buildable (``fallback_only`` must not
+    turn into a 422): a missing second item is another complete sentence of the slot, else of the
+    unit (``unit_values``), under a "point N" question; with none, the repeated item stays and the
+    unit keeps the slot for author review (``FAQ_FALLBACK_REPEATED_CODE``).
+    """
+
+    facts = clean_source_facts(list(values), preserve_table_numeric=True)
+    candidates = _faq_candidates(facts)
+    items = _faq_items(candidates, title, locale, distinct=True)
+    if len(items) >= _FAQ_MIN_ITEMS:
+        return items
+    repeated = _faq_items(candidates, title, locale, distinct=False)
+    if len(repeated) < _FAQ_MIN_ITEMS:
+        return None
+    for value in (*facts, *clean_source_facts(list(unit_values), preserve_table_numeric=True)):
+        if len(items) >= _FAQ_MIN_ITEMS:
+            break
+        if TABLE_ROW_RE.match(value) or ORDERED_STEP_RE.match(value) or not _sentence_like(value):
+            continue
+        if (item := _faq_item(items, "", value, title, locale, distinct=True)) is not None:
+            items.append(item)
+    return items if len(items) >= _FAQ_MIN_ITEMS else repeated

@@ -597,6 +597,28 @@ class WorksheetBudgetTests(StoryboardEndpointTestCase):
         self.assertNotIn("MINDSET", html)
         self.assertNotIn("CÔNG CỤ THỰC CHIẾN", html)
 
+    def test_field_labels_in_capitals_get_sentence_case_and_keep_their_abbreviations(self) -> None:
+        # "YẾU TỐ AN TOÀN" became "Yếu tố AN toàn": every short ASCII word in capitals was kept as an acronym, but
+        # many Vietnamese syllables have no diacritics; an abbreviation opening a label lost its capitals ("Kpi").
+        labels = {
+            "YẾU TỐ AN TOÀN": "Yếu tố an toàn", "BẢN CAM KẾT CỦA ĐƠN VỊ": "Bản cam kết của đơn vị",
+            "KHI NÀO CẦN BÁO CHO QUẢN LÝ": "Khi nào cần báo cho quản lý", "AN TOÀN LAO ĐỘNG": "An toàn lao động",
+            "KPI CỦA CEO": "KPI của CEO", "ERA5.0 VÀ ỨNG DỤNG AI": "ERA5.0 và ứng dụng AI",
+            "NĂNG LỰC BIC": "Năng lực BIC", "PDCA VÀ RACI": "PDCA và RACI", "QUY TRÌNH 5S": "Quy trình 5S",
+            "HÓA ĐƠN VAT": "Hóa đơn VAT", "TRANG BỊ PPE": "Trang bị PPE", "PHƯƠNG ÁN B": "Phương án B",
+            "GỬI EMAIL CHO KHÁCH": "Gửi email cho khách", "WHY CHANGE": "Why change",
+            # Listed abbreviations that are also ordinary words read as words in a Vietnamese label.
+            "KIỂM TRA EMAIL": "Kiểm tra email", "SẠC PIN DỰ PHÒNG": "Sạc pin dự phòng",
+        }
+        for label, shown in labels.items():
+            with self.subTest(label=label):
+                facts = [label, "MINDSET CẦN BỎ", "Ô thứ nhất cần ghi gì?", "Ô thứ hai cần ghi gì?"]
+                html = str(worksheet_fallback_html("Phiếu", facts, None, "vi"))
+                self.assertEqual(re.findall(r"<tr><td>([^<]*)</td>", html), [shown, "Mindset cần bỏ"])
+        html = str(worksheet_fallback_html("Form", ["MINDSET TO DROP", "THE AI PILOT GOAL", "What do you drop?",
+                                                    "What is the goal?"], None, "en"))
+        self.assertEqual(re.findall(r"<tr><td>([^<]*)</td>", html), ["Mindset to drop", "The AI pilot goal"])
+
     def test_a_row_form_and_a_reference_table(self) -> None:
         html = str(worksheet_fallback_html("Cam kết", COMMITMENT_FACTS, None, "en"))
         self.assertEqual(re.findall(r"<tr><td>([^<]*)</td>", html), [

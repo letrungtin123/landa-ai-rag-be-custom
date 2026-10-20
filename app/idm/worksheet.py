@@ -27,6 +27,7 @@ from collections.abc import Callable, Sequence
 from typing import Any, Final
 
 from app.content.instructional_quality import TABLE_ROW_RE
+from app.idm.acronyms import keeps_capitals
 from app.idm.text import idm_fold, trim_at_boundary
 
 COMPACTED_CODE: Final = "IDM_W5_WORKSHEET_COMPACTED"
@@ -39,7 +40,6 @@ _LABEL_MAX_WORDS: Final = 8
 _HEADING_MAX_WORDS: Final = 12
 _UPPER_SHARE: Final = 0.6
 _TITLE_CASE_SHARE: Final = 0.8
-_ACRONYM_MAX_CHARS: Final = 3
 _MIN_ROWS: Final = 2
 _MAX_GROUP: Final = 6
 _GUIDANCE_CELL_CHARS: Final = 160
@@ -188,19 +188,14 @@ def _is_heading(line: str) -> bool:
     return _upper_share(line) >= _UPPER_SHARE or capitalised >= _TITLE_CASE_SHARE * len(words)
 
 
-def _acronym(word: str) -> bool:
-    """"AI", "BIC", "KPI": short, upper case and plain ASCII (a Vietnamese syllable such as "CẦN" carries marks)."""
-
-    return len(word) <= _ACRONYM_MAX_CHARS and word.isupper() and word.isascii()
-
-
 def _display_label(label: str) -> str:
-    """"MINDSET CẦN BỎ" -> "Mindset cần bỏ"; short acronyms ("AI", "BIC", "CEO") keep their case."""
+    """"MINDSET CẦN BỎ" -> "Mindset cần bỏ", "YẾU TỐ AN TOÀN" -> "Yếu tố an toàn"; abbreviations and codes ("AI",
+    "BIC", "KPI", "ERA5.0") keep their capitals wherever they stand (``acronyms.keeps_capitals``: a short ASCII word
+    such as "AN" is a Vietnamese syllable, not an abbreviation)."""
 
     if _upper_share(label) < _UPPER_SHARE:
         return label
-    words = [word if index > 0 and _acronym(word) else word.lower() for index, word in enumerate(label.split())]
-    text = " ".join(words)
+    text = " ".join(word if keeps_capitals(word) else word.lower() for word in label.split())
     return text[:1].upper() + text[1:]
 
 

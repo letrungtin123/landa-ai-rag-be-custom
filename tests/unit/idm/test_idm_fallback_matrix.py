@@ -15,22 +15,29 @@ Every type has at least one valid case. A case the golden design lacks is derive
 retyped (plan type and purpose, brief type and role) and, where the golden facts hold no such structure, the unit's
 fact texts are rewritten; the brief and contract hashes are then recomputed. The provider is a local fake with empty
 queues, so nothing reaches the network and any provider call fails the case.
+
+A source-locked FAQ says each source sentence once. A lone labelled caution ("Lưu ý: X") made d4ff677 build "Lưu ý: X"
+and "X"; that slot stays buildable: its second item is another sentence of the slot, else of the unit, else the old
+repeated item, which the unit names as a reason for author review.
 """
 
 from __future__ import annotations
 
 import dataclasses
+import unittest
 from collections.abc import Callable
 from typing import Any
 
 from app.idm.contracts import brief_hash_of
 from app.idm.node_acceptance import node_acceptance_findings
-from app.idm.storyboard import acceptance_context, build_idm_expected, parse_brief
+from app.idm.storyboard import IdmUnitWriter, acceptance_context, build_idm_expected, parse_brief
+from app.idm.storyboard_context import _Draft
 from app.schemas.orchestration_v2 import RagLessonAuthorUnitV2Request
 from app.services.orchestration_v2 import unit as unit_service
 from app.services.staged_unit.validation import validate_staged_unit_content
 from tests.golden import idm_golden_unit as gu
-from tests.support.idm_test_support import rehash_contract
+from tests.support.idm_test_support import make_runtime, rehash_contract
+from tests.support.log_support import logged_events
 from tests.unit.idm.test_idm_storyboard import (
     StoryboardEndpointTestCase,
     body_for,
@@ -65,6 +72,19 @@ FORM_FACTS = {
     "d1-c6-f5": "Khiếu nại có liên quan đến an toàn của khách hàng không?",
     "d1-c6-f6": "Khách hàng có đề cập đến kiện tụng không?",
 }
+
+
+# lsn_003 u2 (its problem slot retyped html): the FAQ slot's one labelled fact is the caution "Lưu ý: …" (d1-c8-f3);
+# "Ví dụ: …" (d1-c8-f2) is rewritten as a plain sentence of the slot, or as a short heading (no other sentence).
+LONE_CAUTION_PROSE = {"d1-c8-f2": "Nhân viên hứa hoàn tiền ngay khi khách hàng vừa gọi đến, trước khi xác minh "
+                                  "đơn hàng."}
+LONE_CAUTION_ALONE = {"d1-c8-f2": "VÍ DỤ THỰC TẾ"}
+# lsn_001 u1 (its problem slot retyped la_faq on the second block only): that block holds the caution and short lines.
+LONE_CAUTION_BLOCK = {"d1-c3-f6": "Lưu ý: Khiếu nại về giao hàng phải được ghi nhận trong vòng 24 giờ kể từ khi khách "
+                                  "hàng phản ánh."}
+FAQ_FALLBACK_REPEATED = "IDM_W5_FAQ_FALLBACK_REPEATED"
+FAQ_FALLBACK_REPEATED_NOTE = {"vi": "hỏi đáp dự phòng lặp lại cùng một câu của tài liệu",
+                              "en": "a fallback FAQ that repeats one source sentence"}
 
 
 # --- request builders ------------------------------------------------------------------------------
@@ -125,6 +145,25 @@ def form_worksheet() -> dict[str, Any]:
     return rehashed(body)
 
 
+def lone_caution(texts: dict[str, str]) -> dict[str, Any]:
+    """lsn_003 u2: html slot + an FAQ slot whose only labelled fact is a caution."""
+
+    return with_fact_texts(retype(escalate_body(), 0, "html"), texts)
+
+
+def lone_caution_in_block() -> dict[str, Any]:
+    """lsn_001 u1: html on both blocks + an FAQ slot on the second block, whose only sentence is a caution; the
+    first block's sentences are the unit's other facts."""
+
+    body = retype(body_for(0, 0, 0), 1, "la_faq")
+    contract = body["unit_contract"]
+    block = contract["unit_source_scope_ids"][1]
+    keys = [fact["fact_key"] for fact in contract["source_facts"] if fact["scope_key"] == block]
+    contract["component_plan"][1].update(source_scope_ids=[block], supporting_evidence_fact_ids=keys)
+    contract["idm_unit_brief"]["components"][1]["supporting_fact_keys"] = keys
+    return with_fact_texts(body, LONE_CAUTION_BLOCK)
+
+
 @dataclasses.dataclass(frozen=True)
 class Case:
     slot_type: str
@@ -134,6 +173,9 @@ class Case:
     index: int = 0
     # Text the fallback html of that slot must hold (proves which builder produced it).
     html_marker: str | None = None
+    # FAQ slot: the fact whose text is the second answer, and whether the answers repeat (kept for review).
+    faq_fact: str | None = None
+    faq_repeated: bool = False
 
 
 VALID_CASES = (
@@ -145,6 +187,12 @@ VALID_CASES = (
     Case("problem", "lsn_005 u1 retyped, code table question", lambda: retype(job_aid_table(), 0, "problem")),
     Case("la_faq", "lsn_003 u2 with its problem slot retyped html, labelled cautions",
          lambda: retype(escalate_body(), 0, "html"), 1),
+    Case("la_faq", "lsn_003 u2, a lone labelled caution and a plain sentence of the slot",
+         lambda: lone_caution(LONE_CAUTION_PROSE), 1, faq_fact="d1-c8-f2"),
+    Case("la_faq", "lsn_001 u1, a lone labelled caution and a sentence of the unit's other block",
+         lone_caution_in_block, 1, faq_fact="d1-c2-f2"),
+    Case("la_faq", "lsn_003 u2, a lone labelled caution and no other sentence (kept repeated, for review)",
+         lambda: lone_caution(LONE_CAUTION_ALONE), 1, faq_repeated=True),
     Case("la_sortable", "golden lsn_004 u2, html + sortable on steps 9-12", lambda: body_for(2, 0, 1), 1),
     Case("la_sortable", "lsn_004 u1 retyped, steps 1-8", lambda: retype(procedure_steps(), 0, "la_sortable")),
     Case("la_crossword", "lsn_003 u1 retyped, Term: definition facts",
@@ -156,7 +204,7 @@ VALID_CASES = (
          lambda: retype(with_fact_texts(escalate_rules(), ARROW_FACTS), 0, "la_diagram")),
     Case("worksheet", "golden worksheet_body, reference table (plain source html)", worksheet_body),
     Case("worksheet", "lsn_003 u1 as a worksheet on form facts (structured form)", form_worksheet,
-         html_marker="<td>Yếu tố pháp lý</td>"),
+         html_marker="<td>Yếu tố an toàn</td>"),  # never "Yếu tố AN toàn": "AN" is a syllable, not an acronym
 )
 
 UNBUILDABLE_CASES = (
@@ -209,6 +257,14 @@ def unit_findings(body: dict[str, Any], unit: dict[str, Any]) -> tuple[tuple[str
     return (None if finding is None else (finding.code, finding.path)), [item.as_log() for item in node]
 
 
+def repeated_answers(answers: list[str]) -> list[int]:
+    """Positions of the answers another answer of the same FAQ holds whole."""
+
+    texts = [" ".join(answer.split()) for answer in answers]
+    return [index for index, text in enumerate(texts)
+            if any(other != index and text in texts[other] for other in range(len(texts)))]
+
+
 # --- tests -----------------------------------------------------------------------------------------
 class FallbackMatrixTests(StoryboardEndpointTestCase):
     def test_matrix_covers_every_slot_type(self) -> None:
@@ -235,6 +291,18 @@ class FallbackMatrixTests(StoryboardEndpointTestCase):
         self.assert_fallback_envelope(body, data)
         unit = data["unit"]
         self.assertEqual(unit_findings(body, unit), (None, []))
+        # A source-locked FAQ says each source sentence once (not "Lưu ý: X" and then "X" again), unless the facts
+        # hold no second sentence: then the unit names the repeat for author review.
+        for component in unit["components"]:
+            if component["type"] == "la_faq":
+                answers = [item["answer"] for item in component["items"]]
+                self.assertEqual(bool(repeated_answers(answers)), case.faq_repeated, answers)
+        quality = unit["idm_quality"]
+        self.assertEqual(FAQ_FALLBACK_REPEATED in quality["deterministic_codes"], case.faq_repeated)
+        self.assertEqual(FAQ_FALLBACK_REPEATED_NOTE[body["locale"]] in quality["author_note"], case.faq_repeated)
+        if case.faq_fact is not None:
+            texts = {fact["fact_key"]: fact["fact_text"] for fact in body["unit_contract"]["source_facts"]}
+            self.assertEqual(unit["components"][case.index]["items"][1]["answer"], texts[case.faq_fact])
         if case.html_marker is not None:
             self.assertIn(case.html_marker, unit["components"][case.index]["html"])
 
@@ -259,3 +327,25 @@ class FallbackMatrixTests(StoryboardEndpointTestCase):
         self.assertEqual([(item["type"], item["component_plan_id"]) for item in components],
                          [(plan["type"], plan["component_plan_id"]) for plan in plans])
         self.assertEqual(unit["component_plan"], plans)
+
+
+class RepeatedFaqFallbackTests(unittest.TestCase):
+    def test_a_repeated_fallback_faq_is_a_review_reason_of_its_slot_logged_once(self) -> None:
+        # The per-slot fallback path (a provider FAQ that cannot be repaired): the reason joins the slot's reasons.
+        request = RagLessonAuthorUnitV2Request.model_validate({**lone_caution(LONE_CAUTION_ALONE), "locale": "vi"})
+        deps = unit_service._idm_unit_deps(request)
+        writer = IdmUnitWriter(request.unit_contract, parse_brief(request.unit_contract), deps, make_runtime(None))
+        assert deps.source_locked_unit is not None
+        draft = _Draft(dict(deps.source_locked_unit), [])
+        with self.assertLogs("app.idm", level="INFO") as logs:
+            replaced = [writer.fallback_slot(draft, 1, ["FAQ_ITEM_COUNT"]) for _ in range(2)]
+            html = writer.fallback_slot(draft, 0, ["HTML_X"])
+        for result in replaced:
+            assert result is not None
+            self.assertEqual(result.reasons, {1: ["FAQ_ITEM_COUNT", FAQ_FALLBACK_REPEATED]})
+        assert html is not None
+        self.assertEqual(html.reasons, {0: ["HTML_X"]})
+        self.assertEqual(writer.codes, [FAQ_FALLBACK_REPEATED])
+        events = logged_events(logs.records, "idm_unit_faq_fallback_repeated")
+        self.assertEqual([(event["slot"], event["unit_path"]) for event in events],
+                         [(1, request.unit_contract.unit_path)])

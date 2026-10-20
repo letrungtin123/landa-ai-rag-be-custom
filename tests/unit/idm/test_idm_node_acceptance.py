@@ -30,7 +30,7 @@ from app.idm.node_acceptance import (
     workspace_problem_code,
 )
 from app.idm.runtime import IdmStageError
-from app.idm.source_locked import idm_source_faq
+from app.idm.source_locked import faq_answers_repeat, idm_source_faq
 from app.idm.storyboard import acceptance_context, parse_brief, run_idm_unit
 from app.lesson_author_orchestration_v2_provider import UnitGenerationContractV2
 from app.schemas.orchestration_v2 import RagLessonAuthorUnitV2Request
@@ -247,6 +247,68 @@ class SourceFaqTests(unittest.TestCase):
         self.assertIsNone(idm_source_faq("Thực hành", facts[:1], locale="vi"))
         prose = ["Một câu văn xuôi không có nhãn nào ở đầu câu cả."]
         self.assertIsNone(idm_source_faq("Thực hành", prose, locale="vi"))
+
+    def test_a_labelled_caution_is_one_item_with_its_whole_sentence(self) -> None:
+        # "Lưu ý: X" is an explicit caution (kept whole, the legacy rule) and a "Label: definition" fact; its
+        # definition came back as a second item ("X" under "Điểm thứ 2 ..."), so the learner read X twice.
+        caution_vi = "Lưu ý: Không được bỏ qua bước kiểm tra an toàn trước khi vận hành máy ép."
+        rule_vi = "Quy luật chi phí: Đầu tư 1 đồng cho phòng ngừa lỗi từ đầu tiết kiệm 10 đồng chi phí kiểm tra."
+        caution_en = "When: Before every shift and after each tool change, check that the guard is closed."
+        rule_en = "Cost rule: One unit spent on prevention saves ten units of later inspection."
+        cases = {
+            "vi": ("Vận hành máy ép", [caution_vi, rule_vi], [
+                ("Người học cần ghi nhớ gì về 'Vận hành máy ép'?", caution_vi),
+                ("Người học cần hiểu gì về Quy luật chi phí?", rule_vi.removeprefix("Quy luật chi phí: "))]),
+            "en": ("Press safety", [caution_en, rule_en], [
+                ("What should learners remember about 'Press safety'?", caution_en),
+                ("What should learners understand about Cost rule?", rule_en.removeprefix("Cost rule: "))]),
+        }
+        for locale, (title, facts, expected) in cases.items():
+            with self.subTest(locale=locale):
+                items = idm_source_faq(title, facts, locale=locale) or []
+                self.assertEqual([(item["question"], item["answer"]) for item in items], expected)
+                # Another fact that only repeats the caution's sentence under its own label adds no item either.
+                repeat = "Quy định: " + caution_vi.removeprefix("Lưu ý: ")
+                answers = [item["answer"] for item in idm_source_faq(title, [caution_vi, repeat, rule_vi],
+                                                                     locale=locale) or []]
+                self.assertEqual(answers, [caution_vi, rule_vi.removeprefix("Quy luật chi phí: ")])
+
+    def test_a_lone_caution_keeps_its_slot_buildable(self) -> None:
+        # A lone "Lưu ý: X" gave "Lưu ý: X" and "X" on d4ff677: the slot was buildable and must stay so (a fallback_only
+        # retry without it answers 422). The second item is another sentence of the slot, else of the unit; with
+        # none, the old repeated item stays and the unit marks the slot for review (faq_answers_repeat).
+        sentences = {
+            "vi": ("Vận hành máy ép",
+                   "Lưu ý: Không được bỏ qua bước kiểm tra an toàn trước khi vận hành máy ép.",
+                   "Nhân viên vận hành phải đeo găng tay và kính bảo hộ trong suốt ca làm việc.",
+                   "Máy ép chỉ được khởi động lại sau khi trưởng ca xác nhận khu vực đã an toàn.",
+                   "Người học cần ghi nhớ gì về 'Vận hành máy ép'?",
+                   "Điểm thứ 2 cần lưu ý trong 'Vận hành máy ép' là gì?"),
+            "en": ("Press safety",
+                   "When: Before every shift and after each tool change, check that the guard is closed.",
+                   "Operators wear gloves and safety glasses for the whole of their shift at the press.",
+                   "The press restarts only after the shift lead confirms that the area is safe again.",
+                   "What should learners remember about 'Press safety'?",
+                   "Which point 2 needs attention in 'Press safety'?"),
+        }
+        heading = "AN TOÀN MÁY ÉP"
+        for locale, (title, caution, slot_sentence, unit_sentence, first, second) in sentences.items():
+            cases = {
+                "slot": ([caution, heading, slot_sentence], [unit_sentence], slot_sentence),
+                "unit": ([caution, heading], [caution, heading, unit_sentence], unit_sentence),
+                "none": ([caution, heading], [caution, heading], caution.split(": ", 1)[1]),
+            }
+            for name, (slot, unit, answer) in cases.items():
+                with self.subTest(locale=locale, case=name):
+                    items = idm_source_faq(title, slot, locale=locale, unit_values=unit) or []
+                    self.assertEqual([(item["question"], item["answer"]) for item in items],
+                                     [(first, caution), (second, answer)])
+                    self.assertEqual(faq_answers_repeat(items), name == "none")
+        # A slot d4ff677 could not build stays unbuildable: one condition without a label is no FAQ.
+        condition = "Nếu máy phát ra tiếng lạ, phải dừng máy ngay và báo cho trưởng ca trực."
+        self.assertIsNone(idm_source_faq("Vận hành máy ép", [condition], locale="vi",
+                                         unit_values=[condition, sentences["vi"][2]]))
+        self.assertFalse(faq_answers_repeat(None))
 
 
 class WriterIntegrationTests(StoryboardEndpointTestCase):

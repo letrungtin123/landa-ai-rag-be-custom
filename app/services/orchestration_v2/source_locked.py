@@ -290,8 +290,13 @@ def _orchestration_v2_source_locked_component(
             return None
         component.update(problem)
     elif plan.type == "la_faq" and faq_builder is not None:
-        # IDM units inject a builder that also uses labelled source definitions (run c2e5ac41).
-        items = faq_builder(title, fact_texts, locale=locale)
+        # IDM units inject a builder that also uses labelled source definitions (run c2e5ac41); the unit's facts give
+        # it a second item when the slot's own facts hold one only.
+        unit_texts = clean_source_facts(
+            [fact_by_id[fact_id] for fact_id in contract.unit_source_fact_ids if fact_id in fact_by_id],
+            preserve_table_numeric=True,
+        )
+        items = faq_builder(title, fact_texts, locale=locale, unit_values=unit_texts)
         if items is None:
             return None
         component["items"] = items
