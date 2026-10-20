@@ -155,18 +155,30 @@ def faq_title_mismatch(component: dict[str, Any], taught: str = "") -> bool:
     """The FAQ title's key words (content words that are not FAQ boilerplate) are mostly absent from its
     questions and answers ("… trong họp giao ban" over items about something else; QC 364564, N11).
 
-    ``taught`` (QLT-9): the unit's html before the FAQ. A title that names the unit's topic in the unit's words
+    ``taught`` (QLT-9): what the unit speaks of besides the FAQ. A title that names the unit's topic in the unit's words
     ("Giải đáp về đối sánh nội địa …" over items about "đối thủ trong nước", QC run ffaf7318: 2 of 2 findings were
-    false alarms) matches; only a title about something neither the items nor the unit speak of does not."""
+    false alarms) matches; only a title about something neither the items nor the unit speak of does not. Since
+    2026-10-20 (owner P7) the unit is every other slot (the html after the FAQ and the question too) and the facts the
+    FAQ is built on (``unit_context``); a title word counts as the unit's only inside a word pair the unit writes too
+    (Vietnamese words are syllables: the "giao" of "đơn hàng giao trễ" is not the "giao" of "họp giao ban")."""
 
     items = component.get("items")
-    key = set(content_words(str(component.get("title") or ""))) - FAQ_TITLE_GENERIC_WORDS
+    title = str(component.get("title") or "")
+    key = set(content_words(title)) - FAQ_TITLE_GENERIC_WORDS
     if not isinstance(items, list) or len(key) < IDM_FAQ_TITLE_MIN_KEY_WORDS:
         return False
     said = {word for item in items if isinstance(item, dict)
             for word in content_words(f"{item.get('question') or ''} {item.get('answer') or ''}")}
-    said |= set(content_words(taught))
+    pairs = set(word_ngrams(taught, 2))
+    said |= {word for pair in word_ngrams(title, 2) if pair in pairs for word in pair}
     return len(key & said) < IDM_FAQ_TITLE_MIN_SHARED_SHARE * len(key)
+
+
+def unit_context(components: Sequence[dict[str, Any]], index: int, faq_check: FaqChecker | None) -> str:
+    """The learner text of every slot of the unit but ``index`` and the facts slot ``index`` is built on."""
+
+    texts = [_visible(component) for position, component in enumerate(components) if position != index]
+    return " ".join([*texts, *(faq_check.slot_texts(index) if faq_check is not None else ())])
 
 
 def _sections(component: dict[str, Any]) -> list[dict[str, Any]]:
@@ -282,7 +294,7 @@ def deterministic_slot_findings(
                 findings.extend(SlotFinding(code, index) for code in faq_check.findings(index, component))
             if restated_faq_items(component, preceding_html):
                 findings.append(SlotFinding(FAQ_RESTATES_HTML_CODE, index))
-            if faq_title_mismatch(component, preceding_html):
+            if faq_title_mismatch(component, unit_context(components, index, faq_check)):
                 findings.append(SlotFinding(FAQ_TITLE_MISMATCH_CODE, index))
         elif kind == "problem":
             explanation = " ".join(str(component.get("explanation") or "").split())

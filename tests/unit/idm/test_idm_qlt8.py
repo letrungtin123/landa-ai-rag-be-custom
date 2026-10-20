@@ -283,11 +283,12 @@ class UnitFlowTests(StoryboardEndpointTestCase):
         leak = {**writer, "components": {**writer["components"], "c1": {**writer["components"]["c1"],
                                                                          "choices": leaking}}}
         cut_repair = slot_repair(writer, 1, question="Một khách hàng gọi lần thứ hai để phàn nàn vì đơn hàng giao trễ")
-        provider = FakeGenerate(**{WRITER: [leak], REPAIR: [cut_repair], JUDGE: [judge()]})
+        # Owner P3: the leak left after the first repair gets a second targeted one, which cuts the question again.
+        provider = FakeGenerate(**{WRITER: [leak], REPAIR: [cut_repair, cut_repair], JUDGE: [judge()]})
         status, data, _ = await self.post(body, provider)
         self.assertEqual(status, 200)
         quality = self.assert_envelope(data, "provider_validated", "review_required", "provider")
-        self.assertEqual(provider.names, [WRITER, REPAIR, JUDGE])
+        self.assertEqual(provider.names, [WRITER, REPAIR, REPAIR, JUDGE])
         served = data["unit"]["components"][1]
         self.assertEqual(served["question"], whole)
         self.assertIn("Thiệt hại tài chính dưới 50 triệu đồng hoặc khách hàng phàn nàn lần thứ hai",

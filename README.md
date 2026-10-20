@@ -162,7 +162,7 @@ Secrets are `SecretStr` and never logged; `.env.example` holds placeholders.
 | `AI_RAG_CHAT_DEADLINE_MS` | int | `180000` | >= 1000, <= 3600000 |
 | `AI_RAG_INDEX_DEADLINE_MS` | int | `585000` | >= 1000, <= 3600000 |
 | `AI_RAG_LESSON_AUTHOR_DEADLINE_MS` | int | `585000` | >= 1000, <= 3600000 |
-| `AI_RAG_IDM_JUDGE_MODE` | `off` \| `observe` \| `repair` | `observe` |  |
+| `AI_RAG_IDM_JUDGE_MODE` | `off` \| `observe` \| `repair` | `repair` |  |
 | `AI_RAG_IDM_W1_PARALLELISM` | int | `4` | >= 1, <= 8 |
 | `AI_RAG_IDM_MAX_SECTIONS` | int | `16` | >= 4, <= 16 |
 | `AI_RAG_IDM_PROVIDER_CALL_TIMEOUT_MS` | int | `180000` | >= 30000, <= 300000 |

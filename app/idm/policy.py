@@ -103,6 +103,9 @@ IDM_W5_REPAIR_LOW_SECONDS: Final = 20.0
 # "Bản đồ 5 chuyển dịch" and its medium-thinking repair was cut at 52.6 s by the 120 s unit deadline. Below the bound
 # the deterministic step runs at once, so the extra latency of a targeted repair is at most one low-thinking call.
 IDM_TARGETED_REPAIR_MIN_SECONDS: Final = 30.0
+# Owner P6 (2026-10-20): the QC analysis of that day counted 6 fallbacks after one repair call that failed transiently
+# (provider timeout or unavailable). Such a repair is sent once more when at least this much time is left.
+IDM_REPAIR_RETRY_MIN_SECONDS: Final = 30.0
 
 # --- Thinking levels per stage (spec §5.5, revised after QC course 234653) ---------------
 # W1-reduce, W2 and W4 classify and order a compact block catalog; "high" thinking used the

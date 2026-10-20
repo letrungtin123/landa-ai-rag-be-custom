@@ -11,7 +11,10 @@ here work per sentence of a teaching slot (``fidelity.is_teaching_slot``):
   example, a clarifying phrase ("nghĩa là", "tức là" ...) or a why sentence, never a generic word ("để", "vì") alone;
 * sentence length (explain, QLT-7): prose sentences of a teaching slot average at most 22 words and none is longer
   than 40 (table rows, list items, callouts and sentences that state a rule are not measured);
-* new facts (explain): a number, date, amount or capitalised name neither the facts nor the approved plan state;
+* new facts (explain): a number, date, amount or capitalised name neither the facts nor the approved plan state; list
+  labels ("Shift 1", "Trụ cột 01", where the facts never number that word) and the count of the list that follows
+  ("gồm 5 bước:" before five items) are layout; a new number inside an AI-drafted example ("Ví dụ minh hoạ: …" and the
+  list it introduces) is a notice for the author note, not a finding (owner decision 2026-10-20);
 * example role (every mode, QLT-7): a drafted example ("Ví dụ minh hoạ: …") about a person of another level than the
   audience (``example_roles``);
 * example label (explain): "Ví dụ:" before text the facts do not ground becomes "Ví dụ minh hoạ:" (a fix, not a
@@ -28,6 +31,7 @@ import re
 import unicodedata
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
+from functools import cached_property
 from itertools import pairwise
 from typing import Any, Final
 
@@ -48,7 +52,7 @@ from app.idm.policy import (
     IDM_SENTENCE_LENGTH_MIN_SENTENCES,
     IDM_SENTENCE_MIN_WORDS,
 )
-from app.idm.text import EvidenceIndex, idm_fold, number_tokens
+from app.idm.text import EvidenceIndex, idm_fold, number_spans, number_tokens
 
 SENTENCE_COPY_CODE: Final = "IDM_W5_SENTENCE_COPY"
 EXPLANATION_MISSING_CODE: Final = "IDM_W5_EXPLANATION_MISSING"
@@ -112,6 +116,27 @@ _UNLABELLED_EXAMPLE_RE: Final = re.compile(r"^\s*(?:ví dụ|for example|example
 _COMMON_CAPITALISED: Final = frozenset({"ok", "ai"})
 _TEXT_KINDS: Final = frozenset({"paragraph", "task", "warning"})
 _LIST_KINDS: Final = frozenset({"bullets", "steps"})
+# New facts (owner decisions 2026-10-20; QC runs ffaf7318, c0030787 and 43fabc57: 17 teaching slots flagged
+# IDM_W5_NEW_FACT, most for "SHIFT 1" … "SHIFT 5", "Trụ cột 01" … "03" or "gồm 5 bước … sau:" before five items). A list
+# label opens an item, a table row, a text or a heading: "<word> <1-2 digits>" then ":", ".", "(", ")" or a dash; the
+# last word before the number is the label's key ("Trụ cột 01" -> "cot").
+_LABEL_START_RE: Final = re.compile(
+    r"^[\W_]*(?:[^\W\d_]+\s+){0,2}(?P<word>[^\W\d_]+)\s+(?P<number>\d{1,2})(?!\d)(?![.,]\d)"
+    r"\s*(?=[:.)(\-–—]|$)")  # noqa: RUF001 - dashes
+# The same label anywhere in a text ("… như Shift 3 đã nêu").
+_LABEL_ANY_RE: Final = re.compile(r"(?<!\w)(?P<word>[^\W\d_]+)\s+(?P<number>\d{1,2})(?!\d)(?![.,]\d)")
+# A count before a noun ("5 bước", "6 mắt xích"); a number before a unit is an amount, a duration or a share.
+_COUNT_RE: Final = re.compile(r"(?<![\w.,])(?P<number>\d{1,2})(?!\d)(?![.,]\d)\s+(?P<noun>[^\W\d_]+)")
+_UNIT_WORDS: Final = frozenset({
+    "phan", "ngay", "tuan", "thang", "nam", "quy", "gio", "phut", "giay", "lan", "trieu", "ty", "nghin", "ngan",
+    "dong", "usd", "vnd", "percent", "day", "days", "week", "weeks", "month", "months", "year", "years", "quarter",
+    "quarters", "hour", "hours", "minute", "minutes", "second", "seconds", "times", "million", "billion", "thousand",
+})
+# Replaces an exempt label or count before the number and name checks: lower case, no digit, never a name.
+_LAYOUT_MASK: Final = "x"
+# A list label numbers its items with one or two digits ("Bước 2", "Trụ cột 01").
+_LABEL_DIGITS: Final = 2
+_MIN_LIST_COUNT: Final = 2
 
 
 def _nfc_lower(text: str) -> str:
@@ -347,11 +372,119 @@ class KnownFacts:
                 run = []
         return found
 
+    def new_tokens(self, text: str) -> tuple[tuple[str, ...], tuple[str, ...]]:
+        """The numbers (as written) and the names of ``text`` the facts and the plan do not state, in reading order (a
+        list ordinal at its start is layout, not a fact). For a repair prompt only: never logged."""
+
+        stripped = _ORDINAL_RE.sub("", text, count=1)
+        numbers = tuple(dict.fromkeys(raw for raw, normal, _start, _end in number_spans(stripped)
+                                      if normal not in self.numbers))
+        return numbers, tuple(dict.fromkeys(self.new_names(stripped)))
+
     def states_new_fact(self, text: str) -> bool:
         """``text`` states a number or a name the facts and the plan do not (a list ordinal is layout, not a fact)."""
 
-        stripped = _ORDINAL_RE.sub("", text, count=1)
-        return bool(number_tokens(stripped) - self.numbers or self.new_names(stripped))
+        numbers, names = self.new_tokens(text)
+        return bool(numbers or names)
+
+
+@dataclass(frozen=True)
+class NewFactHit:
+    """A text of a teaching slot that states a number or a name the facts and the plan do not: its location, the new
+    numbers (as written) and names, and whether it sits in an AI-drafted example (``example_segments``)."""
+
+    location: str
+    numbers: tuple[str, ...]
+    names: tuple[str, ...]
+    example: bool
+
+    @property
+    def review_tokens(self) -> tuple[str, ...]:
+        """The tokens that make the text a finding: every name, and the numbers outside a drafted example (owner
+        decision 2026-10-20: a number inside one is a notice)."""
+
+        return self.names + (() if self.example else self.numbers)
+
+
+def label_heads(texts: Iterable[str]) -> dict[str, set[int]]:
+    """The numbers each list-label key opens ``texts`` with ("Shift 1: …", "Trụ cột 02 - …" -> {"shift": {1}, …})."""
+
+    heads: dict[str, set[int]] = {}
+    for text in texts:
+        match = _LABEL_START_RE.match(unicodedata.normalize("NFC", text))
+        if match is not None:
+            heads.setdefault(idm_fold(match.group("word")), set()).add(int(match.group("number")))
+    return heads
+
+
+def masked_labels(text: str, labels: Mapping[str, int]) -> str:
+    """``text`` with every "<key> <n>" of an exempt label sequence (``labels``: key -> its last number) masked."""
+
+    def mask(match: re.Match[str]) -> str:
+        last = labels.get(idm_fold(match.group("word")))
+        return _LAYOUT_MASK if last is not None and 1 <= int(match.group("number")) <= last else match.group(0)
+
+    return _LABEL_ANY_RE.sub(mask, unicodedata.normalize("NFC", text))
+
+
+def masked_count(text: str, count: int) -> str:
+    """``text`` with the count "<count> <noun>" of the list that follows it masked (never an amount or a duration)."""
+
+    def mask(match: re.Match[str]) -> str:
+        counted = int(match.group("number")) == count and idm_fold(match.group("noun")) not in _UNIT_WORDS
+        return f"{_LAYOUT_MASK} {match.group('noun')}" if counted else match.group(0)
+
+    return _COUNT_RE.sub(mask, text)
+
+
+def _block_units(block: Mapping[str, Any], base: str) -> list[str]:
+    """The text-unit locations of a list or table block (one per item or row)."""
+
+    kind = block.get("kind")
+    if kind in _LIST_KINDS and isinstance(block.get("items"), list):
+        return [f"{base}.items[{position}]" for position, item in enumerate(block["items"]) if isinstance(item, str)]
+    if kind == "table" and isinstance(block.get("rows"), list):
+        return [f"{base}.rows[{position}]" for position, row in enumerate(block["rows"]) if isinstance(row, dict)]
+    return []
+
+
+def list_counts(component: Mapping[str, Any]) -> dict[str, int]:
+    """Text location -> the item count of the list or table block right after it in its section."""
+
+    counts: dict[str, int] = {}
+    for section_index, section in enumerate(_sections(component)):
+        for block_index, (block, after) in enumerate(pairwise(section.get("blocks") or [])):
+            if not isinstance(block, dict) or not isinstance(after, dict) or block.get("kind") not in _TEXT_KINDS:
+                continue
+            items = len(_block_units(after, ""))
+            if items >= _MIN_LIST_COUNT:
+                counts[f"semantic_content.sections[{section_index}].blocks[{block_index}]"] = items
+    return counts
+
+
+def example_segments(component: Mapping[str, Any]) -> set[str]:
+    """Locations of the AI-drafted examples of an html slot: a text or list item opening with the illustrative label
+    ("Ví dụ minh hoạ:", ``is_labelled_example``), the list or table blocks right after such a text, and every block of
+    a section whose heading opens with the label."""
+
+    found: set[str] = set()
+    for section_index, section in enumerate(_sections(component)):
+        whole = is_labelled_example(str(section.get("heading") or ""))
+        inside = False
+        for block_index, block in enumerate(section.get("blocks") or []):
+            if not isinstance(block, dict):
+                continue
+            base = f"semantic_content.sections[{section_index}].blocks[{block_index}]"
+            if block.get("kind") in _TEXT_KINDS:
+                inside = is_labelled_example(str(block.get("text") or ""))
+                if inside or whole:
+                    found.add(base)
+            elif block.get("kind") in _LIST_KINDS and isinstance(block.get("items"), list):
+                found.update(f"{base}.items[{position}]" for position, item in enumerate(block["items"])
+                             if isinstance(item, str) and (inside or whole or is_labelled_example(item)))
+            elif inside or whole:
+                found.update(_block_units(block, base))
+    return found
 
 
 @dataclass
@@ -411,10 +544,56 @@ class FidelityChecker:
     def new_names(self, text: str) -> list[str]:
         return self.known.new_names(text)
 
-    def new_fact_locations(self, component: Mapping[str, Any]) -> list[str]:
-        """Locations of texts with a number or a name the facts and the plan do not state (never the text)."""
+    @cached_property
+    def numbered_words(self) -> frozenset[str]:
+        """Folded words the facts or the plan write a number right after ("Bậc 01"): their numbering is a fact."""
 
-        return [unit.location for unit in text_units(component) if self.known.states_new_fact(unit.text)]
+        return frozenset(first for first, second in self.known.pairs
+                         if second.isdigit() and len(second) <= _LABEL_DIGITS)
+
+    def list_labels(self, component: Mapping[str, Any]) -> dict[str, int]:
+        """Label key -> last number of each list-label sequence the slot opens its items, rows, texts or headings with,
+        when the numbers run 1, 2 … without a gap and the facts never number that word (a "Bậc 07" after the facts'
+        "Bậc 01" … "Bậc 06" stays a new fact)."""
+
+        heads = label_heads([*headings(component), *(unit.text for unit in text_units(component))])
+        return {key: max(numbers) for key, numbers in heads.items()
+                if key not in self.numbered_words and numbers == set(range(1, max(numbers) + 1))}
+
+    def new_fact_hits(self, component: Mapping[str, Any]) -> list[NewFactHit]:
+        """Texts with a number or a name the facts and the plan do not state, list labels and the count of the list
+        that follows a text left out (layout, not facts)."""
+
+        labels = self.list_labels(component)
+        counts = list_counts(component)
+        examples = example_segments(component)
+        hits: list[NewFactHit] = []
+        for unit in text_units(component):
+            text = masked_labels(unit.text, labels) if labels else unit.text
+            if unit.location in counts:
+                text = masked_count(text, counts[unit.location])
+            numbers, names = self.known.new_tokens(text)
+            if numbers or names:
+                hits.append(NewFactHit(unit.location, numbers, names, unit.location in examples))
+        return hits
+
+    def new_fact_locations(self, component: Mapping[str, Any]) -> list[str]:
+        """Locations of the texts that make the slot a new-fact finding (never the text)."""
+
+        return [hit.location for hit in self.new_fact_hits(component) if hit.review_tokens]
+
+    def example_numbers(self, components: Sequence[Any]) -> dict[int, int]:
+        """Explain mode, per teaching slot: the AI-drafted example texts that state a number the facts do not (a notice
+        for the author note, owner decision 2026-10-20)."""
+
+        counts: dict[int, int] = {}
+        for index in sorted(self.teaching) if self.mode == "explain" else ():
+            component = components[index] if index < len(components) else None
+            if isinstance(component, dict) and component.get("type") == "html":
+                count = sum(hit.example and bool(hit.numbers) for hit in self.new_fact_hits(component))
+                if count:
+                    counts[index] = count
+        return counts
 
     def role_locations(self, component: Mapping[str, Any]) -> list[str]:
         """Locations of drafted examples whose main person is of another level than the audience (QLT-7)."""
@@ -517,12 +696,14 @@ class FidelityChecker:
                                       "avg_words": round(report.words / report.sentences, 1) if report.sentences
                                       else 0.0,
                                       "prose_avg_words": round(lengths.average, 1), "prose_max_words": lengths.longest}
-        return {"mode": self.mode, "slots": slots, "examples": sum(self.drafted_examples(components).values())}
+        return {"mode": self.mode, "slots": slots, "examples": sum(self.drafted_examples(components).values()),
+                "example_numbers": sum(self.example_numbers(components).values())}
 
 
 __all__ = [
     "EXAMPLE_ROLE_CODE", "EXPLANATION_MISSING_CODE", "FIDELITY_CODES", "NEW_FACT_CODE", "SENTENCE_COPY_CODE",
-    "SENTENCE_LENGTH_CODE", "CopyReport", "EvidenceGrams", "FidelityChecker", "KnownFacts", "LengthReport", "TextUnit",
-    "carries_exact_claim", "copy_report", "explained", "explains", "is_labelled_example", "length_report",
+    "SENTENCE_LENGTH_CODE", "CopyReport", "EvidenceGrams", "FidelityChecker", "KnownFacts", "LengthReport",
+    "NewFactHit", "TextUnit", "carries_exact_claim", "copy_report", "example_segments", "explained", "explains",
+    "is_labelled_example", "label_heads", "length_report", "list_counts", "masked_count", "masked_labels",
     "sentences_of", "text_units", "words_of",
 ]

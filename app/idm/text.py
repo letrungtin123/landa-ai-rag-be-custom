@@ -317,6 +317,13 @@ def number_tokens(text: str) -> set[str]:
     return _numbers(idm_fold(text))
 
 
+def number_spans(text: str) -> list[tuple[str, str, int, int]]:
+    """Every number of ``text`` as written, its normal form (``number_tokens``) and its span, in reading order."""
+
+    return [(match.group(0), _normal_number(match.group(0)), match.start(), match.end())
+            for match in _NUMBER_RE.finditer(text)]
+
+
 def _content(word: str) -> bool:
     return len(word) >= _MIN_CONTENT_WORD_CHARS and word not in _FUNCTION_WORDS and not word.isdigit()
 

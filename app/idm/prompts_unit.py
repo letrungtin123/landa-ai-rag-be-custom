@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import re
 from collections.abc import Iterable, Sequence
 from typing import Any, Final
 
@@ -363,8 +364,9 @@ UNIT_RULE_TEXT: Final[dict[str, str]] = {
                            "its main person someone in the learner's own role, keep the rest of the example; add no "
                            "name, number or rule",
     "IDM_W5_NEW_FACT": "the listed text states a number, date, amount or a person, company or product name the facts "
-                       "do not state: remove it or use what the facts say (a drafted example uses roles, never names "
-                       "or new numbers)",
+                       "do not state (the words quoted after \"new:\", copied from your answer): remove each of them "
+                       "or use what the facts say, and change nothing else in that text (a drafted example uses "
+                       "roles, never names or new numbers)",
     "IDM_W5_SOURCE_ARTIFACT": "a list item, row label or table cell ends cut as the PDF line did (an open \"(\", a "
                               "trailing \"/\" or a word such as \"Best-in\"): write it out in full from the facts "
                               "or drop the cut part",
@@ -379,8 +381,8 @@ UNIT_RULE_TEXT: Final[dict[str, str]] = {
                            "least one a why, what-if or common-mistake question on the planned facts, each answered in "
                            "2-3 explaining sentences (at most about 60 words)",
     "IDM_W5_FAQ_NEW_FACT": "the listed items state a number, date, amount or a person, company or product name their "
-                           "facts do not state: remove it or use what the facts say; explaining in your own words "
-                           "stays allowed",
+                           "facts do not state (the words quoted after \"new:\", copied from your answer): remove each "
+                           "of them or use what the facts say; explaining in your own words stays allowed",
     "IDM_W5_FAQ_OPEN_QUESTION": "the listed items ask or answer a question the SME has not settled (OPEN_QUESTIONS): "
                                 "replace each with another why, what-if or common-mistake question the planned facts "
                                 "answer",
@@ -417,9 +419,32 @@ UNIT_RULE_TEXT: Final[dict[str, str]] = {
     "IDM_W6_Q13": "make the la_faq explain instead of restating: why, what happens if, or what goes wrong, based on "
                   "the facts, at most one recall question; add no number, rule or name",
 }
+# Owner P3 (2026-10-20): the second targeted repair of a slot that still gives its answer away, still states a new
+# number or name, or still has a contested key after the first repair. A leak rewritten inside the same case tends to
+# stay close to the worked example it copied, so the second attempt moves the case to another setting.
+SECOND_REPAIR_TEXT: Final[dict[str, str]] = {
+    "IDM_W5_ANSWER_LEAK": "SECOND ATTEMPT: the first rewrite still gives the answer away. Set the question's case in a "
+                          "different industry AND at a different touchpoint (another moment of the work, another "
+                          "person or document) than every example, worked example, quotation, list and table shown "
+                          "before it, then write every option fresh for that case: the key applies the criterion to "
+                          "the new case and restates no item, row or example of the html; every distractor is a "
+                          "plausible mistake on the same case; keep the earlier html as it is",
+    "IDM_W5_NEW_FACT": "SECOND ATTEMPT: the listed texts still state the quoted numbers or names: delete each quoted "
+                       "word or replace it with the exact words of the facts; add no other number or name",
+    "IDM_W5_ANSWER_CONTESTED": "SECOND ATTEMPT: the case still meets the criteria of another option: change the "
+                               "facts of the case (not only its wording) so that the criteria of exactly one option "
+                               "hold and every other option is clearly ruled out by a criterion the unit teaches; keep "
+                               "the whole question ending with its question sentence and the explanation's reason for "
+                               "every option",
+}
 # A condensed slot aims below the hard limit, so a near miss does not fail again.
 DENSITY_TARGET_SHARE: Final = 0.9
 _MAX_RULE_LINES: Final = 40
+# The new numbers and names a repair line quotes (owner P2, 2026-10-20): tokens of the writer's own answer (word
+# characters, spaces, digits, "." and ","), so they cannot carry markup; bounded in number and length.
+_MAX_HINT_TOKENS: Final = 8
+_MAX_HINT_TOKEN_CHARS: Final = 40
+_HINT_TOKEN_RE: Final = re.compile(r"^[\w .,]{1,40}$")
 
 
 def _metrics_text(violation: HtmlRuleViolation) -> str:
@@ -456,6 +481,21 @@ def rule_line(slot: str, code: str, location: str) -> str:
 
     rule = UNIT_RULE_TEXT.get(code)
     return f"{slot} {code} at {location}" + (f": {rule}" if rule else "")
+
+
+def new_fact_hint(tokens: Iterable[str]) -> str:
+    """' (new: "Think Fast", "2")': the new numbers and names a repair must remove, JSON-quoted (owner P2)."""
+
+    quoted = [_json(token) for token in dict.fromkeys(token.strip()[:_MAX_HINT_TOKEN_CHARS] for token in tokens)
+              if _HINT_TOKEN_RE.fullmatch(token)][:_MAX_HINT_TOKENS]
+    return f" (new: {', '.join(quoted)})" if quoted else ""
+
+
+def second_repair_line(slot: str, code: str) -> str:
+    """The extra line of the second targeted repair of ``code`` in ``slot`` (owner P3); "" for another code."""
+
+    text = SECOND_REPAIR_TEXT.get(code)
+    return f"{slot} {code}: {text}" if text else ""
 
 
 def unit_repair_suffix(issues: Sequence[dict[str, str]], rules: Sequence[str]) -> str:

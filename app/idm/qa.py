@@ -251,6 +251,7 @@ def build_unit_author_note(
     worksheet_compacted: bool = False,
     worksheet_example_kept: bool = False,
     drafted_examples: Mapping[int, int] | None = None,
+    example_numbers: Mapping[int, int] | None = None,
     faq_items_copied: int = 0,
     faq_items_recall: int = 0,
     faq_inferred: Mapping[int, int] | None = None,
@@ -268,7 +269,8 @@ def build_unit_author_note(
     settled during generation (QC course 364564, N8: codes seen before a repair were printed as
     still open). Without ``remaining`` every deterministic code counts as still open.
 
-    ``drafted_examples`` (QLT-5 C): the examples labelled "Ví dụ minh hoạ" per slot; the author checks each one.
+    ``drafted_examples`` (QLT-5 C): the examples labelled "Ví dụ minh hoạ" per slot; the author checks each one;
+    ``example_numbers``: those that state a number the facts do not (owner decision 2026-10-20: a notice, not a review).
     ``faq_items_copied``/``faq_items_recall`` (QLT-5 D): FAQ items dropped because they copied a source sentence or only
     asked for a fact again; ``faq_inferred``: per FAQ slot, the answers that explain beyond the words of their facts
     (the SME checks that they add no rule); ``faq_items_open`` (QLT-7): FAQ items dropped because they answered an
@@ -321,25 +323,9 @@ def build_unit_author_note(
     if repair_failures and not whole_fallback and (fallback_slots or review_slots):
         parts.append(f"Sửa tự động không thành công: {repair_failures}." if vi
                      else f"Automatic repair did not succeed: {repair_failures}.")
-    if faq_items_dropped:
-        parts.append(f"Đã bỏ {faq_items_dropped} câu hỏi đáp có nội dung ngoài tài liệu." if vi
-                     else f"{faq_items_dropped} FAQ item(s) with claims outside the source were removed.")
-    if faq_items_restated:
-        parts.append(f"Đã bỏ {faq_items_restated} câu hỏi đáp chỉ nhắc lại nội dung vừa học." if vi
-                     else f"{faq_items_restated} FAQ item(s) that only repeated the content just taught were removed.")
-    if faq_items_copied:
-        parts.append(f"Đã bỏ {faq_items_copied} câu hỏi đáp gần như chép nguyên câu tài liệu." if vi
-                     else f"{faq_items_copied} FAQ item(s) that nearly copied a source sentence were removed.")
-    if faq_items_recall:
-        parts.append(f"Đã bỏ {faq_items_recall} câu hỏi đáp chỉ hỏi lại kiến thức đã học." if vi
-                     else f"{faq_items_recall} FAQ item(s) that only asked for a fact again were removed.")
-    if faq_items_open:
-        parts.append(f"Đã bỏ {faq_items_open} câu hỏi đáp trả lời câu hỏi còn chờ SME xác nhận." if vi
-                     else f"{faq_items_open} FAQ item(s) that answered a question still open for the SME were removed.")
-    if faq_items_invalid:
-        parts.append(f"Đã bỏ {faq_items_invalid} câu hỏi đáp hệ thống không lưu được (ký tự góc nhọn, câu hỏi trùng)."
-                     if vi else f"{faq_items_invalid} FAQ item(s) the course editor cannot store (angle brackets, "
-                                "repeated question) were removed.")
+    parts.extend(_dropped_faq_lines(vi, dropped=faq_items_dropped, restated=faq_items_restated,
+                                    copied=faq_items_copied, recall=faq_items_recall, unresolved=faq_items_open,
+                                    invalid=faq_items_invalid))
     if callouts_to_prose:
         parts.append(f"Đã chuyển {callouts_to_prose} khung trích dẫn/lưu ý không có trong tài liệu thành đoạn văn "
                      "thường — cần SME xác nhận nội dung." if vi
@@ -364,6 +350,8 @@ def build_unit_author_note(
         parts.extend(_check_lines(vi, deterministic_codes, remaining, fixed_codes, slot_types))
     if drafted_examples and not whole_fallback:
         parts.append(_drafted_examples_line(drafted_examples, slot_types, vi))
+    if example_numbers and not whole_fallback:
+        parts.append(_example_numbers_line(example_numbers, slot_types, vi))
     if faq_inferred and not whole_fallback:
         parts.append(_faq_inferred_line(faq_inferred, slot_types, vi))
     # A source-locked unit carries no drafted scenario; the review reason already says it when it is one.
@@ -385,6 +373,42 @@ def _drafted_examples_line(examples: Mapping[int, int], slot_types: Sequence[str
                          else "") for index in sorted(examples))
     return (f"Ví dụ minh hoạ do AI soạn — cần kiểm tra: {total} ví dụ ({where})." if vi
             else f"Illustrative examples drafted by AI — please check: {total} example(s) ({where}).")
+
+
+def _example_numbers_line(numbers: Mapping[int, int], slot_types: Sequence[str], vi: bool) -> str:
+    """One plain line: the AI-drafted examples that state a number the facts do not (a notice, never a review mark)."""
+
+    labels = _SLOT_LABEL_VI if vi else _SLOT_LABEL_EN
+    where = ", ".join(f"{'khối' if vi else 'block'} {index + 1}"
+                      + (f" ({labels[slot_types[index]]})" if index < len(slot_types) and slot_types[index] in labels
+                         else "") for index in sorted(numbers))
+    total = sum(numbers.values())
+    return (f"Ví dụ minh hoạ do AI soạn có số liệu không có trong tài liệu, chỉ để minh hoạ — cần kiểm tra lại số "
+            f"liệu: {total} ví dụ ({where})." if vi
+            else f"Illustrative examples drafted by AI state numbers that are not in the source, for illustration only "
+                 f"— check the numbers: {total} example(s) ({where}).")
+
+
+def _dropped_faq_lines(vi: bool, *, dropped: int, restated: int, copied: int, recall: int, unresolved: int,
+                       invalid: int) -> list[str]:
+    """The "Đã bỏ …" lines of the FAQ items removed during generation, one per reason."""
+
+    lines = [
+        (dropped, f"Đã bỏ {dropped} câu hỏi đáp có nội dung ngoài tài liệu." if vi
+         else f"{dropped} FAQ item(s) with claims outside the source were removed."),
+        (restated, f"Đã bỏ {restated} câu hỏi đáp chỉ nhắc lại nội dung vừa học." if vi
+         else f"{restated} FAQ item(s) that only repeated the content just taught were removed."),
+        (copied, f"Đã bỏ {copied} câu hỏi đáp gần như chép nguyên câu tài liệu." if vi
+         else f"{copied} FAQ item(s) that nearly copied a source sentence were removed."),
+        (recall, f"Đã bỏ {recall} câu hỏi đáp chỉ hỏi lại kiến thức đã học." if vi
+         else f"{recall} FAQ item(s) that only asked for a fact again were removed."),
+        (unresolved, f"Đã bỏ {unresolved} câu hỏi đáp trả lời câu hỏi còn chờ SME xác nhận." if vi
+         else f"{unresolved} FAQ item(s) that answered a question still open for the SME were removed."),
+        (invalid, f"Đã bỏ {invalid} câu hỏi đáp hệ thống không lưu được (ký tự góc nhọn, câu hỏi trùng)." if vi
+         else f"{invalid} FAQ item(s) the course editor cannot store (angle brackets, repeated question) were "
+              "removed."),
+    ]
+    return [line for count, line in lines if count]
 
 
 def _faq_inferred_line(inferred: Mapping[int, int], slot_types: Sequence[str], vi: bool) -> str:
@@ -486,7 +510,10 @@ REVIEW_REASON_SCENARIO: Final = "ai_scenario"
 # review mark: the source pages with images or tables, and AI slots kept with style findings only (long or copied
 # sentences, an FAQ title, an FAQ that recalls) - the content is correct, the author may polish it.
 REVIEW_REASON_STYLE: Final = "style_kept"
-NOTICE_REASONS: Final = frozenset({REVIEW_REASON_EVIDENCE, REVIEW_REASON_STYLE})
+# Owner decision 2026-10-20: a number the facts do not state inside an AI-drafted example ("Ví dụ minh hoạ: …") is a
+# notice; outside one it stays a review finding (IDM_W5_NEW_FACT).
+REVIEW_REASON_EXAMPLE_NUMBERS: Final = "example_numbers"
+NOTICE_REASONS: Final = frozenset({REVIEW_REASON_EVIDENCE, REVIEW_REASON_STYLE, REVIEW_REASON_EXAMPLE_NUMBERS})
 # Findings about the wording, not the correctness: a slot kept with only these is a notice ("Nên biên tập").
 STYLE_CODES: Final = frozenset({
     SENTENCE_COPY_CODE, SENTENCE_LENGTH_CODE, "IDM_W5_VERBATIM_COPY", EXPLANATION_MISSING_CODE, EXAMPLE_ROLE_CODE,
@@ -503,6 +530,7 @@ _REVIEW_REASON_VI: Final = {
     REVIEW_REASON_JUDGE: "kiểm tra tự động phát hiện vấn đề lớn (chi tiết bên dưới)",
     REVIEW_REASON_SCENARIO: "câu hỏi dùng tình huống do AI soạn, SME cần xác nhận tình huống và đáp án",
     REVIEW_REASON_STYLE: "có khối AI còn câu dài hoặc câu gần chép tài liệu, nên biên tập lại (chi tiết bên dưới)",
+    REVIEW_REASON_EXAMPLE_NUMBERS: "ví dụ minh hoạ do AI soạn có số liệu không có trong tài liệu (chi tiết bên dưới)",
 }
 _REVIEW_REASON_EN: Final = {
     REVIEW_REASON_FALLBACK: "some blocks use the source-based fallback",
@@ -515,6 +543,8 @@ _REVIEW_REASON_EN: Final = {
     REVIEW_REASON_SCENARIO: "the question uses an AI-drafted scenario; the SME should confirm the scenario and the "
                             "answer",
     REVIEW_REASON_STYLE: "some AI blocks keep long or copied sentences; polish them (details below)",
+    REVIEW_REASON_EXAMPLE_NUMBERS: "AI-drafted illustrative examples state numbers that are not in the source (details "
+                                   "below)",
 }
 _MAX_NOTE_ACRONYMS: Final = 8
 
@@ -597,7 +627,8 @@ __all__ = [
     "CRITERIA", "EXPLAINED_CRITERION", "FAQ_ITEMS_DROPPED_CODE", "FAQ_RESTATES_HTML_CODE",
     "FAQ_TITLE_MISMATCH_CODE", "FAQ_VALUE_CRITERION", "FRAMEWORK_INCOMPLETE_CODE", "FRAMEWORK_LIST_INSERTED_CODE",
     "JUDGE_CRITERIA", "NOTICE_REASONS", "NOT_APPLICABLE", "PRACTICE_CRITERIA", "PURPOSE_CRITERION",
-    "REVIEW_REASON_EVIDENCE", "REVIEW_REASON_FALLBACK", "REVIEW_REASON_JUDGE", "REVIEW_REASON_KEPT_SLOTS",
+    "REVIEW_REASON_EVIDENCE", "REVIEW_REASON_EXAMPLE_NUMBERS", "REVIEW_REASON_FALLBACK", "REVIEW_REASON_JUDGE",
+    "REVIEW_REASON_KEPT_SLOTS",
     "REVIEW_REASON_SCENARIO", "REVIEW_REASON_SERVER_EDIT", "REVIEW_REASON_STEP_INCOMPLETE", "REVIEW_REASON_STYLE",
     "SOURCE_ARTIFACT_CODE", "TITLE_CRITERION", "WORKSHEET_INCOMPLETE_CODE", "JudgeMode", "JudgeOutcome", "SlotFinding",
     "advisory_slot_findings", "blocking_count", "build_unit_author_note", "build_unit_quality",

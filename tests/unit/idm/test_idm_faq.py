@@ -398,23 +398,20 @@ class UnitFaqTests(StoryboardEndpointTestCase):
         self.assertNotIn("An la_faq slot digs deeper", provider.calls[0]["prompt"])
         self.assertIn('"has_faq_slot":false', provider.calls[1]["prompt"])
 
-    async def test_recall_only_faq_gets_a_targeted_repair(self) -> None:
+    async def test_recall_only_faq_is_a_polish_note_without_a_repair_call(self) -> None:
+        # Owner P7 (2026-10-20): a repair for a wording finding of an FAQ alone flipped its question types; the FAQ
+        # keeps the writer's items and the author gets a polish note.
         body = escalate_body()
         recall = faq_writer(body, ("Khiếu nại cấp 3 là gì trong xử lý khiếu nại?", EXPLAINED),
                             ("Khiếu nại cấp 2 gồm những dấu hiệu nào?", WHAT_IF))
-        fixed = faq_writer(body, ("Vì sao không nên hứa hoàn tiền khi khách khiếu nại vừa gọi đến?", EXPLAINED),
-                           ("Điều gì xảy ra nếu xử lý khiếu nại mà bỏ qua yếu tố truyền thông?", WHAT_IF))
-        provider = FakeGenerate(**{WRITER: [recall], REPAIR: [slot_repair(fixed, 1)], JUDGE: [judge()]})
+        provider = FakeGenerate(**{WRITER: [recall], JUDGE: [judge()]})
         status, data, _ = await self.post(body, provider)
         self.assertEqual(status, 200)
         quality = self.assert_envelope(data, "provider_validated", "validated", "provider")
-        self.assertEqual(provider.calls[1]["thinking_level"], "low")
-        self.assertIn("c1 IDM_W5_FAQ_TYPE_MIX at c1.items: the questions mostly ask for facts again", provider.calls[1][
-            "prompt"])
-        self.assertIn("(2 recall question(s), 0 why, what-if or common-mistake question(s)) Plan: items[0]",
-                      provider.calls[1]["prompt"])
+        self.assertEqual(provider.names, [WRITER, JUDGE])
+        self.assertEqual(data["unit"]["components"][1]["items"], recall["components"]["c1"]["items"])
         self.assertEqual(quality.deterministic_codes, [FAQ_TYPE_MIX_CODE])
-        self.assertIn("Đã tự sửa: hỏi đáp chỉ hỏi lại kiến thức.", quality.author_note)
+        self.assertIn("Nên biên tập khối 2 (Hỏi đáp): phần hỏi đáp chủ yếu hỏi lại kiến thức", quality.author_note)
 
     async def test_extra_recall_items_are_dropped_when_a_clarifying_one_stays(self) -> None:
         body = escalate_body()
@@ -430,28 +427,29 @@ class UnitFaqTests(StoryboardEndpointTestCase):
                          [items[0][0], items[2][0]])
         self.assertIn("Đã bỏ 1 câu hỏi đáp chỉ hỏi lại kiến thức đã học.", quality.author_note)
 
-    async def test_copied_answer_is_repaired_and_never_replaced_by_the_source(self) -> None:
+    async def test_copied_answer_is_a_polish_note_never_a_repair_or_the_source(self) -> None:
         body = explain_escalate_body()
         copied = faq_writer(body, ("Điều gì dễ nhầm khi khách khiếu nại đòi hoàn tiền ngay?", COPIED),
                             ("Điều gì xảy ra nếu xử lý khiếu nại mà bỏ qua yếu tố truyền thông?", WHAT_IF))
-        fixed = faq_writer(body, ("Điều gì dễ nhầm khi khách khiếu nại đòi hoàn tiền ngay?", INFERRED),
-                           ("Điều gì xảy ra nếu xử lý khiếu nại mà bỏ qua yếu tố truyền thông?", WHAT_IF))
-        provider = FakeGenerate(**{WRITER: [copied], REPAIR: [slot_repair(fixed, 1)], JUDGE: [judge()]})
+        # Owner P7: a copied answer is a wording finding; with too few items to drop it, the slot is kept with a polish
+        # note (QLT-9), without a repair call and never as the source FAQ.
+        provider = FakeGenerate(**{WRITER: [copied], JUDGE: [judge()]})
         status, data, _ = await self.post(body, provider)
         self.assertEqual(status, 200)
         quality = self.assert_envelope(data, "provider_validated", "validated", "provider")
-        self.assertIn("c1 IDM_W5_FAQ_RESTATES_SOURCE at c1.items[0]: the listed answers repeat a source sentence",
-                      provider.calls[1]["prompt"])
-        self.assertEqual(data["unit"]["components"][1]["items"][0]["answer"], INFERRED)
-        self.assertIn("Câu trả lời hỏi đáp có phần AI suy luận từ tài liệu — SME cần kiểm tra không có quy định mới",
-                      quality.author_note)
-        # Still copied after the repair, with too few items to drop it: kept for review, never the source FAQ.
-        provider = FakeGenerate(**{WRITER: [copied], REPAIR: [slot_repair(copied, 1)], JUDGE: [judge()]})
-        status, data, _ = await self.post(body, provider)
-        # QLT-9: a wording finding the repair left is a notice to polish, not a review mark.
-        quality = self.assert_envelope(data, "provider_validated", "validated", "provider")
+        self.assertEqual(provider.names, [WRITER, JUDGE])
         self.assertNotIn("source_locked_fallback", data["unit"]["components"][1])
+        self.assertEqual(data["unit"]["components"][1]["items"][0]["answer"], COPIED)
         self.assertIn("Nên biên tập khối 2 (Hỏi đáp): câu trả lời hỏi đáp gần như chép nguyên câu tài liệu",
+                      quality.author_note)
+        # An answer that explains is no finding at all; the SME checks its inference.
+        explained = faq_writer(body, ("Điều gì dễ nhầm khi khách khiếu nại đòi hoàn tiền ngay?", INFERRED),
+                               ("Điều gì xảy ra nếu xử lý khiếu nại mà bỏ qua yếu tố truyền thông?", WHAT_IF))
+        provider = FakeGenerate(**{WRITER: [explained], JUDGE: [judge()]})
+        status, data, _ = await self.post(body, provider)
+        quality = self.assert_envelope(data, "provider_validated", "validated", "provider")
+        self.assertEqual(provider.names, [WRITER, JUDGE])
+        self.assertIn("Câu trả lời hỏi đáp có phần AI suy luận từ tài liệu — SME cần kiểm tra không có quy định mới",
                       quality.author_note)
 
     async def test_the_judge_faq_criterion_is_stored_under_not_copied(self) -> None:

@@ -350,10 +350,11 @@ class UnitEndpointTests(StoryboardEndpointTestCase):
     async def test_failed_slot_repair_falls_back_for_that_slot(self) -> None:
         body = severity_body()
         writer = severity_writer(body, ONE_OPTION)
-        failures = {"invalid": "{}", "still_bad": slot_repair(writer, 1), "provider": unavailable()}
-        for name, answer in failures.items():
+        # Owner P6: a transient provider failure is retried once (it fails again here).
+        failures = {"invalid": ["{}"], "still_bad": [slot_repair(writer, 1)], "provider": [unavailable()] * 2}
+        for name, answers in failures.items():
             with self.subTest(repair=name):
-                provider = FakeGenerate(**{WRITER: [writer], REPAIR: [answer], JUDGE: [judge()]})
+                provider = FakeGenerate(**{WRITER: [writer], REPAIR: answers, JUDGE: [judge()]})
                 status, data, _ = await self.post(body, provider)
                 self.assertEqual(status, 200)
                 source = "reserved_upper_bound" if name == "provider" else "provider"
@@ -370,9 +371,36 @@ class UnitEndpointTests(StoryboardEndpointTestCase):
                 self.assertEqual(data["attempt_trace"][-2 if name != "provider" else -1]["failure_code"],
                                  "IDM_W5_SLOT_FALLBACK")
                 # A transient provider failure also blocks the judge call of the same task.
-                expected = [WRITER, REPAIR] if name == "provider" else [WRITER, REPAIR, JUDGE]
+                expected = [WRITER, REPAIR, REPAIR] if name == "provider" else [WRITER, REPAIR, JUDGE]
                 self.assertEqual(provider.names, expected)
                 self.assertEqual(quality.judge_status, "failed" if name == "provider" else "pass")
+
+    async def test_a_transient_repair_failure_is_retried_once(self) -> None:
+        # Owner P6: the repair is sent again after a provider timeout or unavailability when 30 s or more are left.
+        body = severity_body()
+        writer = severity_writer(body, ONE_OPTION)
+        good = severity_writer(body)
+        provider = FakeGenerate(**{WRITER: [writer], REPAIR: [unavailable(), slot_repair(good, 1)], JUDGE: [judge()]})
+        status, data, _ = await self.post(body, provider)
+        self.assertEqual(status, 200)
+        self.assertEqual(provider.names, [WRITER, REPAIR, REPAIR, JUDGE])
+        self.assertEqual(provider.calls[2]["prompt"], provider.calls[1]["prompt"])
+        # The failed call's usage stays unknown (reserved upper bound); the repaired slot and the judge are kept.
+        quality = self.assert_envelope(data, "structured_fallback", "review_required", "reserved_upper_bound")
+        self.assertEqual(data["unit"]["components"][1]["explanation"], served(body, good, 1)["explanation"])
+        self.assertFalse(any(component.get("source_locked_fallback") for component in data["unit"]["components"]))
+        self.assertEqual((quality.judge_status, quality.repair_applied), ("pass", True))
+        self.assertNotIn("Sửa tự động không thành công", quality.author_note)
+        # Under 30 s left, no retry: the slot falls back as before.
+        provider = FakeGenerate(**{WRITER: [writer], REPAIR: [unavailable()], JUDGE: [judge()]})
+        status, data, _ = await self.post({**body, "remaining_workflow_budget_ms": 34_000}, provider)
+        self.assertEqual(provider.names, [WRITER, REPAIR])
+        self.assertTrue(data["unit"]["components"][1]["source_locked_fallback"])
+        # A provider error that is not transient (a busy service) is never retried.
+        busy = ServiceError(status_code=503, detail={"code": "SERVICE_BUSY", "message": "private"})
+        provider = FakeGenerate(**{WRITER: [writer], REPAIR: [busy], JUDGE: [judge()]})
+        status, data, _ = await self.post(body, provider)
+        self.assertEqual(provider.names, [WRITER, REPAIR])
 
     async def test_failed_slot_repair_without_slot_fallback_keeps_the_provider_slot_for_review(self) -> None:
         # Regression (run 2a5e9ff2): a prose-only practice slot has no source-locked rebuild. A slot that
@@ -551,9 +579,10 @@ class JudgeEndpointTests(StoryboardEndpointTestCase):
         writer = escalate_writer(body)
         major = judge(("Q4_feedback_teaches", "major", 0), ("Q8_language", "minor", None))
         worse = slot_repair(writer, 0, explanation=ONE_OPTION)
-        for name, answer in {"provider": unavailable(), "invalid": "{}", "fails_checks": worse}.items():
+        # Owner P6: the transient failure is retried once (it fails again here).
+        for name, answers in {"provider": [unavailable()] * 2, "invalid": ["{}"], "fails_checks": [worse]}.items():
             with self.subTest(repair=name):
-                provider = FakeGenerate(**{WRITER: [writer], JUDGE: [major], REPAIR: [answer]})
+                provider = FakeGenerate(**{WRITER: [writer], JUDGE: [major], REPAIR: answers})
                 status, data, _ = await self.post(body, provider, mode="repair")
                 self.assertEqual(status, 200)
                 # Node admits the validated lane only for provider-accounted content: a failed repair call
@@ -561,7 +590,7 @@ class JudgeEndpointTests(StoryboardEndpointTestCase):
                 envelope = (("structured_fallback", "reserved_upper_bound") if name == "provider"
                             else ("provider_validated", "provider"))
                 quality = self.assert_envelope(data, envelope[0], "review_required", envelope[1])
-                self.assertEqual(provider.names, [WRITER, JUDGE, REPAIR])
+                self.assertEqual(provider.names, [WRITER, JUDGE, REPAIR, *([REPAIR] if name == "provider" else [])])
                 self.assertEqual((quality.judge_status, quality.repair_applied), ("review_required", False))
                 self.assertEqual(data["unit"]["components"][0]["explanation"], served(body, writer, 0)["explanation"])
 

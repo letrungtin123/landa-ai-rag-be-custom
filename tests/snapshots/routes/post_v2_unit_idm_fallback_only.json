@@ -407,7 +407,7 @@
     ],
     "source_locked_fallback": true,
     "idm_quality": {
-     "judge_mode": "observe",
+     "judge_mode": "repair",
      "judge_status": "not_run",
      "finding_counts": {
       "minor": 0,
