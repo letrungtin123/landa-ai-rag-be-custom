@@ -31,6 +31,7 @@ from app.contracts.orchestration_v2.blueprint import (
     canonical_hash,
 )
 from app.contracts.schema_projection import ORCHESTRATION_V2_WIRE, project_provider_schema, provider_wire_model
+from app.hashing import js_canonical_hash
 from app.instructional_density import (
     DEFAULT_INSTRUCTIONAL_DENSITY_BUDGET,
     INSTRUCTIONAL_DENSITY_POLICY_VERSION,
@@ -604,7 +605,9 @@ class UnitGenerationContractV2(BaseModel):
             base.pop("unit_content_policy_version", None)
         if self.idm_unit_brief is None:
             base.pop("idm_unit_brief", None)
-        if canonical_hash(base) != self.contract_hash:
+        # Node writes the contract hash (orchestrationV2Hash): check it with the Node encoding, so a source
+        # locator such as a bbox coordinate 5e-05 (0.00005 in JavaScript) hashes the same on both sides.
+        if js_canonical_hash(base) != self.contract_hash:
             raise ValueError("ORCHESTRATION_V2_UNIT_CONTRACT_HASH_INVALID")
         return self
 

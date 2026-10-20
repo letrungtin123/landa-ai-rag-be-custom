@@ -17,9 +17,9 @@ from pydantic.json_schema import SkipJsonSchema
 from app.contracts.orchestration_v2.blueprint import (
     ArchitectureComponentAuthorReviewV2,
     ArchitectureMediaBriefV2,
-    canonical_hash,
 )
 from app.contracts.orchestration_v2.provider import SourceSnapshotFactV2
+from app.hashing import js_canonical_hash
 
 # --- Enums (spec §6.1) -------------------------------------------------------------------
 Intent = Literal["know", "do", "decide"]
@@ -671,12 +671,18 @@ class IdmModuleContextV1(IdmModel):
 
 
 def design_hash_of(payload: dict[str, Any]) -> str:
-    """Hash a design payload exactly as Node does: canonical JSON without ``design_hash``."""
+    """Hash a design payload exactly as Node does: canonical JSON without ``design_hash``.
 
-    return canonical_hash({key: value for key, value in payload.items() if key != "design_hash"})
+    Node checks this hash with its own encoder, so it is taken with the Node encoding (``js_canonical_hash``).
+    """
+
+    return js_canonical_hash({key: value for key, value in payload.items() if key != "design_hash"})
 
 
 def brief_hash_of(payload: dict[str, Any]) -> str:
-    """Hash a unit brief exactly as Node does: canonical JSON without ``brief_hash``."""
+    """Hash a unit brief exactly as Node does: canonical JSON without ``brief_hash``.
 
-    return canonical_hash({key: value for key, value in payload.items() if key != "brief_hash"})
+    Node writes this hash, so it is checked with the Node encoding (``js_canonical_hash``).
+    """
+
+    return js_canonical_hash({key: value for key, value in payload.items() if key != "brief_hash"})
