@@ -1,0 +1,167 @@
+{
+ "description": "Organization profile drafted from one learned context document (one map call).",
+ "request": {
+  "method": "POST",
+  "path": "/v1/lesson-author/org-context/distill",
+  "json": {
+   "tenant_id": "00000000-0000-4000-8000-000000000001",
+   "kb_id": "00000000-0000-4000-8000-000000000002",
+   "document_ids": [
+    "00000000-0000-4000-8000-000000000005"
+   ],
+   "locale": "vi",
+   "max_source_chars": 1500000,
+   "model": "test-model",
+   "api_key": "route-snapshot-provider-key",
+   "correlation_id": "00000000-0000-4000-8000-000000000004"
+  }
+ },
+ "db": [
+  {
+   "match": "FROM rag_document_indexes r",
+   "method": "fetch",
+   "rows": [
+    {
+     "index_id": "44444444-4444-4444-8444-444444444444",
+     "document_id": "00000000-0000-4000-8000-000000000005"
+    }
+   ]
+  },
+  {
+   "match": "char_length(c.content)",
+   "method": "fetch",
+   "rows": [
+    {
+     "chunk_no": 0,
+     "chars": 68
+    },
+    {
+     "chunk_no": 1,
+     "chars": 55
+    }
+   ]
+  },
+  {
+   "match": "c.chunk_no=ANY",
+   "method": "fetch",
+   "rows": [
+    {
+     "chunk_no": 0,
+     "content": "Ngắt cầu dao tổng trước khi bảo trì. Treo biển cảnh báo tại tủ điện."
+    },
+    {
+     "chunk_no": 1,
+     "content": "Kiểm tra lại bằng bút thử điện. Ghi sổ nhật ký bảo trì."
+    }
+   ]
+  }
+ ],
+ "provider": [
+  {
+   "text": "{\"organization_summary\": \"Công ty An Phú cung cấp thiết bị điện và dịch vụ bảo trì cho tòa nhà.\", \"products_services\": [\"Dịch vụ bảo trì tủ điện định kỳ\"], \"learner_groups\": [{\"name\": \"Kỹ thuật viên bảo trì\", \"description\": \"Bảo trì tủ điện tại tòa nhà khách hàng.\"}], \"glossary\": [{\"term\": \"Biển cảnh báo\", \"meaning\": \"Biển treo tại tủ điện khi đang bảo trì.\"}], \"key_processes\": [\"Ngắt cầu dao tổng trước khi bảo trì.\"], \"culture_tone\": \"An toàn trước hết, nói rõ ràng và ngắn gọn.\", \"design_conventions\": []}"
+  }
+ ],
+ "expected": {
+  "status": 200,
+  "content_type": "application/json",
+  "body": {
+   "profile": {
+    "organization_summary": "Công ty An Phú cung cấp thiết bị điện và dịch vụ bảo trì cho tòa nhà.",
+    "products_services": [
+     "Dịch vụ bảo trì tủ điện định kỳ"
+    ],
+    "learner_groups": [
+     {
+      "name": "Kỹ thuật viên bảo trì",
+      "description": "Bảo trì tủ điện tại tòa nhà khách hàng."
+     }
+    ],
+    "glossary": [
+     {
+      "term": "Biển cảnh báo",
+      "meaning": "Biển treo tại tủ điện khi đang bảo trì."
+     }
+    ],
+    "key_processes": [
+     "Ngắt cầu dao tổng trước khi bảo trì."
+    ],
+    "culture_tone": "An toàn trước hết, nói rõ ràng và ngắn gọn.",
+    "design_conventions": []
+   },
+   "source_document_ids": [
+    "00000000-0000-4000-8000-000000000005"
+   ],
+   "source_chars": 123,
+   "truncated": false,
+   "usage": {
+    "inputTokens": 11,
+    "outputTokens": 7,
+    "embeddingTokens": 0,
+    "totalTokens": 18
+   },
+   "usage_complete": true,
+   "provider_calls": 1
+  },
+  "db_calls": [
+   {
+    "method": "fetch",
+    "sql_sha256": "ba070fddeac7527d2bbd28d09e557775e12a1c5560cebcd4b02d8d4ef5b4694b",
+    "rule": "FROM rag_document_indexes r",
+    "args": [
+     "00000000-0000-4000-8000-000000000001",
+     "00000000-0000-4000-8000-000000000002",
+     [
+      "00000000-0000-4000-8000-000000000005"
+     ]
+    ]
+   },
+   {
+    "method": "fetch",
+    "sql_sha256": "9fe297e4212a81018dc47c145679067e2af166c11a0641fd56082bf887ae64d2",
+    "rule": "char_length(c.content)",
+    "args": [
+     "00000000-0000-4000-8000-000000000001",
+     "00000000-0000-4000-8000-000000000002",
+     "00000000-0000-4000-8000-000000000005",
+     "44444444-4444-4444-8444-444444444444",
+     -1,
+     2000
+    ]
+   },
+   {
+    "method": "fetch",
+    "sql_sha256": "a3dae9d858960eb2faee4880a9499850027386f514bb501cdbc89d22f2eed091",
+    "rule": "c.chunk_no=ANY",
+    "args": [
+     "00000000-0000-4000-8000-000000000001",
+     "00000000-0000-4000-8000-000000000002",
+     "00000000-0000-4000-8000-000000000005",
+     "44444444-4444-4444-8444-444444444444",
+     [
+      0,
+      1
+     ]
+    ]
+   }
+  ],
+  "provider_calls": [
+   {
+    "op": "generate",
+    "model": "test-model",
+    "schema": "IdmOrgProfileDraftV1",
+    "prompt_sha256": "7703f009269d509de9f6eb0337debf2e204e05cb1da580fe83dccb7ab4570bd4",
+    "prompt_chars": 2763,
+    "config": {
+     "max_output_tokens": 16000,
+     "response_mime_type": "application/json",
+     "response_schema": {
+      "sha256": "de1a7eb6a46b57135e8953fbeec9aa15aac053fa770a4c0e032f9bdebc227340",
+      "chars": 1355
+     },
+     "temperature": 0.2
+    }
+   }
+  ],
+  "retrieval_calls": []
+ }
+}

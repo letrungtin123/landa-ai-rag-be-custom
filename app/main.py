@@ -16,6 +16,7 @@ from app.api.routes import health as health_routes
 from app.api.routes import kb as kb_routes
 from app.api.routes import lesson_author_legacy as lesson_author_legacy_routes
 from app.api.routes import orchestration_v2 as orchestration_v2_routes
+from app.api.routes import org_context as org_context_routes
 from app.contract_bridge import (
     AiUsage,
     RagLessonAuthorCheckpointRequest,
@@ -53,7 +54,8 @@ __all__ = [
 ]
 
 # Registration order is the order of app.routes (and of the OpenAPI document in development).
-ROUTE_MODULES = (health_routes, kb_routes, chat_routes, lesson_author_legacy_routes, orchestration_v2_routes)
+ROUTE_MODULES = (health_routes, kb_routes, chat_routes, lesson_author_legacy_routes, orchestration_v2_routes,
+                 org_context_routes)
 
 
 def create_app() -> FastAPI:

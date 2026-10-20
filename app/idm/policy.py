@@ -501,3 +501,16 @@ IDM_PRESERVE_WORDS_PER_MINUTE: Final = 200
 # row is shown as a line of text (its cells in order).
 IDM_PRESERVE_TABLE_MAX_ROWS: Final = 100
 IDM_PRESERVE_TABLE_MAX_COLUMNS: Final = 50
+
+# --- Organization profile distillation (ORG_CONTEXT spec §4, ``app.idm.org_distill``) --------------------------------
+# One map call reads one batch of the context documents' learned chunks; with more than one batch, reduce calls merge
+# the partial profiles, at most this many per call (a partial profile is at most 6,000 characters of text, so a reduce
+# prompt stays near 50,000 characters). A batch keeps the map prompt well inside the model's attention window while a
+# 1.5 million character source (Node's default bound) needs about ten map calls.
+ORG_DISTILL_BATCH_MAX_CHARS: Final = 150_000
+ORG_DISTILL_REDUCE_FANIN: Final = 8
+# A profile answer is at most ~6,000 characters of JSON text (~3,000 tokens of Vietnamese); the cap leaves room for
+# low thinking. One repair after an invalid answer, as in the W1 stages.
+ORG_DISTILL_MAX_OUTPUT_TOKENS: Final = 16_000
+ORG_DISTILL_ATTEMPTS: Final = 2
+THINKING_ORG_DISTILL: Final = "low"

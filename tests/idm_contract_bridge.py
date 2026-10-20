@@ -28,6 +28,16 @@ QLT-6 ``preserve_source`` (a document kept as it is): ``course_skeleton`` answer
 the provider is called at all. ``preserve_source`` returns that fixture's facts and context; ``preserve_text`` runs the
 exact-text check (``app.idm.preserve_render.preserve_text_finding``) on ``request.cases[i]`` (``facts`` texts and an
 ``html`` fragment) for the Node parity test.
+
+Organization context (ORG_CONTEXT spec §4): ``course_skeleton``, ``chapter_shard`` and ``unit`` take a project context
+or unit brief with ``organization_context`` unchanged (the golden answers do not depend on it).
+* ``org_context``         — Python's reading of ``request.organization_context`` (Node parity): ``profile_hash`` (the
+  ``js_canonical_hash`` of ``profile`` as sent, or null when it is not an object), ``valid``, ``char_count`` and the
+  first ``error`` ({"type", "loc"}; ``type`` is the contract code of a value error, e.g.
+  ``ORG_CONTEXT_PROFILE_HASH_MISMATCH``).
+* ``org_context_distill`` — the real ``/v1/lesson-author/org-context/distill`` route on the request, with the learned
+  chunks of ``options.documents`` ({document id: [chunk texts]}, held for ``request.tenant_id``/``kb_id``) and the
+  profile answers ``options.maps`` / ``options.reduces`` (default: the support profile).
 """
 
 from __future__ import annotations
@@ -40,11 +50,14 @@ from typing import Any
 from unittest.mock import patch
 
 import httpx
+from pydantic import ValidationError
 
 from app import main
 from app.api import deps as api_deps
 from app.core.errors import ServiceError
+from app.hashing import js_canonical_hash
 from app.idm.node_acceptance import node_acceptance_findings
+from app.idm.org_profile import IdmOrganizationContextV1, org_profile_char_count
 from app.idm.preserve_render import preserve_text_finding
 from app.idm.storyboard import acceptance_context, parse_brief
 from app.lesson_author_orchestration_v2_provider import UnitGenerationContractV2
@@ -52,12 +65,15 @@ from app.schemas.common import AiUsage
 from tests import idm_golden as g
 from tests.golden import idm_golden_module as gm
 from tests.golden import idm_preserve_golden as pg
+from tests.support.org_context_support import FakeContextPool, FakeProfileProvider
 
 ROUTES = {
     "course_skeleton": "/v1/lesson-author/orchestration-v2/course-skeleton",
     "chapter_shard": "/v1/lesson-author/orchestration-v2/chapter-shard",
     "unit": "/v1/lesson-author/orchestration-v2/unit",
+    "org_context_distill": "/v1/lesson-author/org-context/distill",
 }
+_CONTRACT_CODE = re.compile(r"\b(ORG_[A-Z_]+)\b")
 CRITERIA = ("Q1_support_sufficient", "Q2_not_copied", "Q3_practice_complete", "Q4_feedback_teaches",
             "Q5_grounded_criteria", "Q6_alignment", "Q7_cognitive_load", "Q8_language", "Q9_traceability")
 _STEP = re.compile(r"^(?:bước|step)\s*\d+\s*[:.)-]\s*", re.IGNORECASE)
@@ -261,7 +277,23 @@ def acceptance(request: dict[str, Any]) -> list[dict[str, Any] | None]:
     return results
 
 
+def org_context_check(request: dict[str, Any]) -> dict[str, Any]:
+    value = request.get("organization_context")
+    profile = value.get("profile") if isinstance(value, dict) else None
+    result: dict[str, Any] = {"profile_hash": js_canonical_hash(profile) if isinstance(profile, dict) else None}
+    try:
+        context = IdmOrganizationContextV1.model_validate(value)
+    except ValidationError as error:
+        first = error.errors(include_url=False, include_input=False)[0]
+        code = _CONTRACT_CODE.search(str(first.get("msg", "")))
+        found = {"type": code.group(1) if code else first["type"], "loc": [str(part) for part in first["loc"]]}
+        return {**result, "valid": False, "char_count": None, "error": found}
+    return {**result, "valid": True, "char_count": org_profile_char_count(context.profile), "error": None}
+
+
 async def run(stage: str, request: dict[str, Any], options: dict[str, Any]) -> dict[str, Any]:
+    if stage == "org_context":
+        return {"status": 200, "response": org_context_check(request), "calls": []}
     if stage == "golden_unit":
         return {"status": 200, "response": golden_units(), "calls": []}
     if stage == "preserve_source":
@@ -285,6 +317,11 @@ async def run(stage: str, request: dict[str, Any], options: dict[str, Any]) -> d
         fake = GoldenGenerate(g.FakeIdmProvider({"IdmW3W4ModuleResponseV1": [answer]}))
     elif stage == "unit":
         fake = UnitGenerate(request, options)
+    elif stage == "org_context_distill":
+        fake = FakeProfileProvider(maps=options.get("maps"), reduces=options.get("reduces"))
+        pool = FakeContextPool(dict(options.get("documents") or {}), tenant=str(request.get("tenant_id")),
+                               kb=str(request.get("kb_id")))
+        main.app.dependency_overrides[api_deps.get_db] = lambda: pool
     else:
         raise ValueError(f"unknown stage {stage}")
     main.app.dependency_overrides[api_deps.require_internal_token] = lambda: None
@@ -295,7 +332,9 @@ async def run(stage: str, request: dict[str, Any], options: dict[str, Any]) -> d
                 reply = await client.post(ROUTES[stage], json=request)
     finally:
         main.app.dependency_overrides.pop(api_deps.require_internal_token, None)
-    return {"status": reply.status_code, "response": reply.json(), "calls": fake.calls}
+        main.app.dependency_overrides.pop(api_deps.get_db, None)
+    calls = [call["kind"] for call in fake.calls] if isinstance(fake, FakeProfileProvider) else fake.calls
+    return {"status": reply.status_code, "response": reply.json(), "calls": calls}
 
 
 async def run_batch(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:

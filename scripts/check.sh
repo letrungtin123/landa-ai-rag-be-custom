@@ -9,7 +9,7 @@ if [ ! -x "$python" ]; then
 fi
 
 # Code held to the full PRD standard (§19.3): ruff (all rules) + mypy strict.
-strict_paths="app/__init__.py app/core app/infra app/idm app/prompt_safety.py app/__main__.py app/main.py app/api app/schemas app/repositories app/contracts app/services/__init__.py app/services/runtime.py app/services/meta.py app/services/deadlines.py app/services/text.py app/services/legacy_routes.py app/services/response_contracts.py app/services/provider.py app/services/chat app/services/retrieval app/services/ingestion app/services/orchestration_v2 app/services/staged_unit app/content app/hashing.py app/contract_bridge.py scripts/coverage_by_package.py"
+strict_paths="app/__init__.py app/core app/infra app/idm app/prompt_safety.py app/__main__.py app/main.py app/api app/schemas app/repositories app/contracts app/services/__init__.py app/services/runtime.py app/services/meta.py app/services/deadlines.py app/services/text.py app/services/legacy_routes.py app/services/response_contracts.py app/services/provider.py app/services/chat app/services/retrieval app/services/ingestion app/services/orchestration_v2 app/services/org_context app/services/staged_unit app/content app/hashing.py app/contract_bridge.py scripts/coverage_by_package.py"
 # The legacy lesson-author pipeline (app/services/lesson_author, app/workflows and the legacy modules of app/)
 # keeps the mypy "no new errors" baseline (pyproject overrides) and the pyflakes (F) step until PRD-3 deletes it.
 # Test code held to the same lint profile: every test directory except the legacy pipeline's

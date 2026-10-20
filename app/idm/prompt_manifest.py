@@ -35,6 +35,7 @@ PROMPT_TEMPLATE_SOURCES: Final = (
     "app.idm.prompts_judge",
     "app.idm.purpose",
     "app.idm.org_context",
+    "app.idm.prompts_org_distill",
     # Rule text that the stages put into prompts.
     "app.idm.fidelity:w2_treatment_rules",
     "app.idm.fidelity:module_fidelity_rules",

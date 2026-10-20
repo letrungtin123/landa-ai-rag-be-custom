@@ -47,6 +47,7 @@ from app.schemas.orchestration_v2 import (
     SourceSnapshotV2Response,
     UnitV2Response,
 )
+from app.schemas.org_context import OrgContextDistillResponse, RagOrgContextDistillRequest
 from app.services.lesson_author.architecture_validation import validate_v5_instructional_coherence
 from app.services.lesson_author.checkpoint import build_lesson_author_checkpoint_result
 from app.services.lesson_author.proposal_validation import semantic_learning_visible_text
@@ -87,6 +88,7 @@ ROUTE_CONTRACTS: dict[str, tuple[type[BaseModel], Any]] = {
         RagLessonAuthorCourseSkeletonV2Request, CourseSkeletonV2Response),
     "/v1/lesson-author/orchestration-v2/chapter-shard": (RagLessonAuthorChapterShardV2Request, ChapterShardV2Response),
     "/v1/lesson-author/orchestration-v2/unit": (RagLessonAuthorUnitV2Request, UnitV2Response),
+    "/v1/lesson-author/org-context/distill": (RagOrgContextDistillRequest, OrgContextDistillResponse),
 }
 
 

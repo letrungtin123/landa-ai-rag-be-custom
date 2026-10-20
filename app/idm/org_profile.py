@@ -1,8 +1,8 @@
 """The organization profile v1 and its frozen wire object (ORG_CONTEXT spec §2), shared with Node and the dashboard.
 
 Authors keep one tenant-wide "Hồ sơ doanh nghiệp" (organization profile) that AI drafts from their context documents
-and they edit and confirm. A run started with it freezes the confirmed version as the workspace's
-``organization_context`` (``IdmOrganizationContextV1``): background for the design, never course knowledge
+(``app.idm.org_distill``) and they edit and confirm. A run started with it freezes the confirmed version as the
+workspace's ``organization_context`` (``IdmOrganizationContextV1``): background for the design, never course knowledge
 (``app.idm.org_context``).
 
 Node normalises the profile once, when an author saves it (NFC, control characters, spaces, empty items), and hashes
@@ -35,6 +35,9 @@ ORG_CONVENTIONS_MAX_ITEMS: Final = 10
 ORG_CONVENTION_MAX: Final = 200
 # ``char_count``: the sum of the lengths of every string of the profile (``org_profile_char_count``).
 ORG_PROFILE_MAX_CHARS: Final = 6000
+# Node's normalisation keeps line breaks only in organization_summary and culture_tone, at most this many lines each;
+# a distilled draft follows the same rule (``app.idm.org_distill.fit_profile``).
+ORG_TEXT_MAX_LINES: Final = 12
 # ``profile_version`` is a Postgres ``int``.
 _MAX_VERSION: Final = 2_147_483_647
 

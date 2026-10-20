@@ -18,6 +18,7 @@ from typing import Any
 from pydantic import ValidationError
 
 from app.contracts.orchestration_v2.provider import UnitGenerationContractV2
+from app.hashing import js_canonical_hash
 from app.idm.contracts import (
     IdmCourseSkeletonRequestV1,
     IdmModuleContextV1,
@@ -32,10 +33,12 @@ from app.idm.org_context import design_block, judge_block, plan_terms, writer_bl
 from app.idm.org_profile import IdmOrganizationContextV1, IdmOrgProfileV1, org_profile_char_count, org_profile_hash
 from app.idm.storyboard import parse_brief
 from app.idm.text import evidence_index
+from tests import idm_contract_bridge as bridge
 from tests import idm_golden as g
 from tests.golden import idm_golden_module as gm
 from tests.support.idm_test_support import ALLOWANCE, golden_design, make_runtime, rehash_contract
 from tests.support.org_context_support import PROFILE, org_context, profile
+from tests.unit.idm.test_idm_endpoints import idm_skeleton_body
 from tests.unit.idm.test_idm_fidelity_unit import explain_body, explained_c0, owned_of, writer_with
 from tests.unit.idm.test_idm_storyboard import (
     JUDGE,
@@ -361,3 +364,33 @@ class NewFactEndpointTests(StoryboardEndpointTestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class CrossLanguageBridgeTests(unittest.TestCase):
+    """The stages the Node parity tests send (``tests/idm_contract_bridge.py``)."""
+
+    def test_course_skeleton_echoes_the_organization_context_exactly(self) -> None:
+        request = idm_skeleton_body()
+        request["idm"]["project_context"]["organization_context"] = org_context()
+        result = asyncio.run(bridge.run("course_skeleton", request, {}))
+        self.assertEqual(result["status"], 200)
+        echo = result["response"]["idm"]["project_context"]["organization_context"]
+        self.assertEqual(echo, org_context())
+        self.assertEqual(js_canonical_hash(echo), js_canonical_hash(org_context()))
+
+    def test_a_unit_whose_brief_carries_the_context_is_written(self) -> None:
+        result = asyncio.run(bridge.run("unit", with_brief_context(severity_body()), {}))
+        self.assertEqual(result["status"], 200)
+
+    def test_the_profile_hash_and_contract_reading(self) -> None:
+        good = asyncio.run(bridge.run("org_context", {"organization_context": org_context()}, {}))["response"]
+        self.assertEqual(good, {"profile_hash": org_context()["profile_hash"], "valid": True,
+                                "char_count": org_profile_char_count(IdmOrgProfileV1.model_validate(PROFILE)),
+                                "error": None})
+        wrong = org_context()
+        wrong["profile_hash"] = "0" * 64
+        bad = asyncio.run(bridge.run("org_context", {"organization_context": wrong}, {}))["response"]
+        self.assertEqual((bad["valid"], bad["error"]["type"], bad["profile_hash"]),
+                         (False, "ORG_CONTEXT_PROFILE_HASH_MISMATCH", org_context()["profile_hash"]))
+        shape = asyncio.run(bridge.run("org_context", {"organization_context": {"profile": []}}, {}))["response"]
+        self.assertEqual((shape["valid"], shape["profile_hash"], shape["char_count"]), (False, None, None))

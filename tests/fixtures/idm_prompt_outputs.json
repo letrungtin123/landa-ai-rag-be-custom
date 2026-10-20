@@ -367,6 +367,32 @@
      "chars": 9832
     }
    ]
+  },
+  "distill": {
+   "map/vi/whole": {
+    "sha256": "502114519f0d65b6b17b227255995a0f47daa7b61655618d123fcf07a464ee82",
+    "chars": 2884
+   },
+   "map/vi/part_of_excerpts": {
+    "sha256": "ca712ac838d5bc73655efb659eb9aa59a6f8308ac5694a1ad9e90f3d857aa835",
+    "chars": 3056
+   },
+   "reduce/vi": {
+    "sha256": "ecc164bac118e23a1bb8714c6f16eccf080d42c96e2e2321a2d7fdafa6b36596",
+    "chars": 4523
+   },
+   "map/en/whole": {
+    "sha256": "271ae033eda7d5209ca98432fb870747a8db6aec9125327917406d2bbec130b4",
+    "chars": 2858
+   },
+   "map/en/part_of_excerpts": {
+    "sha256": "808744257a8743d14bd37bd7f71c2376f5e39b5c515568a0c8ead70741f1c7d2",
+    "chars": 3030
+   },
+   "reduce/en": {
+    "sha256": "1fba6893da8cbca0650b79754bda09f2306f5638f68da9248293c19dcfc6f626",
+    "chars": 4497
+   }
   }
  }
 }

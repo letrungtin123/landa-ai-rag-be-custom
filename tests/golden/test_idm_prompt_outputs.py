@@ -6,7 +6,8 @@
   the module design of every chapter, and units through ``/unit`` (writer + judge, the writer's repair prompts
   after malformed answers, a writer failure);
 * every public builder of ``app.idm.prompts`` called directly with golden inputs (both locales);
-* ``organization_context`` (ORG_CONTEXT spec §4): the same flows for a run with an organization context.
+* ``organization_context`` (ORG_CONTEXT spec §4): the same flows for a run with an organization context, and the
+  organization profile distillation prompts (both locales).
 
 It was recorded before ``app/idm/prompts.py`` was split by stage, so a split that moves code without changing any
 character keeps this test green. Re-record only after a deliberate prompt change, together with the reviewed
@@ -37,10 +38,11 @@ from app.idm.contracts import IdmModuleContextV1, brief_hash_of
 from app.idm.course_design import run_idm_course_design
 from app.idm.html_rules import DENSITY_CODE, HtmlRuleViolation
 from app.idm.module_design import run_idm_module_design
+from app.idm.prompts_org_distill import distill_map_prompt, distill_reduce_prompt
 from tests import idm_golden as g
 from tests.golden import idm_golden_module as gm
 from tests.support.idm_test_support import ALLOWANCE, golden_design, make_runtime, rehash_contract
-from tests.support.org_context_support import org_context
+from tests.support.org_context_support import PROFILE, org_context
 from tests.unit.idm.test_idm_storyboard import (
     JUDGE,
     WRITER,
@@ -185,14 +187,27 @@ def direct_builders() -> dict[str, dict[str, Any]]:
     return {name: fingerprint(text) for name, text in rendered.items()}
 
 
+def distill_prompts() -> dict[str, dict[str, Any]]:
+    documents = [(1, tuple(fact.fact_text for fact in g.source_facts()[:4])), (2, ("Second document.",))]
+    rendered: dict[str, str] = {}
+    for locale in ("vi", "en"):
+        rendered[f"map/{locale}/whole"] = distill_map_prompt(locale, documents=documents, part=1, parts=1,
+                                                             excerpts=False)
+        rendered[f"map/{locale}/part_of_excerpts"] = distill_map_prompt(locale, documents=documents, part=2, parts=3,
+                                                                        excerpts=True)
+        rendered[f"reduce/{locale}"] = distill_reduce_prompt(locale, partials=[PROFILE, PROFILE])
+    return {name: fingerprint(text) for name, text in rendered.items()}
+
+
 def organization_context_prompts() -> dict[str, Any]:
-    """The golden flows of a run with an organization context (ORG_CONTEXT spec §4)."""
+    """The golden flows of a run with an organization context and the distillation prompts (ORG_CONTEXT spec §4)."""
 
     wire = org_context()
     return {
         "course_design": course_design_prompts({**g.project_context(), "organization_context": wire}),
         "modules": module_prompts(wire),
         "units": unit_prompts(wire),
+        "distill": distill_prompts(),
     }
 
 

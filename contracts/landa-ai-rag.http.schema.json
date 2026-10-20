@@ -97,6 +97,14 @@
    "response": {
     "$ref": "#/$defs/UnitV2Response"
    }
+  },
+  "/v1/lesson-author/org-context/distill": {
+   "request": {
+    "$ref": "#/$defs/RagOrgContextDistillRequest"
+   },
+   "response": {
+    "$ref": "#/$defs/OrgContextDistillResponse"
+   }
   }
  },
  "$defs": {
@@ -3157,6 +3165,56 @@
    "title": "LessonArchitectureV2",
    "type": "object"
   },
+  "OrgContextDistillResponse": {
+   "additionalProperties": false,
+   "description": "The drafted profile (field order is the wire order).\n\n``source_document_ids``: the requested documents that had learned text (request order); ``source_chars``: the\ncharacters of source text the profile was drafted from; ``truncated``: the source was longer than\n``max_source_chars``, so an even sample of it was read. ``usage`` is the provider usage of every call\n(``usage_complete`` false when a call's usage is unknown), ``provider_calls`` the number of calls.",
+   "properties": {
+    "profile": {
+     "$ref": "#/$defs/IdmOrgProfileV1"
+    },
+    "source_document_ids": {
+     "items": {
+      "type": "string"
+     },
+     "title": "Source Document Ids",
+     "type": "array"
+    },
+    "source_chars": {
+     "title": "Source Chars",
+     "type": "integer"
+    },
+    "truncated": {
+     "title": "Truncated",
+     "type": "boolean"
+    },
+    "usage": {
+     "additionalProperties": {
+      "type": "integer"
+     },
+     "title": "Usage",
+     "type": "object"
+    },
+    "usage_complete": {
+     "title": "Usage Complete",
+     "type": "boolean"
+    },
+    "provider_calls": {
+     "title": "Provider Calls",
+     "type": "integer"
+    }
+   },
+   "required": [
+    "profile",
+    "source_document_ids",
+    "source_chars",
+    "truncated",
+    "usage",
+    "usage_complete",
+    "provider_calls"
+   ],
+   "title": "OrgContextDistillResponse",
+   "type": "object"
+  },
   "RagChatMessage": {
    "properties": {
     "role": {
@@ -5068,6 +5126,78 @@
     "remaining_workflow_budget_ms"
    ],
    "title": "RagLessonAuthorUnitV2Request",
+   "type": "object"
+  },
+  "RagOrgContextDistillRequest": {
+   "additionalProperties": false,
+   "description": "The tenant's context documents to draft the organization profile from (the backend's distill worker).\n\n``document_ids``: the learned context documents in the order the profile reads them; ``locale``: the language of\nthe profile; ``max_source_chars``: the most source text read (an even sample beyond it). ``model`` and ``api_key``\nare the tenant's provider settings, as on every generation route; ``correlation_id`` is operational metadata.",
+   "properties": {
+    "tenant_id": {
+     "title": "Tenant Id",
+     "type": "string"
+    },
+    "kb_id": {
+     "title": "Kb Id",
+     "type": "string"
+    },
+    "document_ids": {
+     "items": {
+      "type": "string"
+     },
+     "maxItems": 50,
+     "minItems": 1,
+     "title": "Document Ids",
+     "type": "array"
+    },
+    "locale": {
+     "enum": [
+      "vi",
+      "en"
+     ],
+     "title": "Locale",
+     "type": "string"
+    },
+    "max_source_chars": {
+     "maximum": 2000000,
+     "minimum": 1000,
+     "title": "Max Source Chars",
+     "type": "integer"
+    },
+    "model": {
+     "maxLength": 255,
+     "minLength": 1,
+     "title": "Model",
+     "type": "string"
+    },
+    "api_key": {
+     "format": "password",
+     "title": "Api Key",
+     "type": "string",
+     "writeOnly": true
+    },
+    "correlation_id": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Correlation Id"
+    }
+   },
+   "required": [
+    "tenant_id",
+    "kb_id",
+    "document_ids",
+    "locale",
+    "max_source_chars",
+    "model",
+    "api_key"
+   ],
+   "title": "RagOrgContextDistillRequest",
    "type": "object"
   },
   "RagSourceDocument": {

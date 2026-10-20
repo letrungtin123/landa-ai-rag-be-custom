@@ -1,0 +1,53 @@
+{
+ "description": "No requested context document has learned text: 409 without a provider call.",
+ "request": {
+  "method": "POST",
+  "path": "/v1/lesson-author/org-context/distill",
+  "json": {
+   "tenant_id": "00000000-0000-4000-8000-000000000001",
+   "kb_id": "00000000-0000-4000-8000-000000000002",
+   "document_ids": [
+    "00000000-0000-4000-8000-000000000005"
+   ],
+   "locale": "vi",
+   "max_source_chars": 1500000,
+   "model": "test-model",
+   "api_key": "route-snapshot-provider-key",
+   "correlation_id": "00000000-0000-4000-8000-000000000004"
+  }
+ },
+ "db": [
+  {
+   "match": "FROM rag_document_indexes r",
+   "method": "fetch",
+   "rows": []
+  }
+ ],
+ "provider": [],
+ "expected": {
+  "status": 409,
+  "content_type": "application/json",
+  "body": {
+   "detail": {
+    "code": "ORG_CONTEXT_NO_LEARNED_SOURCE",
+    "message": "None of the documents has learned text."
+   }
+  },
+  "db_calls": [
+   {
+    "method": "fetch",
+    "sql_sha256": "ba070fddeac7527d2bbd28d09e557775e12a1c5560cebcd4b02d8d4ef5b4694b",
+    "rule": "FROM rag_document_indexes r",
+    "args": [
+     "00000000-0000-4000-8000-000000000001",
+     "00000000-0000-4000-8000-000000000002",
+     [
+      "00000000-0000-4000-8000-000000000005"
+     ]
+    ]
+   }
+  ],
+  "provider_calls": [],
+  "retrieval_calls": []
+ }
+}

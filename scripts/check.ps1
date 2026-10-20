@@ -13,7 +13,7 @@ $StrictPaths = @(
     "app/services/__init__.py", "app/services/runtime.py", "app/services/meta.py", "app/services/deadlines.py",
     "app/services/text.py", "app/services/legacy_routes.py", "app/services/response_contracts.py",
     "app/services/provider.py", "app/services/chat", "app/services/retrieval", "app/services/ingestion",
-    "app/services/orchestration_v2", "app/services/staged_unit", "app/content",
+    "app/services/orchestration_v2", "app/services/org_context", "app/services/staged_unit", "app/content",
     "app/hashing.py", "app/contract_bridge.py", "scripts/coverage_by_package.py"
 )
 # The legacy lesson-author pipeline (app/services/lesson_author, app/workflows and the legacy modules of app/)

@@ -20,7 +20,18 @@ from app.contracts.orchestration_v2.blueprint import (
 )
 from app.contracts.orchestration_v2.provider import SourceSnapshotFactV2
 from app.hashing import js_canonical_hash
-from app.idm.org_profile import IdmOrganizationContextV1
+from app.idm.org_profile import (
+    ORG_CONVENTION_MAX,
+    ORG_CULTURE_TONE_MAX,
+    ORG_GROUP_DESCRIPTION_MAX,
+    ORG_GROUP_NAME_MAX,
+    ORG_MEANING_MAX,
+    ORG_PROCESS_MAX,
+    ORG_PRODUCT_MAX,
+    ORG_SUMMARY_MAX,
+    ORG_TERM_MAX,
+    IdmOrganizationContextV1,
+)
 
 # --- Enums (spec §6.1) -------------------------------------------------------------------
 Intent = Literal["know", "do", "decide"]
@@ -658,6 +669,29 @@ class IdmUnitQualityV1(IdmModel):
         max_length=32,
     )
     author_note: str = Field(max_length=1500)
+
+
+# --- Organization profile draft (ORG_CONTEXT spec §4) ---------------------------------------
+# The provider answer of the distillation (``app.idm.org_distill``): every bound but the item counts and the total,
+# which the server enforces by dropping trailing items. A comment, not a docstring (the provider reads the docstring).
+class IdmOrgLearnerGroupDraftV1(IdmModel):
+    name: str = Field(max_length=ORG_GROUP_NAME_MAX)
+    description: str = Field(max_length=ORG_GROUP_DESCRIPTION_MAX)
+
+
+class IdmOrgGlossaryTermDraftV1(IdmModel):
+    term: str = Field(max_length=ORG_TERM_MAX)
+    meaning: str = Field(max_length=ORG_MEANING_MAX)
+
+
+class IdmOrgProfileDraftV1(IdmModel):
+    organization_summary: str = Field(max_length=ORG_SUMMARY_MAX)
+    products_services: list[Annotated[str, StringConstraints(strip_whitespace=True, max_length=ORG_PRODUCT_MAX)]]
+    learner_groups: list[IdmOrgLearnerGroupDraftV1]
+    glossary: list[IdmOrgGlossaryTermDraftV1]
+    key_processes: list[Annotated[str, StringConstraints(strip_whitespace=True, max_length=ORG_PROCESS_MAX)]]
+    culture_tone: str = Field(max_length=ORG_CULTURE_TONE_MAX)
+    design_conventions: list[Annotated[str, StringConstraints(strip_whitespace=True, max_length=ORG_CONVENTION_MAX)]]
 
 
 # --- Requests (spec §11.2) -----------------------------------------------------------------

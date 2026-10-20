@@ -64,6 +64,10 @@ APP_ERROR_CODES: Final = _registry(
     ErrorCode("STORAGE_REDIRECT_REJECTED", 422, retryable=False),
     ErrorCode("STORAGE_OBJECT_UNAVAILABLE", 422, retryable=False),
     ErrorCode("STORAGE_DOWNLOAD_FAILED", 502, retryable=True),
+    # Organization context distillation (``POST /v1/lesson-author/org-context/distill``): none of the requested
+    # documents has learned text yet, or the provider answered no valid profile after the repair (a new attempt may).
+    ErrorCode("ORG_CONTEXT_NO_LEARNED_SOURCE", 409, retryable=False),
+    ErrorCode("ORG_CONTEXT_DISTILL_OUTPUT_INVALID", 502, retryable=True),
 )
 
 # Request envelope codes of the framework handlers in app.core.errors.

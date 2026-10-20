@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import logging
 from time import monotonic
-from typing import Any
+from typing import Any, Literal, Protocol
+
+from pydantic import SecretStr
 
 from app.core import metrics
 from app.core.config import settings
@@ -25,7 +27,6 @@ from app.idm.runtime import (
 )
 from app.infra.gemini.calls import require_provider_api_key
 from app.infra.gemini.errors import http_error_detail, provider_http_error_status, safe_provider_error_diagnostics
-from app.schemas.chat import RagRequestBase
 from app.schemas.common import AiUsage
 from app.services import provider
 from app.services import runtime as service_runtime
@@ -69,7 +70,24 @@ async def _idm_generate(api_key: str, model: str, prompt: str, **options: Any) -
         raise IdmProviderError("AI_PROVIDER_UNAVAILABLE", terminal=False) from error
 
 
-def _idm_runtime(request: RagRequestBase, *, budget_ms: int, allowance: Any | None) -> IdmRuntime:
+class IdmCallerRequest(Protocol):
+    """What the runtime reads from a request: every RAG envelope (``RagRequestBase``) and the organization context
+    distillation request have it."""
+
+    @property
+    def api_key(self) -> SecretStr: ...
+
+    @property
+    def model(self) -> str: ...
+
+    @property
+    def locale(self) -> Literal["vi", "en"]: ...
+
+    @property
+    def correlation_id(self) -> str | None: ...
+
+
+def _idm_runtime(request: IdmCallerRequest, *, budget_ms: int, allowance: Any | None) -> IdmRuntime:
     # Ties the content of every IDM request (course design, module, unit) to the prompt templates
     # that wrote it, also across a deploy in the middle of a run.
     log_event(logger, logging.INFO, "idm_prompt_templates", family=IDM_LOG_FAMILY,

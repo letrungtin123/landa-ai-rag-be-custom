@@ -59,6 +59,10 @@ HASH_HISTORY: tuple[tuple[str, str], ...] = (
     # the key out (author_brief.NON_PLAN_CONTEXT_KEYS); two writer lines moved to module constants unchanged.
     ("cec80c040c1329b89ce09cdca144e880d9c40d12942c506a47935ad558bcf924",
      "organization context block slots; no change without a context"),
+    # The organization profile distillation prompts (app.idm.prompts_org_distill, POST /v1/lesson-author/org-context/
+    # distill): a new source; no existing prompt changed.
+    ("4b6f4d57cc2359dd1a4e7e12ab4db56b22508cc4c32d5035317139cc28393dc0",
+     "organization profile distillation prompts"),
 )
 PROMPT_NAME = re.compile(r"(prompt|_rules?$|_suffix$|rule_lines?$|_hint$|^rule_line$|_cue_line$)")
 
