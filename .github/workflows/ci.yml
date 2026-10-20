@@ -81,6 +81,13 @@ jobs:
         working-directory: landa-backend
         run: npm ci --no-audit --no-fund
 
+      # The backend's env.ts exits without a .env file (its own CI copies the example too); the test gives the
+      # Node process its placeholder settings itself.
+      - name: Backend .env from .env.example
+        if: env.HAS_BACKEND_CHECKOUT == 'true'
+        working-directory: landa-backend
+        run: cp .env.example .env
+
       - name: Deselect the Node cross-language test (backend not checked out)
         if: env.HAS_BACKEND_CHECKOUT != 'true'
         run: |

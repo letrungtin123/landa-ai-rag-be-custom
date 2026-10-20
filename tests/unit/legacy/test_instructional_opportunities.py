@@ -1,9 +1,12 @@
 import json
+import os
 import shutil
 import subprocess
+import tempfile
 import unittest
 from copy import deepcopy
 from pathlib import Path
+from unittest import mock
 
 from app.instructional_opportunities import compile_evidence_treatments
 from app.services.lesson_author.architecture_validation import validate_v5_instructional_coherence
@@ -16,13 +19,56 @@ from app.source_map import build_source_map
 from tests.test_component_instance_contract import PROFILE
 from tests.unit.legacy.test_evidence_scope_allocation_v5 import _manifest, _nodes, _v5_blueprint
 
-# Backend modules the Node half of the registry test imports, under src/modules/ai-chatbot. The backend split
-# that folder into product sub-folders (refactor wave 2); an older checkout still has the flat layout.
+# Folders of the backend's src/modules/ai-chatbot/ai-id: "" is ai-id/ itself (the layout today), the others the
+# planned move-only layout (landa-backend scripts/codemods/ai-id-moves.json; file names do not change).
+AI_ID_FOLDERS = (
+    "", "shared", "contracts", "content", "sessions", "sources", "orchestration", "orchestration/idm",
+    "orchestration/steps", "orchestration/finalize", "orchestration/dispatch", "orchestration/worker",
+    "orchestration/admission", "workspace/read", "workspace/stream", "workspace/edit", "workspace/apply",
+    "workspace/launch", "v1", "legacy",
+)
+
+
+def ai_id_candidates(name: str) -> tuple[str, ...]:
+    """Where an ai-id file can be, under src/modules/ai-chatbot: each ai-id folder, then the flat layout that came
+    before the product sub-folders (refactor wave 2)."""
+    return (*(f"ai-id/{folder}/{name}" if folder else f"ai-id/{name}" for folder in AI_ID_FOLDERS), name)
+
+
+# Backend modules the Node half of the registry test imports, under src/modules/ai-chatbot.
 BACKEND_MODULES = {
-    "__REGISTRY__": ("ai-id/lesson-author-component-registry.logic.ts", "lesson-author-component-registry.logic.ts"),
-    "__VALIDATOR__": ("ai-id/lesson-author-blueprint-validator.logic.ts", "lesson-author-blueprint-validator.logic.ts"),
+    "__REGISTRY__": ai_id_candidates("lesson-author-component-registry.logic.ts"),
+    "__VALIDATOR__": ai_id_candidates("lesson-author-blueprint-validator.logic.ts"),
     "__CHAT_SERVICE__": ("chat/chat.service.ts", "chat.service.ts"),
 }
+
+# The Node half imports chat.service.ts, whose env.ts needs these settings when it loads. The child process gets
+# its own environment: the placeholders of the backend's CI (every service on a closed port) plus what Node needs
+# to start, never this process's settings (exporting them here would change the Python Settings tests).
+NODE_TEST_ENV = {
+    "NODE_ENV": "test",
+    "DATABASE_URL": "postgresql://test:test@127.0.0.1:1/test",
+    "DATABASE_POOLER_URL": "",
+    "REDIS_URL": "redis://127.0.0.1:1",
+    "RABBITMQ_URL": "amqp://test:test@127.0.0.1:1",
+    "SUPABASE_URL": "http://127.0.0.1:1",
+    "SUPABASE_SERVICE_KEY": "test-placeholder-not-a-key",
+    "AI_RAG_SERVICE_URL": "http://127.0.0.1:1",
+    "JWT_SECRET": "test-placeholder-not-a-secret",
+    "JWT_ACCESS_EXPIRES_IN": "15m",
+    "JWT_REFRESH_EXPIRES_IN": "7d",
+    "BCRYPT_SALT_ROUNDS": "4",
+    "CORS_ORIGIN": "http://localhost:5274",
+    "PORT": "0",
+}
+NODE_INHERITED = {"PATH", "PATHEXT", "SYSTEMROOT", "WINDIR", "COMSPEC", "TEMP", "TMP", "HOME", "USERPROFILE",
+                  "APPDATA", "LOCALAPPDATA"}
+
+
+def node_env() -> dict[str, str]:
+    env = {key: value for key, value in os.environ.items() if key.upper() in NODE_INHERITED}
+    env.update(NODE_TEST_ENV)
+    return env
 
 
 def backend_module(backend: Path, candidates: tuple[str, ...]) -> str:
@@ -275,9 +321,11 @@ console.log('RESULT:'+JSON.stringify({persisted,cases:cases.map(input=>({
         backend = Path(__file__).resolve().parents[4] / "landa-backend"
         for placeholder, relative in BACKEND_MODULES.items():
             script = script.replace(placeholder, backend_module(backend, relative))
+        self.assertTrue((backend / ".env").is_file(),
+                        f"{backend / '.env'} is missing: the backend's env.ts exits without it (copy .env.example)")
         result = subprocess.run([shutil.which("node") or "node", "--import", "tsx", "--input-type=module", "-e", script],
                                 input=json.dumps({"cases": cases, "blueprints": blueprints}), text=True, encoding="utf-8", capture_output=True, timeout=30,
-                                cwd=backend)
+                                cwd=backend, env=node_env())
         self.assertEqual(result.returncode, 0, result.stderr)
         output = json.loads(next(line[7:] for line in result.stdout.splitlines() if line.startswith("RESULT:")))
         for item in output["persisted"]:
@@ -288,6 +336,40 @@ console.log('RESULT:'+JSON.stringify({persisted,cases:cases.map(input=>({
             self.assertEqual(item["restricted"], ["html"])
         self.assertEqual(actual[-1]["selected"], ["html", "la_crossword", "la_faq"])
         self.assertEqual(output["persisted"][-1]["types"], ["html", "la_crossword", "la_faq"])
+
+
+class BackendLookupTests(unittest.TestCase):
+    def test_a_module_is_found_in_the_current_and_in_every_planned_ai_id_folder(self):
+        name = "lesson-author-component-registry.logic.ts"
+        for folder in AI_ID_FOLDERS:
+            with self.subTest(folder=folder), tempfile.TemporaryDirectory() as tmp:
+                relative = f"ai-id/{folder}/{name}" if folder else f"ai-id/{name}"
+                target = Path(tmp) / "src/modules/ai-chatbot" / relative
+                target.parent.mkdir(parents=True)
+                target.write_text("", encoding="utf-8")
+                found = backend_module(Path(tmp), ai_id_candidates(name))
+                self.assertEqual(found, f"./src/modules/ai-chatbot/{relative}")
+
+    def test_the_first_existing_place_wins_and_a_missing_module_fails(self):
+        name = "lesson-author-blueprint-validator.logic.ts"
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "src/modules/ai-chatbot"
+            for relative in (f"ai-id/v1/{name}", f"ai-id/{name}"):
+                (root / relative).parent.mkdir(parents=True, exist_ok=True)
+                (root / relative).write_text("", encoding="utf-8")
+            found = backend_module(Path(tmp), ai_id_candidates(name))
+            self.assertEqual(found, f"./src/modules/ai-chatbot/ai-id/{name}")
+            with self.assertRaises(AssertionError):
+                backend_module(Path(tmp), ai_id_candidates("lesson-author-missing.logic.ts"))
+
+    def test_the_node_process_gets_placeholders_and_none_of_this_process_settings(self):
+        with mock.patch.dict(os.environ, {"SUPABASE_URL": "https://real.invalid", "LESSON_AUTHOR_FLAG": "1"}):
+            env = node_env()
+            self.assertEqual(os.environ["SUPABASE_URL"], "https://real.invalid")
+        self.assertEqual(env["SUPABASE_URL"], "http://127.0.0.1:1")
+        self.assertEqual(env["NODE_ENV"], "test")
+        self.assertNotIn("LESSON_AUTHOR_FLAG", env)
+        self.assertTrue(any(key.upper() == "PATH" for key in env))
 
 
 if __name__ == "__main__":
