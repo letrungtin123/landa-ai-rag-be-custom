@@ -64,4 +64,13 @@ def judge_repair_fits(remaining_seconds: float) -> bool:
                                  + IDM_CALL_HEADROOM_SECONDS)
 
 
-__all__ = ["judge_repair_fits", "repair_thinking_for", "writer_thinking"]
+def second_repair_fits(remaining_seconds: float, *, judge: bool) -> bool:
+    """A second targeted W5 repair (owner P3, 2026-10-20) at low thinking still fits, and leaves the judge its time
+    when the unit is judged."""
+
+    reserve = IDM_JUDGE_MIN_REMAINING_SECONDS if judge else 0.0
+    return remaining_seconds >= max(IDM_TARGETED_REPAIR_MIN_SECONDS,
+                                    IDM_W5_REPAIR_LOW_SECONDS + IDM_CALL_HEADROOM_SECONDS + reserve)
+
+
+__all__ = ["judge_repair_fits", "repair_thinking_for", "second_repair_fits", "writer_thinking"]

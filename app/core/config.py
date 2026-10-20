@@ -187,9 +187,10 @@ class Settings(BaseSettings):
         le=3_600_000,
     )
 
-    # IDM pipeline (spec §11.5). The judge observes by default and never blocks.
+    # IDM pipeline (spec §11.5). Owner P4 (2026-10-20): the judge repairs the slots it finds a major problem in, once,
+    # when the repair and a second judge still fit the unit's time; "observe" only records its findings.
     idm_judge_mode: Literal["off", "observe", "repair"] = Field(
-        default="observe",
+        default="repair",
         validation_alias="AI_RAG_IDM_JUDGE_MODE",
     )
     idm_w1_parallelism: int = Field(default=4, validation_alias="AI_RAG_IDM_W1_PARALLELISM", ge=1, le=8)

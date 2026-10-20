@@ -50,10 +50,8 @@ FILE_SIZE_ALLOWLIST: dict[str, Allowance] = {}
 FUNCTION_SIZE_ALLOWLIST: dict[str, Allowance] = {
     "idm/module_design.py::run_idm_module_design": Allowance(214, "W3/W4 call, repair loop, salvage and assembly",
                                                              "wave 2 (2.5)"),
-    "idm/qa.py::build_unit_author_note": Allowance(144, "every author-note line of a unit in one builder",
+    "idm/qa.py::build_unit_author_note": Allowance(132, "every author-note line of a unit in one builder",
                                                    "wave 2 (2.5)"),
-    "idm/storyboard.py::run_idm_unit": Allowance(140, "W5 unit flow: fallback-only, writer, judge and settle",
-                                                 "wave 2 (2.5)"),
     "idm/runtime.py::idm_generate": Allowance(131, "admission, transport, usage ledger, trace and parse of one call",
                                               "wave 2 (2.5)"),
     "idm/notes.py::build_course_notes": Allowance(129, "every course-note line in one builder", "wave 2 (2.5)"),

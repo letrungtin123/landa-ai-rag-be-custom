@@ -126,15 +126,48 @@ class AnswerLeakTests(StoryboardEndpointTestCase):
     async def test_leak_the_repair_cannot_fix_is_kept_for_review_with_a_note(self) -> None:
         body = worksheet_body()
         writer = copying_worksheet(body)
-        provider = FakeGenerate(**{WRITER: [writer], REPAIR: [slot_repair(writer, 1)], JUDGE: [judge()]})
+        # Owner P3: a leak the first repair left gets one more targeted repair (another setting for the case).
+        provider = FakeGenerate(**{WRITER: [writer], REPAIR: [slot_repair(writer, 1)] * 2, JUDGE: [judge()]})
         status, data, _ = await self.post(body, provider)
         self.assertEqual(status, 200)
         quality = self.assert_envelope(data, "provider_validated", "review_required", "provider")
+        self.assertEqual(provider.names, [WRITER, REPAIR, REPAIR, JUDGE])
+        second = provider.calls[2]
+        self.assertEqual(second["thinking_level"], "low")
+        self.assertIn("c1 IDM_W5_ANSWER_LEAK: SECOND ATTEMPT: the first rewrite still gives the answer away. Set the "
+                      "question's case in a different industry AND at a different touchpoint", second["prompt"])
+        self.assertNotIn("SECOND ATTEMPT", provider.calls[1]["prompt"])
         self.assertNotIn("source_locked_fallback", data["unit"]["components"][1])
         self.assertIn("Giữ bản AI để tác giả rà soát: khối 2 (Quiz): phương án lộ đáp án.", quality.author_note)
         self.assertIn("Cần xem khối 2 (Quiz): một phương án gần như chép lại ví dụ",
                       quality.author_note)
         self.assertNotIn("Đã tự sửa", quality.author_note)
+
+    async def test_the_second_targeted_repair_settles_a_leak_the_first_left(self) -> None:
+        body = worksheet_body()
+        writer = copying_worksheet(body)
+        fixed = slot_repair(writer, 1, choices=[
+            {"text": "Cấp 1 vì chưa có thiệt hại tài chính", "correct": False},
+            {"text": "Cấp 2, vì cùng một khách đã gọi phàn nàn lại", "correct": True},
+            {"text": "Cấp 3 vì cần escalate ngay cho quản lý", "correct": False}])
+        provider = FakeGenerate(**{WRITER: [writer], REPAIR: [slot_repair(writer, 1), fixed], JUDGE: [judge()]})
+        status, data, _ = await self.post(body, provider)
+        self.assertEqual(status, 200)
+        quality = self.assert_envelope(data, "provider_validated", "validated", "provider")
+        self.assertEqual(provider.names, [WRITER, REPAIR, REPAIR, JUDGE])
+        self.assertTrue(quality.repair_applied)
+        self.assertIn("Đã tự sửa: phương án lộ đáp án.", quality.author_note)
+        self.assertNotIn("Giữ bản AI", quality.author_note)
+
+    async def test_no_second_repair_when_the_judge_would_lose_its_time(self) -> None:
+        body = {**worksheet_body(), "remaining_workflow_budget_ms": 50_000}
+        writer = copying_worksheet(body)
+        provider = FakeGenerate(**{WRITER: [writer], REPAIR: [slot_repair(writer, 1)], JUDGE: [judge()]})
+        status, data, _ = await self.post(body, provider)
+        self.assertEqual(status, 200)
+        # 45 s for the unit: the first targeted repair runs, a second one would leave the judge under 25 s.
+        self.assertEqual(provider.names, [WRITER, REPAIR, JUDGE])
+        self.assertEqual(data["quality_state"], "review_required")
 
 
 class LengthCueTests(StoryboardEndpointTestCase):
@@ -452,15 +485,16 @@ class FaqValueTests(StoryboardEndpointTestCase):
         # Boilerplate only ("Câu hỏi thường gặp") says nothing to match.
         self.assertFalse(faq_title_mismatch({**meeting["components"]["c2"], "title": "Câu hỏi thường gặp"}))
 
-    async def test_item_repeating_the_html_is_dropped_after_the_repair(self) -> None:
+    async def test_item_repeating_the_html_is_dropped_without_a_repair_call(self) -> None:
+        # Owner P7: an FAQ with wording findings only is settled without a repair call; the item that repeats the
+        # html is dropped while two items remain.
         body = faq_after_html_body()
         writer = faq_writer(body, RESTATED, EDGE_CASE, MISCONCEPTION)
-        provider = FakeGenerate(**{WRITER: [writer], REPAIR: [slot_repair(writer, 2)], JUDGE: [judge()]})
+        provider = FakeGenerate(**{WRITER: [writer], JUDGE: [judge()]})
         status, data, _ = await self.post(body, provider)
         self.assertEqual(status, 200)
         quality = self.assert_envelope(data, "provider_validated", "validated", "provider")
-        self.assertIn("c2 IDM_W5_FAQ_RESTATES_HTML at c2.items[0]: these items only repeat the html above",
-                      provider.calls[1]["prompt"])
+        self.assertEqual(provider.names, [WRITER, JUDGE])
         self.assertEqual([item["answer"] for item in data["unit"]["components"][2]["items"]],
                          [EDGE_CASE, MISCONCEPTION])
         self.assertIn("Đã bỏ 1 câu hỏi đáp chỉ nhắc lại nội dung vừa học.", quality.author_note)
@@ -477,18 +511,21 @@ class FaqValueTests(StoryboardEndpointTestCase):
         self.assertIn("Nên biên tập khối 3 (Hỏi đáp): câu hỏi đáp chỉ nhắc lại nội dung vừa "
                       "học", quality.author_note)
 
-    async def test_mismatched_title_is_repaired(self) -> None:
+    async def test_mismatched_title_is_a_polish_note_without_a_repair_call(self) -> None:
+        # Owner P7: the "giao" of the question's "đơn hàng giao trễ" does not make "… họp giao ban" a title of this
+        # unit (a title word counts as the unit's only in a word pair the unit writes); a title finding alone is
+        # a polish note, never a repair call.
         body = faq_after_html_body()
-        writer = faq_writer(body, EDGE_CASE, MISCONCEPTION, title="Câu hỏi thường gặp trong họp giao ban")
-        fixed = slot_repair(faq_writer(body, EDGE_CASE, MISCONCEPTION), 2)
-        provider = FakeGenerate(**{WRITER: [writer], REPAIR: [fixed], JUDGE: [judge()]})
+        title = "Câu hỏi thường gặp trong họp giao ban"
+        writer = faq_writer(body, EDGE_CASE, MISCONCEPTION, title=title)
+        provider = FakeGenerate(**{WRITER: [writer], JUDGE: [judge()]})
         status, data, _ = await self.post(body, provider)
         self.assertEqual(status, 200)
         quality = self.assert_envelope(data, "provider_validated", "validated", "provider")
-        self.assertIn("c2 IDM_W5_FAQ_TITLE_MISMATCH at c2: the la_faq title names what its questions are about",
-                      provider.calls[1]["prompt"])
-        self.assertEqual(data["unit"]["components"][2]["title"], FAQ_TITLE)
-        self.assertIn("Đã tự sửa: tiêu đề hỏi đáp chưa khớp.", quality.author_note)
+        self.assertEqual(provider.names, [WRITER, JUDGE])
+        self.assertEqual(data["unit"]["components"][2]["title"], title)
+        self.assertIn("Nên biên tập khối 3 (Hỏi đáp): tiêu đề phần hỏi đáp không khớp các câu hỏi bên trong.",
+                      quality.author_note)
 
 
 class CalloutKeptForReviewTests(unittest.IsolatedAsyncioTestCase):

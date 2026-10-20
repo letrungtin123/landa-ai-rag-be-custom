@@ -162,19 +162,28 @@ class ExplainedUnitTests(StoryboardEndpointTestCase):
         invented["semantic_content"]["sections"][1]["blocks"][0]["text"] = (
             "Ví dụ minh hoạ: chị Lan ở chi nhánh Hà Nội nhận 3 cuộc gọi phàn nàn trong 15 phút.")
         writer = writer_with(body, invented)
-        provider = FakeGenerate(**{WRITER: [writer], REPAIR: [unavailable()], JUDGE: [judge()]})
+        # Owner P6: the transient failure is retried once; it fails again here.
+        provider = FakeGenerate(**{WRITER: [writer], REPAIR: [unavailable(), unavailable()], JUDGE: [judge()]})
         status, data, _ = await self.post(body, provider)
         self.assertEqual(status, 200)
+        self.assertEqual(provider.names, [WRITER, REPAIR, REPAIR])
         # The failed repair leaves the usage incomplete: Node files the unit under the reviewable lane; the slot is
         # still the provider draft.
         quality = self.assert_envelope(data, "structured_fallback", "review_required", "reserved_upper_bound")
         repair_prompt = provider.calls[1]["prompt"]
-        self.assertIn("c0 IDM_W5_NEW_FACT at c0.semantic_content.sections[1].blocks[0]", repair_prompt)
-        # Locations only: the rejected text never reaches the repair prompt's rule lines.
-        self.assertNotIn("Hà Nội", repair_prompt.split("FAILING_RULES", 1)[1])
+        self.assertEqual(provider.calls[2]["prompt"], repair_prompt)
+        # Owner P2: the location and the new name, quoted ("Lan" folds to the known word "lần"); the numbers of the
+        # drafted example are a notice only.
+        rules = repair_prompt.split("FAILING_RULES", 1)[1]
+        self.assertIn('c0 IDM_W5_NEW_FACT at c0.semantic_content.sections[1].blocks[0]: the listed text states a '
+                      'number', rules)
+        self.assertTrue(rules.rstrip().endswith('(new: "Hà Nội")'))
+        self.assertNotIn('"15"', rules)
         self.assertFalse(data["unit"]["components"][0].get("source_locked_fallback"))
         self.assertIn("Cần xem khối 1 (Lý thuyết): có số liệu hoặc tên riêng không có trong tài liệu",
                       quality.author_note)
+        self.assertIn("Ví dụ minh hoạ do AI soạn có số liệu không có trong tài liệu, chỉ để minh hoạ — cần kiểm tra "
+                      "lại số liệu: 1 ví dụ (khối 1 (Lý thuyết)).", quality.author_note)
 
     async def test_a_repair_that_breaks_a_node_rule_is_dropped_for_the_reviewed_draft(self) -> None:
         # The repair explains the slot but writes a number right after "Hiện trạng", which Node reads as a page

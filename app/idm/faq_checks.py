@@ -382,6 +382,24 @@ class FaqChecker:
                                                                            _answers(component), strict=True))
                 if self.basis(index, position).known.states_new_fact(f"{question}\n{answer}")]
 
+    def new_fact_tokens(self, index: int, component: Mapping[str, Any]) -> dict[int, tuple[str, ...]]:
+        """Item -> the numbers and names its basis facts and the plan do not state (owner P2, 2026-10-20: the repair
+        prompt names them so the writer can remove exactly those; never logged)."""
+
+        found: dict[int, tuple[str, ...]] = {}
+        for position, (question, answer) in enumerate(zip(_questions(component), _answers(component), strict=True)):
+            numbers, names = self.basis(index, position).known.new_tokens(f"{question}\n{answer}")
+            if numbers or names:
+                found[position] = names + numbers
+        return found
+
+    def slot_texts(self, index: int) -> list[str]:
+        """The facts slot ``index`` is built on: every planned anchor and the slot's own facts (the title check)."""
+
+        keys = [*(key for item in self.plans.get(index, ()) for key in item.anchor_fact_keys),
+                *self.slot_keys.get(index, ())]
+        return [self.fact_text[key] for key in dict.fromkeys(keys) if key in self.fact_text]
+
     def open_items(self, component: Mapping[str, Any]) -> list[int]:
         """Items whose question asks an open SME question of the unit again (QLT-7)."""
 

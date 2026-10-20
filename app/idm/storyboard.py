@@ -4,12 +4,14 @@ The writer fills exactly the server-owned component slots of the unit contract.
 Acceptance reuses the shared staged validators (injected through
 :class:`IdmUnitDeps`, so ``app.idm`` never imports ``app.main``), then Node's own
 revision-0 acceptance rules (:mod:`app.idm.node_acceptance`), and adds the IDM
-checks. A failing slot gets one scoped repair, then the source-locked fallback; a
-unit Node would reject is never returned (run c2e5ac41).
+checks. A failing slot gets one scoped repair (a leak, a new fact or a contested key a
+second, targeted one when time allows), then the source-locked fallback; a repair never
+leaves a slot worse than it found it, and a unit Node would reject is never returned (run c2e5ac41).
 
-The unit inputs (deps, brief, budget, draft, settle code sets) are in ``app.idm.storyboard_context`` and the
-writer's state and deterministic steps in ``app.idm.storyboard_steps``; the prompts, the provider steps, the
-settlement and the unit flow are here.
+The unit inputs (deps, brief, budget, draft, settle code sets) are in ``app.idm.storyboard_context``, the
+writer's state and deterministic steps in ``app.idm.storyboard_steps``, its repair decisions in
+``app.idm.storyboard_repair`` and the judge and review reasons in ``app.idm.storyboard_judge``; the prompts, the
+provider steps, the settlement and the unit flow are here.
 """
 
 from __future__ import annotations
@@ -22,9 +24,10 @@ from typing import Any, Final
 
 from app.contracts.orchestration_v2.provider import UnitGenerationContractV2
 from app.idm.answer_checks import contested_option, unit_teaching
-from app.idm.budget import judge_repair_fits, repair_thinking_for
+from app.idm.budget import repair_thinking_for, second_repair_fits
 from app.idm.faq_checks import (
     FAQ_INVENTED_REASON_CODE,
+    FAQ_NEW_FACT_CODE,
     FAQ_OPEN_QUESTION_CODE,
     FAQ_RESTATES_SOURCE_CODE,
     FAQ_TYPE_MIX_CODE,
@@ -52,6 +55,7 @@ from app.idm.policy import (
     IDM_SENTENCE_LENGTH_MAX_AVERAGE_WORDS,
     IDM_SENTENCE_LENGTH_MAX_WORDS,
     IDM_UNIT_WRITER_MAX_OUTPUT_TOKENS,
+    THINKING_TARGETED_REPAIR,
     THINKING_W5,
 )
 from app.idm.prompts import (
@@ -59,8 +63,10 @@ from app.idm.prompts import (
     example_opening,
     html_slot_rules,
     html_violation_line,
+    new_fact_hint,
     repair_suffix,
     rule_line,
+    second_repair_line,
     truncation_suffix,
     unit_repair_suffix,
     unit_writer_prompt,
@@ -70,28 +76,14 @@ from app.idm.qa import (
     CALLOUT_UNGROUNDED_CODE,
     FAQ_RESTATES_HTML_CODE,
     FRAMEWORK_INCOMPLETE_CODE,
-    NOTICE_REASONS,
-    REVIEW_REASON_EVIDENCE,
-    REVIEW_REASON_FALLBACK,
-    REVIEW_REASON_JUDGE,
-    REVIEW_REASON_KEPT_SLOTS,
-    REVIEW_REASON_SCENARIO,
-    REVIEW_REASON_SERVER_EDIT,
-    REVIEW_REASON_STEP_INCOMPLETE,
-    REVIEW_REASON_STYLE,
-    STYLE_CODES,
     JudgeMode,
     JudgeOutcome,
     advisory_slot_findings,
-    blocking_count,
     build_unit_author_note,
     build_unit_quality,
     final_unit_findings,
-    has_practice_slot,
     html_before,
-    repair_targets,
     restated_faq_items,
-    run_judge,
     settled_codes,
     ungrounded_callouts,
 )
@@ -118,6 +110,7 @@ from app.idm.storyboard_context import (
     REPAIR_SKIPPED_CODE,
     IdmUnitDeps,
     NodeAcceptanceUnitFinding,
+    UnitFinding,
     _Draft,
     _safe_path,
     _slot_of,
@@ -128,7 +121,9 @@ from app.idm.storyboard_context import (
     parse_brief,
     safe_error_details,
 )
-from app.idm.storyboard_steps import IdmUnitWriterSteps
+from app.idm.storyboard_judge import judge_and_repair as _judge_and_repair
+from app.idm.storyboard_judge import unit_review_reasons
+from app.idm.storyboard_repair import IdmUnitRepairSteps
 
 _FIELD_OF_PATH_RE: Final = re.compile(r"^components\[\d+\]\.?")
 # FAQ findings settled by dropping the items concerned while the slot keeps two items.
@@ -138,9 +133,9 @@ _MAX_HINT_FACT_KEYS: Final = 24
 _MAX_HINT_LOCATIONS: Final = 8
 
 
-class IdmUnitWriter(IdmUnitWriterSteps):
+class IdmUnitWriter(IdmUnitRepairSteps):
     """The W5 writer of one unit: prompts, provider steps and the settlement of a draft (``IdmUnitWriterSteps``
-    holds the state and the deterministic steps)."""
+    holds the state and the deterministic steps, ``IdmUnitRepairSteps`` the repair decisions)."""
 
     # -- prompts ----------------------------------------------------------------------------
     def writer_prompt(self) -> str:
@@ -229,7 +224,7 @@ class IdmUnitWriter(IdmUnitWriterSteps):
     def faq_rule_line(self, slot: str, index: int, component: dict[str, Any], code: str,
                       unit: dict[str, Any] | None = None) -> str:
         """Targeted repair: which items to rewrite, the server-measured type mix and the facts each item is planned
-        on (keys and numbers, never text)."""
+        on (keys and numbers); for a new fact, the new numbers and names of the writer's answer (owner P2)."""
 
         hint = self.faq.plan_hint(index) or self.fact_hint(index)
         if code == FAQ_TYPE_MIX_CODE:
@@ -243,7 +238,9 @@ class IdmUnitWriter(IdmUnitWriterSteps):
                  else self.faq.invented_reasons(index, component) if code == FAQ_INVENTED_REASON_CODE
                  else self.faq.with_new_facts(index, component))
         items = ", ".join(f"{slot}.items[{item}]" for item in found)
-        return rule_line(slot, code, items or slot) + hint
+        tokens = self.faq.new_fact_tokens(index, component) if code == FAQ_NEW_FACT_CODE else {}
+        return (rule_line(slot, code, items or slot)
+                + new_fact_hint(token for item in found for token in tokens.get(item, ())) + hint)
 
     def callout_rule_line(self, slot: str, index: int, component: dict[str, Any]) -> str:
         """Targeted repair of the callouts the facts do not support (QC course 364564, N9)."""
@@ -281,7 +278,8 @@ class IdmUnitWriter(IdmUnitWriterSteps):
 
     def fidelity_rule_line(self, slot: str, index: int, component: dict[str, Any], code: str) -> str:
         """Targeted repair of a content-mode finding: the locations and, for a copy or long sentences, the
-        server-measured numbers; for a drafted example of another level, the roles of the audience (QLT-7)."""
+        server-measured numbers; for a drafted example of another level, the roles of the audience (QLT-7); for a new
+        fact, the numbers and names of the writer's answer the facts do not state (owner P2, 2026-10-20)."""
 
         if code == SENTENCE_COPY_CODE:
             report = self.fidelity.report(index, component)
@@ -300,8 +298,9 @@ class IdmUnitWriter(IdmUnitWriterSteps):
             roles = self.fidelity.roles.phrases
             measured = f" (roles of TARGET_AUDIENCE: {', '.join(roles)})" if roles else ""
         else:
-            locations = self.fidelity.new_fact_locations(component)[:_MAX_HINT_LOCATIONS]
-            measured = ""
+            hits = [hit for hit in self.fidelity.new_fact_hits(component) if hit.review_tokens][:_MAX_HINT_LOCATIONS]
+            locations = [hit.location for hit in hits]
+            measured = new_fact_hint(token for hit in hits for token in hit.review_tokens)
         where = ", ".join(f"{slot}.{location}" for location in locations)
         return rule_line(slot, code, where or slot) + measured
 
@@ -349,7 +348,7 @@ class IdmUnitWriter(IdmUnitWriterSteps):
 
     async def repair_slots(self, draft: _Draft, issues: Sequence[tuple[str, int]],
                            locations: Mapping[tuple[str, int], str] | None = None,
-                           thinking: ThinkingLevel = THINKING_W5) -> _Draft:
+                           thinking: ThinkingLevel = THINKING_W5, *, second: bool = False) -> _Draft:
         targets = sorted({index for _code, index in issues})
         coverage = sorted({index for code, index in issues if code in _COVERAGE_CODES})
         model = self.deps.build_repair_model(draft.unit, targets, coverage)
@@ -364,9 +363,12 @@ class IdmUnitWriter(IdmUnitWriterSteps):
                 details = (safe_error_details(error) + self.delta_details(delta))[:_MAX_LOGGED_DETAILS]
                 raise IdmResponseInvalidError("IDM_W5_REPAIR_INVALID", details) from error
 
+        rules = self.rule_lines(draft.unit, issues, locations or {})
+        if second:
+            # Owner P3: the second targeted repair says what the first one left and how to change the case.
+            rules.extend(line for code, index in issues if (line := second_repair_line(f"c{index}", code)))
         prompt = self.writer_prompt() + unit_repair_suffix(
-            [{"code": code, "path": f"components[{index}]"} for code, index in issues],
-            self.rule_lines(draft.unit, issues, locations or {}))
+            [{"code": code, "path": f"components[{index}]"} for code, index in issues], rules)
         unit = await idm_generate(
             self.runtime, stage="idm_w5_repair", prompt=prompt, response_schema=model, parse=parse,
             max_output_tokens=IDM_UNIT_WRITER_MAX_OUTPUT_TOKENS, thinking_level=thinking,
@@ -374,6 +376,21 @@ class IdmUnitWriter(IdmUnitWriterSteps):
         )
         return _Draft({**unit, "component_plan": list(self.plans)}, list(draft.fallback_slots), True,
                       list(draft.review_slots), dict(draft.reasons))
+
+    async def repair_with_retry(self, draft: _Draft, issues: Sequence[tuple[str, int]],
+                                locations: Mapping[tuple[str, int], str], thinking: ThinkingLevel, *,
+                                targeted: bool, second: bool = False) -> _Draft:
+        """``repair_slots``, sent once more after a transient provider failure of the call when the time left allows
+        it (owner P6, ``retry_level``)."""
+
+        failed_before = self.runtime.provider_failure_code
+        try:
+            return await self.repair_slots(draft, issues, locations, thinking, second=second)
+        except IdmProviderError as error:
+            level = self.retry_level(error, targeted=targeted, preferred=thinking, failed_before=failed_before)
+            if level is None:
+                raise
+        return await self.repair_slots(draft, issues, locations, level, second=second)
 
     async def budgeted_repair(self, draft: _Draft, issues: Sequence[tuple[str, int]],
                               locations: Mapping[tuple[str, int], str], *, targeted: bool) -> tuple[_Draft, bool]:
@@ -390,7 +407,7 @@ class IdmUnitWriter(IdmUnitWriterSteps):
                 self.failure_codes.append(REPAIR_SKIPPED_CODE)
             return draft, False
         try:
-            return await self.repair_slots(draft, issues, locations, thinking=level), True
+            return await self.repair_with_retry(draft, issues, locations, level, targeted=targeted), True
         except (IdmBudgetError, IdmResponseInvalidError) as error:
             self.failure_codes.append(error.code)
         except IdmProviderError as error:
@@ -400,7 +417,8 @@ class IdmUnitWriter(IdmUnitWriterSteps):
         return draft, False
 
     async def settle(self, draft: _Draft) -> _Draft | None:
-        """Repair once, then replace failing slots with the source-locked fallback.
+        """Repair once (a leak, a new fact or a contested key a second time when the time left allows), then replace
+        failing slots with the source-locked fallback.
 
         A slot without a source-locked rebuild that only fails IDM pedagogy checks is kept for
         author review (``review_slots``); a shared-validator failure there still discards the draft.
@@ -426,25 +444,37 @@ class IdmUnitWriter(IdmUnitWriterSteps):
                     return draft
         self.codes.extend([finding.code] if finding is not None else [])
         self.codes.extend(code for code, _index in [*idm, *cues])
-        issues = [*idm, *cues]
+        if finding is not None and _slot_of(finding) is None:
+            return None
+        draft, repaired = await self.first_repair(draft, finding, idm, cues)
+        if repaired:
+            draft = await self.second_repair(draft)
+        return self.settle_slots(draft, repaired=repaired)
+
+    async def first_repair(self, draft: _Draft, finding: UnitFinding | None, idm: Sequence[tuple[str, int]],
+                           cues: Sequence[tuple[str, int]]) -> tuple[_Draft, bool]:
+        """The one repair call for the writer's findings; ``(draft, repaired)``. A slot it makes worse keeps the
+        writer's version (owner P1, ``guard_repair``)."""
+
         original = draft
+        # Owner P7: the FAQ slots with wording findings only are settled without a repair call (pruned or noted).
+        issues = self.without_style_faq([*idm, *cues])
         # Only notes to settle: a repair that breaks anything else is dropped (the unit was acceptable before).
         notes_only = finding is None and not idm
         # Only content-mode or FAQ findings (QLT-5 C, D): they end as review notes, so a repair that makes a slot fail a
         # shared or Node rule (a longer explanation over the budget) is dropped instead of replacing the slot with the
         # source-locked copy.
         review_only = finding is None and bool(idm) and {code for code, _index in idm} <= _REVIEW_ONLY_CODES
-        slot = _slot_of(finding)
-        if finding is not None and slot is None:
-            return None
         locations: dict[tuple[str, int], str] = {}
-        if finding is not None and slot is not None:
+        if finding is not None and (slot := _slot_of(finding)) is not None:
             issues.append((finding.code, slot))
             locations[(finding.code, slot)] = _safe_path(finding.path) or ""
         # Every slot Node would reject is repaired in the same call, not only the first one.
         issues.extend(dict.fromkeys((item.code, item.component_index) for item in self.last_acceptance[1:]
                                     if item.component_index is not None
                                     and (item.code, item.component_index) not in issues))
+        if not issues:
+            return draft, False
         # A failed repair (budget, provider, invalid answer) falls through to slot fallback. A repair of findings a
         # deterministic step settles anyway (a missing framework list, a length cue, a leak, an FAQ item) is a
         # targeted one: low thinking, and none at all when too little time is left for it (QC run 8de1c76b, Q3). Any
@@ -452,21 +482,54 @@ class IdmUnitWriter(IdmUnitWriterSteps):
         # repairs started at medium with ~36 s left and were cut by the 120 s unit deadline).
         targeted = finding is None and {code for code, _index in issues} <= _TARGETED_REPAIR_CODES
         draft, repaired = await self.budgeted_repair(draft, issues, locations, targeted=targeted)
-        if repaired:
-            draft = self.keep_whole_questions(original, draft)
-        if repaired and notes_only and any(self.problems(draft)):
+        if not repaired:
+            return draft, False
+        draft = self.guard_repair(original, self.keep_whole_questions(original, draft), "w5")
+        if notes_only and any(self.problems(draft)):
             self.runtime.adjustments["w5_note_repair_reverted"] += 1
             draft = original
-        elif repaired and review_only and self.problems(draft)[0] is not None:
+        elif review_only and self.problems(draft)[0] is not None:
             fidelity = {code for code, _index in idm} <= FIDELITY_CODES
             self.runtime.adjustments["w5_fidelity_repair_reverted" if fidelity else "w5_faq_repair_reverted"] += 1
             draft = original
+        return draft, True
+
+    async def second_repair(self, draft: _Draft) -> _Draft:
+        """Owner P3: one more targeted repair of the leaks, new facts and contested keys the first repair left, when it
+        and the judge still fit; the slots it makes worse keep their version (P1)."""
+
+        issues = self.second_repair_issues(draft)
+        if not issues:
+            return draft
+        if not second_repair_fits(self.runtime.remaining_seconds(), judge=self.deps.judge_mode != "off"):
+            self.log_budget("repair_second", None)
+            self.runtime.adjustments["w5_second_repair_skipped_budget"] += 1
+            return draft
+        self.log_budget("repair_second", THINKING_TARGETED_REPAIR)
+        try:
+            repaired = await self.repair_with_retry(draft, issues, {}, THINKING_TARGETED_REPAIR, targeted=True,
+                                                    second=True)
+        except (IdmBudgetError, IdmResponseInvalidError) as error:
+            self.failure_codes.append(error.code)
+            return draft
+        except IdmProviderError as error:
+            if error.terminal:
+                raise
+            self.failure_codes.append(error.code)
+            return draft
+        return self.guard_repair(draft, self.keep_whole_questions(draft, repaired), "w5_second")
+
+    def settle_slots(self, draft: _Draft, *, repaired: bool) -> _Draft | None:
+        """Settle each slot still failing after the repairs (Node item pruning, FAQ pruning, callouts to prose, a
+        framework list, compaction, then fallback or review); ``None`` when the unit cannot be returned."""
+
         # Each pass settles one step of one slot (Node item pruning, FAQ pruning or callouts to prose, then
         # fallback or review), so the bound never limits.
         for attempt in range(3 * len(self.plans) + 1):
             finding, idm = self.problems(draft)
             if finding is None and not idm:
-                return draft
+                # Owner P3: a slot kept for review that a later step settled loses its mark.
+                return self.refresh_review_marks(draft)
             if repaired and attempt == 0:
                 self.log_findings("repair", draft, finding, idm)
             bad = _slot_of(finding) if finding is not None else idm[0][1]
@@ -564,33 +627,7 @@ async def run_idm_unit(
     writer = await runtime.run_cpu(IdmUnitWriter, contract, brief, deps, runtime)
     ai_drafted = any(slot.practice is not None and slot.practice.scenario_origin == "ai_drafted"
                      for slot in brief.components)
-    draft: _Draft | None = None
-    judge = JudgeOutcome("not_run")
-    if fallback_only:
-        writer.failure_codes.append("IDM_W5_FALLBACK_ONLY")
-    else:
-        try:
-            async with asyncio.timeout(max(0.001, runtime.remaining_seconds())):
-                draft = await _provider_draft(writer)
-        except TimeoutError:
-            writer.failure_codes.append("IDM_DEADLINE_EXCEEDED")
-            draft = None
-        except IdmBudgetError as error:
-            writer.failure_codes.append(error.code)
-            draft = None
-        except IdmProviderError as error:
-            # A definitive rejection (credentials, request) must reach Node's fast-fail path.
-            if error.terminal:
-                raise
-            writer.failure_codes.append(error.code)
-            draft = None
-        if draft is not None:
-            # QA runs on its own clock: running out of time never discards the accepted unit.
-            try:
-                async with asyncio.timeout(max(0.001, runtime.remaining_seconds())):
-                    draft, judge = await _judge_and_repair(writer, draft, deps.judge_mode)
-            except TimeoutError:
-                judge = JudgeOutcome("skipped_budget")
+    draft, judge = await _written(writer, fallback_only=fallback_only, mode=deps.judge_mode)
     unexplained_acronyms: list[str] = []
     if draft is not None:
         draft, unexplained_acronyms = await runtime.run_cpu(writer.explain_acronyms, draft)
@@ -613,33 +650,22 @@ async def run_idm_unit(
     # Node admits the validated lane only for provider-accounted content: a draft kept after a failed
     # repair or judge call (reserved upper-bound accounting) is a reviewable structured draft.
     provider_lane = usage_source == "provider" and not whole_fallback and not draft.fallback_slots
-    # A callout turned into a paragraph still states what the facts do not (N9): the SME confirms it.
-    # QLT-8: each reason is named in the note (QC run 0a11aa9e: 3 units marked for review without one). QLT-9 (QC run
-    # ffaf7318: 14 of 18 units marked): slots kept with wording findings only and source pages with images or tables are
-    # notices ("Lưu ý"), not a review mark.
-    style_only = bool(draft.review_slots) and all(set(draft.reasons.get(index, ())) <= STYLE_CODES
-                                                  for index in draft.review_slots)
-    reasons = [reason for reason, applies in (
-        (REVIEW_REASON_FALLBACK, not whole_fallback and bool(draft.fallback_slots)),
-        (REVIEW_REASON_STEP_INCOMPLETE, not whole_fallback and usage_source != "provider"),
-        (REVIEW_REASON_KEPT_SLOTS, bool(draft.review_slots) and not style_only),
-        (REVIEW_REASON_STYLE, style_only),
-        (REVIEW_REASON_SERVER_EDIT, writer.callouts_converted > 0 or writer.framework_inserted > 0),
-        (REVIEW_REASON_EVIDENCE, deps.evidence_review_required),
-        (REVIEW_REASON_JUDGE, blocking_count(judge.findings) > 0),
-        (REVIEW_REASON_SCENARIO, ai_drafted and _q5(judge) != "pass"),
-    ) if applies]
-    review_reasons = [reason for reason in reasons if reason not in NOTICE_REASONS]
-    notices = [reason for reason in reasons if reason in NOTICE_REASONS]
+    components = draft.unit.get("components", [])
+    # Labelled examples of provider slots only: a source-locked slot carries none. Owner decision 2026-10-20: a number
+    # the facts do not state inside one is a notice, not a review mark.
+    drafted, example_numbers = ({}, {}) if whole_fallback else (
+        {index: count for index, count in writer.fidelity.drafted_examples(components).items()
+         if index not in draft.fallback_slots},
+        {index: count for index, count in writer.fidelity.example_numbers(components).items()
+         if index not in draft.fallback_slots})
+    review_reasons, notices = unit_review_reasons(writer, draft, judge, whole_fallback=whole_fallback,
+                                                  usage_source=usage_source, ai_drafted=ai_drafted,
+                                                  example_numbers=bool(example_numbers))
     reviewable = not provider_lane or bool(review_reasons)
     # N8: "still warns" is recomputed on the returned unit; codes settled on the way are listed apart.
     remaining = [] if whole_fallback else await runtime.run_cpu(
         final_unit_findings, draft.unit, brief, writer.owned_text, writer.evidence, draft.fallback_slots,
         framework=writer.framework, fidelity=writer.fidelity, faq=writer.faq, fact_rows=writer.fact_rows)
-    components = draft.unit.get("components", [])
-    # Labelled examples of provider slots only: a source-locked slot carries none.
-    drafted = {} if whole_fallback else {index: count for index, count in writer.fidelity.drafted_examples(
-        components).items() if index not in draft.fallback_slots}
     # FAQ answers that explain beyond the words of their facts: the SME checks they add no rule (QLT-5 D).
     inferred = {} if whole_fallback else writer.faq.inferred_counts(components, draft.fallback_slots)
     fixed = [] if whole_fallback else settled_codes(
@@ -652,9 +678,9 @@ async def run_idm_unit(
         faq_items_invalid=writer.faq_items_invalid, remaining=remaining, fixed_codes=fixed,
         faq_items_restated=writer.faq_items_restated, callouts_to_prose=writer.callouts_converted,
         framework_list_inserted=writer.framework_inserted, worksheet_compacted=writer.worksheet_compacted,
-        worksheet_example_kept=writer.worksheet_example_kept,
-        drafted_examples=drafted, faq_items_copied=writer.faq_items_copied, faq_items_recall=writer.faq_items_recall,
-        faq_inferred=inferred, faq_items_open=writer.faq_items_open,
+        worksheet_example_kept=writer.worksheet_example_kept, drafted_examples=drafted,
+        example_numbers=example_numbers, faq_items_copied=writer.faq_items_copied,
+        faq_items_recall=writer.faq_items_recall, faq_inferred=inferred, faq_items_open=writer.faq_items_open,
         review_reasons=review_reasons if reviewable and not whole_fallback else (),
         unexplained_acronyms=unexplained_acronyms, notices=() if whole_fallback else notices)
     quality = build_unit_quality(mode=deps.judge_mode, judge=judge, repair_applied=draft.repair_applied,
@@ -691,13 +717,37 @@ async def run_idm_unit(
     }
 
 
-def _q5(judge: JudgeOutcome) -> str:
-    severities = [finding.severity for finding in judge.findings if finding.criterion == "Q5_grounded_criteria"]
-    if judge.status in {"not_run", "skipped_budget", "failed"}:
-        return "unknown"
-    if not severities:
-        return "unknown"
-    return "pass" if all(severity == "pass" for severity in severities) else "fail"
+async def _written(writer: IdmUnitWriter, *, fallback_only: bool, mode: JudgeMode) -> tuple[_Draft | None,
+                                                                                            JudgeOutcome]:
+    """The settled and judged provider draft, or ``None`` when the whole unit falls back (the codes say why)."""
+
+    runtime = writer.runtime
+    if fallback_only:
+        writer.failure_codes.append("IDM_W5_FALLBACK_ONLY")
+        return None, JudgeOutcome("not_run")
+    try:
+        async with asyncio.timeout(max(0.001, runtime.remaining_seconds())):
+            draft = await _provider_draft(writer)
+    except TimeoutError:
+        writer.failure_codes.append("IDM_DEADLINE_EXCEEDED")
+        return None, JudgeOutcome("not_run")
+    except IdmBudgetError as error:
+        writer.failure_codes.append(error.code)
+        return None, JudgeOutcome("not_run")
+    except IdmProviderError as error:
+        # A definitive rejection (credentials, request) must reach Node's fast-fail path.
+        if error.terminal:
+            raise
+        writer.failure_codes.append(error.code)
+        return None, JudgeOutcome("not_run")
+    if draft is None:
+        return None, JudgeOutcome("not_run")
+    # QA runs on its own clock: running out of time never discards the accepted unit.
+    try:
+        async with asyncio.timeout(max(0.001, runtime.remaining_seconds())):
+            return await _judge_and_repair(writer, draft, mode)
+    except TimeoutError:
+        return draft, JudgeOutcome("skipped_budget")
 
 
 async def _provider_draft(writer: IdmUnitWriter) -> _Draft | None:
@@ -722,64 +772,8 @@ async def _provider_draft(writer: IdmUnitWriter) -> _Draft | None:
     return None
 
 
-async def _judge_and_repair(writer: IdmUnitWriter, draft: _Draft, mode: JudgeMode) -> tuple[_Draft, JudgeOutcome]:
-    facts = [(key, writer.text_by_id[key]) for key in writer.contract.unit_source_fact_ids
-             if key in writer.text_by_id]
-    criteria = {key for slot in writer.brief.components if slot.practice
-                for key in slot.practice.criteria_fact_keys}
-    facts.extend((item.fact_key, item.fact_text) for item in writer.brief.lesson_context_facts
-                 if item.fact_key in criteria)
-    practice_slot = has_practice_slot(writer.brief)
-    summary = {
-        "unit_title": writer.contract.unit_title, "segment": writer.brief.unit_segment,
-        "purpose": writer.brief.unit_purpose, "must_do": writer.brief.lesson_objective,
-        # Only this unit's own practice: the lesson's practice sentences made the judge grade practice that
-        # sits in another unit and reject teach-only units (QC course 364564, N7).
-        "practices": [slot.practice.sentence for slot in writer.brief.components if slot.practice is not None],
-        "has_practice_slot": practice_slot,
-        # QLT-5: Q11 judges the unit against the course purpose (null for a brief without one).
-        "course_purpose": brief_purpose(writer.brief),
-        # QLT-5 C: Q12 judges how an explained unit explains (not_applicable in the other modes).
-        "fidelity_mode": writer.mode,
-        # QLT-5 D: Q13 judges the value of the unit's FAQ (not_applicable without one).
-        "has_faq_slot": writer.has_faq,
-        "slots": [{"index": index, "type": slot.type, "role": slot.role, "title": slot.title,
-                   "treatments": [item.model_dump(mode="json") for item in slot.treatments]}
-                  for index, slot in enumerate(writer.brief.components)],
-    }
-    judge = await run_judge(writer.runtime, mode=mode, plan_summary=summary, facts=facts, unit=draft.unit,
-                            practice_slot=practice_slot, faq_slot=writer.has_faq)
-    targets = [index for index in repair_targets(judge.findings) if index not in draft.fallback_slots]
-    if mode != "repair" or not targets:
-        return draft, judge
-    # The repair and the second judge must both fit; otherwise the findings stay as review notes (R3).
-    level = (repair_thinking_for(writer.runtime.remaining_seconds(), targeted=False, preferred=THINKING_W5)
-             if judge_repair_fits(writer.runtime.remaining_seconds()) else None)
-    writer.log_budget("judge_repair", level)
-    if level is None:
-        writer.runtime.adjustments["w6_repair_skipped_budget"] += 1
-        return draft, judge
-    issues = [(f"IDM_W6_{finding.criterion.split('_')[0]}", finding.component_index)
-              for finding in judge.findings
-              if finding.component_index in targets and finding.severity in {"major", "critical"}]
-    try:
-        repaired = await writer.repair_slots(draft, [(code, index) for code, index in issues if index is not None],
-                                             thinking=level)
-    except (IdmBudgetError, IdmResponseInvalidError, IdmProviderError):
-        return draft, judge
-    finding, idm = writer.problems(repaired)
-    if finding is not None or idm:
-        return draft, judge
-    second = await run_judge(writer.runtime, mode=mode, plan_summary=summary, facts=facts, unit=repaired.unit,
-                             practice_slot=practice_slot, faq_slot=writer.has_faq)
-    if second.status in {"pass", "review_required", "reject"} and (
-            blocking_count(second.findings) < blocking_count(judge.findings)):
-        return repaired, second
-    return draft, judge
-
-
-# The names other modules and the tests import from this path; the unit inputs moved to storyboard_context and
-# the deterministic steps of the writer to storyboard_steps.
+# The names other modules and the tests import from this path; the unit inputs moved to storyboard_context, the
+# deterministic steps of the writer to storyboard_steps and storyboard_repair, and the judge to storyboard_judge.
 __all__ = [
     "IdmUnitDeps", "IdmUnitWriter", "acceptance_context", "build_idm_expected", "output_budget", "parse_brief",
     "run_idm_unit", "safe_error_details",

@@ -48,6 +48,11 @@ HASH_HISTORY: tuple[tuple[str, str], ...] = (
     # hashed sources moved, so the hash changed while the prompt content did not.
     ("7954ecdcecab92fd9b419b6db3ef383e8ca76fb4839ef934281a8dd62a1acb61",
      "prompts.py split by stage: same prompt content, sources in five modules"),
+    # Owner decisions of 2026-10-20 (P2, P3): a new-fact repair line quotes the new numbers and names of the writer's
+    # answer (IDM_W5_NEW_FACT, IDM_W5_FAQ_NEW_FACT rule text, new_fact_hint), and the second targeted repair of a leak,
+    # a new fact or a contested key adds its SECOND ATTEMPT line (SECOND_REPAIR_TEXT, second_repair_line).
+    ("687191d16626ff02485edc88d1d5718f09295c6edb6e223b3be88a20ad40ded5",
+     "new-fact repair lines quote their tokens; second targeted repair lines"),
 )
 PROMPT_NAME = re.compile(r"(prompt|_rules?$|_suffix$|rule_lines?$|_hint$|^rule_line$|_cue_line$)")
 
