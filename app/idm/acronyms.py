@@ -9,6 +9,9 @@ abbreviation neither source knows (BQS, G8D, ATM in the run) is only listed in t
 
 Not abbreviations: words a heading writes in capitals ("THINK BIG", "SHIFT 2"), names the facts write before another
 capitalised word ("FPT Software", "DEEP C Hải Phòng"), and the abbreviations every audience reads (CEO, AI, ISO …).
+
+``keeps_capitals`` tells which words of a label written in capitals keep them when the label is put in sentence case
+(worksheet field labels: "YẾU TỐ AN TOÀN" -> "Yếu tố an toàn", "ỨNG DỤNG AI" -> "Ứng dụng AI").
 """
 
 from __future__ import annotations
@@ -19,6 +22,7 @@ from dataclasses import dataclass
 from typing import Any, Final
 
 from app.idm.text import idm_fold
+from app.idm.titles import vietnamese_word
 
 # Two to eight capitals or digits (and "&"), starting with a letter, not inside a word, a code ("CR-04") or a version
 # ("ERA5.0").
@@ -80,6 +84,32 @@ _COMMON_EN: Final[Mapping[str, str]] = {
     "B2B": "business to business", "B2C": "business to consumer", "ESG": "environmental, social and governance",
     "CSR": "corporate social responsibility", "SLA": "service level agreement", "R&D": "research and development",
 }
+# Abbreviations that keep their capitals, wherever they stand, when a label written in capitals is put in sentence
+# case ("ỨNG DỤNG AI" -> "Ứng dụng AI"): the known and common abbreviations above, less the listed ones that are also
+# ordinary words ("gửi email", "sạc pin"), and business abbreviations spelled like a Vietnamese syllable without
+# diacritics, which the short-word rule below would lower (BIC is kept by the W1 heading rule too).
+_ORDINARY_WORDS: Final = frozenset({"OK", "PIN", "APP", "WEB", "EMAIL", "US", "LED"})
+_SYLLABLE_SHAPED: Final = frozenset({"BIC", "VAT", "PIC", "PO", "TOT", "SEO", "BOM"})
+_CAPS_ABBREVIATIONS: Final = frozenset(({*KNOWN_ABBREVIATIONS, *_COMMON_VI, *_COMMON_EN} - _ORDINARY_WORDS)
+                                      | _SYLLABLE_SHAPED)
+# A code with a digit keeps its capitals too ("ERA5.0", "5S", "B2B"); punctuation around the word does not count.
+_KEEPS_CAPITALS_RE: Final = re.compile(
+    r"\W*(?:[A-Z]*\d[A-Z0-9.&/+-]*|" + "|".join(map(re.escape, sorted(_CAPS_ABBREVIATIONS))) + r")\W*")
+# A short word in capitals no list knows ("PPE", "FPT", option "B") is an abbreviation too, unless it is a Vietnamese
+# syllable without diacritics ("AN" in "YẾU TỐ AN TOÀN", "CHO", "KHI") or an English word of a slide ("SEE", "WHY").
+_SHORT_WORD_MAX_CHARS: Final = 3
+
+
+def keeps_capitals(word: str) -> bool:
+    """``word`` (one word of a label written in capitals, punctuation included) stays in capitals in sentence case."""
+
+    if _KEEPS_CAPITALS_RE.fullmatch(word):
+        return True
+    letters = "".join(char for char in word if char.isalpha())
+    return (len(word) <= _SHORT_WORD_MAX_CHARS and word.isascii() and word.isupper()
+            and (len(letters) == 1 or not (vietnamese_word(letters) or _slide_word(letters))))
+
+
 _TEXT_KINDS: Final = frozenset({"paragraph", "task", "warning"})
 _LIST_KINDS: Final = frozenset({"bullets", "steps"})
 
@@ -216,6 +246,6 @@ def with_expansion(component: dict[str, Any], token: str, full: str) -> dict[str
 
 
 __all__ = [
-    "ACRONYM_RE", "KNOWN_ABBREVIATIONS", "AcronymGuide", "abbreviations", "explained", "learner_texts",
-    "with_expansion",
+    "ACRONYM_RE", "KNOWN_ABBREVIATIONS", "AcronymGuide", "abbreviations", "explained", "keeps_capitals",
+    "learner_texts", "with_expansion",
 ]

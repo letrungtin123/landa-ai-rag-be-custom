@@ -20,7 +20,7 @@ import math
 import unittest
 from typing import Any
 
-from app.idm.acronyms import AcronymGuide, abbreviations, explained, learner_texts, with_expansion
+from app.idm.acronyms import AcronymGuide, abbreviations, explained, keeps_capitals, learner_texts, with_expansion
 from app.idm.answer_checks import restates_joined_example, restates_list, unit_teaching
 from app.idm.artifacts import plain_row_refs
 from app.idm.contracts import IdmUnitBriefV1
@@ -173,6 +173,19 @@ class AbbreviationTests(unittest.TestCase):
         self.assertTrue(explained("SOP", None, ["Quy trình thao tác chuẩn (SOP) giúp nhân rộng."]))
         self.assertTrue(explained("ROI", "tỷ suất hoàn vốn đầu tư", ["Tỷ suất hoàn vốn đầu tư là thước đo."]))
         self.assertFalse(explained("ROI", "tỷ suất hoàn vốn đầu tư", ["Đo ROI của dự án."]))
+
+    def test_words_of_a_label_in_capitals_that_keep_them_in_sentence_case(self) -> None:
+        # Listed abbreviations, codes, short abbreviations no list knows and single letters keep their capitals; a
+        # Vietnamese syllable without diacritics ("AN" in "YẾU TỐ AN TOÀN"), an English word of a slide or a listed
+        # abbreviation that is also an ordinary word does not.
+        for word in ("AI", "KPI", "CEO", "(CEO)", "AI:", "ERA5.0", "5S", "B2B", "R&D", "PDCA", "COVID", "BIC", "VAT",
+                     "PPE", "FPT", "B", "C++"):
+            with self.subTest(word=word):
+                self.assertTrue(keeps_capitals(word))
+        for word in ("AN", "CHO", "CON", "KHI", "CAM", "QUY", "TO", "SEE", "WHY", "EMAIL", "PIN", "TOÀN", "MINDSET",
+                     "Ai", "an"):
+            with self.subTest(word=word):
+                self.assertFalse(keeps_capitals(word))
 
 
 class AuthorTextTests(unittest.TestCase):

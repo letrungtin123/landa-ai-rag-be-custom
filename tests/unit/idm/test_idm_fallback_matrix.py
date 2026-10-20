@@ -156,7 +156,7 @@ VALID_CASES = (
          lambda: retype(with_fact_texts(escalate_rules(), ARROW_FACTS), 0, "la_diagram")),
     Case("worksheet", "golden worksheet_body, reference table (plain source html)", worksheet_body),
     Case("worksheet", "lsn_003 u1 as a worksheet on form facts (structured form)", form_worksheet,
-         html_marker="<td>Yếu tố pháp lý</td>"),
+         html_marker="<td>Yếu tố an toàn</td>"),  # never "Yếu tố AN toàn": "AN" is a syllable, not an acronym
 )
 
 UNBUILDABLE_CASES = (
