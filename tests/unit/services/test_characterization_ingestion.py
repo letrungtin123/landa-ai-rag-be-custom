@@ -41,6 +41,7 @@ from app.services.ingestion import extract as extraction
 from app.services.ingestion import index as index_service
 from app.services.ingestion.chunking import SOURCE_EVIDENCE_PROPAGATION_VERSION
 from app.services.ingestion.extract import STRUCTURED_EXTRACTION_VERSION, ExtractedSection
+from app.services.ingestion.fingerprint import index_fingerprint
 from app.services.retrieval import source_coverage
 from app.source_structure import PARSER_VERSION
 
@@ -54,7 +55,8 @@ FAKE_SOFFICE = r"C:\fake\LibreOffice\program\soffice.exe"
 
 # Ordered (fragment, label) pairs; the first fragment found in a statement labels it.
 SQL_LABELS = (
-    ("FROM kb_documents", "load_document"), ("error_reason = $2", "mark_index_error"),
+    ("FROM kb_documents", "load_document"), ("FROM rag_document_indexes active", "load_active_index"),
+    ("error_reason = $2", "mark_index_error"),
     ("AND status = 'running'", "supersede_running_indexes"), ("COALESCE(MAX(version), 0) + 1", "next_index_version"),
     ("INSERT INTO rag_document_indexes", "insert_index_row"), ("FOR UPDATE", "lock_index_row"),
     ("INSERT INTO rag_chunks", "insert_chunk"), ("INSERT INTO rag_document_structure_nodes", "insert_structure_nodes"),
@@ -491,16 +493,27 @@ class IndexDocumentCharacterizationTests(unittest.TestCase):
 
     def test_content_only_document_is_learned_with_structure_table_missing(self) -> None:
         db = FakeDb(document=document_row(content=THREE_PARAGRAPHS), structure_table=False)
-        with patch.object(main.settings, "chunk_max_chars", 200), patch.object(main.settings, "chunk_overlap_chars", 0):
+        fingerprints: list[tuple[dict[str, Any], str]] = []
+
+        def fingerprint_spy(**kwargs: Any) -> str:
+            fingerprints.append((kwargs, index_fingerprint(**kwargs)))
+            return fingerprints[-1][1]
+
+        with patch.object(main.settings, "chunk_max_chars", 200), \
+                patch.object(main.settings, "chunk_overlap_chars", 0), \
+                patch.object(index_service, "index_fingerprint", fingerprint_spy):
             result, embedder, downloader, records = self.run_index(db)
         downloader.assert_not_called()
         # Changed 2026-10-08 (SEP-1 #7): the three chunk rows go in one executemany (same SQL, same
         # columns, values and order) inside the same transaction instead of one execute per chunk.
+        # Changed 2026-10-20 (skip an unchanged re-index): the document's active index is looked up once the
+        # source is read; there is none here, so the run goes on exactly as before.
         self.assertEqual(db.labels(), [
-            "load_document", "supersede_running_indexes", "next_index_version", "insert_index_row",
-            "lock_index_row", "insert_chunk", "insert_structure_nodes",
+            "load_document", "load_active_index", "supersede_running_indexes", "next_index_version",
+            "insert_index_row", "lock_index_row", "insert_chunk", "insert_structure_nodes",
             "delete_structure_nodes", "deactivate_other_indexes", "activate_index", "delete_indexes",
         ])
+        self.assertEqual(db.args_for("load_active_index"), [(TENANT_ID, KB_ID, DOC_ID, "gemini-embedding-001", 768)])
         self.assertEqual([method for method, sql, _ in db.calls if "INSERT INTO rag_chunks" in sql], ["executemany"])
         # Savepoint for the optional structure table rolls back; the outer index transaction commits.
         self.assertEqual(db.events, [("begin", 1), ("commit", 1), ("begin", 1), ("begin", 2), ("rollback", 2),
@@ -520,8 +533,15 @@ class IndexDocumentCharacterizationTests(unittest.TestCase):
         self.assertEqual((metadata["source_name"], metadata["document_type"]), ("Safety notes", "text"))
         self.assertEqual(metadata["structured_evidence_contract_version"], SOURCE_EVIDENCE_PROPAGATION_VERSION)
         self.assertTrue(chunk_args[0][11].startswith("[0.50000000,-0.25000000,0.00000000,"))
-        content_sha = hashlib.sha256("\n\n".join(contents).encode()).hexdigest()
-        self.assertEqual(db.args_for("activate_index"), [(INDEX_ID, DOC_ID, content_sha, 3)])
+        # Changed 2026-10-20: content_sha256 stores the index fingerprint (it used to be the hash of the joined
+        # chunk text), taken over exactly the stored chunk values besides the ids and the embedding.
+        [(fingerprint_kwargs, fingerprint)] = fingerprints
+        self.assertEqual(fingerprint_kwargs["chunks"], [tuple(args[4:11]) for args in chunk_args])
+        self.assertEqual((fingerprint_kwargs["embedding_model"], fingerprint_kwargs["embedding_dimensions"]),
+                         ("gemini-embedding-001", 768))
+        self.assertEqual(db.args_for("activate_index"), [(INDEX_ID, DOC_ID, fingerprint, 3)])
+        self.assertRegex(fingerprint, r"^[0-9a-f]{64}$")
+        self.assertNotEqual(fingerprint, hashlib.sha256("\n\n".join(contents).encode()).hexdigest())
         self.assertEqual(db.args_for("deactivate_other_indexes"), [(DOC_ID, INDEX_ID)])
         self.assertEqual(db.args_for("delete_indexes"), [(DOC_ID, INDEX_ID)])
         self.assertEqual((result["status"], result["chunk_count"]), ("learned", 3))

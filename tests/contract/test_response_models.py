@@ -50,6 +50,12 @@ CASES: list[tuple[str, TypeAdapter[Any], dict[str, Any]]] = [
         "status": "learned", "chunk_count": 2, "structure_source": None, "structure_confidence": 0,
         "structure_node_count": 0, "diagnostics": {"sections": 1, "ratio": 0.5, "kinds": ["text"]}, "usage": USAGE,
     }),
+    # An unchanged document: the active index is kept, nothing is embedded (two trailing keys, present only here).
+    ("index_skipped", INDEX_DOCUMENT_RESPONSE, {
+        "status": "learned", "chunk_count": 2, "structure_source": "toc", "structure_confidence": 0.9,
+        "structure_node_count": 3, "diagnostics": {"sections": 1}, "usage": AiUsage().model_dump(),
+        "skipped": True, "skip_reason": "INDEX_UNCHANGED",
+    }),
     ("index_failed", INDEX_DOCUMENT_RESPONSE, {
         "status": "error", "chunk_count": 0, "usage": AiUsage().model_dump(), "error_reason": "INDEX_DOCUMENT_FAILED",
     }),

@@ -31,6 +31,49 @@ async def load_document(pool: asyncpg.Pool, tenant_id: str, kb_id: str, document
     )
 
 
+async def load_active_index(
+    pool: asyncpg.Pool,
+    row: asyncpg.Record,
+    embedding_model: str,
+    embedding_dimensions: int,
+) -> asyncpg.Record | None:
+    """The document's active learned index for this embedding model and size, or ``None``.
+
+    ``index_running`` says whether another index of the document is still running (it would replace
+    the active one). One statement, so the active row and that flag come from the same snapshot.
+    """
+    return await pool.fetchrow(
+        """
+        SELECT active.id::text AS index_id,
+               active.content_sha256,
+               active.chunk_count,
+               EXISTS (
+                 SELECT 1
+                 FROM rag_document_indexes running
+                 WHERE running.document_id = active.document_id
+                   AND running.engine = 'self_built_rag'
+                   AND running.status = 'running'
+               ) AS index_running
+        FROM rag_document_indexes active
+        WHERE active.tenant_id = $1::uuid
+          AND active.kb_id = $2::uuid
+          AND active.document_id = $3::uuid
+          AND active.engine = 'self_built_rag'
+          AND active.status = 'learned'
+          AND active.is_active = true
+          AND active.embedding_model = $4
+          AND active.embedding_dimensions = $5::int
+        ORDER BY active.version DESC
+        LIMIT 1
+        """,
+        row["tenant_id"],
+        row["kb_id"],
+        row["id"],
+        embedding_model,
+        embedding_dimensions,
+    )
+
+
 async def start_index_row(pool: asyncpg.Pool, row: asyncpg.Record, embedding_model: str) -> str:
     async with pool.acquire() as conn, conn.transaction():
         await conn.execute(

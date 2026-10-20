@@ -99,6 +99,18 @@
     ]
    },
    {
+    "method": "fetchrow",
+    "sql_sha256": "cb95f9f134ef7a9206a6d31e3e9069bce0a70cb91bed80d9c059c381129e7e8a",
+    "rule": null,
+    "args": [
+     "11111111-1111-4111-8111-111111111111",
+     "22222222-2222-4222-8222-222222222222",
+     "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+     "gemini-embedding-001",
+     768
+    ]
+   },
+   {
     "method": "execute",
     "sql_sha256": "c97874e587a461445c3db87a99616c0bfa4b84b1ae860e43bb06b43a32f3eca2",
     "rule": null,
@@ -280,7 +292,7 @@
     "args": [
      "44444444-4444-4444-8444-444444444444",
      "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
-     "c0c4e3e657469dcc022fb0f6d0dc69f8c1abe386299f684152ae37f3197a6ed4",
+     "4dc3eda484a818a98336d750777893ead7ea313cb2c7216254faba3b283ddb58",
      1
     ]
    },

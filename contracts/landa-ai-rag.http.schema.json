@@ -2915,6 +2915,18 @@
      "additionalProperties": true,
      "title": "Usage",
      "type": "object"
+    },
+    "skipped": {
+     "const": true,
+     "default": null,
+     "title": "Skipped",
+     "type": "boolean"
+    },
+    "skip_reason": {
+     "const": "INDEX_UNCHANGED",
+     "default": null,
+     "title": "Skip Reason",
+     "type": "string"
     }
    },
    "required": [
@@ -3223,6 +3235,11 @@
      ],
      "default": null,
      "title": "Source Download Url"
+    },
+    "force": {
+     "default": false,
+     "title": "Force",
+     "type": "boolean"
     }
    },
    "required": [
