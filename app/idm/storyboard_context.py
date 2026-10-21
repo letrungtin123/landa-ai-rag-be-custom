@@ -41,6 +41,7 @@ from app.idm.qa import (
     WORKSHEET_INCOMPLETE_CODE,
     JudgeMode,
 )
+from app.idm.quiz_text import QUIZ_CODES
 from app.idm.runtime import IdmStageError
 from app.instructional_density import INSTRUCTIONAL_DENSITY_POLICY_VERSION
 
@@ -66,12 +67,14 @@ VERBATIM_COPY_CODE: Final = "IDM_W5_VERBATIM_COPY"
 # the source-locked rebuild would answer "too close to the source" with the source itself (plan 2026-10-13 §2.2,
 # point 5). QLT-5 D: so is an FAQ that recalls, copies a source sentence or states a new number or name: the
 # source-locked FAQ is made of verbatim source sentences.
+# QC feedback 2026-10-21 (A1/A2): the quiz-text findings (an explanation without its principle or reasons, a stem in one
+# block) too: the source-locked question would replace a good question for a layout or wording problem.
 _REVIEW_FIRST_CODES: Final = frozenset({WORKSHEET_INCOMPLETE_CODE, ANSWER_LEAK_CODE, ANSWER_CONTESTED_CODE,
                                         CALLOUT_UNGROUNDED_CODE, FAQ_RESTATES_HTML_CODE, FAQ_TITLE_MISMATCH_CODE,
                                         FRAMEWORK_INCOMPLETE_CODE, SOURCE_ARTIFACT_CODE, VERBATIM_COPY_CODE,
-                                        *FIDELITY_CODES, *FAQ_VALUE_CODES})
+                                        *FIDELITY_CODES, *FAQ_VALUE_CODES, *QUIZ_CODES})
 # Findings whose repair is dropped when it breaks a shared or Node rule: they end as review notes anyway.
-_REVIEW_ONLY_CODES: Final = frozenset({*FIDELITY_CODES, *FAQ_VALUE_CODES})
+_REVIEW_ONLY_CODES: Final = frozenset({*FIDELITY_CODES, *FAQ_VALUE_CODES, *QUIZ_CODES})
 # Findings a deterministic step settles when the repair does not (a list inserted, an FAQ item dropped, a callout
 # turned into prose, a review note): their repair alone is a targeted one, a scoped rewrite at low thinking. QC run
 # ab8d67e1 (R3): two leak repairs at medium thinking were cut by the unit deadline.
@@ -79,7 +82,7 @@ _REVIEW_ONLY_CODES: Final = frozenset({*FIDELITY_CODES, *FAQ_VALUE_CODES})
 _TARGETED_REPAIR_CODES: Final = frozenset({FRAMEWORK_INCOMPLETE_CODE, ANSWER_LENGTH_CUE_CODE, ANSWER_LEAK_CODE,
                                            ANSWER_CONTESTED_CODE, FAQ_RESTATES_HTML_CODE, FAQ_TITLE_MISMATCH_CODE,
                                            CALLOUT_UNGROUNDED_CODE, SOURCE_ARTIFACT_CODE, QUESTION_INCOMPLETE_CODE,
-                                           *FIDELITY_CODES, *FAQ_VALUE_CODES})
+                                           *FIDELITY_CODES, *FAQ_VALUE_CODES, *QUIZ_CODES})
 # A non-targeted repair that would not finish before the unit deadline is not started (R3).
 REPAIR_SKIPPED_CODE: Final = "IDM_W5_REPAIR_SKIPPED_BUDGET"
 _FALLBACK_INVALID: Final = "ORCHESTRATION_V2_UNIT_FALLBACK_INVALID"

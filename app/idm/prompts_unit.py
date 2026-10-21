@@ -19,6 +19,12 @@ from app.idm.html_rules import (
     MAX_SECTIONS,
     HtmlRuleViolation,
 )
+from app.idm.policy import (
+    IDM_MCQ_EXPLANATION_MAX_CHARS,
+    IDM_MCQ_EXPLANATION_OPTION_MAX_WORDS,
+    IDM_MCQ_EXPLANATION_PRINCIPLE_MAX_WORDS,
+    IDM_MCQ_STEM_MAX_WORDS,
+)
 from app.idm.prompts_common import (
     Locale,
     _json,
@@ -33,6 +39,25 @@ _PURPOSE_LINE: Final = ("- Keep the unit on COURSE_PURPOSE (what the course is f
                         "emphasis and examples that serve it; it never adds facts.\n")
 
 
+# The text of a single-choice slot (QC feedback 2026-10-21, A1/A2; contract K1): a stem in lines and an explanation of
+# one principle line and one line per option. The server lays out what it safely can and checks the rest
+# (``app.idm.quiz_text``); the limits are those of ``app.idm.policy``.
+_QUIZ_TEXT_RULE: Final = f"""\
+- QUIZ TEXT of a single-choice slot: plain text whose only layout is the line feed ("\\n" inside the JSON string),
+  never markdown or HTML.
+  question: the whole case and its question, at most {IDM_MCQ_STEM_MAX_WORDS} words: one or two short context
+  sentences; when the case lists several items (groups, offers, figures, steps), each item on its own line starting
+  "- "; the question sentence itself alone on the last line, ending with "?".
+  explanation: line 1 the principle of the lesson that decides the answer (one sentence, two at most, at most
+  {IDM_MCQ_EXPLANATION_PRINCIPLE_MAX_WORDS} words; never restate several definitions); then one line per option in
+  the order A, B, C …: "A - Đúng vì …" or "A - Sai vì …" (English: "A - Correct because …" or "A - Incorrect
+  because …"), one sentence of at most {IDM_MCQ_EXPLANATION_OPTION_MAX_WORDS} words giving the REASON from what this
+  unit taught (the rule, criterion or step the option meets or breaks); it never repeats the option's own words and
+  agrees with that option's text and with the answer key (never call a distractor that meets the criterion wrong, or
+  the reverse). No empty praise or slogan instead of a reason ("dũng cảm", "tuyệt đối", "vượt trội", "Say No",
+  "brave", "absolutely"); at most {IDM_MCQ_EXPLANATION_MAX_CHARS} characters in all. The shape, in JSON:
+  "question": "Tại một doanh nghiệp, ba nhóm khách hàng như sau:\\n- Nhóm X: …\\n- Nhóm Y: …\\nBạn nên làm gì?"
+  "explanation": "Nguyên tắc: …\\nA - Sai vì …\\nB - Đúng vì …\\nC - Sai vì …\""""
 # A worksheet slot (role practice). A5 (owner decision 2026-10-22): criteria the AI suggested because the source states
 # none are headed as suggested criteria (the server checks the heading, ``worksheet.label_suggested_self_check``).
 _WORKSHEET_RULE: Final = """\
@@ -112,15 +137,12 @@ Writing rules (learner-facing, {locale_name(locale)}):
   question, nor strings together the items of a list or table shown before it (it applies the criterion to the
   question's own case); the question's case is not the worked example's case: other facts decide it and its answer
   is not the worked example's answer; the case never names the cause, rule or criterion the key is about (the
-  learner finds it from the case's facts). The question field holds the whole case and ends with the question sentence
-  itself ("…?"); the
-  explanation states the criterion and why EACH option is right or wrong ("A - ...; B - ...; C - ...", every
-  option named by its letter); each reason must agree with that option's own text and with the answer key
-  (never call a distractor that meets the criterion wrong, or the reverse). Never reveal the answer before the
-  question. A question tests only what the html slots before it teach: every fact its key or explanation relies
-  on is stated in that html first (the explanation recalls it, it never teaches it for the first time). A
-  classification question (options naming taught labels, rows or stages) describes a case that meets the criteria
-  of exactly one option and contradicts no FAQ answer of the unit; no option copies a table row or list item.
+  learner finds it from the case's facts). The question and the explanation follow QUIZ TEXT below. Never reveal the
+  answer before the question. A question tests only what the html slots before it teach: every fact its key or
+  explanation relies on is stated in that html first (the explanation recalls it, it never teaches it for the first
+  time). A classification question (options naming taught labels, rows or stages) describes a case that meets the
+  criteria of exactly one option and contradicts no FAQ answer of the unit; no option copies a table row or list item.
+{_QUIZ_TEXT_RULE}
 {_WORKSHEET_RULE}
 {faq_rules}- A "warning" block is shown to the learner as a quotation/callout: use it only for a rule, warning or
   statement that SOURCE_FACTS state, quoted or closely restated. Never write your own maxim, slogan, consequence
@@ -342,9 +364,10 @@ UNIT_RULE_TEXT: Final[dict[str, str]] = {
     "COMPONENT_COVERAGE_MISSING": "covered_source_fact_ids lists exactly the owned fact keys of this slot",
     "COMPONENT_COVERAGE_INCOMPLETE": "covered_source_fact_ids lists exactly the owned fact keys of this slot",
     "INVALID_FACT_ID_ARRAY": "covered_source_fact_ids lists exactly the owned fact keys of this slot",
-    "IDM_W5_PRACTICE_INCOMPLETE": "exactly one correct choice, and an explanation that names EVERY option by its "
-                                  "letter (A - ...; B - ...; C - ...) and says why it is right or wrong, in "
-                                  "agreement with that option's text and the answer key",
+    "IDM_W5_PRACTICE_INCOMPLETE": "exactly one correct choice, and an explanation of the principle line and one "
+                                  "line per option in letter order (\"A - Đúng vì …\" / \"A - Sai vì …\") that "
+                                  "says why it is right or wrong, in agreement with that option's text and the "
+                                  "answer key",
     "IDM_W5_FEEDBACK_NOT_TEACHING": "feedback of at least 60 characters that names the criterion; never only "
                                     "Correct/Incorrect",
     "IDM_W5_ANSWER_LENGTH_CUE": "the correct option is clearly the longest, so learners can pick it by length: "
@@ -367,6 +390,28 @@ UNIT_RULE_TEXT: Final[dict[str, str]] = {
                                   "question with the question sentence itself (ending with \"?\"); keep the options, "
                                   "the answer key and the explanation consistent with it",
     "IDM_W5_VERBATIM_COPY": "rewrite for the learner instead of copying the source text",
+    # QC feedback 2026-10-21 (A1/A2): the QUIZ TEXT rules (``app.idm.quiz_text``; the numbers follow the code).
+    "IDM_W5_EXPLANATION_LAYOUT": "write the explanation in lines: line 1 the principle of the lesson that decides the "
+                                 "answer, then one line per option in the order A, B, C …: \"A - Đúng vì …\" or "
+                                 "\"A - Sai vì …\" (English \"A - Correct because …\" / \"A - Incorrect because "
+                                 "…\"), each giving the reason; keep the options and the answer key",
+    "IDM_W5_EXPLANATION_VERDICT": "make the verdict of every option line match the answer key: only the correct "
+                                  "option's line says Đúng / Correct, every other line Sai / Incorrect, each with the "
+                                  "reason the unit teaches",
+    "IDM_W5_EXPLANATION_FILLER": "replace the empty praise or slogan quoted below with the concrete reason the unit "
+                                 "teaches (the rule, criterion or step the option meets or breaks)",
+    "IDM_W5_EXPLANATION_LENGTH": f"shorten the explanation: the principle line one sentence (two at most) of at most "
+                                 f"{IDM_MCQ_EXPLANATION_PRINCIPLE_MAX_WORDS} words, each option line one sentence of "
+                                 f"at most {IDM_MCQ_EXPLANATION_OPTION_MAX_WORDS} words, at most "
+                                 f"{IDM_MCQ_EXPLANATION_MAX_CHARS} characters in all; keep every option's reason",
+    "IDM_W5_EXPLANATION_RESTATES_OPTION": "the listed option lines only repeat their option: say WHY the option is "
+                                          "right or wrong from the rule, criterion or step the unit taught, without "
+                                          "the option's own words",
+    "IDM_W5_QUESTION_LAYOUT": "lay the question out in lines: one or two short context sentences; each listed item "
+                              "on its own line starting \"- \"; the question sentence alone on the last line; keep "
+                              "the case's facts, the options and the answer key",
+    "IDM_W5_QUESTION_LENGTH": f"shorten the question to at most {IDM_MCQ_STEM_MAX_WORDS} words: keep the facts that "
+                              "decide the answer and the question sentence; keep the options and the answer key",
     # QLT-5 C: the content mode checks of a teaching html slot (``app.idm.fidelity_checks``).
     "IDM_W5_SENTENCE_COPY": "too many sentences repeat the facts word for word: rewrite the listed sentences in your "
                             "own plain words and explain them (definitions, rules and numbers stay exact); add no "
@@ -420,8 +465,9 @@ UNIT_RULE_TEXT: Final[dict[str, str]] = {
     "IDM_W6_Q2": "rewrite for the learner; do not paste the source (exact rules and definitions may stay)",
     "IDM_W6_Q3": "context, task, input, one correct answer and feedback are present and consistent; the question ends "
                  "with its question sentence; a worksheet's worked example meets every one of its self-check items",
-    "IDM_W6_Q4": "feedback names the criterion and explains why each option is right or wrong; the explanation "
-                 "of each option agrees with that option's text and with the answer key",
+    "IDM_W6_Q4": "feedback names the criterion in its first line, then gives one line per option with the reason it "
+                 "is right or wrong (from what the unit taught, not the option's own words); the explanation of each "
+                 "option agrees with that option's text and with the answer key",
     "IDM_W6_Q5": "the correct answer follows from the source facts; no invented rule, threshold or exception",
     "IDM_W6_Q6": "the practice matches the Must Do action type and Bloom level",
     "IDM_W6_Q7": "no long theory runs; context under 20%; detail matches detail_level",

@@ -312,7 +312,7 @@
        "d1-c8-f3"
       ],
       "problem_type": "multiple_choice",
-      "question": "Một khách hàng VIP gọi đến, cho biết sản phẩm vừa giao gây chập điện và có nguy cơ cháy. Khách yêu cầu được hoàn tiền ngay. Bạn nên làm gì trước tiên?",
+      "question": "Một khách hàng VIP gọi đến, cho biết sản phẩm vừa giao gây chập điện và có nguy cơ cháy. Khách yêu cầu được hoàn tiền ngay.\nBạn nên làm gì trước tiên?",
       "choices": [
        {
         "text": "Hứa hoàn tiền ngay để giữ chân vị khách VIP đang bức xúc",
@@ -327,7 +327,7 @@
         "correct": true
        }
       ],
-      "explanation": "Tiêu chí: khiếu nại liên quan an toàn bắt buộc phải escalate. A — sai vì không được hứa bồi thường trước khi phân loại mức độ; B — sai vì quy định VIP chỉ áp dụng khi không có yếu tố bắt buộc escalate; C — đúng vì yếu tố an toàn là tiêu chí bắt buộc.",
+      "explanation": "Tiêu chí: khiếu nại liên quan an toàn bắt buộc phải escalate.\nA - sai vì không được hứa bồi thường trước khi phân loại mức độ.\nB - sai vì quy định VIP chỉ áp dụng khi không có yếu tố bắt buộc escalate.\nC - đúng vì yếu tố an toàn là tiêu chí bắt buộc.",
       "type": "problem",
       "component_plan_id": "cp2_75c8e3413519ce7a35cb143f6e4092b7",
       "source_fact_ids": [
@@ -515,8 +515,8 @@
     "op": "generate",
     "model": "gemini-3.8-flash",
     "schema": "StagedInstancePayloadUnit",
-    "prompt_sha256": "0bdc46dc280d234d117914d773fc76392790c9dd2bb1e25814d78a300ad280d0",
-    "prompt_chars": 15624,
+    "prompt_sha256": "b8da8991789f4d528c71fa0a79d9ec98ce46908173efa073ac9a900c5d3f7167",
+    "prompt_chars": 16699,
     "config": {
      "max_output_tokens": 16000,
      "response_mime_type": "application/json",
@@ -533,8 +533,8 @@
     "op": "generate",
     "model": "gemini-3.8-flash",
     "schema": "StagedMultiRepair",
-    "prompt_sha256": "edf2ec31e41f0f829364f2807007dcb71a1181409dfe0813a360743d9f5d44f4",
-    "prompt_chars": 16519,
+    "prompt_sha256": "f6226dc292125d59a67df6fb4a90e471cb2aadeed5109e9556169c460fa68f29",
+    "prompt_chars": 17594,
     "config": {
      "max_output_tokens": 16000,
      "response_mime_type": "application/json",
@@ -551,8 +551,8 @@
     "op": "generate",
     "model": "gemini-3.8-flash",
     "schema": "IdmJudgeResponseV1",
-    "prompt_sha256": "33fe3914bc66fe453a86029bd405c1d0cbdea3c67ff1a1bbed11c47bfa2fe577",
-    "prompt_chars": 9556,
+    "prompt_sha256": "44d7957dd88d4a88b7bc9e8298c3ccf081af8bb9929f98c16ba707305f19d1ef",
+    "prompt_chars": 9891,
     "config": {
      "max_output_tokens": 3000,
      "response_mime_type": "application/json",

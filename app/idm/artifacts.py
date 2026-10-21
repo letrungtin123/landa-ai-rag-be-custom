@@ -38,7 +38,9 @@ def plain_row_refs(text: str) -> str:
     vietnamese = "đ" in text.lower() or any(unicodedata.category(char) == "Mn"
                                             for char in unicodedata.normalize("NFD", text))
     return _ROW_REFERENCE_RE.sub(lambda match: f"{'dòng' if vietnamese else 'row'} {match.group(1)}", text)
-_REPEAT_RE: Final = re.compile(r"(?<![\w-])([^\W\d_]{2,})(\s+)(\1)(?![\w-])", re.IGNORECASE)
+# A word written twice in a row on one line: a word that ends one line and starts the next is no repeat (quiz text
+# keeps its line breaks, contract K1).
+_REPEAT_RE: Final = re.compile(r"(?<![\w-])([^\W\d_]{2,})([^\S\n]+)(\1)(?![\w-])", re.IGNORECASE)
 # Vietnamese words whose doubling is a word of its own ("luôn luôn" always, "dần dần" gradually, "chung chung" vague).
 _REDUPLICATIONS: Final = frozenset({
     "luôn", "dần", "từ", "mãi", "đâu", "ai", "người", "nhà", "ngày", "đêm", "năm", "tháng", "đời", "kiếp",

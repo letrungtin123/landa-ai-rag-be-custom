@@ -362,8 +362,8 @@ class ExplanationCoverageTests(StoryboardEndpointTestCase):
         self.assertEqual(status, 200)
         quality = self.assert_envelope(data, "provider_validated", "validated", "provider")
         self.assertEqual(provider.names, [WRITER, REPAIR, JUDGE])
-        self.assertIn("c0 IDM_W5_PRACTICE_INCOMPLETE at c0: exactly one correct choice, and an explanation that names "
-                      "EVERY option by its letter", provider.calls[1]["prompt"])
+        self.assertIn("c0 IDM_W5_PRACTICE_INCOMPLETE at c0: exactly one correct choice, and an explanation of the "
+                      "principle line and one line per option in letter order", provider.calls[1]["prompt"])
         self.assertIn("Đã tự sửa: bài luyện tập thiếu phần.", quality.author_note)
 
 

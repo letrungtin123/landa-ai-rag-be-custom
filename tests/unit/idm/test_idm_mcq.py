@@ -183,7 +183,10 @@ class NodeAcceptanceOfShuffledUnitsTests(StoryboardEndpointTestCase):
         self.assertEqual([choice["text"] for choice in problem["choices"]],
                          [provider_choices[old]["text"] for old in order])
         correct = next(index for index, choice in enumerate(problem["choices"]) if choice["correct"])
-        self.assertIn(f"{OPTION_LETTERS[correct]} — đúng vì khớp dấu hiệu cấp 2", problem["explanation"])
+        # QC feedback A1 (K1): the principle line, then one line per option in letter order, "X - …".
+        lines = problem["explanation"].split("\n")
+        self.assertEqual([line[:4] for line in lines[1:]], ["A - ", "B - ", "C - "])
+        self.assertIn(f"{OPTION_LETTERS[correct]} - đúng vì khớp dấu hiệu cấp 2", problem["explanation"])
         contract = UnitGenerationContractV2.model_validate(body["unit_contract"])
         context = acceptance_context(contract, parse_brief(contract))
         unit = {key: value for key, value in data["unit"].items() if key != "idm_quality"}

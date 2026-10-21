@@ -50,6 +50,7 @@ from app.idm.policy import (
     IDM_WORKSHEET_MIN_LIST_ITEMS,
     WORKSHEET_COMPONENT_TYPE,
 )
+from app.idm.quiz_text import quiz_findings
 from app.idm.text import (
     EvidenceIndex,
     content_pairs,
@@ -299,13 +300,19 @@ def deterministic_slot_findings(
         elif kind == "problem":
             explanation = " ".join(str(component.get("explanation") or "").split())
             correct = _correct_choices(component)
-            if len(correct) != 1 or unexplained_options(component):
+            incomplete = len(correct) != 1 or bool(unexplained_options(component))
+            if incomplete:
                 findings.append(SlotFinding("IDM_W5_PRACTICE_INCOMPLETE", index))
             # QLT-8: a case without its question (run 0a11aa9e c1.l2.u4, cut by a repair) cannot be answered.
             if not question_complete(component.get("question")):
                 findings.append(SlotFinding(QUESTION_INCOMPLETE_CODE, index))
-            if len(explanation) < MIN_FEEDBACK_CHARS or idm_fold(explanation).strip(" .!") in {
-                    "dung", "sai", "correct", "incorrect", "dung roi", "chua dung"}:
+            not_teaching = len(explanation) < MIN_FEEDBACK_CHARS or idm_fold(explanation).strip(" .!") in {
+                "dung", "sai", "correct", "incorrect", "dung roi", "chua dung"}
+            # QC feedback 2026-10-21 (A1/A2): the stem and the explanation in their lines, short and with a reason (an
+            # explanation already found incomplete or not teaching is repaired for that first).
+            findings.extend(SlotFinding(code, index) for code in quiz_findings(
+                component, evidence, explanation=not incomplete and not not_teaching))
+            if not_teaching:
                 findings.append(SlotFinding("IDM_W5_FEEDBACK_NOT_TEACHING", index))
             if correct:
                 answer = idm_fold(str(correct[0].get("text") or ""))

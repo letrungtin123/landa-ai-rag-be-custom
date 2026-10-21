@@ -36,6 +36,7 @@ from app.idm.qa import (
     build_unit_author_note,
     deterministic_slot_findings,
 )
+from app.idm.quiz_text import layout_question
 from tests.support.idm_test_support import golden_shard
 from tests.unit.idm.test_idm_fidelity_unit import html_texts
 from tests.unit.idm.test_idm_module_design import design_module, module_response
@@ -217,7 +218,8 @@ class RuleTextTests(unittest.TestCase):
         prompt = unit_writer_prompt("vi", course_title="C", audience=brief.target_audience, lesson_title="L",
                                     lesson_objective="O", practice_sentences=[], previous_title=None, next_title=None,
                                     unit_brief={}, facts=[], context_facts=[])
-        for rule in ('ends with the question sentence itself ("…?")',
+        for rule in ('the question sentence itself alone on the last line, ending with "?"',
+                     '"A - Đúng vì …" or "A - Sai vì …"',
                      "The worked example meets every self-check item", "self-paced e-learning",
                      "Single-choice: 4 options", "never invent a full form"):
             with self.subTest(rule=rule):
@@ -281,7 +283,7 @@ class UnitFlowTests(StoryboardEndpointTestCase):
         self.assertEqual(provider.calls[1]["thinking_level"], "low")
         self.assertIn("c1 IDM_W5_QUESTION_INCOMPLETE at c1: the question stops before it asks anything",
                       provider.calls[1]["prompt"])
-        self.assertEqual(data["unit"]["components"][1]["question"], whole)
+        self.assertEqual(data["unit"]["components"][1]["question"], layout_question(whole))
         self.assertIn("Đã tự sửa: câu hỏi bị cụt.", quality.author_note)
 
     async def test_a_repair_that_cuts_the_question_keeps_the_earlier_question(self) -> None:
@@ -289,9 +291,10 @@ class UnitFlowTests(StoryboardEndpointTestCase):
         writer = severity_writer(body)
         whole = writer["components"]["c1"]["question"]
         # The key copies the table row word for word: a leak, one targeted repair.
-        leaking = [{"text": "Thiệt hại tài chính dưới 50 triệu đồng hoặc khách hàng phàn nàn lần thứ hai",
+        # In the writer's order (the key second), so its explanation's verdicts still match the key.
+        leaking = [{"text": "Cấp 1 vì chưa có thiệt hại tài chính", "correct": False},
+                   {"text": "Thiệt hại tài chính dưới 50 triệu đồng hoặc khách hàng phàn nàn lần thứ hai",
                     "correct": True},
-                   {"text": "Cấp 1 vì chưa có thiệt hại tài chính", "correct": False},
                    {"text": "Cấp 3 vì cần escalate ngay cho quản lý", "correct": False}]
         leak = {**writer, "components": {**writer["components"], "c1": {**writer["components"]["c1"],
                                                                          "choices": leaking}}}
@@ -303,7 +306,7 @@ class UnitFlowTests(StoryboardEndpointTestCase):
         quality = self.assert_envelope(data, "provider_validated", "review_required", "provider")
         self.assertEqual(provider.names, [WRITER, REPAIR, REPAIR, JUDGE])
         served = data["unit"]["components"][1]
-        self.assertEqual(served["question"], whole)
+        self.assertEqual(served["question"], layout_question(whole))
         self.assertIn("Thiệt hại tài chính dưới 50 triệu đồng hoặc khách hàng phàn nàn lần thứ hai",
                       [choice["text"] for choice in served["choices"]])
         self.assertIn("Giữ bản AI để tác giả rà soát: khối 2 (Quiz): phương án lộ đáp án", quality.author_note)

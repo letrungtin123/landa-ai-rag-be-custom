@@ -41,7 +41,10 @@ another unit of the lesson is never a finding here.
    criteria ask for a measurable one) is major.
  Q4_feedback_teaches: feedback names the criterion and explains why each option is right or wrong; the
    explanation of EACH option agrees with that option's own text and with the answer key (an explanation that
-   calls a correct-by-the-criterion option wrong, or a wrong option right, is major).
+   calls a correct-by-the-criterion option wrong, or a wrong option right, is major). Its first line states the
+   principle the unit taught and each option has its own line with the reason; a reason that only repeats the option,
+   praises it with empty words ("dũng cảm", "tuyệt đối", "Say No") or restates several definitions instead of the
+   reason is major; feedback that is correct but long or wordy is minor.
  Q5_grounded_criteria: the correct answer follows from SOURCE_FACTS; no invented rule, threshold or exception;
    a quotation or callout states only what SOURCE_FACTS say. Exactly one option is correct by the criteria this
    unit teaches: a question whose case also meets the criteria the unit's tables, lists or FAQ answers give for

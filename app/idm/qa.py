@@ -74,6 +74,16 @@ from app.idm.qa_judge import (
     settle_applicability,
     worst_counts,
 )
+from app.idm.quiz_text import (
+    EXPLANATION_FILLER_CODE,
+    EXPLANATION_LAYOUT_CODE,
+    EXPLANATION_LENGTH_CODE,
+    EXPLANATION_RESTATES_CODE,
+    EXPLANATION_VERDICT_CODE,
+    QUESTION_LAYOUT_CODE,
+    QUESTION_LENGTH_CODE,
+    QUIZ_STYLE_CODES,
+)
 from app.idm.source_locked import FAQ_FALLBACK_REPEATED_CODE
 from app.idm.text import sanitize_author_text
 
@@ -155,6 +165,14 @@ _CODE_TEXT_VI: Final[dict[str, str]] = {
     "IDM_RESPONSE_TRUNCATED": "câu trả lời của AI bị cắt",
     "IDM_W5_FALLBACK_ONLY": "lần chạy lại không dùng AI",
     FAQ_FALLBACK_REPEATED_CODE: "hỏi đáp dự phòng lặp lại cùng một câu của tài liệu",
+    # QC feedback 2026-10-21 (A1/A2).
+    EXPLANATION_LAYOUT_CODE: "lời giải chưa đúng bố cục",
+    EXPLANATION_VERDICT_CODE: "lời giải ghi đúng sai ngược với đáp án",
+    EXPLANATION_FILLER_CODE: "lời giải dùng chữ sáo rỗng",
+    EXPLANATION_LENGTH_CODE: "lời giải quá dài",
+    EXPLANATION_RESTATES_CODE: "lời giải chỉ chép lại phương án",
+    QUESTION_LAYOUT_CODE: "đề câu hỏi dồn thành một khối",
+    QUESTION_LENGTH_CODE: "đề câu hỏi quá dài",
 }
 _CODE_TEXT_EN: Final[dict[str, str]] = {
     ANSWER_LEAK_CODE: "an option gives the answer away",
@@ -192,6 +210,13 @@ _CODE_TEXT_EN: Final[dict[str, str]] = {
     "IDM_RESPONSE_TRUNCATED": "a cut AI answer",
     "IDM_W5_FALLBACK_ONLY": "a rerun without AI",
     FAQ_FALLBACK_REPEATED_CODE: "a fallback FAQ that repeats one source sentence",
+    EXPLANATION_LAYOUT_CODE: "feedback not in its layout",
+    EXPLANATION_VERDICT_CODE: "feedback that contradicts the answer key",
+    EXPLANATION_FILLER_CODE: "feedback with empty praise",
+    EXPLANATION_LENGTH_CODE: "feedback that is too long",
+    EXPLANATION_RESTATES_CODE: "feedback that only repeats the option",
+    QUESTION_LAYOUT_CODE: "a question written as one block",
+    QUESTION_LENGTH_CODE: "a question that is too long",
 }
 # A code without its own words, by family.
 _CODE_FAMILY_VI: Final = (("HTML_", "lỗi định dạng phần lý thuyết"), ("DIAGRAM_", "lỗi sơ đồ"),
@@ -465,6 +490,14 @@ _PLAIN_HINT_VI: Final = {
     FAQ_OPEN_QUESTION_CODE: "câu hỏi đáp trả lời một câu hỏi còn chờ SME xác nhận — chỉ giữ khi SME đã trả lời",
     FAQ_INVENTED_REASON_CODE: "câu hỏi đáp tự đưa ra lý do cho một con số hoặc ngưỡng mà tài liệu không giải thích — "
                               "cần SME xác nhận hoặc bỏ",
+    # QC feedback 2026-10-21 (A1/A2): wording of the question and its feedback, to polish.
+    EXPLANATION_FILLER_CODE: "lời giải dùng chữ sáo rỗng (như «dũng cảm», «tuyệt đối») — nên thay bằng lý do cụ thể "
+                             "lấy từ bài học",
+    EXPLANATION_LENGTH_CODE: "lời giải dài quá giới hạn — nên rút gọn: một câu nêu nguyên tắc, rồi mỗi phương án một "
+                             "câu ngắn",
+    QUESTION_LAYOUT_CODE: "đề câu hỏi còn dồn thành một khối — nên để một hai câu bối cảnh, mỗi ý của danh sách một "
+                          "dòng và câu hỏi ở dòng cuối",
+    QUESTION_LENGTH_CODE: "đề câu hỏi dài quá giới hạn — nên rút gọn phần bối cảnh",
 }
 _PLAIN_HINT_EN: Final = {
     SENTENCE_COPY_CODE: "many sentences copy the source almost word for word — rewrite them in plain words and explain "
@@ -482,6 +515,13 @@ _PLAIN_HINT_EN: Final = {
                             "answers it",
     FAQ_INVENTED_REASON_CODE: "an FAQ item gives its own reason for a number or threshold the source does not "
                               "explain — the SME should confirm it or remove it",
+    EXPLANATION_FILLER_CODE: "the feedback uses empty praise (such as «brave», «absolute») — replace it with a "
+                             "concrete reason taken from the lesson",
+    EXPLANATION_LENGTH_CODE: "the feedback is over its length — shorten it: one sentence with the principle, then one "
+                             "short sentence per option",
+    QUESTION_LAYOUT_CODE: "the question is still one block of text — keep one or two context sentences, each list item "
+                          "on its own line and the question on the last line",
+    QUESTION_LENGTH_CODE: "the question is over its length — shorten the context",
 }
 
 
@@ -501,6 +541,12 @@ _REVIEW_HINT_VI: Final = {
     FRAMEWORK_INCOMPLETE_CODE: "tiêu đề nêu một khung gồm nhiều thành phần nhưng nội dung chưa liệt kê đủ các thành "
                                "phần đó — bổ sung bản đồ tổng quan hoặc đổi tiêu đề theo nội dung",
     QUESTION_INCOMPLETE_CODE: "đề câu hỏi bị cụt, chưa có câu hỏi ở cuối — cần viết lại cho trọn câu hỏi",
+    # QC feedback 2026-10-21 (A1): the feedback must tell the learner why each option is right or wrong.
+    EXPLANATION_LAYOUT_CODE: "lời giải chưa theo bố cục: một dòng nêu nguyên tắc, rồi mỗi phương án một dòng «A - Đúng "
+                             "vì …» hoặc «A - Sai vì …» — cần viết lại để người học thấy vì sao đúng, vì sao sai",
+    EXPLANATION_VERDICT_CODE: "lời giải ghi một phương án là đúng hoặc sai ngược với đáp án — cần sửa cho khớp đáp án",
+    EXPLANATION_RESTATES_CODE: "lời giải chỉ chép lại nội dung phương án, chưa nêu lý do — cần nêu vì sao đúng hoặc "
+                               "sai dựa trên bài học",
 }
 _REVIEW_HINT_EN: Final = {
     ANSWER_LEAK_CODE: "an option nearly copies the example or text shown right before the question — learners can "
@@ -518,6 +564,13 @@ _REVIEW_HINT_EN: Final = {
     FRAMEWORK_INCOMPLETE_CODE: "the title names a framework of several items but the content does not list all of "
                                "them — add the overview or retitle it to what it teaches",
     QUESTION_INCOMPLETE_CODE: "the question stops before it asks anything — write the question out in full",
+    EXPLANATION_LAYOUT_CODE: "the feedback is not laid out as one line with the principle, then one line per option "
+                             "(«A - Correct because …» or «A - Incorrect because …») — rewrite it so learners see why "
+                             "each option is right or wrong",
+    EXPLANATION_VERDICT_CODE: "the feedback calls an option right or wrong against the answer key — make it match the "
+                              "key",
+    EXPLANATION_RESTATES_CODE: "the feedback only repeats the option, it gives no reason — say why it is right or "
+                               "wrong from what the lesson taught",
 }
 
 # QLT-8 (QC run 0a11aa9e: 3 units marked "Cần xem" without a reason): why a unit needs the author's review, in plain
@@ -541,7 +594,7 @@ NOTICE_REASONS: Final = frozenset({REVIEW_REASON_EVIDENCE, REVIEW_REASON_STYLE, 
 STYLE_CODES: Final = frozenset({
     SENTENCE_COPY_CODE, SENTENCE_LENGTH_CODE, "IDM_W5_VERBATIM_COPY", EXPLANATION_MISSING_CODE, EXAMPLE_ROLE_CODE,
     FAQ_TITLE_MISMATCH_CODE, FAQ_TYPE_MIX_CODE, FAQ_RESTATES_HTML_CODE, FAQ_RESTATES_SOURCE_CODE,
-    ANSWER_LENGTH_CUE_CODE,
+    ANSWER_LENGTH_CUE_CODE, *QUIZ_STYLE_CODES,
 })
 _REVIEW_REASON_VI: Final = {
     REVIEW_REASON_FALLBACK: "có khối dùng bản dự phòng dựng từ tài liệu",

@@ -230,7 +230,8 @@ class JudgeRepairTests(StoryboardEndpointTestCase):
     async def test_a_judge_repair_keeps_only_the_slots_it_did_not_make_worse(self) -> None:
         body = escalate_body()
         writer = escalate_writer(body)
-        better = writer["components"]["c0"]["explanation"] + " Hãy đối chiếu tiêu chí trước."
+        # The added advice opens the principle line (QC feedback A1: an option line holds one sentence).
+        better = "Hãy đối chiếu tiêu chí trước. " + writer["components"]["c0"]["explanation"]
         items = writer["components"]["c1"]["items"]
         worse_faq = [{**items[0], "answer": items[0]["answer"] + " Khách VIP được giảm 20% phí."}, *items[1:]]
         repair = {"components": {**slot_repair(writer, 0, explanation=better)["components"],
@@ -244,7 +245,7 @@ class JudgeRepairTests(StoryboardEndpointTestCase):
         quality = self.assert_envelope(data, "provider_validated", "validated", "provider")
         self.assertEqual(provider.names, [WRITER, JUDGE, REPAIR, JUDGE])
         c0, c1 = data["unit"]["components"][:2]
-        self.assertTrue(c0["explanation"].endswith("Hãy đối chiếu tiêu chí trước."))
+        self.assertTrue(c0["explanation"].startswith("Hãy đối chiếu tiêu chí trước."))
         self.assertEqual(c1["items"], items)
         self.assertEqual([(event["step"], event["reverted_slots"], event["whole_repair"])
                           for event in guard_events(logs.records)], [("w6", [1], False)])

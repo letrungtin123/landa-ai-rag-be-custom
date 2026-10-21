@@ -54,6 +54,7 @@ from app.idm.qa import (
     restated_faq_items,
     ungrounded_callouts,
 )
+from app.idm.quiz_text import lay_out_quiz
 from app.idm.runtime import IdmResponseInvalidError, IdmRuntime, ThinkingLevel, log_stage, record_deterministic_fallback
 from app.idm.source_locked import FAQ_FALLBACK_REPEATED_CODE, faq_answers_repeat
 from app.idm.storyboard_context import (
@@ -211,7 +212,9 @@ class IdmUnitWriterSteps:
                 ordinal = free_key_letter(self.contract.source_snapshot_hash, self.contract.unit_path)
             normalized, codes = normalize_single_choice(component, str(self.plans[index]["component_plan_id"]),
                                                         ordinal)
-            self.runtime.adjustments.update(codes)
+            # QC feedback A1/A2 (K1): the stem and the explanation in lines, after the options got their letters.
+            normalized, laid_out = lay_out_quiz(normalized)
+            self.runtime.adjustments.update(codes + laid_out)
             return normalized
         if plan_type != "html" or not isinstance(component, dict) or not isinstance(
                 component.get("semantic_content"), dict):

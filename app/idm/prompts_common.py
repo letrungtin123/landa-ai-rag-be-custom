@@ -100,7 +100,7 @@ COMPACT_MODULE: Final = ("Use the fewest units that still respect the layout rul
                          "short sentence or null; rationale, purpose and notes at most 200 characters; at most 2 "
                          "support items per component; 1 practice task per lesson unless the Must Do needs more.")
 COMPACT_UNIT: Final = ("Write each slot at the low end of its length budget: short paragraphs, no repetition, "
-                       "feedback of 2-3 sentences per option at most.")
+                       "feedback of one principle line and one short line per option.")
 
 
 def truncation_suffix(compact_hint: str) -> str:

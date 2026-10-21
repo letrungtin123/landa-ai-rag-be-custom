@@ -88,6 +88,7 @@ from app.idm.qa import (
     settled_codes,
     ungrounded_callouts,
 )
+from app.idm.quiz_text import QUESTION_CODES, QUIZ_CODES, quiz_hint
 from app.idm.runtime import (
     IdmBudgetError,
     IdmProviderError,
@@ -214,6 +215,10 @@ class IdmUnitWriter(IdmUnitRepairSteps):
                         lines.append(self.length_cue_line(slot, component))
                     elif code == ANSWER_CONTESTED_CODE and isinstance(component, dict):
                         lines.append(self.contested_rule_line(slot, index, component, unit))
+                    elif code in QUIZ_CODES and isinstance(component, dict):
+                        field = "question" if code in QUESTION_CODES else "explanation"
+                        lines.append(rule_line(slot, code, f"{slot}.{field}")
+                                     + quiz_hint(code, component, self.evidence))
                     elif (code in {SENTENCE_COPY_CODE, NEW_FACT_CODE, SENTENCE_LENGTH_CODE, EXAMPLE_ROLE_CODE}
                           and isinstance(component, dict)):
                         lines.append(self.fidelity_rule_line(slot, index, component, code))

@@ -79,6 +79,12 @@ HASH_HISTORY: tuple[tuple[str, str], ...] = (
     # worksheet rule (moved to _WORKSHEET_RULE) heads suggested criteria as such.
     ("ee2b60eb108325cdf0849ec5320fedac0b88711c162338f688fd22db5a46ef11",
      "QC A5: no Hold; suggested criteria for a practice the source gives no criteria"),
+    # QC feedback 2026-10-21, A1/A2 (contract K1): QUIZ TEXT. The W5 writer gets the question and explanation shape
+    # (line feeds, "- " list lines, principle line + one "A - Đúng/Sai vì …" line per option, caps, no empty praise),
+    # COMPACT_UNIT and the judge's Q4 ask for the same shape, and the repair rules of the seven new codes are added
+    # (``app.idm.quiz_text:quiz_hint`` joins the manifest).
+    ("f8cfb8c52da83f4d612e4b01de984f266557d244aaec76be36d02bb7d7b01f08",
+     "QC A1/A2: quiz question and explanation laid out in lines, with checks and repairs"),
 )
 PROMPT_NAME = re.compile(r"(prompt|_rules?$|_suffix$|rule_lines?$|_hint$|^rule_line$|_cue_line$)")
 

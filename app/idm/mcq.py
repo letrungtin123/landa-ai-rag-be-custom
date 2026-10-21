@@ -285,7 +285,7 @@ def _ordered_segments(text: str, relabelled: str, count: int, new_letter: Mappin
 
     Safe means: the original explanation names each option exactly once at a segment start, in
     order A, B, C ..., and its last segment is one sentence (a closing remark after it would
-    otherwise travel with that option).
+    otherwise travel with that option). Segments written one per line keep their lines (K1).
     """
 
     starts = [match for match in _SEGMENT_RE.finditer(text) if match.group(1) in OPTION_LETTERS[:count]]
@@ -294,6 +294,13 @@ def _ordered_segments(text: str, relabelled: str, count: int, new_letter: Mappin
         return None
     bounds = [match.start() for match in starts] + [len(text)]
     bodies = [relabelled[bounds[index]:bounds[index + 1]].strip() for index in range(count)]
+    new_order = sorted(range(count), key=lambda index: new_letter[OPTION_LETTERS[index]])
+    if all(text[:start].rstrip(" \t").endswith("\n") for start in bounds[1:-1]):
+        # One line per option (QC feedback A1, contract K1): the lines move as they are; a line holding more than its
+        # option (a closing remark on a line of its own) would travel with it.
+        if any("\n" in body for body in bodies):
+            return None
+        return relabelled[:bounds[0]] + "\n".join(bodies[index] for index in new_order)
     marks = {body[-1:] for body in bodies[:-1]}
     if _SENTENCE_BREAK_RE.search(bodies[-1]) or len(marks) != 1 or next(iter(marks)) not in _SEGMENT_JOINERS:
         return None
@@ -307,7 +314,6 @@ def _ordered_segments(text: str, relabelled: str, count: int, new_letter: Mappin
         # Clause-separated segments: the last one's full stop moves to the new last segment.
         bodies = [body.rstrip(";,").rstrip() for body in bodies]
         bodies = [body[:-1] if closing and body.endswith(closing) else body for body in bodies]
-    new_order = sorted(range(count), key=lambda index: new_letter[OPTION_LETTERS[index]])
     joined = joiner.join(bodies[index] for index in new_order)
     return relabelled[:bounds[0]] + joined + (closing if clauses else "")
 

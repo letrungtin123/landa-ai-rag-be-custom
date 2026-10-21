@@ -198,6 +198,46 @@ IDM_MCQ_LENGTH_CUE_RATIO: Final = 1.25
 IDM_MCQ_LENGTH_CUE_LONGEST_RATIO: Final = 1.2
 # The length the repair aims for: the key at most this factor times the average distractor (inside the cue bound).
 IDM_MCQ_LENGTH_TARGET_RATIO: Final = 1.1
+
+# --- Quiz text (QC feedback 2026-10-21, A1/A2; contract K1; ``app.idm.quiz_text``) ----------------------------------
+# The QC department found the explanations rambling and hollow and the stems a wall of text. Measured on the 25
+# questions of runs 8de1c76b and ab8d67e1: the principle before "A - …" took 36-61 words where there was one (8 of 16
+# had none), an option's reason 16-83 words (median 28), a whole explanation 391-887 characters; stems ran 11-92 words
+# in 1-4 sentences. The shape asked for: the principle in one line (one or two short sentences), then one line per
+# option "A - Đúng vì …" / "A - Sai vì …" of one sentence; Vietnamese words count as syllables.
+IDM_MCQ_EXPLANATION_PRINCIPLE_MAX_WORDS: Final = 35
+IDM_MCQ_EXPLANATION_PRINCIPLE_MAX_SENTENCES: Final = 2
+IDM_MCQ_EXPLANATION_OPTION_MAX_WORDS: Final = 35
+IDM_MCQ_EXPLANATION_OPTION_MAX_SENTENCES: Final = 1
+# Well inside the 1,500 characters the schema and Node accept (4 options x 35 words + the principle ~ 850).
+IDM_MCQ_EXPLANATION_MAX_CHARS: Final = 1_000
+# An option line restates its option when it holds at least this share of the option's word 3-grams (accent-folded);
+# options of fewer words are too short to tell. A reason that names the criterion the option also names ("Sai vì cấp 1
+# chỉ dành cho lần đầu, chưa có thiệt hại tài chính" for "Cấp 1 vì chưa có thiệt hại tài chính") holds about 0.57; the
+# QC example copied its option almost whole.
+IDM_MCQ_EXPLANATION_RESTATE_NGRAM: Final = 3
+IDM_MCQ_EXPLANATION_RESTATE_SHARE: Final = 0.7
+IDM_MCQ_EXPLANATION_RESTATE_MIN_WORDS: Final = 8
+# The stem: at most two context sentences (list lines and the question line not counted), each list item on its own
+# line starting "- ", the question alone on the last line, and a whole stem of at most this many words.
+IDM_MCQ_STEM_CONTEXT_MAX_SENTENCES: Final = 2
+IDM_MCQ_STEM_MAX_WORDS: Final = 120
+# Node's generation normaliser cuts a question at 1,000 and an explanation at 1,500 characters (a line feed counts one):
+# both caps stay well below.
+IDM_MCQ_STEM_MAX_CHARS: Final = 800
+# Empty praise and slogans that give no reason ("B - Đúng vì phương án này dũng cảm Say No … tạo điểm khác biệt tuyệt
+# đối", QC 2026-10-21). Matched as whole words, Vietnamese with its diacritics (NFC, lower case); a phrase the unit's
+# facts use themselves (a rule that says "tuyệt đối không …") is allowed.
+QUIZ_FILLER_VI: Final = (
+    "dũng cảm", "tuyệt đối", "vượt trội", "say no", "đột phá", "bứt phá", "tối thượng", "hoàn hảo", "xuất sắc",
+    "đỉnh cao", "vô cùng", "cực kỳ", "cực kì", "thần kỳ", "siêu việt", "không thể phủ nhận", "hiển nhiên",
+    "tất nhiên", "rõ ràng là", "khác biệt tuyệt đối", "chiến lược khôn ngoan", "nước đi thông minh",
+)
+QUIZ_FILLER_EN: Final = (
+    "brave", "bravely", "bold", "boldly", "absolute", "absolutely", "outstanding", "superior", "breakthrough",
+    "game-changer", "game changer", "perfect", "perfectly", "excellent", "amazing", "incredible", "obviously",
+    "of course", "undeniably", "say no", "smart move", "wise choice",
+)
 # Answer leak: an option whose word 4-grams (accent-folded) mostly appear in the html shown before
 # the question in the same unit copies it ("ví dụ đạt chuẩn" -> correct option, "ví dụ không đạt
 # chuẩn" -> distractor; QC c4.l2.u1 was a near-verbatim copy, ~1.0). A rule fragment shared with a
