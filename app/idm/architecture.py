@@ -544,9 +544,8 @@ def _build_notes(data: AssemblyInput) -> IdmAuthorNotesV1:
         fallback_stages=[stage for stage, origin in data.stage_origins.items() if origin != "provider"],
         known_ids=known_ids,
         pending_objectives=[statements[lo_id] for lo_id in pending],
-        nice_to_know=[SkippedBlockNote(block.name, block.summary) for block in data.blocks
-                      if block.block_id in row_by_id and row_by_id[block.block_id].classification == "nice_to_know"],
-        # QC course 364564 (N4): the removed "BiC Legacy" block was never mentioned to the author.
+        # QC course 364564 (N4): the removed "BiC Legacy" block was never mentioned to the author. Since A6 (QC feedback
+        # 2026-10-21) there is no Nice to Know list: W2 stores those blocks as Remove.
         removed=[SkippedBlockNote(block.name, row_by_id[block.block_id].rationale) for block in data.blocks
                  if block.block_id in row_by_id and row_by_id[block.block_id].classification == "remove"],
         kept_definitions=[KeptDefinitionNote(names[item.block_id], item.terms, item.proposed)

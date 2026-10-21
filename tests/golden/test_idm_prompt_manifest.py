@@ -68,6 +68,11 @@ HASH_HISTORY: tuple[tuple[str, str], ...] = (
     # Prompts of runs without an organization context are unchanged.
     ("0bfd97c4c36e765ce584cf95af57e4078f041793321ab6106484ecb1700e0f44",
      "QC A7: no learner groups in the organization context views or the distillation"),
+    # QC feedback 2026-10-21, A6 (contract K2): no Nice to Know. The preamble, W1-reduce, W2 (decision flow,
+    # classification list, term-definition rule, treatment line), W4 (duration fit) and the purpose background rules
+    # name Remove only; the server stores a nice_to_know row as remove (blueprint.NICE_TO_KNOW_AS_REMOVE_CODE).
+    ("ce47669c06590cc7aecb997df88169187ca5beedc4ef7ac28f3e6bef92e46846",
+     "QC A6: no Nice to Know classification in the design prompts"),
 )
 PROMPT_NAME = re.compile(r"(prompt|_rules?$|_suffix$|rule_lines?$|_hint$|^rule_line$|_cue_line$)")
 

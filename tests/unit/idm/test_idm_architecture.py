@@ -468,22 +468,22 @@ class NotesTests(unittest.TestCase):
         self.assertEqual(text.count("Câu hỏi lo"), 0)
         self.assertEqual(text.count("Câu hỏi về"), 1)
 
-    def test_course_notes_list_blocked_must_dos_pending_objectives_and_nice_to_know(self) -> None:
-        # QC course 234653 (R3, R4): the author sees what Hold blocks and what was left out.
+    def test_course_notes_list_blocked_must_dos_pending_objectives_and_removed_blocks(self) -> None:
+        # QC course 234653 (R3, R4): the author sees what Hold blocks and what was left out (as Remove since A6).
         hold = HoldNote("Thời hạn phản hồi khiếu nại", "Mâu thuẫn 24 giờ và 48 giờ.", "Cấp 2 phản hồi trong bao lâu?",
                         ("Phản hồi khách hàng đúng thời hạn",))
         expectations = {
             "vi": ("Must Do chưa dạy được: Phản hồi khách hàng đúng thời hạn.",
                    "• Mục tiêu học tập chờ SME (chưa hiển thị là kết quả đầu ra của khoá học):",
-                   "• Nội dung tham khảo đã lược (Nice to know) — 2 khối, tác giả có thể bổ sung thủ công:"),
+                   "• Nội dung đã loại khỏi khoá (Remove) — 2 khối, kèm lý do:"),
             "en": ("Must Do not taught yet: Phản hồi khách hàng đúng thời hạn.",
                    "• Learning objectives awaiting the SME (not shown as course outcomes):",
-                   "• Reference content left out (Nice to know) — 2 blocks the author may add back:"),
+                   "• Content removed from the course (Remove) — 2 blocks, with the reason:"),
         }
         for locale, labels in expectations.items():
             text = self.course_notes(locale, holds=[hold], pending_objectives=["Người học có thể phản hồi đúng hạn."],
-                                     nice_to_know=[SkippedBlockNote("Lịch sử phòng CSKH", "Thành lập năm 2009. " * 30),
-                                                   ("Bối cảnh cạnh tranh", "Thị trường thay đổi")])
+                                     removed=[SkippedBlockNote("Lịch sử phòng CSKH", "Thành lập năm 2009. " * 30),
+                                              ("Bối cảnh cạnh tranh", "Thị trường thay đổi")])
             self.assert_clean(text, 7_000, ["d1-c7-f2"])
             for label in labels:
                 self.assertIn(label, text)
@@ -493,6 +493,7 @@ class NotesTests(unittest.TestCase):
             self.assertIn("  - Bối cảnh cạnh tranh: Thị trường thay đổi", text)
             summary = next(line for line in text.splitlines() if "Lịch sử phòng CSKH" in line)
             self.assertLessEqual(len(summary), len("  - Lịch sử phòng CSKH: ") + 160)
+            self.assertNotIn("Nice to know", text)
         blank = self.course_notes("vi", holds=[HoldNote("Khối chưa rõ", "-", "-")])
         self.assertIn("  1. Khối chưa rõ.", blank)
         self.assertNotIn("Câu hỏi cho SME: -", blank)
@@ -517,7 +518,7 @@ class NotesTests(unittest.TestCase):
 
     def test_course_notes_fit_the_limit_and_count_what_does_not_fit(self) -> None:
         holds = [("Khối " + "a" * 170, "b" * 300, "c" * 400)] * 15
-        text = self.course_notes("vi", holds=holds, nice_to_know=[("Khối tham khảo", "Tóm tắt")] * 5)
+        text = self.course_notes("vi", holds=holds, removed=[("Khối tham khảo", "Tóm tắt")] * 5)
         self.assertLessEqual(len(text), 7_000)
         self.assertFalse(text.endswith("…"))
         self.assertTrue(text.endswith("Cấu trúc được thiết kế theo Must Do, không theo mục lục tài liệu."))
@@ -560,8 +561,10 @@ class NotesTests(unittest.TestCase):
             for must_do_id in item.blocked_must_do_ids:
                 self.assertIn(statements[must_do_id], design.notes.course)
         names = {block.block_id: block.name for block in design.blocks}
+        # A6: no Nice to Know list; removed blocks are named with their reason.
+        self.assertNotIn("Nice to", design.notes.course)
         for row in design.blueprint:
-            if row.classification == "nice_to_know":
+            if row.classification == "remove":
                 self.assertIn(names[row.block_id], design.notes.course)
         for text in design.notes.modules.values():
             self.assert_clean(text, 3_000, known)

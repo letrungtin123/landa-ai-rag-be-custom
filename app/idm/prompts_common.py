@@ -40,7 +40,7 @@ Core principles you must apply:
   Instructional Treatment. Never convert pages or slides 1:1 into screens.
 - Start from what the learner must be able to DO or DECIDE at work (Must Do), not from how much the source says.
 - Must Know is only the information needed to perform a Must Do correctly. Lookup material becomes
-  Reference / Job Aid. Content that does not serve a learning objective is Nice to Know or Remove.
+  Reference / Job Aid. Content that does not serve a learning objective is left out (Remove).
 - Design backwards from Practice: Practice -> minimal Supporting Info (Explain/Show) -> Feedback -> Format.
   Choose the simplest format that lets the learner practise and receive feedback.
 - Never invent facts, rules, thresholds, criteria, steps, definitions or exceptions. You MAY draft illustrative

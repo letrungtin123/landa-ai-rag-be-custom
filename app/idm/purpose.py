@@ -95,7 +95,7 @@ class PurposeSpec:
 _JOB_OBJECTIVES: Final = ("Job performance: every objective is an action or decision the learner performs at "
                           "work.")
 _JOB_MUST_DOS: Final = "Must Dos are the concrete actions or decisions performed at work."
-DEFAULT_BACKGROUND_RULE: Final = "department history and background trivia -> nice_to_know or remove"
+DEFAULT_BACKGROUND_RULE: Final = "department history and background trivia -> remove"
 DEFAULT_TITLE_RULE: Final = 'action-oriented; no generic titles ("Giới thiệu", "Tổng quan", "Phần 1").'
 DEFAULT_SUMMARY_RULE: Final = "what performance problem the course solves, for whom"
 _PURPOSE_SUMMARY: Final = "what the course is for and for whom, in line with COURSE_PURPOSE"
@@ -136,9 +136,8 @@ PROFILES: Final[dict[PurposeProfile, PurposeSpec]] = {
             "This is an onboarding course: the company's history and milestones, mission, vision, core values, "
             "organisation and leadership, products and services, notable projects or customers, locations and "
             "internal rules ARE course content for a new employee (must_know, linked to the Must Do they support, "
-            "usually introducing the company or finding the right contact). Never classify them nice_to_know or "
-            "remove because they are background. Only content of no use to a new employee is nice_to_know or "
-            "remove."),
+            "usually introducing the company or finding the right contact). Never classify them remove because "
+            "they are background. Only content of no use to a new employee is remove."),
         title_policy=('titles may name the company or a question a new employee asks ("[Tên công ty] là ai?", '
                       '"Làm việc tại [Tên công ty]", "Ai hỗ trợ bạn khi cần?"); they need not be actions. '
                       + _NO_BARE_TOPIC),
@@ -178,7 +177,7 @@ PROFILES: Final[dict[PurposeProfile, PurposeSpec]] = {
             "được, làm quen, understand or know."),
         must_do_policy=("Must Dos: describe the offering to a customer, explain a benefit, compare options, recommend "
                         "the fitting option, answer a common customer question."),
-        background_rule="company history unrelated to the offering -> nice_to_know or remove",
+        background_rule="company history unrelated to the offering -> remove",
         retention_policy=(
             "This is a product course: features, specifications, benefits, differences from alternatives, packages "
             "or prices, conditions of use and common customer questions are course content (must_know); full "

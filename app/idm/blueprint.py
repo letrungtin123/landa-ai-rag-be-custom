@@ -70,6 +70,10 @@ FALLBACK_TREATMENT: Final[dict[str, Treatment]] = {
     "must_do": "condense", "must_know": "condense", "reference": "convert_to_job_aid",
     "nice_to_know": "remove", "remove": "remove",
 }
+# QC feedback 2026-10-21 (A6, contract K2): the course keeps no "Nice to know" list. A row W2 still classifies
+# nice_to_know (the classification stays in the contract) is stored as remove: same placement (excluded) and treatment
+# (remove), so its facts are "remove" dispositions and the excluded total is unchanged; the code only counts them.
+NICE_TO_KNOW_AS_REMOVE_CODE: Final = "IDM_W2_NICE_TO_KNOW_AS_REMOVE"
 _MIN_SEPARATE_PARTS: Final = 2
 _MAX_BLOCK_ISSUES: Final = 16
 _MAX_BLOCK_SME: Final = 8
@@ -164,6 +168,7 @@ def validate_w2(
 
 def _normalize_row(row: IdmBlueprintRowV1) -> IdmBlueprintRowV1:
     return row.model_copy(update={
+        "classification": "remove" if row.classification == "nice_to_know" else row.classification,
         "detail_level": single_line(row.detail_level, 300),
         "rationale": single_line(row.rationale, 300),
         "hold_reason": single_line(row.hold_reason, 300) if row.hold_reason else None,
@@ -178,7 +183,7 @@ def fallback_w2(
     must_dos: Sequence[IdmMustDoV1],
     locale: str,
 ) -> list[IdmBlueprintRowV1]:
-    """Directly linked blocks become Must Know; the rest Nice to Know (spec §7.4)."""
+    """Directly linked blocks become Must Know; the rest Remove (spec §7.4; Nice to Know until A6, 2026-10-22)."""
 
     vi = locale == "vi"
     must_dos_by_lo: dict[str, list[str]] = {}
@@ -196,7 +201,7 @@ def fallback_w2(
     for block in blocks:
         lo_id = direct.get(block.block_id)
         if lo_id is None:
-            classification: Classification = "nice_to_know"
+            classification: Classification = "remove"
         elif block.content_kind == "reference" or block.support_role in {"job_aid", "checklist"}:
             classification = "reference"
         else:
@@ -478,6 +483,7 @@ async def run_w2(
             codes.update(issue.code for issue in found)
             if not errors(found):
                 accepted = [_normalize_row(row) for row in response.rows]
+                codes[NICE_TO_KNOW_AS_REMOVE_CODE] += sum(row.classification == "nice_to_know" for row in response.rows)
                 break
             repair = repair_suffix([issue.as_repair_item() for issue in errors(found)])
         if accepted is None:

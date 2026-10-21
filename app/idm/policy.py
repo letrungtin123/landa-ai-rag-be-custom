@@ -157,9 +157,8 @@ IDM_NOTES_MAX_HOLD_ITEMS: Final = 15
 # they fill what the 7,000-character course note has left. The complete list is in the course_skeleton artifact
 # (``payload.idm.blocks[].sme_questions`` of the non-Hold blocks; Hold questions on ``payload.idm.hold_items``),
 # which Apply copies to the course-root author notes (``idm_guidance.sme_questions``).
-# Nice to Know blocks stay out of the lessons (methodology W2); the author gets their names and a
-# one-line summary to add one back by hand (QC course 234653, R4). The full list is in the UI panel.
-IDM_NOTES_MAX_NICE_TO_KNOW: Final = 12
+# One-line summary of a removed block in the course note. The Nice to Know list (QC course 234653, R4) is gone since the
+# QC feedback of 2026-10-21 (A6): such blocks are stored and listed as Remove.
 IDM_NOTES_SUMMARY_CHARS: Final = 160
 # Removed blocks with the W2 reason, and definition blocks kept against the W2 proposal (QC course 364564, N4).
 IDM_NOTES_MAX_REMOVED: Final = 12

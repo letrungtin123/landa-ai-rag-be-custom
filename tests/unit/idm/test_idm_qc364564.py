@@ -809,23 +809,27 @@ class TermDefinitionCourseTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("• Giữ lại vì định nghĩa thuật ngữ cốt lõi (Week 2 đề xuất loại) — 1 khối:\n"
                       "  - Phòng Chăm sóc Khách hàng đã phát triển ra sao?: CSKH (đề xuất ban đầu: Remove).",
                       design.notes.course)
-        self.assertNotIn("(Remove) — ", design.notes.course)
+        # Only the version block is left out: W2 said nice_to_know, it is stored and listed as Remove (A6).
+        self.assertIn("• Nội dung đã loại khỏi khoá (Remove) — 1 khối, kèm lý do:\n"
+                      "  - Phiên bản và ngày áp dụng của quy trình: Quyết định theo luồng Week 2.", design.notes.course)
         w2_prompt = next(call["prompt"] for call in provider.calls if call["schema"] == "IdmW2BlueprintResponseV1")
-        self.assertIn("Never classify as\nnice_to_know or remove a block that defines", w2_prompt)
+        self.assertIn("Never classify as\nremove a block that defines", w2_prompt)
         w1_prompt = next(call["prompt"] for call in provider.calls if call["schema"] == "IdmW1SectionResponseV1")
         self.assertIn("A formula or definition of a term", w1_prompt)
 
     def test_course_notes_list_removed_blocks_with_their_reason(self) -> None:
         notes = golden_course_design().notes.course
-        self.assertIn("• Nội dung đã loại khỏi khoá (Remove) — 1 khối, kèm lý do:\n"
+        # A6: the block W2 classified nice_to_know is listed with the removed ones.
+        self.assertIn("• Nội dung đã loại khỏi khoá (Remove) — 2 khối, kèm lý do:\n"
+                      "  - Phiên bản và ngày áp dụng của quy trình: Quyết định theo luồng Week 2.\n"
                       "  - Phòng Chăm sóc Khách hàng đã phát triển ra sao?: Quyết định theo luồng Week 2.", notes)
         common: dict[str, Any] = {"ai_proposed": False, "total_minutes": 10, "lesson_count": 1, "module_count": 1,
                                   "reference_block_count": 0, "excluded_block_count": 1, "holds": [],
                                   "sme_questions": [], "fallback_stages": []}
         english = build_course_notes(locale="en", removed=[SkippedBlockNote("BiC history", "Outdated programme.")],
-                                     kept_definitions=[KeptDefinitionNote("What is BiC?", ("BiC",), "nice_to_know")],
+                                     kept_definitions=[KeptDefinitionNote("What is BiC?", ("BiC",), "remove")],
                                      **common)
         self.assertIn("• Kept because they define a core term (Week 2 proposed to leave them out) — 1 blocks:\n"
-                      "  - What is BiC?: BiC (first proposed: Nice to know).", english)
+                      "  - What is BiC?: BiC (first proposed: Remove).", english)
         self.assertIn("• Content removed from the course (Remove) — 1 blocks, with the reason:\n"
                       "  - BiC history: Outdated programme.", english)

@@ -857,8 +857,10 @@ class CourseNoteTests(unittest.TestCase):
         return build_course_notes(
             locale="vi" if locale == "vi" else "en", ai_proposed=True, total_minutes=120, lesson_count=13,
             module_count=4, reference_block_count=3, excluded_block_count=60, holds=holds,
-            sme_questions=[f"Câu hỏi số {n} cho chuyên gia về quy trình này là gì?" for n in range(22)],
-            fallback_stages=[], nice_to_know=skipped, removed=skipped)
+            # Crowded: long questions fill what the removed blocks leave (the Nice to Know list is gone since A6).
+            sme_questions=[f"Câu hỏi số {n} cho chuyên gia về quy trình này là gì?"
+                           + (" Ghi rõ nguồn và phiên bản đang áp dụng." * 6 if crowded else "") for n in range(22)],
+            fallback_stages=[], removed=skipped)
 
     def test_every_question_that_fits_is_listed(self) -> None:
         text = self.note("vi")

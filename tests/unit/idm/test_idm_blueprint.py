@@ -337,12 +337,13 @@ class FallbackW2Tests(unittest.TestCase):
     def classify(self, rows: list[IdmBlueprintRowV1]) -> dict[str, str]:
         return {row.block_id: row.classification for row in rows}
 
-    def test_direct_links_become_must_know_the_rest_nice_to_know(self) -> None:
+    def test_direct_links_become_must_know_the_rest_remove(self) -> None:
         rows = fallback_w2(self.state.blocks, self.state.links, self.state.must_dos, "vi")
         direct = {"cb_0004", "cb_0005", "cb_0006", "cb_0007", "cb_0008", "cb_0009", "cb_0010"}
         for row in rows:
             with self.subTest(block=row.block_id):
-                expected = "must_know" if row.block_id in direct else "nice_to_know"
+                # A6 (QC feedback 2026-10-21): the rest is Remove, never Nice to Know.
+                expected = "must_know" if row.block_id in direct else "remove"
                 self.assertEqual(row.classification, expected)
                 self.assertEqual(row.placement, SPEC_MATRIX[expected][0])
                 self.assertEqual(row.treatment, "condense" if expected == "must_know" else "remove")
@@ -374,7 +375,7 @@ class FallbackW2Tests(unittest.TestCase):
     def test_direct_link_to_an_objective_without_must_dos_does_not_count(self) -> None:
         must_dos = [md for md in self.state.must_dos if md.lo_id != "lo_2"]
         rows = self.classify(fallback_w2(self.state.blocks, self.state.links, must_dos, "vi"))
-        self.assertEqual(rows["cb_0009"], "nice_to_know")
+        self.assertEqual(rows["cb_0009"], "remove")
         self.assertEqual(rows["cb_0004"], "must_know")
 
 
@@ -392,9 +393,14 @@ class RunW2Tests(unittest.IsolatedAsyncioTestCase):
         payload = edited(W2_BLUEPRINT, lambda p: row_of(p, "cb_0004").update(detail_level="Giữ  bảng\n nhóm",
                                                                              must_do_ids=["md_1", "md_1"]))
         result = await self.run_stage(FakeIdmProvider({"IdmW2BlueprintResponseV1": [payload]}))
-        self.assertEqual((result.origin, result.codes), ("provider", {}))
+        # The golden answer classifies cb_0001 nice_to_know: it is stored as remove (A6), counted, never repaired.
+        self.assertEqual((result.origin, result.codes), ("provider", {"IDM_W2_NICE_TO_KNOW_AS_REMOVE": 1}))
         row = next(row for row in result.rows if row.block_id == "cb_0004")
         self.assertEqual((row.detail_level, row.must_do_ids), ("Giữ bảng nhóm", ["md_1"]))
+        history = next(row for row in result.rows if row.block_id == "cb_0001")
+        self.assertEqual((history.classification, history.placement, history.treatment),
+                         ("remove", "excluded", "remove"))
+        self.assertNotIn("nice_to_know", {row.classification for row in result.rows})
 
     async def test_repair_then_fallback(self) -> None:
         missing = edited(W2_BLUEPRINT, lambda p: p["rows"].pop())

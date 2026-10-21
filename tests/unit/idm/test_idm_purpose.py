@@ -319,7 +319,7 @@ class ProfileSpecTests(unittest.TestCase):
         for key in ("sales", "general"):
             spec = PROFILES[key]
             self.assertEqual((spec.retention_policy, spec.design_policy), ("", ""))
-            self.assertEqual(spec.background_rule, "department history and background trivia -> nice_to_know or remove")
+            self.assertEqual(spec.background_rule, "department history and background trivia -> remove")
             self.assertFalse(any(section.required for section in spec.pattern))
 
 
@@ -453,7 +453,7 @@ class PromptTests(unittest.TestCase):
         self.assertNotIn("department history and background trivia", prompt)
         self.assertIn("company background a new employee needs is course content", prompt)
         default = w2_blueprint_prompt("vi", project_context={}, objectives=[], must_dos=[], catalog=[])
-        self.assertIn("department history and background trivia -> nice_to_know or remove", default)
+        self.assertIn("department history and background trivia -> remove", default)
         w4 = w4_purpose_rules(context(), onboarding)
         self.assertIn("COURSE PATTERN of this purpose", w4)
         self.assertIn("4. organisation - departments, leadership and whom to contact for what (required)", w4)
@@ -629,8 +629,9 @@ class OnboardingCourseDesignTests(unittest.TestCase):
         self.assertEqual((design.purpose.profile, design.purpose.origin, design.purpose.template_gaps),
                          ("general", "ai_inferred", []))
         dispositions = {item.fact_key: item.disposition for item in design.dispositions}
-        self.assertEqual({dispositions[key] for key in chunk_keys(1)}, {"nice_to_know"})
-        self.assertIn("department history and background trivia -> nice_to_know or remove",
+        # The golden W2 answer still says nice_to_know for this block: stored as remove (A6).
+        self.assertEqual({dispositions[key] for key in chunk_keys(1)}, {"remove"})
+        self.assertIn("department history and background trivia -> remove",
                       prompt_of(provider, "IdmW2BlueprintResponseV1"))
         w4_prompt = prompt_of(provider, "IdmW4CourseResponseV1")
         self.assertIn("Titles in Vietnamese (with full diacritics): action-oriented; no generic titles", w4_prompt)
@@ -680,12 +681,12 @@ class NotesTests(unittest.TestCase):
                                      "reference_block_count": 0, "excluded_block_count": 0, "holds": [],
                                      "sme_questions": [], "fallback_stages": [], "pattern_label": "New employee "
                                      "onboarding", "template_gaps": ["The source has no part on: X — please add it."],
-                                     "kept_background": [KeptDefinitionNote("Company history", (), "nice_to_know")]}
+                                     "kept_background": [KeptDefinitionNote("Company history", (), "remove")]}
         english = build_course_notes(locale="en", purpose_line=purpose_note_line(purpose, "en"), **arguments)
         self.assertIn("• Course purpose: New employee onboarding — Helps new employees get to know the company "
                       "(inferred by AI from the course name, description and source — please confirm).", english)
         self.assertIn("• Course pattern (New employee onboarding): the source lacks 1 parts", english)
-        self.assertIn("  - Company history (first proposed: Nice to know).", english)
+        self.assertIn("  - Company history (first proposed: Remove).", english)
         fallback = purpose.model_copy(update={"origin": "deterministic_fallback"})
         self.assertIn("(hệ thống tự xác định — cần xác nhận).", purpose_note_line(fallback, "vi"))
         plain = build_course_notes(locale="vi", **{**arguments, "template_gaps": [], "kept_background": []})

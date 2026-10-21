@@ -1594,7 +1594,7 @@
       "block_id": "cb_0001",
       "lo_id": null,
       "must_do_ids": [],
-      "classification": "nice_to_know",
+      "classification": "remove",
       "placement": "excluded",
       "treatment": "remove",
       "detail_level": "Giữ phần cần để thực hiện đúng Must Do.",
@@ -2102,7 +2102,7 @@
      },
      {
       "fact_key": "d1-c0-f2",
-      "disposition": "nice_to_know",
+      "disposition": "remove",
       "block_id": "cb_0001",
       "reason": null
      },
@@ -2462,7 +2462,7 @@
      }
     ],
     "notes": {
-     "course": "[Thiết kế theo quy trình ID — idm-1]\n• Mục đích khoá học: Quy trình, quy định, tuân thủ, an toàn — Giúp nhân viên Chăm sóc Khách hàng xử lý khiếu nại đúng quy trình, đúng tiêu chí escalate và đúng thời hạn (AI suy ra từ tên, mô tả khoá học và tài liệu — cần xác nhận).\n• Cách trình bày nội dung: giữ nguyên câu chữ của tài liệu cho quy định, quy trình và định nghĩa — chỉ chia khối, sắp xếp và thêm tiêu đề.\n• Mục tiêu học tập và đối tượng học: do AI đề xuất từ tài liệu — cần xác nhận.\n• Thời lượng ước tính: 35 phút (5 mục, 3 chương).\n• Nội dung chuyển sang Tài liệu tra cứu/Job Aid: 2 khối. Nội dung loại khỏi khoá học: 2 khối (Nice to Know/Remove).\n• Cần chuyên gia bổ sung (Hold) — chờ SME xác nhận (2), chưa đưa vào bài học:\n  1. Phải phản hồi khách hàng trong bao lâu? — Thời hạn 24 giờ mâu thuẫn với 48 giờ cho khiếu nại cấp 2. Câu hỏi cho SME: Khiếu nại cấp 2 phải phản hồi trong 24 giờ hay 48 giờ? Must Do chưa dạy được: Phản hồi khách hàng đúng thời hạn.\n  2. Ghi nhận khiếu nại trên CRM như thế nào? — Hướng dẫn CRM dựa trên ảnh chụp phiên bản 2021, có thể đã lỗi thời. Câu hỏi cho SME: Giao diện CRM hiện tại còn đúng các bước Tạo mới, chọn mã và đính kèm phiếu không?\n• Nội dung tham khảo đã lược (Nice to know) — 1 khối, tác giả có thể bổ sung thủ công:\n  - Phiên bản và ngày áp dụng của quy trình: Nội dung về: Phiên bản và ngày áp dụng của quy trình\n• Nội dung đã loại khỏi khoá (Remove) — 1 khối, kèm lý do:\n  - Phòng Chăm sóc Khách hàng đã phát triển ra sao?: Quyết định theo luồng Week 2.\n• Cấu trúc được thiết kế theo Must Do, không theo mục lục tài liệu.",
+     "course": "[Thiết kế theo quy trình ID — idm-1]\n• Mục đích khoá học: Quy trình, quy định, tuân thủ, an toàn — Giúp nhân viên Chăm sóc Khách hàng xử lý khiếu nại đúng quy trình, đúng tiêu chí escalate và đúng thời hạn (AI suy ra từ tên, mô tả khoá học và tài liệu — cần xác nhận).\n• Cách trình bày nội dung: giữ nguyên câu chữ của tài liệu cho quy định, quy trình và định nghĩa — chỉ chia khối, sắp xếp và thêm tiêu đề.\n• Mục tiêu học tập và đối tượng học: do AI đề xuất từ tài liệu — cần xác nhận.\n• Thời lượng ước tính: 35 phút (5 mục, 3 chương).\n• Nội dung chuyển sang Tài liệu tra cứu/Job Aid: 2 khối. Nội dung loại khỏi khoá học: 2 khối.\n• Cần chuyên gia bổ sung (Hold) — chờ SME xác nhận (2), chưa đưa vào bài học:\n  1. Phải phản hồi khách hàng trong bao lâu? — Thời hạn 24 giờ mâu thuẫn với 48 giờ cho khiếu nại cấp 2. Câu hỏi cho SME: Khiếu nại cấp 2 phải phản hồi trong 24 giờ hay 48 giờ? Must Do chưa dạy được: Phản hồi khách hàng đúng thời hạn.\n  2. Ghi nhận khiếu nại trên CRM như thế nào? — Hướng dẫn CRM dựa trên ảnh chụp phiên bản 2021, có thể đã lỗi thời. Câu hỏi cho SME: Giao diện CRM hiện tại còn đúng các bước Tạo mới, chọn mã và đính kèm phiếu không?\n• Nội dung đã loại khỏi khoá (Remove) — 2 khối, kèm lý do:\n  - Phiên bản và ngày áp dụng của quy trình: Quyết định theo luồng Week 2.\n  - Phòng Chăm sóc Khách hàng đã phát triển ra sao?: Quyết định theo luồng Week 2.\n• Cấu trúc được thiết kế theo Must Do, không theo mục lục tài liệu.",
      "modules": {
       "mod_01": "Mục tiêu hiệu suất: Phân loại đúng nhóm và mức độ của mọi khiếu nại tiếp nhận\n• Mục tiêu học tập phục vụ:\n  - Người học có thể phân loại khiếu nại theo nhóm và mức độ nghiêm trọng dựa trên bảng cấp độ\n• 2 mục, ước tính 12 phút.",
       "mod_02": "Mục tiêu hiệu suất: Quyết định đúng khi nào tự xử lý và khi nào phải escalate\n• Mục tiêu học tập phục vụ:\n  - Người học có thể quyết định tự xử lý hay escalate khiếu nại theo tiêu chí bắt buộc\n• 1 mục, ước tính 10 phút.",
@@ -2482,7 +2482,7 @@
      "w2": "provider",
      "w4": "provider"
     },
-    "design_hash": "297e5875e4d0f34ead1102be656a47ad5f2a5788b00785443d37519ef5984059"
+    "design_hash": "cb23b24bb56f8d6d70020202aaa3105db858bc815c13c1b72b8fb76b4c53737c"
    },
    "usage": {
     "inputTokens": 1924,
@@ -2501,8 +2501,8 @@
     "op": "generate",
     "model": "test-model",
     "schema": "IdmW1SectionResponseV1",
-    "prompt_sha256": "b1d2054c53b3e5cdfef057628b9e68f844cd7e7fd7d895681f884897670966e5",
-    "prompt_chars": 10800,
+    "prompt_sha256": "d9e57f285b531085ec8cd75f500d16af1f174e12031ee5fa8b712b085fc91094",
+    "prompt_chars": 10795,
     "config": {
      "max_output_tokens": 12000,
      "response_mime_type": "application/json",
@@ -2517,8 +2517,8 @@
     "op": "generate",
     "model": "test-model",
     "schema": "IdmW1ReduceResponseV1",
-    "prompt_sha256": "c7ca88626733e47f4b12377166a11f83c5c92695410fd1f14be719b46fc0e74e",
-    "prompt_chars": 13837,
+    "prompt_sha256": "da80cc204edf0b1258bf57e39b4c1e6b283c5cb863f56c27246b7cee8e6dbcde",
+    "prompt_chars": 13819,
     "config": {
      "max_output_tokens": 24000,
      "response_mime_type": "application/json",
@@ -2533,8 +2533,8 @@
     "op": "generate",
     "model": "test-model",
     "schema": "IdmW2BlueprintResponseV1",
-    "prompt_sha256": "6fad2627be18922ead891ecc3d30e5ea0d7e00b40869488251c855dc73a1d887",
-    "prompt_chars": 12914,
+    "prompt_sha256": "f6703d53f0932ab3d1f35eed2a579afc78073e7584d50f6cdb3926132c5fee2a",
+    "prompt_chars": 12882,
     "config": {
      "max_output_tokens": 32000,
      "response_mime_type": "application/json",
@@ -2549,8 +2549,8 @@
     "op": "generate",
     "model": "test-model",
     "schema": "IdmW4CourseResponseV1",
-    "prompt_sha256": "190ff1b34946da284fd8051e68d08e3f4a9d49adb1da355dfbdd1cac03073c83",
-    "prompt_chars": 10690,
+    "prompt_sha256": "16956d7076f8449140ecf630a3536e31164118032f368b1bb68d5a607ba1d6d2",
+    "prompt_chars": 10704,
     "config": {
      "max_output_tokens": 16000,
      "response_mime_type": "application/json",

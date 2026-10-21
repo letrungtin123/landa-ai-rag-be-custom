@@ -111,7 +111,7 @@ _TREATMENTS: Final = (
     "mindset or case the learner must understand, not only read);\n"
     "  combine = merge into another block of the same classification (set combine_into);\n"
     "  separate = split into parts that need different presentation (set separate_into).\n"
-    "treatment of a reference row: move_to_reference | convert_to_job_aid; of a nice_to_know or remove row: remove.\n")
+    "treatment of a reference row: move_to_reference | convert_to_job_aid; of a remove row: remove.\n")
 _W2_MODE_RULES: Final[dict[FidelityMode, str]] = {
     "explain": ("CONTENT MODE explain (the course explains, it does not transcribe): a must_know concept, principle, "
                 "value, mindset or case uses explain (the default); a rule, definition, step, number or threshold "

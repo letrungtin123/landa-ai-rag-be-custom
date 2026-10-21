@@ -113,7 +113,7 @@ propose the learning objectives and the Must Do list for that purpose.
    ("5 chuyển dịch"), the action items of all its parts are candidates, not only some of them.
 5. lo_links: list a link ONLY when a block serves an objective, with relation direct (needed to perform it) or
    supporting (helps). Do not list context, unrelated or unknown links: a block without a link is treated as
-   unrelated and becomes a Nice to Know/Remove candidate later - do not delete it.
+   unrelated and becomes a Remove candidate later - do not delete it.
 
 {untrusted_block("PLAN_CONTEXT", "PROJECT_CONTEXT=" + _json(project_context))}
 {untrusted_block("BLOCK_CATALOG", _json(catalog))}
@@ -142,8 +142,8 @@ def w2_blueprint_prompt(
     return preamble(locale) + f"""
 TASK: Week 2 - decide, for EVERY block in BLOCK_CATALOG, what happens to it. Return exactly one row per block.
 {purpose_rules}{organization_context}Decision flow (apply in order):
-  a. Does the block serve an objective or a Must Do? No -> nice_to_know (useful but not needed) or remove
-     (unrelated, outdated, duplicated, wrong audience, too specialised).
+  a. Does the block serve an objective or a Must Do? No -> remove (useful but not needed, unrelated, outdated,
+     duplicated, wrong audience, too specialised).
   b. Must the learner REMEMBER it to perform the Must Do correctly? No -> reference with treatment
      move_to_reference (look up when needed) or convert_to_job_aid (used often while working: checklist,
      decision tree, code table, form guide, contact list, response templates).
@@ -151,14 +151,15 @@ TASK: Week 2 - decide, for EVERY block in BLOCK_CATALOG, what happens to it. Ret
      Do does not need.
   d. Unclear, conflicting or outdated content that affects correctness, or a decision block that lacks the
      criteria needed to judge practice -> hold = true with hold_reason and one specific sme_question.
-classification: must_do | must_know | reference | nice_to_know | remove
-placement: course (must_do, must_know) | reference_job_aid (reference) | excluded (nice_to_know, remove)
+classification: must_do | must_know | reference | remove (never nice_to_know: the course keeps no list of left-out
+content)
+placement: course (must_do, must_know) | reference_job_aid (reference) | excluded (remove)
 {treatments}detail_level: one sentence on what to keep ("Định nghĩa ngắn + dấu hiệu phân biệt 3 cấp độ";
 "Chỉ 6 nhóm bước chính; ngoại lệ hiếm chuyển sang Job Aid").
 Rules: repeated content is not automatically important; SME emphasis is a signal to check, not a decision;
 full legal text, code lists, contact lists, forms and rare exceptions -> reference/job aid; {background_rule};
 "remove" is not a judgement of quality. Never classify as
-nice_to_know or remove a block that defines or gives the formula of a term that appears in the course title
+remove a block that defines or gives the formula of a term that appears in the course title
 (COURSE_NAME in AUTHOR_COURSE_INTENT or a source document name), an objective or a Must Do: it is must_know
 (or reference), with a detail_level that keeps the definition and drops the history around it.
 must_know rows list the must_do_ids they enable; must_do rows list the Must Do they represent; lo_id is the
@@ -208,8 +209,8 @@ TASK: Week 4 (course level) - group Must Dos into Modules and Lessons and order 
   the first lesson that serves that objective, so that lesson can open with an overview of all its items.
 - Linear path only. Do not invent routing, pre-tests or role branches.
 - Estimate each lesson (screens, minutes) from Must Do complexity, risk of error and practice intensity - not from
-  source length. If DURATION_TARGET_MINUTES is given, fit it: cut Nice to Know first, move lookup content to the
-  Job Aid, keep core practice; never remove the practice of a high-risk Must Do.
+  source length. If DURATION_TARGET_MINUTES is given, fit it: cut detail the Must Dos do not need first, move
+  lookup content to the Job Aid, keep core practice; never remove the practice of a high-risk Must Do.
 - Reference/Job Aid blocks go into lessons of kind "job_aid" (primary_must_do_id null, no course blocks): at the
   end of the module that uses them, or one final job_aid lesson at the end of the course when several modules use
   them. Learning lessons never contain reference blocks.
