@@ -38,6 +38,7 @@ from typing import Any, Final
 from app.idm.contracts import FidelityMode, IdmUnitBriefV1
 from app.idm.example_roles import AudienceRoles, audience_roles, contradicting_role, example_body
 from app.idm.fidelity import brief_mode, example_label, teaching_slots
+from app.idm.org_grounding import WithheldTokens
 from app.idm.policy import (
     EXPLANATION_DEVICES_EN,
     EXPLANATION_DEVICES_VI,
@@ -335,10 +336,11 @@ class KnownFacts:
     pairs: frozenset[tuple[str, str]]
 
     @classmethod
-    def of(cls, texts: Iterable[str], *, plan_texts: Iterable[str] = (),
-           evidence: EvidenceIndex | None = None) -> KnownFacts:
+    def of(cls, texts: Iterable[str], *, plan_texts: Iterable[str] = (), evidence: EvidenceIndex | None = None,
+           withheld: WithheldTokens | None = None) -> KnownFacts:
         """``texts`` (and ``evidence``, an index of more facts) and ``plan_texts``, whose numbers and names may be
-        repeated."""
+        repeated, except the ``withheld`` details of the organization profile (never a number or word of the
+        facts)."""
 
         numbers: set[str] = set(evidence.numbers) if evidence is not None else set()
         words: set[str] = set(evidence.words) if evidence is not None else set()
@@ -348,6 +350,11 @@ class KnownFacts:
             tokens = words_of(text)
             words.update(tokens)
             pairs.update(pairwise(tokens))
+        if withheld is not None:
+            # QC 21/10: a code or number only the profile states reached the plan ("Xin ERC (nếu cần)"); repeating
+            # it from there is still a new fact. A name is known only when each of its words is.
+            numbers -= withheld.numbers
+            words -= withheld.words
         return cls(frozenset(numbers), frozenset(words), frozenset(pairs))
 
     def _known_name(self, run: Sequence[str]) -> bool:
@@ -506,11 +513,13 @@ class FidelityChecker:
 
     @classmethod
     def build(cls, brief: IdmUnitBriefV1, fact_text: Mapping[str, str], evidence: EvidenceIndex, *,
-              plan_texts: Iterable[str], locale: str, background_texts: Iterable[str] = ()) -> FidelityChecker:
+              plan_texts: Iterable[str], locale: str, background_texts: Iterable[str] = (),
+              withheld: WithheldTokens | None = None) -> FidelityChecker:
         """``fact_text``: the unit's source facts; ``evidence``: everything the writer was given; ``plan_texts``:
         the approved plan (titles, purpose, server-written support briefs), whose numbers and names may be
         repeated; ``background_texts``: the organization context's terms (``app.idm.org_context.plan_terms``), plan
-        text too, except that their numbering is not the facts'."""
+        text too, except that their numbering is not the facts'; ``withheld``: the organization profile's details
+        the facts do not state (``app.idm.org_grounding.withheld_details``), never known through the plan."""
 
         teaching = frozenset(teaching_slots(brief))
         everything = list(fact_text.values())
@@ -523,9 +532,10 @@ class FidelityChecker:
         keep_only = frozenset(index for index in teaching if brief.components[index].treatments
                               and {item.treatment for item in brief.components[index].treatments} == {"keep"})
         plan, background = list(plan_texts), list(background_texts)
-        known = KnownFacts.of((), plan_texts=plan, evidence=evidence)
+        known = KnownFacts.of((), plan_texts=plan, evidence=evidence, withheld=withheld)
         return cls(brief_mode(brief), locale, teaching, keep_only, grams,
-                   KnownFacts.of((), plan_texts=[*plan, *background], evidence=evidence) if background else known,
+                   KnownFacts.of((), plan_texts=[*plan, *background], evidence=evidence, withheld=withheld)
+                   if background else known,
                    audience_roles(brief.target_audience, brief.purpose_profile, locale),
                    numbering=known.pairs if background else None)
 

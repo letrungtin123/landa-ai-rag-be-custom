@@ -27,9 +27,11 @@ from app.idm.contracts import (
     design_hash_of,
 )
 from app.idm.course_design import run_idm_course_design
+from app.idm.faq_checks import FaqChecker
 from app.idm.fidelity_checks import FidelityChecker
 from app.idm.module_design import run_idm_module_design
 from app.idm.org_context import design_block, judge_block, plan_terms, writer_block
+from app.idm.org_grounding import withheld_details
 from app.idm.org_profile import IdmOrganizationContextV1, IdmOrgProfileV1, org_profile_char_count, org_profile_hash
 from app.idm.storyboard import parse_brief
 from app.idm.text import evidence_index
@@ -39,6 +41,7 @@ from tests.golden import idm_golden_module as gm
 from tests.support.idm_test_support import ALLOWANCE, golden_design, make_runtime, rehash_contract
 from tests.support.org_context_support import PROFILE, org_context, profile
 from tests.unit.idm.test_idm_endpoints import idm_skeleton_body
+from tests.unit.idm.test_idm_faq import EXPLAINED, WHAT_IF, escalate_brief, faq_slot
 from tests.unit.idm.test_idm_fidelity_unit import explain_body, explained_c0, owned_of, writer_with
 from tests.unit.idm.test_idm_storyboard import (
     JUDGE,
@@ -46,6 +49,7 @@ from tests.unit.idm.test_idm_storyboard import (
     WRITER,
     FakeGenerate,
     StoryboardEndpointTestCase,
+    escalate_body,
     judge,
     severity_body,
     severity_writer,
@@ -360,6 +364,109 @@ class NewFactEndpointTests(StoryboardEndpointTestCase):
         self.assertEqual(status, 200)
         self.assertEqual(provider.names, [WRITER, REPAIR, REPAIR])
         self.assertIn('IDM_W5_NEW_FACT', provider.calls[1]["prompt"].split("FAILING_RULES", 1)[1])
+
+
+# --- NEW_FACT: a code or number only the profile states is never known through the plan (QC run 2026-10-21) --------
+# The source said "IRC"; the drafted profile said "xin IRC/ERC"; the design wrote "Xin ERC (nếu cần)"; a lesson taught
+# "xin IRC và xin ERC (nếu cần)" and the plan text made ERC known.
+IRC_FACT = "Nhà đầu tư nước ngoài xin IRC (Giấy chứng nhận đăng ký đầu tư) trước khi lập doanh nghiệp."
+ERC_PLAN = "Xin ERC (nếu cần)"
+ERC_TEXT = "Sau khi xếp cấp, bạn hoàn tất xin IRC và xin ERC (nếu cần)."
+FEE_PLAN = "Nộp phí 20.000 đồng"
+FEE_TEXT = "Bạn nộp phí 20.000 đồng khi nộp hồ sơ."
+TERM_EXAMPLE = "Ví dụ minh hoạ: bạn lập Phiếu HD-07 khi bàn giao hàng lạnh cho khách."
+
+
+def detail_context() -> dict[str, Any]:
+    # "Phiếu HD-07" is a glossary term (PROFILE): repeated in a key process it stays vocabulary.
+    return org_context(profile(key_processes=["Hoàn tất hồ sơ đầu tư: xin IRC/ERC, phí 20.000 đồng.",
+                                              "Lập Phiếu HD-07 khi bàn giao hàng lạnh."]))
+
+
+class ProfileDetailNewFactTests(unittest.TestCase):
+    def checker(self, wire: dict[str, Any] | None) -> FidelityChecker:
+        contract = UnitGenerationContractV2.model_validate(severity_body()["unit_contract"])
+        brief = parse_brief(contract)
+        texts = {fact.fact_key: fact.fact_text for fact in contract.source_facts}
+        facts = [*texts.values(), IRC_FACT]
+        context = None if wire is None else context_model(wire)
+        return FidelityChecker.build(brief, texts, evidence_index(facts), locale="vi",
+                                     plan_texts=[brief.course_title, brief.lesson_title, ERC_PLAN, FEE_PLAN],
+                                     background_texts=plan_terms(context), withheld=withheld_details(context, facts))
+
+    def test_the_production_case_reports_erc(self) -> None:
+        self.assertEqual(self.checker(detail_context()).known.new_tokens(ERC_TEXT), ((), ("ERC",)))
+        self.assertEqual(self.checker(detail_context()).known.new_tokens(FEE_TEXT), (("20.000",), ()))
+
+    def test_without_a_context_the_plan_still_makes_them_known(self) -> None:
+        plain = self.checker(None)
+        self.assertEqual((plain.known.new_tokens(ERC_TEXT), plain.known.new_tokens(FEE_TEXT)), (((), ()), ((), ())))
+        self.assertIsNone(withheld_details(None, [IRC_FACT]))
+
+    def test_a_detail_the_facts_state_and_a_glossary_term_stay_known(self) -> None:
+        checker = self.checker(detail_context())
+        self.assertEqual(checker.known.new_tokens("Bạn xin IRC trước khi lập doanh nghiệp."), ((), ()))
+        self.assertEqual(checker.known.new_tokens(TERM_EXAMPLE), ((), ()))
+        self.assertNotEqual(self.checker(None).known.new_tokens(TERM_EXAMPLE), ((), ()))
+
+    def test_the_faq_check_withholds_them_too(self) -> None:
+        contract = escalate_body()["unit_contract"]
+        texts = {fact["fact_key"]: fact["fact_text"] for fact in contract["source_facts"]}
+        texts["ctx-irc"] = IRC_FACT
+        plan = ["Quyết định tự xử lý hay escalate", ERC_PLAN]
+        component = faq_slot(("Vì sao không được hứa hoàn tiền ngay?", f"{EXPLAINED} Sau đó bạn xin ERC (nếu cần)."),
+                             ("Điều gì xảy ra nếu bỏ qua yếu tố truyền thông?", WHAT_IF))
+        plain = FaqChecker.build(escalate_brief(), texts, plan_texts=plan)
+        self.assertEqual(plain.with_new_facts(1, component), [])
+        withheld = withheld_details(context_model(detail_context()), list(texts.values()))
+        checked = FaqChecker.build(escalate_brief(), texts, plan_texts=plan, withheld=withheld)
+        self.assertEqual(checked.with_new_facts(1, component), [0])
+        self.assertEqual(checked.new_fact_tokens(1, component), {0: ("ERC",)})
+
+
+def detail_body(wire: dict[str, Any] | None) -> dict[str, Any]:
+    """The explained severity unit whose approved plan repeats the profile's "ERC" and whose lesson context states
+    "IRC"; with or without the organization context."""
+
+    body = explain_body()
+    brief = body["unit_contract"]["idm_unit_brief"]
+    brief["unit_purpose"] = f"Người học xếp đúng cấp độ khiếu nại. {ERC_PLAN}."
+    brief["lesson_context_facts"] = [{"fact_key": "ctx-irc", "fact_text": IRC_FACT}]
+    if wire is not None:
+        brief["organization_context"] = wire
+    brief["brief_hash"] = brief_hash_of(brief)
+    rehash_contract(body["unit_contract"])
+    return body
+
+
+class ProfileDetailEndpointTests(StoryboardEndpointTestCase):
+    def erc_writer(self, body: dict[str, Any]) -> dict[str, Any]:
+        c0 = explained_c0(owned_of(body))
+        first = c0["semantic_content"]["sections"][0]["blocks"][0]
+        first["text"] = f"Mỗi khiếu nại thuộc một trong ba cấp độ. {ERC_TEXT}"
+        return writer_with(body, c0)
+
+    async def test_erc_goes_to_the_targeted_repair(self) -> None:
+        body = detail_body(detail_context())
+        provider = FakeGenerate(**{WRITER: [self.erc_writer(body)], REPAIR: [unavailable(), unavailable()],
+                                   JUDGE: [judge()]})
+        status, _data, _ = await self.post(body, provider)
+        self.assertEqual(status, 200)
+        self.assertEqual(provider.names, [WRITER, REPAIR, REPAIR])
+        rules = provider.calls[1]["prompt"].split("FAILING_RULES", 1)[1]
+        line = next(line for line in rules.splitlines() if "IDM_W5_NEW_FACT" in line)
+        # Only ERC: IRC is in the lesson context facts.
+        self.assertTrue(line.startswith("- c0 IDM_W5_NEW_FACT at c0.semantic_content.sections[0].blocks[0]:"))
+        self.assertTrue(line.endswith(' (new: "ERC")'))
+
+    async def test_without_the_context_the_unit_is_unchanged(self) -> None:
+        body = detail_body(None)
+        provider = FakeGenerate(**{WRITER: [self.erc_writer(body)], JUDGE: [judge()]})
+        status, data, _ = await self.post(body, provider)
+        self.assertEqual(status, 200)
+        self.assertEqual(provider.names, [WRITER, JUDGE])
+        quality = self.assert_envelope(data, "provider_validated", "validated", "provider")
+        self.assertEqual(quality.deterministic_codes, [])
 
 
 if __name__ == "__main__":

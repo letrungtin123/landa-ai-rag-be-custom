@@ -3,10 +3,14 @@
 The profile is background, never lesson knowledge. A production run showed the path an invented detail took: the
 context documents only say "IRC", the drafted profile said "xin IRC/ERC", the course design copied "Xin ERC (nếu cần)"
 from the profile and the unit writer taught it; the unit's NEW_FACT check let it through because the design text
-counts as known. ``ground_profile`` closes the first step (the distillation, after the final profile): an item
-of a list (and the whole learner group or glossary entry) that holds a specific detail the source text given to
-the model does not state is dropped; in ``organization_summary`` and ``culture_tone`` only the sentences that hold
-one are dropped. Nothing is rewritten or added.
+counts as known. Two deterministic guards close that path, neither rewrites nor adds text:
+
+* ``ground_profile`` (the distillation, after the final profile): an item of a list (and the whole learner group or
+  glossary entry) that holds a specific detail the source text given to the model does not state is dropped; in
+  ``organization_summary`` and ``culture_tone`` only the sentences that hold one are dropped.
+* ``withheld_details`` (the unit's NEW_FACT checks): the specific details of the profile's descriptive text, other
+  than the names the authors confirmed (glossary terms, product names, learner-group names), that the unit's facts do
+  not state are never known, even when the approved plan repeats them.
 
 A specific detail (``specific_tokens``) is a whitespace-separated token, split on "/" and without the punctuation
 around it, that contains a digit (a number, an amount, a code: "20.000", "110kV", "40:2021") or that is an acronym or
@@ -25,7 +29,8 @@ from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass
 from typing import Any, Final
 
-from app.idm.org_profile import IdmOrgProfileV1
+from app.idm.org_profile import IdmOrganizationContextV1, IdmOrgProfileV1
+from app.idm.text import evidence_index
 
 _COMPOUND_SEPARATOR: Final = "/"
 _MIN_ACRONYM_LETTERS: Final = 2
@@ -34,6 +39,8 @@ _MIN_ACRONYM_LETTERS: Final = 2
 _DIGIT_PART_RE: Final = re.compile(r"(?<![^\s/])[^\s/\d]*\d[^\s/]*")
 # A sentence of organization_summary or culture_tone ends at . ! ? or … followed by a space (lines end one too).
 _SENTENCE_END_RE: Final = re.compile(r"(?<=[.!?…])\s+")
+# A products_services item is "<name>: <what it is>" (the distillation prompt asks for that shape).
+_PRODUCT_NAME_END: Final = ":"
 
 
 def _trimmed(part: str) -> str:
@@ -164,3 +171,48 @@ def ground_profile(profile: IdmOrgProfileV1, source_texts: Sequence[str]) -> tup
     counts = {name: count for name, count in sorted(removed.items()) if count}
     return (IdmOrgProfileV1.model_validate(fields), counts) if counts else (profile, {})
 
+
+# --- The unit checks: what the plan never makes known ---------------------------------------------------------------
+@dataclass(frozen=True)
+class WithheldTokens:
+    """Normal numbers and folded words (the forms of ``app.idm.text.evidence_index``) of the profile's details that
+    the unit's facts do not state: the NEW_FACT checks never take them from the approved plan. Never a number or a
+    word of the unit's facts."""
+
+    numbers: frozenset[str]
+    words: frozenset[str]
+
+
+def profile_details(context: IdmOrganizationContextV1) -> list[str]:
+    """The specific details of the profile's descriptive text (summary, culture and tone, product descriptions, key
+    processes, design conventions, learner-group descriptions, glossary meanings), without repeats, except those of
+    the names the authors confirmed as vocabulary: glossary terms, product names (the text before the first ":" of a
+    product item, the whole item without one) and learner-group names."""
+
+    profile = context.profile
+    products = [item.partition(_PRODUCT_NAME_END) for item in profile.products_services]
+    names = [*(entry.term for entry in profile.glossary), *(name for name, _colon, _rest in products),
+             *(group.name for group in profile.learner_groups)]
+    vocabulary = {_folded(token) for name in names for token in specific_tokens(name)}
+    descriptive = [profile.organization_summary, profile.culture_tone, *(rest for _name, _colon, rest in products),
+                   *profile.key_processes, *profile.design_conventions,
+                   *(group.description for group in profile.learner_groups),
+                   *(entry.meaning for entry in profile.glossary)]
+    return list(dict.fromkeys(token for text in descriptive for token in specific_tokens(text)
+                              if _folded(token) not in vocabulary))
+
+
+def withheld_details(context: IdmOrganizationContextV1 | None, facts: Sequence[str]) -> WithheldTokens | None:
+    """The profile's details that ``facts`` (the unit's source and lesson context facts) do not state, in the forms
+    of the NEW_FACT checks; ``None`` without an organization context or when the facts state every detail."""
+
+    if context is None:
+        return None
+    source = SourceText.of(facts)
+    unstated = [token for token in profile_details(context) if not source.states(token)]
+    if not unstated:
+        return None
+    stated, found = evidence_index(facts), evidence_index(unstated)
+    # A digit-only word never starts a name; its number is withheld as a number.
+    return WithheldTokens(numbers=found.numbers - stated.numbers,
+                          words=frozenset(word for word in found.words - stated.words if not word.isdecimal()))

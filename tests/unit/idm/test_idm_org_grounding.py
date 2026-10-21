@@ -1,7 +1,7 @@
 """The specific details of the organization profile and the source that states them (QC run of 2026-10-21).
 
-``app.idm.org_grounding``: the token rule, the source match and the distilled-profile filter. Pure functions; no
-provider, no database.
+``app.idm.org_grounding``: the token rule, the source match, the distilled-profile filter and the profile details the
+unit checks never take from the plan. Pure functions; no provider, no database.
 """
 
 from __future__ import annotations
@@ -9,12 +9,23 @@ from __future__ import annotations
 import unicodedata
 import unittest
 
-from app.idm.org_grounding import SourceText, ground_profile, specific_tokens
-from app.idm.org_profile import IdmOrgProfileV1
-from tests.support.org_context_support import PROFILE, profile
+from app.idm.org_grounding import (
+    SourceText,
+    WithheldTokens,
+    ground_profile,
+    profile_details,
+    specific_tokens,
+    withheld_details,
+)
+from app.idm.org_profile import IdmOrganizationContextV1, IdmOrgProfileV1
+from tests.support.org_context_support import PROFILE, org_context, profile
 
 EMPTY = profile(organization_summary="", products_services=[], learner_groups=[], glossary=[], key_processes=[],
                 culture_tone="", design_conventions=[])
+
+
+def context_of(**changes: object) -> IdmOrganizationContextV1:
+    return IdmOrganizationContextV1.model_validate(org_context({**EMPTY, **changes}))
 
 
 class SpecificTokenTests(unittest.TestCase):
@@ -101,6 +112,29 @@ class GroundProfileTests(unittest.TestCase):
         self.assertEqual(grounded.model_dump(mode="json"), EMPTY)
         self.assertEqual(removed, {"culture_tone": 1, "design_conventions": 1, "glossary": 1, "key_processes": 1,
                                    "learner_groups": 1, "organization_summary": 2, "products_services": 1})
+
+
+class ProfileDetailTests(unittest.TestCase):
+    def test_details_of_the_descriptive_text_without_the_confirmed_names(self) -> None:
+        context = context_of(
+            organization_summary="Doanh nghiệp FDI xin IRC/ERC. Doanh thu 20.000 tỷ.",
+            products_services=["Gói SOLAR-5: lắp đặt 110kV trong 30 ngày", "Kho EVN 2"],
+            learner_groups=[{"name": "Nhóm OCC", "description": "Trực OCC 24/7."}],
+            glossary=[{"term": "IRC", "meaning": "Giấy chứng nhận đăng ký đầu tư (Luật 61/2020)."}],
+            key_processes=["Lập Phiếu SOLAR-5 cho mỗi trạm.", "Xin IRC/ERC (nếu cần)."],
+            culture_tone="Phản hồi khách trong 2 giờ.", design_conventions=["Viết tắt kèm nghĩa, ví dụ SCADA."])
+        # Names: IRC (glossary term), SOLAR-5 (product name before ":"), EVN and 2 (a product item without ":"),
+        # OCC (learner-group name); every other detail of the descriptive text counts once.
+        self.assertEqual(profile_details(context), ["FDI", "ERC", "20.000", "110kV", "30", "SCADA", "24", "7", "61",
+                                                    "2020"])
+
+    def test_withheld_details_are_the_ones_the_facts_do_not_state(self) -> None:
+        context = context_of(key_processes=["Xin IRC/ERC (nếu cần) trong 15 ngày, phí 3.400 đồng."])
+        withheld = withheld_details(context, ["Nhà đầu tư xin IRC, nộp phí 3400 đồng."])
+        self.assertEqual(withheld, WithheldTokens(numbers=frozenset({"15"}), words=frozenset({"erc"})))
+        self.assertIsNone(withheld_details(context, ["Xin IRC và ERC trong 15 ngày, phí 3.400 đồng."]))
+        self.assertIsNone(withheld_details(None, ["Nhà đầu tư xin IRC."]))
+        self.assertIsNone(withheld_details(context_of(), ["Nhà đầu tư xin IRC."]))
 
 
 if __name__ == "__main__":

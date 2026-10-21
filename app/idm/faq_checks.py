@@ -39,6 +39,7 @@ from typing import Any, Final
 from app.idm.contracts import FaqQuestionType, FidelityMode, IdmFaqItemPlanV1, IdmUnitBriefV1
 from app.idm.fidelity import brief_mode
 from app.idm.fidelity_checks import KnownFacts, words_of
+from app.idm.org_grounding import WithheldTokens
 from app.idm.policy import (
     FAQ_COMPONENT_TYPE,
     FAQ_DEEP_TYPES,
@@ -331,11 +332,15 @@ class FaqChecker:
     # answered by the FAQ, and their content words.
     open_questions: tuple[str, ...] = ()
     open_words: tuple[frozenset[str], ...] = ()
+    # The organization profile's details the facts do not state: never known through the plan (QC 21/10).
+    withheld: WithheldTokens | None = None
 
     @classmethod
-    def build(cls, brief: IdmUnitBriefV1, fact_text: Mapping[str, str], *, plan_texts: Iterable[str]) -> FaqChecker:
+    def build(cls, brief: IdmUnitBriefV1, fact_text: Mapping[str, str], *, plan_texts: Iterable[str],
+              withheld: WithheldTokens | None = None) -> FaqChecker:
         """``fact_text``: every fact the writer was given (the unit's and the lesson context); ``plan_texts``: the
-        approved plan, whose numbers and names an answer may repeat."""
+        approved plan, whose numbers and names an answer may repeat, except the ``withheld`` details of the
+        organization profile (``app.idm.org_grounding.withheld_details``)."""
 
         plans: dict[int, tuple[IdmFaqItemPlanV1, ...]] = {}
         slot_keys: dict[int, tuple[str, ...]] = {}
@@ -348,7 +353,7 @@ class FaqChecker:
         questions = open_questions(brief)
         return cls(brief_mode(brief), dict(fact_text), tuple(_Fact.of(text) for text in fact_text.values()),
                    tuple(plan_texts), plans, slot_keys, open_questions=questions,
-                   open_words=tuple(frozenset(content_words(question)) for question in questions))
+                   open_words=tuple(frozenset(content_words(question)) for question in questions), withheld=withheld)
 
     def basis_keys(self, index: int, position: int) -> list[str]:
         """The facts item ``position`` of slot ``index`` is built on: its planned anchors (all anchors for an item
@@ -364,7 +369,8 @@ class FaqChecker:
         cached = self._bases.get((index, position))
         if cached is None:
             texts = [self.fact_text[key] for key in self.basis_keys(index, position)]
-            cached = _Basis(KnownFacts.of(texts, plan_texts=self.plan_texts), evidence_index(texts), tuple(texts))
+            cached = _Basis(KnownFacts.of(texts, plan_texts=self.plan_texts, withheld=self.withheld),
+                            evidence_index(texts), tuple(texts))
             self._bases[(index, position)] = cached
         return cached
 
