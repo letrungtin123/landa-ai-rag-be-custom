@@ -4,6 +4,7 @@
   the layout cannot fix (a principle that restates three definitions, empty praise instead of a reason, a verdict that
   contradicts the key, a stem of four sentences) is a code the writer repairs once, then a plain note.
 * K1: every line feed of the question and the explanation reaches the unit Node receives, and its problem XML.
+* A3: a callout that only repeats its slot's paragraphs, lists or tables is removed (its text stays there).
 * A5 (no Hold): a worksheet whose practice criteria the AI suggested from what the lesson teaches heads its self-check
   as suggested criteria, and the unit note says so.
 
@@ -20,6 +21,7 @@ from app.idm.artifacts import clean_text
 from app.idm.contracts import brief_hash_of
 from app.idm.mcq import normalize_single_choice
 from app.idm.node_acceptance_problems import _problem_xml, workspace_problem_code
+from app.idm.qa_checks import repeated_callouts, without_blocks
 from app.idm.quiz_text import (
     EXPLANATION_FILLER_CODE,
     EXPLANATION_LAYOUT_CODE,
@@ -291,3 +293,61 @@ class SuggestedCriteriaTests(StoryboardEndpointTestCase):
         english = label_suggested_self_check(long, "en", 120)
         self.assertEqual(english["sections"][0]["heading"] if english else None, "Self-check (suggested criteria)")
         self.assertIsNone(label_suggested_self_check({"sections": [{"heading": "a", "blocks": []}]}, "vi", 120))
+
+
+def section(*blocks: dict[str, Any], heading: str = "Khiếu nại thuộc cấp độ nào?") -> dict[str, Any]:
+    return {"heading": heading, "blocks": list(blocks)}
+
+
+def block(kind: str, text: str | None = None, **fields: Any) -> dict[str, Any]:
+    return {"kind": kind, "text": text, "items": fields.get("items", []), "rows": fields.get("rows", [])}
+
+
+PARAGRAPH = "Nhân viên tuyệt đối không hứa bồi thường cho khách trước khi phân loại mức độ khiếu nại."
+REPEAT = "Không hứa bồi thường trước khi phân loại mức độ."
+LEVEL_3 = "Liên quan an toàn, pháp lý hoặc truyền thông. Escalate ngay cho quản lý và bộ phận Pháp chế."
+NEW_POINT = "Khiếu nại cấp 3 phải escalate ngay cho quản lý và bộ phận Pháp chế."
+
+
+class CalloutRepeatTests(StoryboardEndpointTestCase):
+    """A3: a quotation or callout box adds a new point; one that repeats its slot's text goes, its text stays."""
+
+    def test_a_callout_that_restates_the_paragraph_is_found(self) -> None:
+        signs = block("table", rows=[{"label": "Cấp 1", "value": "Ảnh hưởng thấp, không thiệt hại tài chính"},
+                                     {"label": "Cấp 3", "value": "Liên quan an toàn, pháp lý hoặc truyền thông"}])
+        semantic = {"sections": [section(block("paragraph", PARAGRAPH), block("warning", REPEAT), signs,
+                                         block("warning", NEW_POINT))]}
+        self.assertEqual(repeated_callouts(semantic), [(0, 1)])
+        # A list item, a table row or a callout before it count too; a callout of three words is not judged.
+        listed = {"sections": [section(block("bullets", items=[PARAGRAPH])), section(block("warning", REPEAT),
+                                                                                      block("warning", "Không hứa."))]}
+        self.assertEqual(repeated_callouts(listed), [(1, 0)])
+        table = {"sections": [section(block("table", rows=[{"label": "Cấp 3", "value": LEVEL_3}]),
+                                      block("warning", "Cấp 3: " + LEVEL_3))]}
+        self.assertEqual(repeated_callouts(table), [(0, 1)])
+        twice = {"sections": [section(block("warning", NEW_POINT), block("warning", NEW_POINT))]}
+        self.assertEqual(repeated_callouts(twice), [(0, 1)])
+        self.assertEqual(repeated_callouts({"sections": [section(block("warning", NEW_POINT))]}), [])
+
+    def test_dropping_a_callout_keeps_every_other_block(self) -> None:
+        semantic = {"version": 1, "sections": [section(block("paragraph", PARAGRAPH)),
+                                               section(block("warning", REPEAT), heading="Lưu ý")]}
+        trimmed = without_blocks(semantic, [(1, 0)])
+        self.assertEqual(trimmed, {"version": 1, "sections": [section(block("paragraph", PARAGRAPH))]})
+        self.assertIsNone(without_blocks({"sections": [section(block("warning", REPEAT))]}, [(0, 0)]))
+
+    async def test_the_repeating_callout_goes_without_a_repair_call(self) -> None:
+        body = severity_body()
+        writer = severity_writer(body, explanation=LINES)
+        blocks = writer["components"]["c0"]["semantic_content"]["sections"][0]["blocks"]
+        blocks.append(block("warning", "Cấp 3: liên quan an toàn, pháp lý hoặc truyền thông. Escalate ngay cho quản lý "
+                                       "và bộ phận Pháp chế theo quy trình CR-04."))
+        provider = FakeGenerate(**{WRITER: [writer], JUDGE: [judge()]})
+        status, data, _ = await self.post(body, provider)
+        self.assertEqual(status, 200)
+        self.assertEqual(provider.names, [WRITER, JUDGE])
+        kinds = [item["kind"] for item in data["unit"]["components"][0]["semantic_content"]["sections"][0]["blocks"]]
+        self.assertEqual(kinds, ["paragraph", "table"])
+        note = data["unit"]["idm_quality"]["author_note"]
+        self.assertIn("Đã bỏ 1 khung trích dẫn/lưu ý chỉ nhắc lại đoạn văn có sẵn trong bài.", note)
+        self.assertIn("never the paragraph or list above it again", provider.calls[0]["prompt"])

@@ -85,6 +85,10 @@ HASH_HISTORY: tuple[tuple[str, str], ...] = (
     # (``app.idm.quiz_text:quiz_hint`` joins the manifest).
     ("f8cfb8c52da83f4d612e4b01de984f266557d244aaec76be36d02bb7d7b01f08",
      "QC A1/A2: quiz question and explanation laid out in lines, with checks and repairs"),
+    # QC feedback 2026-10-21, A3: the W5 callout rule (moved to ``_CALLOUT_RULE``) says a callout adds a point its slot
+    # does not already make and that the server removes one that only repeats the paragraph or list above it.
+    ("086a2ff4697c763b144cfeff5f7bd8a23719e464a82a28b113f5101cb7945205",
+     "QC A3: a callout never repeats its slot's paragraphs, lists or tables"),
 )
 PROMPT_NAME = re.compile(r"(prompt|_rules?$|_suffix$|rule_lines?$|_hint$|^rule_line$|_cue_line$)")
 

@@ -276,6 +276,7 @@ def build_unit_author_note(
     faq_items_restated: int = 0,
     callouts_to_prose: int = 0,
     framework_list_inserted: int = 0,
+    callouts_repeating: int = 0,
     worksheet_compacted: bool = False,
     worksheet_example_kept: bool = False,
     drafted_examples: Mapping[int, int] | None = None,
@@ -357,11 +358,7 @@ def build_unit_author_note(
     parts.extend(_dropped_faq_lines(vi, dropped=faq_items_dropped, restated=faq_items_restated,
                                     copied=faq_items_copied, recall=faq_items_recall, unresolved=faq_items_open,
                                     invalid=faq_items_invalid))
-    if callouts_to_prose:
-        parts.append(f"Đã chuyển {callouts_to_prose} khung trích dẫn/lưu ý không có trong tài liệu thành đoạn văn "
-                     "thường — cần SME xác nhận nội dung." if vi
-                     else f"{callouts_to_prose} callout(s) not found in the source were turned into plain paragraphs "
-                          "— the SME should confirm their content.")
+    parts.extend(_callout_lines(vi, to_prose=callouts_to_prose, repeating=callouts_repeating))
     if framework_list_inserted:
         parts.append(f"Đã chèn danh sách {framework_list_inserted} thành phần của khung (tên lấy từ tài liệu) vào phần "
                      "lý thuyết — tác giả nên biên tập cho liền mạch." if vi
@@ -386,6 +383,22 @@ def build_unit_author_note(
     if suggested_criteria:
         parts.append(_SUGGESTED_CRITERIA_LINE[vi])
     return sanitize_author_text(" ".join(parts), IDM_UNIT_AUTHOR_NOTE_MAX_CHARS)
+
+
+def _callout_lines(vi: bool, *, to_prose: int, repeating: int) -> list[str]:
+    """The notes of callouts the server changed: ungrounded ones turned into paragraphs (N9), and those that only
+    repeated the text of their slot, removed (QC feedback A3)."""
+
+    lines = []
+    if to_prose:
+        lines.append(f"Đã chuyển {to_prose} khung trích dẫn/lưu ý không có trong tài liệu thành đoạn văn thường — cần "
+                     "SME xác nhận nội dung." if vi
+                     else f"{to_prose} callout(s) not found in the source were turned into plain paragraphs — the SME "
+                          "should confirm their content.")
+    if repeating:
+        lines.append(f"Đã bỏ {repeating} khung trích dẫn/lưu ý chỉ nhắc lại đoạn văn có sẵn trong bài." if vi
+                     else f"{repeating} callout(s) that only repeated the text around them were removed.")
+    return lines
 
 
 def _worksheet_line(vi: bool, *, example_kept: bool) -> str:

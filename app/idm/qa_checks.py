@@ -41,6 +41,9 @@ from app.idm.policy import (
     IDM_ANSWER_LEAK_PAIR_MIN_HITS,
     IDM_ANSWER_LEAK_PAIR_MIN_MARGIN,
     IDM_ANSWER_LEAK_PAIR_MIN_SHARE,
+    IDM_CALLOUT_REPEAT_MIN_WORDS,
+    IDM_CALLOUT_REPEAT_NGRAM,
+    IDM_CALLOUT_REPEAT_SHARE,
     IDM_FAQ_RESTATE_MIN_NGRAMS,
     IDM_FAQ_RESTATE_MIN_SHARE,
     IDM_FAQ_RESTATE_NGRAM,
@@ -88,6 +91,8 @@ FRAMEWORK_INCOMPLETE_CODE: Final = "IDM_W5_FRAMEWORK_INCOMPLETE"
 FRAMEWORK_LIST_INSERTED_CODE: Final = "IDM_W5_FRAMEWORK_LIST_INSERTED"
 # A warning block renders as <blockquote> (app.idm.node_acceptance); "callout"/"note" are its aliases.
 CALLOUT_KIND: Final = "warning"
+# The html fix that counts the callouts dropped for repeating their slot (QC feedback A3).
+CALLOUT_REPEAT_DROPPED: Final = "callout_repeat_dropped"
 
 
 @dataclass(frozen=True)
@@ -215,6 +220,61 @@ def callouts_as_paragraphs(component: dict[str, Any], positions: Collection[tupl
                   for block_index, block in enumerate(section.get("blocks") or [])]
         sections.append({**section, "blocks": blocks})
     return {**component, "semantic_content": {**semantic, "sections": sections}}
+
+
+def _block_pieces(block: dict[str, Any]) -> list[str]:
+    """The visible text pieces of one semantic block: its text, each list item, each table row."""
+
+    rows = [f"{row.get('label') or ''} {row.get('value') or ''}" for row in block.get("rows") or []
+            if isinstance(row, dict)]
+    return [piece for piece in [str(block.get("text") or ""), *map(str, block.get("items") or []), *rows]
+            if piece.strip()]
+
+
+def repeated_callouts(semantic: Any) -> list[tuple[int, int]]:
+    """(section, block) of every callout that only repeats its slot's other text (QC feedback 2026-10-21, A3: a
+    quotation or callout box adds a new point, never the paragraph above it): at least
+    ``IDM_CALLOUT_REPEAT_SHARE`` of its word pairs are in the slot's paragraphs, lists, tables or the callouts kept
+    before it."""
+
+    sections = semantic.get("sections") if isinstance(semantic, dict) else None
+    if not isinstance(sections, list):
+        return []
+    blocks = [(section_index, block_index, block)
+              for section_index, section in enumerate(sections) if isinstance(section, dict)
+              for block_index, block in enumerate(section.get("blocks") or []) if isinstance(block, dict)]
+    found: list[tuple[int, int]] = []
+    for section_index, block_index, block in blocks:
+        text = str(block.get("text") or "")
+        if block.get("kind") != CALLOUT_KIND or len(text.split()) < IDM_CALLOUT_REPEAT_MIN_WORDS:
+            continue
+        here = (section_index, block_index)
+        # The other blocks of the slot: every non-callout block and the callouts before this one still kept.
+        others = [other for other_section, other_block, other in blocks
+                  if (other_section, other_block) != here and (other_section, other_block) not in found
+                  and (other.get("kind") != CALLOUT_KIND or (other_section, other_block) < here)]
+        known = {gram for other in others for piece in _block_pieces(other)
+                 for gram in word_ngrams(piece, IDM_CALLOUT_REPEAT_NGRAM)}
+        grams = word_ngrams(text, IDM_CALLOUT_REPEAT_NGRAM)
+        if grams and sum(gram in known for gram in grams) / len(grams) >= IDM_CALLOUT_REPEAT_SHARE:
+            found.append(here)
+    return found
+
+
+def without_blocks(semantic: dict[str, Any], positions: Collection[tuple[int, int]]) -> dict[str, Any] | None:
+    """``semantic`` without the blocks at ``positions`` and without a section they leave empty; ``None`` when no
+    section would remain."""
+
+    sections = []
+    for section_index, section in enumerate(semantic.get("sections") or []):
+        if not isinstance(section, dict):
+            sections.append(section)
+            continue
+        blocks = [block for block_index, block in enumerate(section.get("blocks") or [])
+                  if (section_index, block_index) not in positions]
+        if blocks:
+            sections.append({**section, "blocks": blocks})
+    return {**semantic, "sections": sections} if sections else None
 
 
 def _worksheet_blocks(component: dict[str, Any]) -> list[dict[str, Any]]:

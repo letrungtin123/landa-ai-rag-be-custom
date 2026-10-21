@@ -54,6 +54,7 @@ from app.idm.qa import (
     restated_faq_items,
     ungrounded_callouts,
 )
+from app.idm.qa_checks import CALLOUT_REPEAT_DROPPED, repeated_callouts, without_blocks
 from app.idm.quiz_text import lay_out_quiz
 from app.idm.runtime import IdmResponseInvalidError, IdmRuntime, ThinkingLevel, log_stage, record_deterministic_fallback
 from app.idm.source_locked import FAQ_FALLBACK_REPEATED_CODE, faq_answers_repeat
@@ -222,6 +223,10 @@ class IdmUnitWriterSteps:
         semantic, fixes = normalize_html_semantic(component["semantic_content"])
         if isinstance(semantic, dict):
             semantic = clean_semantic(semantic, self.evidence.pairs, self.runtime.locale, artefacts)
+            # QC feedback A3: a callout that only repeats the slot's paragraphs, lists or tables goes (its text stays).
+            if (repeats := repeated_callouts(semantic)) and (trimmed := without_blocks(semantic, repeats)) is not None:
+                semantic = trimmed
+                fixes[CALLOUT_REPEAT_DROPPED] += len(repeats)
         fixes.update(artefacts)
         component = {**component, "semantic_content": semantic} if fixes else component
         # QLT-5 C: an example that does not repeat the facts carries the illustrative label (explain mode, teaching

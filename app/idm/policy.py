@@ -238,6 +238,16 @@ QUIZ_FILLER_EN: Final = (
     "game-changer", "game changer", "perfect", "perfectly", "excellent", "amazing", "incredible", "obviously",
     "of course", "undeniably", "say no", "smart move", "wise choice",
 )
+# QC feedback 2026-10-21 (A3): a callout (a "warning" block, shown as a quotation) adds a point; one that only repeats
+# its slot's other text goes (``app.idm.qa_checks.repeated_callouts``). Repeats: at least this share of the callout's
+# accent-folded word pairs appear in the slot's other text (its paragraphs, list items, table rows and the callouts
+# before it; pairs never span two pieces). Callouts of fewer words are not judged. "Không hứa bồi thường trước khi
+# phân loại mức độ." under "Nhân viên tuyệt đối không hứa bồi thường cho khách trước khi phân loại mức độ khiếu nại."
+# holds 8 of 9 pairs; a callout with its own rule ("Khiếu nại cấp 3 phải escalate ngay cho quản lý và bộ phận Pháp
+# chế.") under the table of signs fewer than half.
+IDM_CALLOUT_REPEAT_NGRAM: Final = 2
+IDM_CALLOUT_REPEAT_SHARE: Final = 0.75
+IDM_CALLOUT_REPEAT_MIN_WORDS: Final = 4
 # Answer leak: an option whose word 4-grams (accent-folded) mostly appear in the html shown before
 # the question in the same unit copies it ("ví dụ đạt chuẩn" -> correct option, "ví dụ không đạt
 # chuẩn" -> distractor; QC c4.l2.u1 was a near-verbatim copy, ~1.0). A rule fragment shared with a

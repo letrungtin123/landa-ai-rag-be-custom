@@ -77,6 +77,13 @@ _WORKSHEET_RULE: Final = """\
   has the same length budget as any html slot, so keep it lean: one template row per field (its value one guiding
   question of at most 15 words), a worked example of at most two filled entries and at most 6 self-check items;
   a worksheet still over the budget loses its worked example."""
+# N9 and QC feedback 2026-10-21 (A3): a callout quotes the source and adds a point its slot does not already make.
+_CALLOUT_RULE: Final = """\
+- A "warning" block is shown to the learner as a quotation/callout: use it only for a rule, warning or
+  statement that SOURCE_FACTS state, quoted or closely restated. Never write your own maxim, slogan, consequence
+  or rule as a warning; such text is a plain paragraph, or is left out. A callout adds a point the slot's
+  paragraphs, lists and tables do not already make: never the paragraph or list above it again, in the same or
+  other words (the server removes a callout that only repeats them)."""
 
 
 def _opening_line(example_opening: str) -> str:
@@ -144,9 +151,7 @@ Writing rules (learner-facing, {locale_name(locale)}):
   criteria of exactly one option and contradicts no FAQ answer of the unit; no option copies a table row or list item.
 {_QUIZ_TEXT_RULE}
 {_WORKSHEET_RULE}
-{faq_rules}- A "warning" block is shown to the learner as a quotation/callout: use it only for a rule, warning or
-  statement that SOURCE_FACTS state, quoted or closely restated. Never write your own maxim, slogan, consequence
-  or rule as a warning; such text is a plain paragraph, or is left out.
+{faq_rules}{_CALLOUT_RULE}
 - Never invent rules, thresholds, criteria, labels or consequences the facts do not state, not even as the
   labels of a template or the edges of a diagram.
 - The facts keep marks of the PDF page: never copy them. No "Row N:" labels, no word cut at a line end

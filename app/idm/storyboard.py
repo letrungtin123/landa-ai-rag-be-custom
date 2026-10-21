@@ -88,6 +88,7 @@ from app.idm.qa import (
     settled_codes,
     ungrounded_callouts,
 )
+from app.idm.qa_checks import CALLOUT_REPEAT_DROPPED
 from app.idm.quiz_text import QUESTION_CODES, QUIZ_CODES, quiz_hint
 from app.idm.runtime import (
     IdmBudgetError,
@@ -687,6 +688,7 @@ async def run_idm_unit(
         faq_items_invalid=writer.faq_items_invalid, remaining=remaining, fixed_codes=fixed,
         faq_items_restated=writer.faq_items_restated, callouts_to_prose=writer.callouts_converted,
         framework_list_inserted=writer.framework_inserted, worksheet_compacted=writer.worksheet_compacted,
+        callouts_repeating=0 if whole_fallback else writer.html_fixes[CALLOUT_REPEAT_DROPPED],
         worksheet_example_kept=writer.worksheet_example_kept, drafted_examples=drafted,
         example_numbers=example_numbers, faq_items_copied=writer.faq_items_copied,
         faq_items_recall=writer.faq_items_recall, faq_inferred=inferred, faq_items_open=writer.faq_items_open,
