@@ -4,7 +4,9 @@ The backend's distill worker sends the learned context documents of one tenant (
 reads their learned chunks (``app.repositories.org_context``: sizes first, then only the texts it reads), samples them
 evenly when they exceed ``max_source_chars`` and lets ``app.idm.org_distill`` map-reduce them through the IDM runtime:
 the provider slots of the process limiter (``SERVICE_BUSY`` when saturated), a per-call timeout, the usage ledger and
-the whole-request deadline (``AI_RAG_LESSON_AUTHOR_DEADLINE_MS``, 504). Logs carry counts and codes only.
+the whole-request deadline (``AI_RAG_LESSON_AUTHOR_DEADLINE_MS``, 504). The final profile then loses every item and
+sentence that holds a code or number the text given to the model does not state (``app.idm.org_grounding``). Logs
+carry counts and codes only.
 """
 
 from __future__ import annotations
@@ -17,6 +19,7 @@ from typing import Final
 from app.core.config import settings
 from app.core.errors import AppError, ServiceError
 from app.idm.org_distill import OrgSourceBatch, OrgSourceChunk, batch_source, distill_profile, sample_chunks
+from app.idm.org_grounding import ground_profile
 from app.idm.policy import ORG_DISTILL_BATCH_MAX_CHARS
 from app.idm.runtime import IdmBudgetError, IdmProviderError, IdmResponseInvalidError, IdmRuntime, log_stage
 from app.repositories import org_context as org_context_repository
@@ -44,6 +47,12 @@ class _Source:
     def chars(self) -> int:
         return sum(batch.chars for batch in self.batches)
 
+    @property
+    def texts(self) -> list[str]:
+        """Exactly the texts the map calls were given."""
+
+        return [text for batch in self.batches for _number, texts in batch.documents for text in texts]
+
 
 async def org_context_distill(request: RagOrgContextDistillRequest, pool: SqlExecutor) -> OrgContextDistillResponse:
     deadline_ms = settings.lesson_author_deadline_ms
@@ -65,6 +74,9 @@ async def _distill(request: RagOrgContextDistillRequest, pool: SqlExecutor,
     except IdmResponseInvalidError as error:
         raise AppError("ORG_CONTEXT_DISTILL_OUTPUT_INVALID", 502,
                        "The AI provider returned no valid organization profile.") from error
+    # QC 21/10: a code or number the source text never states ("ERC" next to the documents' "IRC") is dropped with
+    # its item or sentence before the draft reaches the authors and, through the design, a lesson.
+    profile, ungrounded = await runtime.run_cpu(ground_profile, profile, source.texts)
     usage_complete = runtime.usage.complete and runtime.provider_failure_code is None
     log_stage("org_context_distill_completed", {
         "correlation_id": request.correlation_id, "document_count": len(source.document_ids),
@@ -72,6 +84,8 @@ async def _distill(request: RagOrgContextDistillRequest, pool: SqlExecutor,
         "call_count": runtime.usage.calls, "usage": runtime.usage.as_usage(), "usage_complete": usage_complete,
         "duration_ms": int((time.perf_counter() - started) * _MS),
         "response_adjustments": dict(sorted(runtime.adjustments.items())),
+        # Field -> items (sentences for the two text fields) dropped as ungrounded; counts only.
+        "ungrounded_removed": ungrounded,
     })
     return OrgContextDistillResponse(
         profile=profile, source_document_ids=source.document_ids, source_chars=source.chars,

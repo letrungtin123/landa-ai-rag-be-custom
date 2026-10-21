@@ -22,6 +22,7 @@ from app.core.errors import AppError, ServiceError
 from app.schemas.org_context import RagOrgContextDistillRequest
 from app.services.org_context import distill as distill_service
 from tests import idm_contract_bridge as bridge
+from tests.support.log_support import log_text, logged_events
 from tests.support.org_context_support import PROFILE, FakeContextPool, FakeProfileProvider, profile
 
 TENANT = "00000000-0000-4000-8000-0000000000a1"
@@ -114,8 +115,12 @@ class DistillServiceTests(unittest.IsolatedAsyncioTestCase):
         oversized = profile(products_services=[f"Sản phẩm {index}: " + "x" * 180 for index in range(20)],
                             key_processes=[f"Quy trình {index}: " + "y" * 280 for index in range(15)],
                             organization_summary="s" * 800, culture_tone="t" * 600)
-        result = await self.run_distill(FakeProfileProvider(maps=[oversized]))
+        # The documents number every product and process, so the grounding step keeps what the bounds keep.
+        numbered = {**DOCUMENTS, DOC_A: [", ".join(f"sản phẩm {index}" for index in range(20))]}
+        result = await self.run_distill(FakeProfileProvider(maps=[oversized]),
+                                        FakeContextPool(numbered, tenant=TENANT, kb=KB))
         fitted = result.profile
+        self.assertTrue(fitted.products_services and fitted.key_processes)
         self.assertLessEqual(len(fitted.products_services), 15)
         self.assertEqual(fitted.products_services, oversized["products_services"][:len(fitted.products_services)])
         total = (len(fitted.organization_summary) + len(fitted.culture_tone) + sum(map(len, fitted.products_services))
@@ -123,6 +128,31 @@ class DistillServiceTests(unittest.IsolatedAsyncioTestCase):
                  + sum(len(group.name) + len(group.description) for group in fitted.learner_groups)
                  + sum(len(entry.term) + len(entry.meaning) for entry in fitted.glossary))
         self.assertLessEqual(total, 6_000)
+
+    async def test_details_the_source_does_not_state_are_dropped_and_counted(self) -> None:
+        # QC run 2026-10-21: the documents said "IRC", the draft said "xin IRC/ERC".
+        documents = {DOC_A: ["Dự án điện mặt trời rộng 3400 ha, đấu nối lưới 110kV.",
+                             "Đường dây 22kV cấp điện cho khu vận hành."],
+                     DOC_B: ["Nhà đầu tư xin IRC (Giấy chứng nhận đăng ký đầu tư) trước khi khởi công."]}
+        kept = {"products_services": ["Điện mặt trời: 3.400 ha nối lưới 110kV/22kV."], "learner_groups": [],
+                "culture_tone": "An toàn là trên hết.", "design_conventions": []}
+        drafted = profile(
+            **kept, organization_summary="Công ty vận hành dự án điện mặt trời 3.400 ha. Đạt chứng chỉ I-REC năm 2020.",
+            glossary=[{"term": "IRC", "meaning": "Giấy chứng nhận đăng ký đầu tư."},
+                      {"term": "Trạm nâng áp", "meaning": "Trạm biến áp 110kV, công suất 50MVA."}],
+            key_processes=["Xin IRC trước khi khởi công.", "Xin IRC/ERC cho dự án.", "Bảo trì trạm mỗi 6 tháng."])
+        with self.assertLogs("app.idm", "INFO") as logs:
+            result = await self.run_distill(FakeProfileProvider(maps=[drafted]),
+                                            FakeContextPool(documents, tenant=TENANT, kb=KB))
+        self.assertEqual(result.profile.model_dump(mode="json"), profile(
+            **kept, organization_summary="Công ty vận hành dự án điện mặt trời 3.400 ha.",
+            glossary=[{"term": "IRC", "meaning": "Giấy chứng nhận đăng ký đầu tư."}],
+            key_processes=["Xin IRC trước khi khởi công."]))
+        completed = logged_events(logs.records, "org_context_distill_completed")
+        self.assertEqual(completed[0]["ungrounded_removed"],
+                         {"glossary": 1, "key_processes": 2, "organization_summary": 1})
+        # Counts only: nothing of the profile reaches the log.
+        self.assertTrue(all(text not in log_text(logs.records) for text in ("I-REC", "50MVA", "IRC/ERC")))
 
     async def test_no_learned_text_is_409(self) -> None:
         cases = {"no learned index": {"document_ids": [DOC_LEARNING]},
