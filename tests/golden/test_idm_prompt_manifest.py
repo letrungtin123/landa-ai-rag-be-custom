@@ -89,6 +89,11 @@ HASH_HISTORY: tuple[tuple[str, str], ...] = (
     # does not already make and that the server removes one that only repeats the paragraph or list above it.
     ("086a2ff4697c763b144cfeff5f7bd8a23719e464a82a28b113f5101cb7945205",
      "QC A3: a callout never repeats its slot's paragraphs, lists or tables"),
+    # QC feedback 2026-10-21, A4: the W3/W4 media_brief rule (now ``prompts_module._MEDIA_BRIEF_RULE``) asks for a
+    # context_description a designer can draw from: at least 40 words, the layout, one numbered element per content
+    # point with its on-image text and numbers, arrows only for steps or a cause and its effect.
+    ("c011de35a0dbd792e58649faf319caae9a1e67985e2a37806e47aa6395020b83",
+     "QC A4: a media brief describes what to draw"),
 )
 PROMPT_NAME = re.compile(r"(prompt|_rules?$|_suffix$|rule_lines?$|_hint$|^rule_line$|_cue_line$)")
 

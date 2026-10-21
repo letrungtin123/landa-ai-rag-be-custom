@@ -9,7 +9,8 @@ from typing import Final
 
 from app.contracts.orchestration_v2.blueprint import ArchitectureComponentAuthorReviewV2
 from app.idm.artifacts import ROW_LABEL_ANY_RE, plain_row_refs
-from app.idm.contracts import IdmLessonDesignV1, IdmLessonPlanV1
+from app.idm.contracts import IdmLessonDesignV1, IdmLessonPlanV1, IdmUnitDesignV1
+from app.idm.media_detail import MEDIA_BRIEF_THIN_CODE, complete_media_brief, media_brief_gaps
 from app.idm.module_autofix import format_has_evidence
 from app.idm.module_layout import ModuleScope, clean_feedback, clean_media_brief
 from app.idm.policy import (
@@ -142,7 +143,17 @@ def validate_lesson(
             unit_of_fact.get(key, -1) > practice_unit[practice.practice_id] for key in practice.criteria_fact_keys
         ):
             issues.append(IdmIssue("IDM_W4_PRACTICE_BEFORE_SUPPORT", f"{path}.practice_tasks[{index}]"))
+    issues.extend(media_brief_issues(lesson.units, path))
     return list(dict.fromkeys(issues))
+
+
+def media_brief_issues(units: Sequence[IdmUnitDesignV1], path: str) -> list[IdmIssue]:
+    """A4: a media brief whose description a designer cannot draw from (a warning: the server completes it, and a
+    repair the module answer gets anyway lists it)."""
+
+    return [IdmIssue(MEDIA_BRIEF_THIN_CODE, f"{path}.units[{position}].media_brief.context_description", "warning")
+            for position, unit in enumerate(units)
+            if unit.media_brief is not None and media_brief_gaps(unit.media_brief)]
 
 
 # --- normalisation, fallback and holds -----------------------------------------------------
@@ -211,7 +222,7 @@ def normalize_lesson(
                     "title": single_line(unit.title, 180),
                     "purpose": single_line(unit.purpose, 500),
                     "components": components,
-                    "media_brief": clean_media_brief(unit.media_brief),
+                    "media_brief": complete_media_brief(clean_media_brief(unit.media_brief), locale),
                 }
             )
         )
@@ -272,6 +283,14 @@ def _warning_notes(warnings: Sequence[str], locale: str, *, worksheet: bool = Fa
             "Cảnh báo: có hơn 5 khối giải thích liên tiếp không có câu hỏi."
             if locale == "vi"
             else "Warning: more than 5 explanation blocks in a row without a question."
+        )
+    if MEDIA_BRIEF_THIN_CODE in warnings:
+        lines.append(
+            "Gợi ý hình minh hoạ/video: phần mô tả AI viết còn sơ sài nên hệ thống đã bổ sung bố cục theo từng ý nội "
+            "dung — người thiết kế nên xem lại."
+            if locale == "vi"
+            else "Suggested image/video: the description the AI wrote was too thin, so the system added a layout "
+            "built from each content point — the designer should check it."
         )
     if "IDM_W3_PRACTICE_SENTENCE_FORMAT" in warnings:
         lines.append(

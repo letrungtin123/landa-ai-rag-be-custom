@@ -7,7 +7,7 @@ from __future__ import annotations
 import json
 import re
 from collections import Counter
-from collections.abc import Mapping, Sequence
+from collections.abc import Collection, Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any, Final
 
@@ -16,6 +16,7 @@ from pydantic import ValidationError
 from app.contracts.orchestration_v2.blueprint import LessonArchitectureV2
 from app.contracts.orchestration_v2.provider import ChapterShardPlanV2
 from app.idm.contracts import IdmLessonDesignV1, IdmPracticeTaskV1
+from app.idm.media_detail import MEDIA_BRIEF_COMPLETED_CODE, MEDIA_BRIEF_THIN_CODE
 from app.idm.module_autofix import autofix_lesson
 from app.idm.module_design_lessons import normalize_lesson, validate_lesson
 from app.idm.module_layout import ModuleScope, project_lesson
@@ -72,6 +73,15 @@ class _Salvage:
     # lesson_key -> "units[i]=html,html,problem" of each unit still failing the component order after the autofix
     # (QC run ab8d67e1, R7: only CODE@path was logged, so the cause had to be guessed). Server enum values only.
     component_orders: dict[str, list[str]] = field(default_factory=dict)
+    # lesson_key -> warnings of an accepted lesson that a repair the answer gets anyway should also fix (A4: a thin
+    # media brief, which the server completed meanwhile).
+    advice: dict[str, list[IdmIssue]] = field(default_factory=dict)
+
+    def repair_items(self, skip: Collection[str] = ()) -> list[dict[str, str]]:
+        """The repair list: every failure, then the advice, without the lessons in ``skip``."""
+
+        return [issue.as_repair_item() for group in (self.failures, self.advice) for key, items in group.items()
+                if key not in skip for issue in items]
 
 
 def _salvage(
@@ -123,6 +133,9 @@ def _salvage(
                 result.failures[plan.lesson_key] = [IdmIssue("IDM_W4_PROJECTION_INVALID", path)]
             else:
                 result.accepted[plan.lesson_key] = normalized
+                if thin := [issue for issue in found if issue.code == MEDIA_BRIEF_THIN_CODE]:
+                    result.advice[plan.lesson_key] = thin
+                    result.fixes[MEDIA_BRIEF_COMPLETED_CODE] += len(thin)
     if invalid is None and [lesson.lesson_key for lesson in lessons] != [plan.lesson_key
                                                                          for plan in scope.lesson_plans]:
         result.failures.setdefault("__set__", []).append(IdmIssue("IDM_W3_LESSON_SET_MISMATCH", "lessons"))

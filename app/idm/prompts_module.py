@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 from collections.abc import Iterable, Sequence
-from typing import Any
+from typing import Any, Final
 
-from app.idm.policy import SUGGESTED_CRITERIA_LABEL_EN, SUGGESTED_CRITERIA_LABEL_VI
+from app.idm.policy import IDM_MEDIA_CONTEXT_MIN_WORDS, SUGGESTED_CRITERIA_LABEL_EN, SUGGESTED_CRITERIA_LABEL_VI
 from app.idm.prompts_common import (
     Locale,
     _json,
@@ -14,6 +14,16 @@ from app.idm.prompts_common import (
     preamble,
 )
 from app.prompt_safety import untrusted_block
+
+# QC feedback 2026-10-21 (A4): the context_description of a media brief is a designer brief.
+_MEDIA_BRIEF_RULE: Final = f"""\
+   media_brief: null unless a short video or static infographic clearly helps; then a concrete brief with at most
+   6 content_points. Its context_description is the brief a designer draws from, at least
+   {IDM_MEDIA_CONTEXT_MIN_WORDS} words: the layout (how the image or the video is divided: panels, columns, rows or
+   scenes, and the reading order), then one element per content point named by its number ("Khung 1" / "Panel 1",
+   "Cảnh 1" / "Scene 1") with the exact text and numbers shown on it, taken from that point; arrows or connectors and
+   their direction only where the points are steps or a cause and its effect. Never a mood or a setting alone ("Một
+   bảng kiểm treo tại phòng họp")."""
 
 
 def _criteria_rule(locale: Locale) -> str:
@@ -132,8 +142,7 @@ Return the lessons in exactly the order and with exactly the lesson_key values o
 8. Lesson fields: objective = the main Must Do as an observable action; learning_objectives = the objective
    statements this lesson serves; assessment = feedback criterion + where the practice sits (after Must Know /
    end of lesson / end of module); notes = Bloom level, estimated blocks and minutes, ordering rationale, SME flags.
-   media_brief: null unless a short video or static infographic clearly helps; then a concrete brief with at most
-   6 content_points.
+{_MEDIA_BRIEF_RULE}
 9. Lessons of kind job_aid: 1-3 units of segment "job_aid" with an html checklist / lookup table / decision tree
    (and optionally la_faq); no practice tasks. Contact lists: names and extensions only, no emails or URLs.
 {limits_block}

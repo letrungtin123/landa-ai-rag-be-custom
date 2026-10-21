@@ -245,6 +245,13 @@ QUIZ_FILLER_EN: Final = (
 # phân loại mức độ." under "Nhân viên tuyệt đối không hứa bồi thường cho khách trước khi phân loại mức độ khiếu nại."
 # holds 8 of 9 pairs; a callout with its own rule ("Khiếu nại cấp 3 phải escalate ngay cho quản lý và bộ phận Pháp
 # chế.") under the table of signs fewer than half.
+# QC feedback 2026-10-21 (A4): the context_description of a suggested infographic or video is a designer brief: the
+# layout, the text and numbers on the image (or screen) and one element per content point, in at least this many
+# words (``app.idm.media_detail``; the contract allows 1000 characters). A thinner one is completed by the server from
+# the content points' own words, each quoted with at most this many words.
+IDM_MEDIA_CONTEXT_MIN_WORDS: Final = 40
+IDM_MEDIA_POINT_LABEL_MAX_WORDS: Final = 24
+IDM_MEDIA_CONTEXT_MAX_CHARS: Final = 1000
 IDM_CALLOUT_REPEAT_NGRAM: Final = 2
 IDM_CALLOUT_REPEAT_SHARE: Final = 0.75
 IDM_CALLOUT_REPEAT_MIN_WORDS: Final = 4

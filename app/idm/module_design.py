@@ -158,9 +158,7 @@ async def run_idm_module_design(
                          schema_errors=error.errors)
             if salvage is not None and all(item.lesson_key in accepted for item in scope.lesson_plans):
                 break
-            content = [] if salvage is None else [issue.as_repair_item() for lesson_key, items
-                                                  in salvage.failures.items() if lesson_key not in invalid
-                                                  for issue in items]
+            content = [] if salvage is None else salvage.repair_items(skip=invalid)
             repair = (answer_repair(error.code, error.errors, COMPACT_MODULE) if not content
                       else repair_suffix([*({"code": str(item["type"]),
                                              "path": ".".join(str(part) for part in item["loc"])}
@@ -186,7 +184,7 @@ async def run_idm_module_design(
         missing = [lesson for lesson in scope.lesson_plans if lesson.lesson_key not in accepted]
         if not missing:
             break
-        repair = repair_suffix([issue.as_repair_item() for items in salvage.failures.values() for issue in items])
+        repair = repair_suffix(salvage.repair_items())
     final: list[IdmLessonDesignV1] = []
     fallback_count = 0
     for lesson_plan in scope.lesson_plans:

@@ -5,6 +5,8 @@
   contradicts the key, a stem of four sentences) is a code the writer repairs once, then a plain note.
 * K1: every line feed of the question and the explanation reaches the unit Node receives, and its problem XML.
 * A3: a callout that only repeats its slot's paragraphs, lists or tables is removed (its text stays there).
+* A4: the description of a suggested infographic or video says what to draw (layout, text, one element per point);
+  a thin one is completed from the content points and noted.
 * A5 (no Hold): a worksheet whose practice criteria the AI suggested from what the lesson teaches heads its self-check
   as suggested criteria, and the unit note says so.
 
@@ -17,9 +19,11 @@ import unittest
 from collections import Counter
 from typing import Any
 
+from app.contracts.orchestration_v2.blueprint import ArchitectureMediaBriefV2
 from app.idm.artifacts import clean_text
 from app.idm.contracts import brief_hash_of
 from app.idm.mcq import normalize_single_choice
+from app.idm.media_detail import MEDIA_BRIEF_COMPLETED_CODE, complete_media_brief, media_brief_gaps
 from app.idm.node_acceptance_problems import _problem_xml, workspace_problem_code
 from app.idm.qa_checks import repeated_callouts, without_blocks
 from app.idm.quiz_text import (
@@ -41,7 +45,9 @@ from app.idm.quiz_text import (
 )
 from app.idm.text import evidence_index
 from app.idm.worksheet import label_suggested_self_check
+from tests.idm_golden import key
 from tests.support.idm_test_support import rehash_contract
+from tests.unit.idm.test_idm_module_design import design_module, edited
 from tests.unit.idm.test_idm_storyboard import (
     JUDGE,
     REPAIR,
@@ -351,3 +357,87 @@ class CalloutRepeatTests(StoryboardEndpointTestCase):
         note = data["unit"]["idm_quality"]["author_note"]
         self.assertIn("Đã bỏ 1 khung trích dẫn/lưu ý chỉ nhắc lại đoạn văn có sẵn trong bài.", note)
         self.assertIn("never the paragraph or list above it again", provider.calls[0]["prompt"])
+
+
+POINTS = ["Cấp 1: ảnh hưởng thấp, nhân viên tự xử lý", "Cấp 2: thiệt hại dưới 50 triệu đồng, báo trưởng nhóm",
+          "Cấp 3: an toàn, pháp lý, truyền thông, escalate ngay"]
+# The description QC found too thin to draw (a setting, no layout, no text, no point).
+THIN = "Một bảng kiểm treo tại phòng họp."
+RICH = ("Bố cục ba cột ngang, đọc từ trái sang phải, mỗi cột một cấp độ với nền màu tăng dần. Khung 1 ở bên trái ghi "
+        "nhãn “Cấp 1” và dòng chữ “ảnh hưởng thấp, nhân viên tự xử lý”. Khung 2 ở giữa ghi “Cấp 2” với con số “dưới "
+        "50 triệu đồng” và biểu tượng trưởng nhóm. Khung 3 bên phải ghi “Cấp 3” với ba biểu tượng an toàn, pháp lý, "
+        "truyền thông và chữ “escalate ngay”. Mũi tên từ khung 1 sang khung 3 cho thấy mức độ tăng dần.")
+
+
+def media(description: str, points: list[str] | None = None, kind: str = "static_infographic") -> Any:
+    return ArchitectureMediaBriefV2.model_validate({
+        "type": kind, "title": "Ba cấp độ nghiêm trọng", "content_points": points or POINTS,
+        "context_description": description, "rationale": "Giúp so sánh nhanh ba cấp độ."})
+
+
+class MediaBriefTests(unittest.IsolatedAsyncioTestCase):
+    """A4: the description of a suggested infographic or video is a brief a designer can draw from."""
+
+    def test_the_gaps_of_a_thin_description(self) -> None:
+        self.assertEqual(media_brief_gaps(media(THIN)), [
+            "7 words (at least 40)", "no layout", "no text on the image", "content points 1, 2, 3 not described"])
+        self.assertEqual(media_brief_gaps(media(RICH)), [])
+        # A point the description names by its words (not its number) counts as described.
+        by_words = RICH.replace("Khung 2 ở giữa ghi “Cấp 2” với con số “dưới 50 triệu đồng”",
+                                "Ở giữa: thiệt hại dưới 50 triệu")
+        self.assertEqual(media_brief_gaps(media(by_words)), [])
+
+    def test_a_thin_description_gets_a_layout_from_the_points(self) -> None:
+        completed = complete_media_brief(media(THIN), "vi")
+        assert completed is not None
+        text = completed.context_description
+        self.assertTrue(text.startswith(THIN + " Bố cục cho người thiết kế: 3 khung đọc từ trái sang phải"))
+        for number, point in enumerate(POINTS, start=1):
+            self.assertIn(f"Khung {number}: “{point}”", text)
+        self.assertIn("Chỉ nối các khung bằng mũi tên", text)
+        self.assertEqual(media_brief_gaps(completed), [])
+        self.assertIs(complete_media_brief(media(RICH), "vi").context_description, RICH)  # type: ignore[union-attr]
+        video = complete_media_brief(media(THIN, kind="video"), "en")
+        assert video is not None
+        self.assertIn("Scene 2: “Cấp 2: thiệt hại dưới 50 triệu đồng, báo trưởng nhóm”", video.context_description)
+        self.assertIsNone(complete_media_brief(None, "vi"))
+
+    def test_the_completion_fits_the_contract(self) -> None:
+        long_points = [" ".join(["Bước", str(number), *(["xử lý khiếu nại đúng quy trình"] * 20)])[:600]
+                       for number in range(1, 7)]
+        completed = complete_media_brief(media("Một cảnh văn phòng. " * 40, long_points), "vi")
+        assert completed is not None
+        self.assertLessEqual(len(completed.context_description), 1000)
+        self.assertIn("Khung 6: “Bước 6", completed.context_description)
+        ArchitectureMediaBriefV2.model_validate(completed.model_dump(mode="json"))
+
+    async def test_the_module_stage_completes_a_thin_brief_without_a_call(self) -> None:
+        def thin(payload: dict[str, Any]) -> None:
+            payload["lessons"][0]["units"][0]["media_brief"] = media(THIN).model_dump(mode="json")
+
+        result, provider, runtime = await design_module(0, [edited("mod_01", thin)])
+        self.assertEqual(len(provider.calls), 1)
+        lesson = result["shard"]["idm_design"]["lessons"][0]
+        self.assertIn("Khung 3: “Cấp 3: an toàn, pháp lý, truyền thông, escalate ngay”",
+                      lesson["units"][0]["media_brief"]["context_description"])
+        self.assertIn("Gợi ý hình minh hoạ/video: phần mô tả AI viết còn sơ sài nên hệ thống đã bổ sung bố cục",
+                      lesson["notes"])
+        self.assertEqual(runtime.adjustments[MEDIA_BRIEF_COMPLETED_CODE], 1)
+        self.assertIn("Its context_description is the brief a designer draws from", provider.calls[0]["prompt"])
+
+    async def test_a_repair_the_answer_gets_anyway_lists_the_thin_brief(self) -> None:
+        def thin_and_foreign(payload: dict[str, Any]) -> None:
+            payload["lessons"][0]["units"][0]["media_brief"] = media(THIN).model_dump(mode="json")
+            payload["lessons"][1]["practice_tasks"][0]["criteria_fact_keys"].append(key(2, 2))
+
+        def rich(payload: dict[str, Any]) -> None:
+            payload["lessons"][0]["units"][0]["media_brief"] = media(RICH).model_dump(mode="json")
+
+        result, provider, _runtime = await design_module(0, [edited("mod_01", thin_and_foreign),
+                                                             edited("mod_01", rich)])
+        self.assertEqual(len(provider.calls), 2)
+        repair = provider.calls[1]["prompt"].split("REPAIR_REQUIREMENTS", 1)[1]
+        self.assertIn('{"code":"IDM_W4_MEDIA_BRIEF_THIN","path":"lessons[0].units[0].media_brief.context_description"}',
+                      repair)
+        lesson = result["shard"]["idm_design"]["lessons"][0]
+        self.assertEqual(lesson["units"][0]["media_brief"]["context_description"], RICH)
