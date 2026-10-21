@@ -40,6 +40,8 @@ from app.idm.policy import (
     IDM_MCQ_STEM_CONTEXT_MAX_SENTENCES,
     IDM_MCQ_STEM_MAX_CHARS,
     IDM_MCQ_STEM_MAX_WORDS,
+    NODE_EXPLANATION_MAX_CHARS,
+    NODE_QUESTION_MAX_CHARS,
     QUIZ_FILLER_EN,
     QUIZ_FILLER_VI,
 )
@@ -191,7 +193,8 @@ def layout_explanation(text: str, option_count: int) -> str:
 
 def lay_out_quiz(component: dict[str, Any]) -> tuple[dict[str, Any], Counter[str]]:
     """A single-choice ``component`` with its question and explanation laid out (``layout_question``,
-    ``layout_explanation``) and the counts of what changed."""
+    ``layout_explanation``) and the counts of what changed; a layout that would push a text over the length Node keeps
+    (a full stop added per option) is not applied."""
 
     codes: Counter[str] = Counter()
     choices = component.get("choices")
@@ -200,12 +203,13 @@ def lay_out_quiz(component: dict[str, Any]) -> tuple[dict[str, Any], Counter[str
         return component, codes
     result = dict(component)
     question = component.get("question")
-    if isinstance(question, str) and (laid := layout_question(question)) and laid != question:
+    if isinstance(question, str) and (laid := layout_question(question)) and laid != question and (
+            len(laid) <= max(NODE_QUESTION_MAX_CHARS, len(question))):
         result["question"] = laid
         codes[QUESTION_LAID_OUT] += 1
     explanation = component.get("explanation")
     if isinstance(explanation, str) and (laid := layout_explanation(explanation, len(choices))) and (
-            laid != explanation):
+            laid != explanation and len(laid) <= max(NODE_EXPLANATION_MAX_CHARS, len(explanation))):
         result["explanation"] = laid
         codes[EXPLANATION_LAID_OUT] += 1
     return result, codes

@@ -225,6 +225,9 @@ IDM_MCQ_STEM_MAX_WORDS: Final = 120
 # Node's generation normaliser cuts a question at 1,000 and an explanation at 1,500 characters (a line feed counts one):
 # both caps stay well below.
 IDM_MCQ_STEM_MAX_CHARS: Final = 800
+# Those Node limits: the layout never makes a text longer than them (it keeps the writer's text instead).
+NODE_QUESTION_MAX_CHARS: Final = 1_000
+NODE_EXPLANATION_MAX_CHARS: Final = 1_500
 # Empty praise and slogans that give no reason ("B - Đúng vì phương án này dũng cảm Say No … tạo điểm khác biệt tuyệt
 # đối", QC 2026-10-21). Matched as whole words, Vietnamese with its diacritics (NFC, lower case); a phrase the unit's
 # facts use themselves (a rule that says "tuyệt đối không …") is allowed.

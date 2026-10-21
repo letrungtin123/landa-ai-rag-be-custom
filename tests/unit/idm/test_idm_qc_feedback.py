@@ -441,3 +441,18 @@ class MediaBriefTests(unittest.IsolatedAsyncioTestCase):
                       repair)
         lesson = result["shard"]["idm_design"]["lessons"][0]
         self.assertEqual(lesson["units"][0]["media_brief"]["context_description"], RICH)
+
+
+class QuizLayoutBoundTests(unittest.TestCase):
+    def test_the_layout_never_pushes_a_text_over_the_node_limit(self) -> None:
+        # The last option segment gains a closing full stop: at the 1500 characters Node keeps, the layout would make
+        # 1501, so the writer's paragraph stays as it is (the length check still asks the repair to shorten it).
+        reason = "vì" + " tiêu chí" * 52
+        options = f" A - Sai {reason}; B - Đúng {reason}; C - Sai {reason}"
+        paragraph = ("Tiêu chí" + " x" * 100)[:1499 - len(options)] + "." + options
+        self.assertEqual((len(paragraph), len(layout_explanation(paragraph, 3))), (1500, 1501))
+        laid, codes = lay_out_quiz(problem(paragraph))
+        self.assertEqual(laid["explanation"], paragraph)
+        self.assertNotIn("w5_problem_explanation_laid_out", codes)
+        shorter = paragraph[:1400]
+        self.assertEqual(lay_out_quiz(problem(shorter))[0]["explanation"], layout_explanation(shorter, 3))
