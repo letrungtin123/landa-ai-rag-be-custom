@@ -1,6 +1,6 @@
 {
  "prompt_policy_version": "idm-prompt-1",
- "prompt_templates_hash": "4b6f4d57cc2359dd1a4e7e12ab4db56b22508cc4c32d5035317139cc28393dc0",
+ "prompt_templates_hash": "0bfd97c4c36e765ce584cf95af57e4078f041793321ab6106484ecb1700e0f44",
  "sources": {
   "app.idm.example_roles:role_rule": "ade567182c9b222f982cc9e9c3371c58f59ae9cec5cab401dd514e800daa83c1",
   "app.idm.faq_checks:FaqChecker.plan_hint": "a4bba0bf2bf5959893d32f5dce7ceb4172f67a822559e39bc64a827803aa8bae",
@@ -9,7 +9,7 @@
   "app.idm.fidelity:w2_treatment_rules": "95de2e1aa40084d63e6761ad239db0e8c8ebbf01e786f65cd7cd463dde57cb49",
   "app.idm.fidelity:writer_fidelity_rules": "149b38991ee8e8042803bd7a87b98f9f91e448162197f453a60c7c4406f606dd",
   "app.idm.framework:framework_support_lines": "45e1057f8e72643b3882b33784e138a12e1b14642192951b13779fbd29920d4e",
-  "app.idm.org_context": "b3534d7aace54bab6d884f373870fc6c20d9246b7d413998676f3f8b0d15902e",
+  "app.idm.org_context": "c3f7ec1aabc125950d4968e00e8c40d81b3b7c9f42b9f006d5b7e8c06528b658",
   "app.idm.preserve_lines:heading_hint": "8137506e4c8330055e5e5cf9248a126a563cedd41ff1e2c58bae68cf2d1d5b55",
   "app.idm.preserve_segment:_prompt_line": "bf7e018068060594fa5e2b8540bf07ece6c0cea914d5e76e12f78b5094e29ebd",
   "app.idm.preserve_segment:segment_prompt": "6bfe753b5f192268dcc2463a5720f343f7879d2548a8c68ae6295ebb43709bac",
@@ -17,7 +17,7 @@
   "app.idm.prompts_course": "ef3d6e3b287803167bd1fe5e89214a629624caf34125912910449ec9d88b8f68",
   "app.idm.prompts_judge": "5cc4c63dc4369704384e4760e974fcac090e85208ae65ae673be9d3d3496731c",
   "app.idm.prompts_module": "c1cb3281ae581ace11ccf79522161a453dcbe62e83304b5e78e32c64eee96677",
-  "app.idm.prompts_org_distill": "3ed8a639a96af95ecc187e29e72c651a111360cc620c5c36f880f4c39c092187",
+  "app.idm.prompts_org_distill": "f65cb5379ae298ba4a9ff8c5eb5254309e935442ad0b2e24b3701bf4fc0791f3",
   "app.idm.prompts_unit": "c31f097bc0ee10d3ad51f7cc8c5ee251442427eaaa90d74880417cd7cdb7d18c",
   "app.idm.purpose": "c6010f25444558e38e1b2e5bb3470b9fe433ac5d08aa9f26931c6e93edf1e3a8",
   "app.idm.storyboard:IdmUnitWriter.acceptance_rule_lines": "ae3dd87886fd4ccd5eb2cb9fcf7673e60ec7b6a0a4ba8105ddc37bf4b3792495",

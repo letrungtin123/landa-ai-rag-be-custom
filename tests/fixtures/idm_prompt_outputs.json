@@ -300,8 +300,8 @@
   "course_design": [
    {
     "schema": "IdmW1ReduceResponseV1",
-    "sha256": "7d7d3d47321e8030e2eed9891752d39b9d2f751afb3b5c53ac466d08e73843f9",
-    "chars": 15744
+    "sha256": "e2a1332fc4f48a5e1570bb0c6fac2fb40f92cb13a0607699ffc77407af34157a",
+    "chars": 15650
    },
    {
     "schema": "IdmW1SectionResponseV1",
@@ -310,35 +310,35 @@
    },
    {
     "schema": "IdmW2BlueprintResponseV1",
-    "sha256": "7856c57e94634124c5633080b08ed7923681277f361264a062db93f898b05206",
-    "chars": 14821
+    "sha256": "629935ae11345e5a67d9d0a82413d3ea1b41d5e75007e7e9fd6ffa563a89648f",
+    "chars": 14727
    },
    {
     "schema": "IdmW4CourseResponseV1",
-    "sha256": "46911dc4023a381fd32ab9416a4c2948e712ed9dbb06df28ad3691af24e7f8c2",
-    "chars": 12597
+    "sha256": "d427ee6b3784a658d1f1ceb0e09124f022537a89cca6edc0d988fc0f826354e0",
+    "chars": 12503
    }
   ],
   "modules": {
    "mod_01": [
     {
      "schema": "IdmW3W4ModuleResponseV1",
-     "sha256": "c2b3b69eff0775854cf28ce0bb617a30ede6e55a587c18dd411fb7ebf94ce4b0",
-     "chars": 16537
+     "sha256": "0d4c25775cd4fc0181f298b55a6db566e504160ebd25521a4dc4fa7538d6ee78",
+     "chars": 16443
     }
    ],
    "mod_02": [
     {
      "schema": "IdmW3W4ModuleResponseV1",
-     "sha256": "c30e0ecd31e1b47f83dc1d15c540a0846c392622eae5b6577e6cfaf2fe1b2a12",
-     "chars": 15652
+     "sha256": "35b60da04de1b24fa3a17e3004fc94df2b0cae003071789af47245142ac2dd55",
+     "chars": 15558
     }
    ],
    "mod_03": [
     {
      "schema": "IdmW3W4ModuleResponseV1",
-     "sha256": "a4bdf98e5e2da4be2897847facb14b13731ceea84a67908d069fc4e1f2053243",
-     "chars": 17328
+     "sha256": "af7c6ad99a9b2665b5b484e41186515f3a25626e6b6842c9e8c7982ac715edb6",
+     "chars": 17234
     }
    ]
   },
@@ -346,52 +346,52 @@
    "escalate": [
     {
      "schema": "StagedInstancePayloadUnitIdmWire",
-     "sha256": "dc45226352cb97f6006b1cf2fa558d5dbc63a138aea7b5faaef5d16b682d1d41",
-     "chars": 18008
+     "sha256": "86bc795d9c2bd17fd4e057abddb3f34eb73badb068c39dc9f937fe6a29a9b4d5",
+     "chars": 17830
     },
     {
      "schema": "IdmJudgeResponseV1IdmWire",
-     "sha256": "14e04f6ac60dcf23ee108af78ae73bb60b29fbb4e6bf12c92e033e6de8478bf6",
-     "chars": 10324
+     "sha256": "7651143e5428b97d028456779b98fdc5501981cd061875e993c505c54f41006b",
+     "chars": 10232
     }
    ],
    "severity": [
     {
      "schema": "StagedInstancePayloadUnitIdmWire",
-     "sha256": "47b55b28b655906a917729c64e0a6ff814094ee4e340da859e0782dd6a65b733",
-     "chars": 15865
+     "sha256": "e3566d6bacc0cbd02bd354227df4795391aff051079e6eea55b3ba9f579e82a5",
+     "chars": 15687
     },
     {
      "schema": "IdmJudgeResponseV1IdmWire",
-     "sha256": "6c149bee75fabf65a0e879ceb6b1504c30bdd6c0b2e9db253918746b4ee432f0",
-     "chars": 9832
+     "sha256": "a7fe0dab8f4992cc4f7119ebe0b9d073f81ad4cd8f8926c6c97eafccf68b3bd3",
+     "chars": 9740
     }
    ]
   },
   "distill": {
    "map/vi/whole": {
-    "sha256": "502114519f0d65b6b17b227255995a0f47daa7b61655618d123fcf07a464ee82",
-    "chars": 2884
+    "sha256": "af56d32a0dd37a5ab6ba96d889fad5693d79b3999283060dc7da18c254dd3704",
+    "chars": 2803
    },
    "map/vi/part_of_excerpts": {
-    "sha256": "ca712ac838d5bc73655efb659eb9aa59a6f8308ac5694a1ad9e90f3d857aa835",
-    "chars": 3056
+    "sha256": "95780711a698ebccab0f1ceb32d23a564880a93585d83e740f2a0133fb177751",
+    "chars": 2975
    },
    "reduce/vi": {
-    "sha256": "ecc164bac118e23a1bb8714c6f16eccf080d42c96e2e2321a2d7fdafa6b36596",
-    "chars": 4523
+    "sha256": "5062ea3938800868d9190f8f12eb912569e21430cc1a3ec3d195a167cc2d7266",
+    "chars": 4442
    },
    "map/en/whole": {
-    "sha256": "271ae033eda7d5209ca98432fb870747a8db6aec9125327917406d2bbec130b4",
-    "chars": 2858
+    "sha256": "b9111222bbbf017f029a6710661ea273b5c3c1935c2c276fe36512192ffd71cb",
+    "chars": 2777
    },
    "map/en/part_of_excerpts": {
-    "sha256": "808744257a8743d14bd37bd7f71c2376f5e39b5c515568a0c8ead70741f1c7d2",
-    "chars": 3030
+    "sha256": "4111e772e4587c6ab68da1bb91fbb4b4428745f4fcf53d8919269b121a81f4cf",
+    "chars": 2949
    },
    "reduce/en": {
-    "sha256": "1fba6893da8cbca0650b79754bda09f2306f5638f68da9248293c19dcfc6f626",
-    "chars": 4497
+    "sha256": "e1ded5c5f12251a3b6364f154d53c9f5f2dac93f570804a66955c95280c85b01",
+    "chars": 4416
    }
   }
  }

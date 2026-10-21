@@ -63,6 +63,11 @@ HASH_HISTORY: tuple[tuple[str, str], ...] = (
     # distill): a new source; no existing prompt changed.
     ("4b6f4d57cc2359dd1a4e7e12ab4db56b22508cc4c32d5035317139cc28393dc0",
      "organization profile distillation prompts"),
+    # QC feedback 2026-10-21, A7 (contract K3): the organization context never names the learners. The design, writer
+    # and judge views and their rule lines leave out the learner groups; the distillation asks for none (org-distill-2).
+    # Prompts of runs without an organization context are unchanged.
+    ("0bfd97c4c36e765ce584cf95af57e4078f041793321ab6106484ecb1700e0f44",
+     "QC A7: no learner groups in the organization context views or the distillation"),
 )
 PROMPT_NAME = re.compile(r"(prompt|_rules?$|_suffix$|rule_lines?$|_hint$|^rule_line$|_cue_line$)")
 

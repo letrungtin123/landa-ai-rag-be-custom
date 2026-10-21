@@ -70,12 +70,7 @@
     "products_services": [
      "Dịch vụ bảo trì tủ điện định kỳ"
     ],
-    "learner_groups": [
-     {
-      "name": "Kỹ thuật viên bảo trì",
-      "description": "Bảo trì tủ điện tại tòa nhà khách hàng."
-     }
-    ],
+    "learner_groups": [],
     "glossary": [
      {
       "term": "Biển cảnh báo",
@@ -149,8 +144,8 @@
     "op": "generate",
     "model": "test-model",
     "schema": "IdmOrgProfileDraftV1",
-    "prompt_sha256": "7703f009269d509de9f6eb0337debf2e204e05cb1da580fe83dccb7ab4570bd4",
-    "prompt_chars": 2763,
+    "prompt_sha256": "72fc74432f2dc85c45e944ef5aa327fcbd91ff04623f99e65e39ac40b2a131d0",
+    "prompt_chars": 2682,
     "config": {
      "max_output_tokens": 16000,
      "response_mime_type": "application/json",

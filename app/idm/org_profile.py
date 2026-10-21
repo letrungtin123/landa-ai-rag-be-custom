@@ -82,6 +82,14 @@ class IdmOrgProfileV1(IdmOrgModel):
         return self
 
 
+def idm_profile_view(profile: IdmOrgProfileV1) -> IdmOrgProfileV1:
+    """The profile as the IDM prompts and checks read it: without ``learner_groups`` (owner 2026-10-22, contract K3:
+    the learners of a course come only from its own audience, "Đối tượng học", even when an older confirmed profile
+    still lists groups). The field stays in profile v1 and in the frozen context, which the design echoes unchanged."""
+
+    return profile.model_copy(update={"learner_groups": []}) if profile.learner_groups else profile
+
+
 def org_profile_char_count(profile: IdmOrgProfileV1) -> int:
     """``char_count`` of spec §2: the lengths of every string (names, descriptions, terms, meanings, items) added up."""
 

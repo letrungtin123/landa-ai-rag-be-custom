@@ -25,6 +25,8 @@ PROFILE: dict[str, Any] = {
     "culture_tone": "Thân thiện, xưng hô anh/chị, nói ngắn gọn với tài xế.",
     "design_conventions": ["Mỗi bài mở đầu bằng một tình huống ở trung tâm điều phối."],
 }
+# What the distillation drafts from an answer of ``PROFILE``: no learner groups (owner 2026-10-22, contract K3).
+DISTILLED: dict[str, Any] = {**PROFILE, "learner_groups": []}
 
 
 DRAFT_SCHEMA = "IdmOrgProfileDraftV1"

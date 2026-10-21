@@ -29,9 +29,6 @@ from app.idm.org_profile import (
     ORG_CONVENTIONS_MAX_ITEMS,
     ORG_CULTURE_TONE_MAX,
     ORG_GLOSSARY_MAX_ITEMS,
-    ORG_GROUP_DESCRIPTION_MAX,
-    ORG_GROUP_NAME_MAX,
-    ORG_GROUPS_MAX_ITEMS,
     ORG_MEANING_MAX,
     ORG_PROCESS_MAX,
     ORG_PROCESSES_MAX_ITEMS,
@@ -196,7 +193,10 @@ def _list_chars(items: Sequence[str | tuple[str, str]]) -> int:
 def fit_profile(draft: IdmOrgProfileDraftV1) -> IdmOrgProfileV1:
     """The profile v1 of a provider draft: cleaned strings (NFC, no control characters, single spaces, no empty or
     repeated items, line breaks only in the two text fields), the per-field bounds, and the 6000-character total
-    reached by dropping the last item of the list that holds the most text, repeatedly. Nothing is ever added."""
+    reached by dropping the last item of the list that holds the most text, repeatedly. Nothing is ever added.
+
+    ``learner_groups`` is always [] (owner 2026-10-22, contract K3): the learners of a course come from its own
+    audience, so the draft lists no groups even when the answer does."""
 
     fields: dict[str, Any] = {
         "organization_summary": _text(draft.organization_summary, ORG_SUMMARY_MAX, multiline=True),
@@ -204,9 +204,7 @@ def fit_profile(draft: IdmOrgProfileDraftV1) -> IdmOrgProfileV1:
         "products_services": _items(draft.products_services, ORG_PRODUCT_MAX, ORG_PRODUCTS_MAX_ITEMS),
         "key_processes": _items(draft.key_processes, ORG_PROCESS_MAX, ORG_PROCESSES_MAX_ITEMS),
         "design_conventions": _items(draft.design_conventions, ORG_CONVENTION_MAX, ORG_CONVENTIONS_MAX_ITEMS),
-        "learner_groups": _pairs([(group.name, group.description) for group in draft.learner_groups],
-                                 (ORG_GROUP_NAME_MAX, ORG_GROUP_DESCRIPTION_MAX), ORG_GROUPS_MAX_ITEMS,
-                                 second_required=False),
+        "learner_groups": [],
         "glossary": _pairs([(entry.term, entry.meaning) for entry in draft.glossary], (ORG_TERM_MAX, ORG_MEANING_MAX),
                            ORG_GLOSSARY_MAX_ITEMS, second_required=True),
     }

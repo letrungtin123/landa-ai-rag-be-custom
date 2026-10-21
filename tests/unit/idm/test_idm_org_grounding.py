@@ -123,10 +123,9 @@ class ProfileDetailTests(unittest.TestCase):
             glossary=[{"term": "IRC", "meaning": "Giấy chứng nhận đăng ký đầu tư (Luật 61/2020)."}],
             key_processes=["Lập Phiếu SOLAR-5 cho mỗi trạm.", "Xin IRC/ERC (nếu cần)."],
             culture_tone="Phản hồi khách trong 2 giờ.", design_conventions=["Viết tắt kèm nghĩa, ví dụ SCADA."])
-        # Names: IRC (glossary term), SOLAR-5 (product name before ":"), EVN and 2 (a product item without ":"),
-        # OCC (learner-group name); every other detail of the descriptive text counts once.
-        self.assertEqual(profile_details(context), ["FDI", "ERC", "20.000", "110kV", "30", "SCADA", "24", "7", "61",
-                                                    "2020"])
+        # Names: IRC (glossary term), SOLAR-5 (product name before ":"), EVN and 2 (a product item without ":"); every
+        # other detail of the descriptive text counts once. The learner group is never read (K3): no "24", no "7".
+        self.assertEqual(profile_details(context), ["FDI", "ERC", "20.000", "110kV", "30", "SCADA", "61", "2020"])
 
     def test_withheld_details_are_the_ones_the_facts_do_not_state(self) -> None:
         context = context_of(key_processes=["Xin IRC/ERC (nếu cần) trong 15 ngày, phí 3.400 đồng."])

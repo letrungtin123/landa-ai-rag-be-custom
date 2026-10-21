@@ -27,7 +27,7 @@ from app.idm.prompts_org_distill import distill_map_prompt, distill_reduce_promp
 from app.idm.runtime import IdmBudgetError, IdmResponseInvalidError
 from tests import idm_golden as g
 from tests.support.idm_test_support import make_runtime
-from tests.support.org_context_support import PROFILE, profile
+from tests.support.org_context_support import DISTILLED, PROFILE, profile
 
 DRAFT = "IdmOrgProfileDraftV1"
 # The data blocks themselves (the preamble names both tags).
@@ -95,7 +95,7 @@ class FitProfileTests(unittest.TestCase):
         return fit_profile(IdmOrgProfileDraftV1.model_validate(draft(**changes)))
 
     def test_a_valid_draft_keeps_its_text(self) -> None:
-        self.assertEqual(self.fit().model_dump(mode="json"), PROFILE)
+        self.assertEqual(self.fit().model_dump(mode="json"), DISTILLED)
 
     def test_strings_are_cleaned_like_node_normalisation(self) -> None:
         fitted = self.fit(
@@ -112,8 +112,17 @@ class FitProfileTests(unittest.TestCase):
         self.assertEqual(fitted.culture_tone, "Thân thiện")
         self.assertTrue(unicodedata.is_normalized("NFC", fitted.culture_tone))
         self.assertEqual(fitted.products_services, ["Gói A", "Gói B"])
-        self.assertEqual([(group.name, group.description) for group in fitted.learner_groups], [("Kho", "x y")])
+        # K3 (owner 2026-10-22): the groups the answer lists never reach the draft.
+        self.assertEqual(fitted.learner_groups, [])
         self.assertEqual([entry.term for entry in fitted.glossary], ["KN"])
+
+    def test_the_draft_never_lists_learner_groups_and_the_prompt_asks_for_none(self) -> None:
+        fitted = self.fit(learner_groups=[{"name": "Kỹ sư vận hành", "description": "Giám sát trạm."}])
+        self.assertEqual(fitted.learner_groups, [])
+        prompt = distill_map_prompt("vi", documents=[(1, ["Công ty vận hành trạm điện."])], part=1, parts=1,
+                                    excerpts=False)
+        self.assertIn("learner_groups: always []", prompt)
+        self.assertIn("[org-distill-2]", prompt)
 
     def test_counts_and_the_total_drop_trailing_items_only(self) -> None:
         products = [f"Sản phẩm {index}: " + "x" * 180 for index in range(20)]
@@ -143,7 +152,7 @@ class DistillTests(unittest.TestCase):
         provider = g.FakeIdmProvider({DRAFT: [draft()]})
         result = asyncio.run(distill_profile(make_runtime(provider, allowance=None), [batch("Hải Đăng")],
                                              parallelism=4, excerpts=False))
-        self.assertEqual(result.model_dump(mode="json"), PROFILE)
+        self.assertEqual(result.model_dump(mode="json"), DISTILLED)
         self.assertEqual(len(provider.calls), 1)
         self.assertIn("They are all of the organization's documents.", provider.calls[0]["prompt"])
         self.assertEqual(provider.calls[0]["thinking_level"], "low")
@@ -183,7 +192,7 @@ class DistillTests(unittest.TestCase):
         provider = g.FakeIdmProvider({DRAFT: ["not json", draft()]})
         result = asyncio.run(distill_profile(make_runtime(provider, allowance=None), [batch("x")], parallelism=1,
                                              excerpts=False))
-        self.assertEqual(result.model_dump(mode="json"), PROFILE)
+        self.assertEqual(result.model_dump(mode="json"), DISTILLED)
         self.assertIn("REPAIR_REQUIREMENTS", provider.calls[1]["prompt"])
         failing = g.FakeIdmProvider({DRAFT: ["not json", {"organization_summary": 3}]})
         with self.assertRaises(IdmResponseInvalidError):

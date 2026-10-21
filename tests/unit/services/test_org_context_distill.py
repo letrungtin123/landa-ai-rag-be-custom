@@ -23,7 +23,7 @@ from app.schemas.org_context import RagOrgContextDistillRequest
 from app.services.org_context import distill as distill_service
 from tests import idm_contract_bridge as bridge
 from tests.support.log_support import log_text, logged_events
-from tests.support.org_context_support import PROFILE, FakeContextPool, FakeProfileProvider, profile
+from tests.support.org_context_support import DISTILLED, FakeContextPool, FakeProfileProvider, profile
 
 TENANT = "00000000-0000-4000-8000-0000000000a1"
 KB = "00000000-0000-4000-8000-0000000000b1"
@@ -61,7 +61,7 @@ class DistillServiceTests(unittest.IsolatedAsyncioTestCase):
         provider = FakeProfileProvider()
         pool = FakeContextPool(DOCUMENTS, tenant=TENANT, kb=KB)
         result = await self.run_distill(provider, pool, document_ids=[DOC_B, DOC_A, DOC_LEARNING])
-        self.assertEqual(result.profile.model_dump(mode="json"), PROFILE)
+        self.assertEqual(result.profile.model_dump(mode="json"), DISTILLED)
         self.assertEqual(result.source_document_ids, [DOC_B, DOC_A])
         self.assertEqual(result.source_chars, sum(len(text) for text in [*DOCUMENTS[DOC_A], *DOCUMENTS[DOC_B]]))
         self.assertFalse(result.truncated)
@@ -196,7 +196,7 @@ class DistillServiceTests(unittest.IsolatedAsyncioTestCase):
         result = await self.run_distill(provider)
         self.assertEqual(result.provider_calls, 2)
         self.assertIn("REPAIR_REQUIREMENTS", provider.calls[1]["prompt"])
-        self.assertEqual(result.profile.model_dump(mode="json"), PROFILE)
+        self.assertEqual(result.profile.model_dump(mode="json"), DISTILLED)
 
 
 class DistillRouteTests(unittest.IsolatedAsyncioTestCase):
@@ -221,7 +221,7 @@ class DistillRouteTests(unittest.IsolatedAsyncioTestCase):
         data = reply.json()
         self.assertEqual(list(data), ["profile", "source_document_ids", "source_chars", "truncated", "usage",
                                       "usage_complete", "provider_calls"])
-        self.assertEqual(data["profile"], PROFILE)
+        self.assertEqual(data["profile"], DISTILLED)
         self.assertEqual(data["source_document_ids"], [DOC_B, DOC_A])
 
     async def test_requests_are_validated(self) -> None:

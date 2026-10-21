@@ -15,9 +15,6 @@ from app.idm.org_profile import (
     ORG_CONVENTIONS_MAX_ITEMS,
     ORG_CULTURE_TONE_MAX,
     ORG_GLOSSARY_MAX_ITEMS,
-    ORG_GROUP_DESCRIPTION_MAX,
-    ORG_GROUP_NAME_MAX,
-    ORG_GROUPS_MAX_ITEMS,
     ORG_MEANING_MAX,
     ORG_PROCESS_MAX,
     ORG_PROCESSES_MAX_ITEMS,
@@ -31,7 +28,7 @@ from app.idm.org_profile import (
 from app.idm.prompts_common import Locale, _json, locale_name
 from app.prompt_safety import untrusted_block
 
-ORG_DISTILL_PROMPT_VERSION: Final = "org-distill-1"
+ORG_DISTILL_PROMPT_VERSION: Final = "org-distill-2"
 DOCUMENTS_TAG: Final = "ORG_SOURCE_DOCUMENTS"
 PARTIALS_TAG: Final = "ORG_PARTIAL_PROFILES"
 # What a repair after an answer cut at the output limit may shorten (``app.idm.prompts_common.answer_repair``).
@@ -59,9 +56,7 @@ PROFILE FIELDS (limits in characters; never exceed them; put the most important 
 - organization_summary (at most {ORG_SUMMARY_MAX}): who the organization is and what it does, in a few sentences.
 - products_services (at most {ORG_PRODUCTS_MAX_ITEMS} items of at most {ORG_PRODUCT_MAX}): one product or service per
   item: its name, then what it is.
-- learner_groups (at most {ORG_GROUPS_MAX_ITEMS}): the groups of staff who learn in its courses (a role, team or
-  level): name (at most {ORG_GROUP_NAME_MAX}) and description (at most {ORG_GROUP_DESCRIPTION_MAX}: what they do at
-  work).
+- learner_groups: always [] (each course names its own learners; never list staff groups here).
 - glossary (at most {ORG_GLOSSARY_MAX_ITEMS}): the organization's own terms, abbreviations and internal names: term
   (at most {ORG_TERM_MAX}) and meaning (at most {ORG_MEANING_MAX}), as the documents define or use them.
 - key_processes (at most {ORG_PROCESSES_MAX_ITEMS} items of at most {ORG_PROCESS_MAX}): the main ways of working, one
