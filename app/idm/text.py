@@ -26,6 +26,8 @@ from app.idm.policy import (
     IDM_FAQ_SENTENCE_MIN_WORDS,
     OUTPUT_VERBS_EN,
     OUTPUT_VERBS_VI,
+    SUGGESTED_CRITERIA_LABEL_EN,
+    SUGGESTED_CRITERIA_LABEL_VI,
     UNMEASURABLE_VERBS,
 )
 
@@ -234,6 +236,24 @@ def produces_output(statement: str, kind: str) -> bool:
         return (any(remainder == verb or remainder.startswith(verb + " ") for verb in OUTPUT_VERBS_VI)
                 or any(folded == verb or folded.startswith(verb + " ") for verb in OUTPUT_VERBS_EN))
     return False
+
+
+def is_suggested_criteria(criterion: str) -> bool:
+    """A practice criterion that starts with the suggested-criteria label (QC feedback A5): the source states no grading
+    criteria, so the criteria were drawn from what the lesson teaches."""
+
+    folded = idm_fold(criterion)
+    return any(folded.startswith(idm_fold(label)) for label in (SUGGESTED_CRITERIA_LABEL_VI,
+                                                                 SUGGESTED_CRITERIA_LABEL_EN))
+
+
+def with_suggested_label(criterion: str, locale: str, max_length: int) -> str:
+    """``criterion`` led by the suggested-criteria label of ``locale``; unchanged when it already is."""
+
+    if is_suggested_criteria(criterion):
+        return criterion
+    label = SUGGESTED_CRITERIA_LABEL_VI if locale == "vi" else SUGGESTED_CRITERIA_LABEL_EN
+    return trim_at_boundary(f"{label}: {criterion.strip()}", max_length)
 
 
 def is_unmeasurable_objective(statement: str) -> bool:

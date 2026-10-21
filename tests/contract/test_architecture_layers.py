@@ -54,10 +54,8 @@ FUNCTION_SIZE_ALLOWLIST: dict[str, Allowance] = {
                                                    "wave 2 (2.5)"),
     "idm/runtime.py::idm_generate": Allowance(131, "admission, transport, usage ledger, trace and parse of one call",
                                               "wave 2 (2.5)"),
-    "idm/notes.py::build_course_notes": Allowance(129, "every course-note line in one builder", "wave 2 (2.5)"),
     "idm/course_design.py::run_idm_course_design": Allowance(127, "W1 map/reduce, W2, W4 and assembly",
                                                              "wave 2 (2.5)"),
-    "idm/prompts_unit.py::unit_writer_prompt": Allowance(124, "the W5 writer prompt template", "wave 2 (2.5)"),
 }
 
 

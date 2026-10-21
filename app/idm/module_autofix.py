@@ -39,9 +39,13 @@ from app.idm.policy import (
     WORKSHEET_COMPONENT_TYPE,
 )
 from app.idm.signals import idm_has_ordered_steps, idm_relationship_pairs, idm_term_definitions
-from app.idm.text import first_main_verb, idm_fold, sanitize_author_text, single_line
+from app.idm.text import first_main_verb, idm_fold, sanitize_author_text, single_line, with_suggested_label
 
 CRITERIA_TRIMMED_CODE: Final = "IDM_W4_CRITERIA_TRIMMED"
+# A5: a practice the answer holds is released before validation (``_release_hold``).
+HOLD_RELEASED_CODE: Final = "IDM_W3_HOLD_RELEASED"
+# Bound of IdmFeedbackFocusV1.criterion.
+_FOCUS_MAX_CHARS: Final = 400
 UNITS_MERGED_CODE: Final = "IDM_W4_AUTOFIX_UNITS_MERGED"
 FOREIGN_BLOCK_DROPPED_CODE: Final = "IDM_W4_AUTOFIX_FOREIGN_BLOCK_DROPPED"
 BLOCK_ATTACHED_CODE: Final = "IDM_W4_AUTOFIX_BLOCK_ATTACHED"
@@ -101,8 +105,32 @@ def ranked_criteria(keys: Sequence[str], scope: ModuleScope, plan: IdmLessonPlan
     return [unique[index] for index in sorted(chosen)]
 
 
+def _release_hold(practice: dict[str, Any], plan: IdmLessonPlanV1 | None, scope: ModuleScope) -> bool:
+    """A5 (owner decision 2026-10-22, contract K2): a practice the answer still holds is designed like any other. It
+    loses its hold and SME question; without criteria it takes the facts of its lesson's blocks (what the lesson
+    teaches, ranked, within the bound); its feedback criterion is led by the suggested-criteria label, so the worksheet
+    and the author read the criteria as suggested. True when the practice was held."""
+
+    held = practice.get("hold") is True
+    if not held and practice.get("hold_question") is None:
+        return False
+    practice.update(hold=False, hold_question=None)
+    if not held:
+        return False
+    keys = practice.get("criteria_fact_keys")
+    if plan is not None and not (isinstance(keys, list) and keys):
+        taught = [key for block_id in plan.block_ids if block_id in scope.blocks
+                  for key in scope.blocks[block_id].fact_keys]
+        practice["criteria_fact_keys"] = ranked_criteria(taught, scope, plan)
+    focus = practice.get("feedback_focus")
+    if isinstance(focus, dict) and isinstance(focus.get("criterion"), str):
+        focus["criterion"] = with_suggested_label(focus["criterion"], scope.locale, _FOCUS_MAX_CHARS)
+    return True
+
+
 def trim_module_answer(value: Any, scope: ModuleScope) -> tuple[Any, Counter[str]]:
-    """Cut every over-long ``criteria_fact_keys`` of a W4 answer before strict validation (``idm_call`` prepare).
+    """Cut every over-long ``criteria_fact_keys`` of a W4 answer before strict validation (``idm_call`` prepare), after
+    releasing every held practice (``_release_hold``, A5).
 
     Only lists over the bound are touched; a list of anything but strings is left for validation to reject.
     """
@@ -115,6 +143,8 @@ def trim_module_answer(value: Any, scope: ModuleScope) -> tuple[Any, Counter[str
     for lesson in lessons:
         practices = lesson.get("practice_tasks") if isinstance(lesson, dict) else None
         for practice in practices if isinstance(practices, list) else []:
+            if isinstance(practice, dict) and _release_hold(practice, plans.get(str(lesson.get("lesson_key"))), scope):
+                codes[HOLD_RELEASED_CODE] += 1
             keys = practice.get("criteria_fact_keys") if isinstance(practice, dict) else None
             if (isinstance(keys, list) and len(keys) > IDM_PRACTICE_MAX_CRITERIA_FACTS
                     and all(isinstance(item, str) for item in keys)):
@@ -495,7 +525,7 @@ def autofix_lesson(lesson: IdmLessonDesignV1, plan: IdmLessonPlanV1, scope: Modu
 
 __all__ = [
     "BLOCK_ATTACHED_CODE", "BLOCK_COVERED_CODE", "COMPONENT_ORDER_CODE", "CRITERIA_TRIMMED_CODE",
-    "FOREIGN_BLOCK_DROPPED_CODE", "FORMAT_TO_HTML_CODE", "PRACTICE_FORMAT_CODE", "QUESTION_ONLY_BLOCK_CODE",
-    "TAUGHT_BEFORE_QUESTION_CODE", "UNITS_MERGED_CODE", "autofix_lesson", "format_has_evidence",
-    "practice_format_note", "ranked_criteria", "teach_before_questions", "trim_module_answer",
+    "FOREIGN_BLOCK_DROPPED_CODE", "FORMAT_TO_HTML_CODE", "HOLD_RELEASED_CODE", "PRACTICE_FORMAT_CODE",
+    "QUESTION_ONLY_BLOCK_CODE", "TAUGHT_BEFORE_QUESTION_CODE", "UNITS_MERGED_CODE", "autofix_lesson",
+    "format_has_evidence", "practice_format_note", "ranked_criteria", "teach_before_questions", "trim_module_answer",
 ]

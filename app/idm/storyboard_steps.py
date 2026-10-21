@@ -23,7 +23,13 @@ from app.idm.faq_checks import FaqChecker, extra_recall_items, question_types
 from app.idm.fidelity import brief_mode
 from app.idm.fidelity_checks import FidelityChecker
 from app.idm.framework import build_promise, framework_support_lines, is_framework_brief, with_framework_list
-from app.idm.html_rules import HtmlRuleViolation, html_rule_violations, minimum_visible_chars, normalize_html_semantic
+from app.idm.html_rules import (
+    MAX_HEADING_CHARS,
+    HtmlRuleViolation,
+    html_rule_violations,
+    minimum_visible_chars,
+    normalize_html_semantic,
+)
 from app.idm.mcq import (
     free_key_letter,
     normalize_single_choice,
@@ -64,10 +70,10 @@ from app.idm.storyboard_context import (
     build_idm_expected,
     safe_error_details,
 )
-from app.idm.text import evidence_index
+from app.idm.text import evidence_index, is_suggested_criteria
 from app.idm.titles import TitleCaser
 from app.idm.worksheet import COMPACTED_CODE as WORKSHEET_COMPACTED_CODE
-from app.idm.worksheet import compact_worksheet, worksheet_fallback_html
+from app.idm.worksheet import compact_worksheet, label_suggested_self_check, worksheet_fallback_html
 
 
 class IdmUnitWriterSteps:
@@ -220,6 +226,12 @@ class IdmUnitWriterSteps:
         component, labelled = self.fidelity.label_examples(index, component)
         if labelled:
             fixes["example_labelled"] += labelled
+        # A5: the self-check of a worksheet whose criteria the AI suggested says so in its heading.
+        if self.suggested_criteria(index) and isinstance(component.get("semantic_content"), dict) and (
+                suggested := label_suggested_self_check(component["semantic_content"], self.runtime.locale,
+                                                        MAX_HEADING_CHARS)) is not None:
+            component = {**component, "semantic_content": suggested}
+            fixes["suggested_criteria_labelled"] += 1
         if not fixes:
             return component
         self.html_fixes.update(fixes)
@@ -369,6 +381,16 @@ class IdmUnitWriterSteps:
     def is_worksheet(self, index: int) -> bool:
         slot = self.brief.components[index] if 0 <= index < len(self.brief.components) else None
         return slot is not None and slot.role == "practice" and slot.type == WORKSHEET_COMPONENT_TYPE
+
+    def suggested_criteria(self, index: int | None = None) -> bool:
+        """A5: the worksheet slot ``index`` (any practice slot of the unit without one) practises criteria the AI
+        suggested from what the lesson teaches (its feedback criterion carries the label)."""
+
+        slots = (self.brief.components if index is None else
+                 [self.brief.components[index]] if 0 <= index < len(self.brief.components) and self.is_worksheet(index)
+                 else [])
+        return any(slot.practice is not None and is_suggested_criteria(slot.practice.feedback_focus.criterion)
+                   for slot in slots)
 
     def worksheet_fallback(self, index: int) -> dict[str, Any] | None:
         """The source-locked component of a worksheet slot as a structured form (QC run 8de1c76b, Q2): the

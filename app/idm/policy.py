@@ -373,6 +373,12 @@ CAPABILITY_LEAD_INS: Final = ("co the", "can", "will be able to", "be able to")
 BROAD_SME_QUESTION_PATTERN: Final = r"^(phan nao|noi dung nao) (quan trong|can thiet)"
 AI_DRAFTED_MARKER_VI: Final = "[AI soạn — cần SME xác nhận]"
 AI_DRAFTED_MARKER_EN: Final = "[AI-drafted — SME to confirm]"
+# No Hold (owner decision 2026-10-22, QC feedback A5, contract K2): the AI never holds a block or a practice for an SME.
+# A practice whose source states no grading criteria gets criteria drawn from what the lesson teaches, labelled so the
+# author and the learner read them as suggested: the module stage starts the practice's feedback_focus.criterion with
+# the label (``text.is_suggested_criteria``), and the W5 worksheet heads its self-check with it.
+SUGGESTED_CRITERIA_LABEL_VI: Final = "Tiêu chí gợi ý"
+SUGGESTED_CRITERIA_LABEL_EN: Final = "Suggested criteria"
 
 ALLOWED_COMPONENT_TYPES_IDM: Final = ("html", "problem", "la_faq", "la_sortable", "la_crossword", "la_diagram")
 # No V2 component records a free-text or form answer (component registry: problem is single choice

@@ -269,17 +269,15 @@ W2_BLUEPRINT: dict[str, Any] = {
         _row("cb_0007", "must_do", "condense", lo_id="lo_3", must_do_ids=["md_4"]),
         _row("cb_0008", "must_do", "condense", lo_id="lo_3", must_do_ids=["md_4"]),
         _row("cb_0009", "must_do", "keep", lo_id="lo_2", must_do_ids=["md_3"]),
-        _row("cb_0010", "must_know", "rewrite", lo_id="lo_3", must_do_ids=["md_5"],
-             hold_reason="Thời hạn 24 giờ mâu thuẫn với 48 giờ cho khiếu nại cấp 2",
-             sme_question="Khiếu nại cấp 2 phải phản hồi trong 24 giờ hay 48 giờ?"),
+        # QC feedback A5 (owner 2026-10-22): the two blocks W2 used to hold (24 h vs 48 h, a 2021 CRM screen) stay in
+        # the course for their Must Do; W1 keeps their conflict and outdated notes and SME questions.
+        _row("cb_0010", "must_know", "rewrite", lo_id="lo_3", must_do_ids=["md_5"]),
         _row("cb_0011", "must_know", "condense", lo_id="lo_2", must_do_ids=["md_3"]),
-        _row("cb_0012", "must_know", "rewrite", lo_id="lo_3", must_do_ids=["md_4"],
-             hold_reason="Hướng dẫn CRM dựa trên ảnh chụp phiên bản 2021, có thể đã lỗi thời",
-             sme_question="Giao diện CRM hiện tại còn đúng các bước Tạo mới, chọn mã và đính kèm phiếu không?"),
+        _row("cb_0012", "must_know", "rewrite", lo_id="lo_3", must_do_ids=["md_4"]),
         _row("cb_0013", "reference", "convert_to_job_aid", lo_id="lo_1"),
         _row("cb_0014", "reference", "convert_to_job_aid", lo_id="lo_2"),
     ],
-    "blocked_must_do_ids": ["md_5"],
+    "blocked_must_do_ids": [],
 }
 
 
@@ -312,8 +310,9 @@ W4_COURSE: dict[str, Any] = {
          "performance_goal": "Thực hiện đúng trình tự tiếp nhận và xử lý khiếu nại", "lo_ids": ["lo_3"],
          "lessons": [
              _lesson("lsn_004", "learning", "Thực hiện quy trình tiếp nhận khiếu nại", "md_4",
-                     ["cb_0006", "cb_0007", "cb_0008"], 6, 10),
-             _lesson("lsn_005", "job_aid", "Bảng tra mã khiếu nại và đầu mối liên hệ", None,
+                     ["cb_0006", "cb_0007", "cb_0008", "cb_0012"], 6, 10),
+             _lesson("lsn_005", "learning", "Phản hồi khách hàng đúng thời hạn", "md_5", ["cb_0010"], 4, 6),
+             _lesson("lsn_006", "job_aid", "Bảng tra mã khiếu nại và đầu mối liên hệ", None,
                      ["cb_0013", "cb_0014"], 2, 3),
          ]},
     ],
@@ -321,7 +320,7 @@ W4_COURSE: dict[str, Any] = {
     "pattern_sections": [
         {"section_key": "why_it_matters", "lesson_keys": []},
         {"section_key": "rules", "lesson_keys": ["lsn_001", "lsn_002", "lsn_003"]},
-        {"section_key": "procedure", "lesson_keys": ["lsn_004"]},
+        {"section_key": "procedure", "lesson_keys": ["lsn_004", "lsn_005"]},
         {"section_key": "violations", "lesson_keys": []},
         {"section_key": "check", "lesson_keys": []},
     ],

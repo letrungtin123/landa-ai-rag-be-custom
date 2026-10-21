@@ -33,6 +33,27 @@ _PURPOSE_LINE: Final = ("- Keep the unit on COURSE_PURPOSE (what the course is f
                         "emphasis and examples that serve it; it never adds facts.\n")
 
 
+# A worksheet slot (role practice). A5 (owner decision 2026-10-22): criteria the AI suggested because the source states
+# none are headed as suggested criteria (the server checks the heading, ``worksheet.label_suggested_self_check``).
+_WORKSHEET_RULE: Final = """\
+- An html slot whose role is "practice" is a WORKSHEET for its practice (the learner works on their own copy;
+  nothing is graded automatically): a section whose heading names the task with a "task" block (what to produce,
+  from which input); a section with the template to complete as a "table" block (label = the field or cell to
+  fill, value = the guiding question or what a good entry contains) or as "steps"; a section with a short worked
+  example of one or two filled entries (illustrative when the practice is ai_drafted; it never adds a rule); and a
+  final "Tự kiểm tra" / "Self-check" section with one "bullets" block whose items are the criteria, each taken
+  only from the practice criteria facts. When the practice's feedback_focus criterion starts with "Tiêu chí gợi ý" /
+  "Suggested criteria" (the source states no grading criteria), that section is headed
+  "Tự kiểm tra (tiêu chí gợi ý)" / "Self-check (suggested criteria)" and its items restate what the lesson teaches,
+  never a new rule, number or threshold. The worked example meets every self-check item of its own worksheet (when an
+  item asks for a measurable KPI, the example's KPI has a number). Do not reveal the answer of the problem slot that
+  follows it; that problem asks the learner to judge a sample entry against the same criteria (exactly one option
+  meets them). A worksheet
+  has the same length budget as any html slot, so keep it lean: one template row per field (its value one guiding
+  question of at most 15 words), a worked example of at most two filled entries and at most 6 self-check items;
+  a worksheet still over the budget loses its worked example."""
+
+
 def _opening_line(example_opening: str) -> str:
     return (f'; in this unit the first drafted example or case opens with "{example_opening}" (still about the '
             "learner's own role)" if example_opening else "")
@@ -100,19 +121,7 @@ Writing rules (learner-facing, {locale_name(locale)}):
   on is stated in that html first (the explanation recalls it, it never teaches it for the first time). A
   classification question (options naming taught labels, rows or stages) describes a case that meets the criteria
   of exactly one option and contradicts no FAQ answer of the unit; no option copies a table row or list item.
-- An html slot whose role is "practice" is a WORKSHEET for its practice (the learner works on their own copy;
-  nothing is graded automatically): a section whose heading names the task with a "task" block (what to produce,
-  from which input); a section with the template to complete as a "table" block (label = the field or cell to
-  fill, value = the guiding question or what a good entry contains) or as "steps"; a section with a short worked
-  example of one or two filled entries (illustrative when the practice is ai_drafted; it never adds a rule); and a
-  final "Tự kiểm tra" / "Self-check" section with one "bullets" block whose items are the criteria, each taken
-  only from the practice criteria facts. The worked example meets every self-check item of its own worksheet (when an
-  item asks for a measurable KPI, the example's KPI has a number). Do not reveal the answer of the problem slot that
-  follows it; that problem asks the learner to judge a sample entry against the same criteria (exactly one option
-  meets them). A worksheet
-  has the same length budget as any html slot, so keep it lean: one template row per field (its value one guiding
-  question of at most 15 words), a worked example of at most two filled entries and at most 6 self-check items;
-  a worksheet still over the budget loses its worked example.
+{_WORKSHEET_RULE}
 {faq_rules}- A "warning" block is shown to the learner as a quotation/callout: use it only for a rule, warning or
   statement that SOURCE_FACTS state, quoted or closely restated. Never write your own maxim, slogan, consequence
   or rule as a warning; such text is a plain paragraph, or is left out.

@@ -43,6 +43,7 @@ from tests import idm_golden as g
 from tests.golden.idm_golden_unit import build_unit_request
 from tests.support.idm_test_support import golden_design, golden_shard
 from tests.unit.idm.test_idm_purpose import (
+    W4_COURSE,
     context,
     onboarding_context,
     onboarding_provider,
@@ -181,7 +182,10 @@ class AudienceTests(unittest.TestCase):
                          ("Người học: Kế toán", "author"))
 
     def test_a_fallback_reduce_still_uses_the_author_audience(self) -> None:
-        provider = onboarding_provider(IdmW1ReduceResponseV1=["not json", "not json"])
+        # The fallback reduce writes Must Dos no golden W2 row serves; since A5 they join a course row (no Must Do is
+        # blocked), so the golden W4 answer misses them twice and the course plan falls back too.
+        provider = onboarding_provider(IdmW1ReduceResponseV1=["not json", "not json"],
+                                       IdmW4CourseResponseV1=[W4_COURSE, W4_COURSE])
         design = IdmCourseDesignV1.model_validate(run_onboarding(provider, **BRIEF)["idm"])
         self.assertEqual(design.stage_origins["w1_reduce"], "deterministic_fallback")
         self.assertEqual((design.target_audience.description, design.target_audience.origin), (AUDIENCE, "author"))
@@ -295,7 +299,7 @@ class NotesTests(unittest.TestCase):
         self.assertEqual(purpose_note_line(purpose, "en", author_purpose=True),
                          "• Course designed as: New employee onboarding (from the purpose the author entered).")
         notes = build_course_notes(locale="en", ai_proposed=True, total_minutes=10, lesson_count=1, module_count=1,
-                                   reference_block_count=0, excluded_block_count=0, holds=[], sme_questions=[],
+                                   reference_block_count=0, excluded_block_count=0, sme_questions=[],
                                    fallback_stages=[], brief_lines=["• Learner audience (entered by the author): X."],
                                    audience_entered=True)
         self.assertIn("• Learner audience (entered by the author): X.", notes)

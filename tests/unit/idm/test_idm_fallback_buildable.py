@@ -11,6 +11,10 @@ of the QC fixtures (run ab8d67e1 blocks, the cp2a boundary cases, the CEO canvas
 checkout of d4ff677 with this file and the fallback matrix copied in::
 
     AI_RAG_ENV=test PYTHONPATH=. python -m tests.unit.idm.test_idm_fallback_buildable <out.json>
+
+Re-recorded on 2026-10-22 the same way (d4ff677 code, today's ``tests`` folder) after the golden fixture changed for the
+QC feedback A5 (no Hold: md_5 has its own practice lesson lsn_005, the job aid is lsn_006): only the inputs of those two
+lessons differ from the first record.
 """
 
 from __future__ import annotations

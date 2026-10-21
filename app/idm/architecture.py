@@ -34,7 +34,6 @@ from app.idm.contracts import (
 )
 from app.idm.fidelity import fidelity_note_line, purpose_mode
 from app.idm.notes import (
-    HoldNote,
     KeptDefinitionNote,
     SkippedBlockNote,
     build_course_notes,
@@ -523,10 +522,8 @@ def _build_notes(data: AssemblyInput) -> IdmAuthorNotesV1:
     priority = [block for block in data.blocks
                 if any(issue.type in {"conflict", "outdated"} for issue in block.issues)]
     others = [block for block in data.blocks if block not in priority]
-    hold_ids = {item.block_id for item in data.holds}
-    questions = [question for block in [*priority, *others] if block.block_id not in hold_ids
-                 for question in block.sme_questions]
-    must_do_text = {item.must_do_id: item.statement for item in data.must_dos}
+    # The W1 questions of every block (A5: no block is held, so none has its question on a Hold item).
+    questions = [question for block in [*priority, *others] for question in block.sme_questions]
     statements = {item.lo_id: item.statement for item in data.objectives}
     row_by_id = {row.block_id: row for row in data.rows}
     names = {block.block_id: block.name for block in data.blocks}
@@ -536,14 +533,9 @@ def _build_notes(data: AssemblyInput) -> IdmAuthorNotesV1:
     course = build_course_notes(
         locale=locale, ai_proposed=ai_proposed, total_minutes=sum(lesson.est_minutes for lesson in lessons),
         lesson_count=len(lessons), module_count=len(data.plan.modules), reference_block_count=reference_count,
-        excluded_block_count=excluded_count,
-        holds=[HoldNote(item.name, item.reason, item.sme_question,
-                        tuple(must_do_text[md] for md in item.blocked_must_do_ids if md in must_do_text))
-               for item in data.holds],
-        sme_questions=questions,
+        excluded_block_count=excluded_count, sme_questions=questions,
         fallback_stages=[stage for stage, origin in data.stage_origins.items() if origin != "provider"],
         known_ids=known_ids,
-        pending_objectives=[statements[lo_id] for lo_id in pending],
         # QC course 364564 (N4): the removed "BiC Legacy" block was never mentioned to the author. Since A6 (QC feedback
         # 2026-10-21) there is no Nice to Know list: W2 stores those blocks as Remove.
         removed=[SkippedBlockNote(block.name, row_by_id[block.block_id].rationale) for block in data.blocks

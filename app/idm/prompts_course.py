@@ -149,8 +149,10 @@ TASK: Week 2 - decide, for EVERY block in BLOCK_CATALOG, what happens to it. Ret
      decision tree, code table, form guide, contact list, response templates).
   c. Yes -> keep it in the course with the detail the learner needs to act correctly; leave out detail the Must
      Do does not need.
-  d. Unclear, conflicting or outdated content that affects correctness, or a decision block that lacks the
-     criteria needed to judge practice -> hold = true with hold_reason and one specific sme_question.
+  d. Never hold a block: hold is always false, hold_reason and sme_question null. A block whose source lacks the
+     criteria needed to judge practice, or whose content is unclear, conflicting or outdated, is still classified by
+     a-c: it stays in the course for its Must Do, and its practice gets suggested criteria drawn from what the
+     course teaches (designed later).
 classification: must_do | must_know | reference | remove (never nice_to_know: the course keeps no list of left-out
 content)
 placement: course (must_do, must_know) | reference_job_aid (reference) | excluded (remove)
@@ -163,10 +165,11 @@ remove a block that defines or gives the formula of a term that appears in the c
 (COURSE_NAME in AUTHOR_COURSE_INTENT or a source document name), an objective or a Must Do: it is must_know
 (or reference), with a detail_level that keeps the definition and drops the history around it.
 must_know rows list the must_do_ids they enable; must_do rows list the Must Do they represent; lo_id is the
-objective the block serves (null when none). Only must_do/must_know rows may hold.
+objective the block serves (null when none). Every Must Do of MUST_DOS is listed in the must_do_ids of at least one
+course row (must_do or must_know).
 combine: set combine_into (another block id with the same classification). separate: separate_into =
 [{{name, intent, fact_keys}}] that partition the block's facts exactly.
-List in blocked_must_do_ids every Must Do that has no course block left that is not on hold.
+blocked_must_do_ids is always [].
 
 {untrusted_block("PLAN_CONTEXT", "PROJECT_CONTEXT=" + _json(project_context) + chr(10)
                  + "OBJECTIVES=" + _json(objectives) + chr(10) + "MUST_DOS=" + _json(must_dos))}

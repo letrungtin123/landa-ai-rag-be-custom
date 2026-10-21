@@ -73,6 +73,12 @@ HASH_HISTORY: tuple[tuple[str, str], ...] = (
     # name Remove only; the server stores a nice_to_know row as remove (blueprint.NICE_TO_KNOW_AS_REMOVE_CODE).
     ("ce47669c06590cc7aecb997df88169187ca5beedc4ef7ac28f3e6bef92e46846",
      "QC A6: no Nice to Know classification in the design prompts"),
+    # QC feedback 2026-10-21, A5 (contract K2): no Hold. The preamble asks for suggested criteria instead of a Hold and
+    # an SME question; W2 never holds and lists every Must Do on a course row (blocked_must_do_ids always []); the
+    # module stage never holds a practice (step 2 moved to _criteria_rule: suggested criteria, labelled); the W5
+    # worksheet rule (moved to _WORKSHEET_RULE) heads suggested criteria as such.
+    ("ee2b60eb108325cdf0849ec5320fedac0b88711c162338f688fd22db5a46ef11",
+     "QC A5: no Hold; suggested criteria for a practice the source gives no criteria"),
 )
 PROMPT_NAME = re.compile(r"(prompt|_rules?$|_suffix$|rule_lines?$|_hint$|^rule_line$|_cue_line$)")
 

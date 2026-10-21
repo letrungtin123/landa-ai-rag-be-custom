@@ -18,7 +18,9 @@ from app.idm.blueprint import (
     build_dispositions,
     fallback_w2,
     hold_items,
+    release_holds,
     run_w2,
+    serve_every_must_do,
     validate_w2,
 )
 from app.idm.content_map import FactIndex, SectionMapResult, apply_w1_reduce, normalize_w1_section, rekey_blocks
@@ -155,16 +157,27 @@ class ValidateW2Tests(unittest.TestCase):
         found = self.found(lambda p: row_of(p, "cb_0003").update(must_do_ids=[]))
         self.assertIn(IdmIssue("IDM_W2_MUST_KNOW_WITHOUT_MUST_DO", "rows[2].must_do_ids"), found)
 
-    def test_hold_rules(self) -> None:
+    def test_a_held_row_is_released_before_validation(self) -> None:
+        # A5 (owner 2026-10-22, contract K2): the AI never holds. Whatever hold an answer still writes (complete or
+        # not, on a course or a reference row) is released: no repair call, no hold, no SME question.
         cases: list[Callable[[dict[str, Any]], Any]] = [
             lambda p: row_of(p, "cb_0004").update(hold=True),
             lambda p: row_of(p, "cb_0004").update(hold=True, hold_reason="Thiếu tiêu chí"),
             lambda p: row_of(p, "cb_0004").update(hold=True, sme_question="Tiêu chí nào?"),
             lambda p: row_of(p, "cb_0013").update(hold=True, hold_reason="Bảng cũ", sme_question="Còn đúng không?"),
+            lambda p: p.update(blocked_must_do_ids=["md_5"]),
         ]
-        for apply in cases:
-            with self.subTest():
-                self.assertIn("IDM_W2_HOLD_INVALID", self.codes(apply))
+        for position, apply in enumerate(cases):
+            with self.subTest(case=position):
+                released, count = release_holds(blueprint(apply))
+                self.assertEqual(count, 0 if position == len(cases) - 1 else 1)
+                self.assertEqual({(row.hold, row.hold_reason, row.sme_question) for row in released.rows},
+                                 {(False, None, None)})
+                self.assertEqual(released.blocked_must_do_ids, [])
+                self.assertEqual(validate_w2(released, self.state.blocks, self.state.objectives,
+                                             self.state.must_dos), [])
+        golden = blueprint()
+        self.assertEqual(release_holds(golden), (golden, 0))
 
     def test_combine_rules(self) -> None:
         def chained(payload: dict[str, Any]) -> None:
@@ -265,7 +278,7 @@ class ApplyW2Tests(unittest.TestCase):
         new_rows = {row.block_id: row for row in rows if row.block_id in {"cb_0015", "cb_0016"}}
         for row in new_rows.values():
             self.assertEqual((row.classification, row.treatment, row.separate_into, row.hold, row.must_do_ids),
-                             ("must_know", "condense", [], True, ["md_5"]))
+                             ("must_know", "condense", [], False, ["md_5"]))
         copied = {(link.block_id, link.lo_id, link.relation) for link in links if link.block_id in new_rows}
         self.assertEqual(copied, {("cb_0015", "lo_3", "direct"), ("cb_0016", "lo_3", "direct")})
         self.assertNotIn("cb_0010", {link.block_id for link in links})
@@ -295,10 +308,11 @@ class DispositionTests(unittest.TestCase):
         dispositions = build_dispositions(self.rows, self.blocks, self.state.noise, self.state.index)
         self.assertEqual([item.fact_key for item in dispositions], [fact.fact_key for fact in source_facts()])
         counts = Counter(item.disposition for item in dispositions)
-        self.assertEqual(counts, {"course": 36, "reference_job_aid": 10, "hold": 6, "noise": 4, "remove": 4,
-                                  "nice_to_know": 1})
+        # A5: the two blocks W2 used to hold are course blocks (36 + 6 facts); the golden rows are not run through
+        # run_w2 here, so its nice_to_know row keeps that disposition (run_w2 stores it as remove, A6).
+        self.assertEqual(counts, {"course": 42, "reference_job_aid": 10, "noise": 4, "remove": 4, "nice_to_know": 1})
         by_key = {item.fact_key: item for item in dispositions}
-        self.assertEqual((by_key[key(7, 4)].disposition, by_key[key(7, 4)].block_id), ("hold", "cb_0010"))
+        self.assertEqual((by_key[key(7, 4)].disposition, by_key[key(7, 4)].block_id), ("course", "cb_0010"))
         self.assertEqual((by_key[key(1, 2)].disposition, by_key[key(0, 2)].disposition), ("remove", "nice_to_know"))
         self.assertEqual(by_key[key(10, 3)].disposition, "reference_job_aid")
         self.assertEqual((by_key[key(0, 1)].block_id, by_key[key(0, 1)].reason), (None, "toc_or_title_only"))
@@ -310,24 +324,35 @@ class DispositionTests(unittest.TestCase):
         self.assertEqual(next(item for item in dispositions if item.fact_key == key(1, 2)).disposition, "remove")
 
     def test_blocked_must_dos_are_server_computed(self) -> None:
-        self.assertEqual(blocked_must_dos(self.rows, self.state.must_dos), ["md_5"])
-        released = [row.model_copy(update={"hold": False}) if row.block_id == "cb_0010" else row for row in self.rows]
-        self.assertEqual(blocked_must_dos(released, self.state.must_dos), [])
+        self.assertEqual(blocked_must_dos(self.rows, self.state.must_dos), [])
         excluded = [row.model_copy(update={"placement": "excluded"}) if row.block_id in {"cb_0009", "cb_0011",
                                                                                           "cb_0005"} else row
-                    for row in released]
-        # cb_0005 also served md_2, so both Must Dos lose their last non-held course block.
+                    for row in self.rows]
+        # cb_0005 also served md_2, so both Must Dos lose their last course block.
         self.assertEqual(blocked_must_dos(excluded, self.state.must_dos), ["md_2", "md_3"])
 
-    def test_hold_items_list_every_held_block(self) -> None:
-        items = hold_items(self.rows, self.blocks, ["md_5"])
-        self.assertEqual([item.block_id for item in items], ["cb_0010", "cb_0012"])
-        self.assertEqual(items[0].name, "Phải phản hồi khách hàng trong bao lâu?")
-        self.assertEqual(items[0].sme_question, "Khiếu nại cấp 2 phải phản hồi trong 24 giờ hay 48 giờ?")
-        self.assertEqual((items[0].blocked_must_do_ids, items[1].blocked_must_do_ids), (["md_5"], []))
-        bare = [row.model_copy(update={"hold_reason": None, "sme_question": None}) for row in self.rows]
-        self.assertEqual({(item.reason, item.sme_question) for item in hold_items(bare, self.blocks, [])},
-                         {("-", "-")})
+    def test_every_must_do_gets_a_course_row(self) -> None:
+        # A5 (contract K2): a Must Do left without a course block joins a course row of its objective (a direct link
+        # first), so no Must Do is ever blocked.
+        excluded = [row.model_copy(update={"placement": "excluded"}) if row.block_id in {"cb_0009", "cb_0011",
+                                                                                          "cb_0005"} else row
+                    for row in self.rows]
+        served, attached = serve_every_must_do(excluded, self.links, self.state.must_dos)
+        self.assertEqual((attached, blocked_must_dos(served, self.state.must_dos)), (2, []))
+        by_id = {row.block_id: row for row in served}
+        # md_2 (lo_1): the course row linked direct to lo_1 (cb_0003 is only supporting); md_3 (lo_2): no course row
+        # of lo_2 is left, so the first course row in document order takes it.
+        self.assertEqual((by_id["cb_0004"].must_do_ids, by_id["cb_0003"].must_do_ids), (["md_1", "md_2"],
+                                                                                        ["md_1", "md_3"]))
+        self.assertEqual([row for row in served if row.block_id not in {"cb_0003", "cb_0004"}],
+                         [row for row in excluded if row.block_id not in {"cb_0003", "cb_0004"}])
+        self.assertEqual(serve_every_must_do(self.rows, self.links, self.state.must_dos), (list(self.rows), 0))
+        nothing = [row.model_copy(update={"placement": "excluded"}) for row in self.rows]
+        self.assertEqual(serve_every_must_do(nothing, self.links, self.state.must_dos), (nothing, 0))
+
+    def test_hold_items_are_always_empty(self) -> None:
+        # A5: no row holds, so the design's hold_items field (kept in the contract) is [].
+        self.assertEqual(hold_items(self.rows, self.blocks, []), [])
 
 
 class FallbackW2Tests(unittest.TestCase):
@@ -401,6 +426,25 @@ class RunW2Tests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual((history.classification, history.placement, history.treatment),
                          ("remove", "excluded", "remove"))
         self.assertNotIn("nice_to_know", {row.classification for row in result.rows})
+
+    async def test_an_answer_that_still_holds_is_released_without_a_repair(self) -> None:
+        # A5: the answer of the old prompt (two Hold rows, md_5 blocked) is accepted in one call, nothing held.
+        def held(payload: dict[str, Any]) -> None:
+            row_of(payload, "cb_0010").update(hold=True, hold_reason="24 giờ hay 48 giờ", sme_question="Thời hạn nào?")
+            row_of(payload, "cb_0012").update(hold=True, hold_reason="CRM cũ", sme_question="Còn đúng không?")
+            payload["blocked_must_do_ids"] = ["md_5"]
+
+        provider = FakeIdmProvider({"IdmW2BlueprintResponseV1": [edited(W2_BLUEPRINT, held)]})
+        result = await self.run_stage(provider)
+        self.assertEqual(len(provider.calls), 1)
+        self.assertEqual((result.origin, result.codes),
+                         ("provider", {"IDM_W2_HOLD_RELEASED": 2, "IDM_W2_NICE_TO_KNOW_AS_REMOVE": 1}))
+        self.assertEqual({(row.hold, row.hold_reason, row.sme_question) for row in result.rows}, {(False, None, None)})
+        self.assertEqual(blocked_must_dos(result.rows, self.state.must_dos), [])
+        prompt = provider.calls[0]["prompt"]
+        self.assertIn("Never hold a block: hold is always false", prompt)
+        self.assertIn("blocked_must_do_ids is always [].", prompt)
+        self.assertNotIn("mark the item HOLD", prompt)
 
     async def test_repair_then_fallback(self) -> None:
         missing = edited(W2_BLUEPRINT, lambda p: p["rows"].pop())

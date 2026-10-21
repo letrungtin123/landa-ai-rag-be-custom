@@ -297,4 +297,33 @@ def worksheet_fallback_html(title: str, fact_texts: Sequence[str], task: str | N
     return "".join(parts)
 
 
-__all__ = ["COMPACTED_CODE", "compact_worksheet", "worksheet_fallback_html"]
+# A5 (owner decision 2026-10-22): the self-check of a worksheet whose practice has suggested criteria says so.
+_SUGGESTED_HEADING: Final = {"vi": "Tự kiểm tra (tiêu chí gợi ý)", "en": "Self-check (suggested criteria)"}
+_SUGGESTED_SUFFIX: Final = {"vi": " (tiêu chí gợi ý)", "en": " (suggested criteria)"}
+_SUGGESTED_WORDS: Final = ("tieu chi goi y", "suggested criteria")
+
+
+def label_suggested_self_check(semantic: dict[str, Any], locale: str, max_heading_chars: int) -> dict[str, Any] | None:
+    """``semantic`` with its self-check section (the last section holding a bullets list) headed as suggested
+    criteria, or ``None`` when it already is or has none. The heading keeps its words and gains the label when it
+    fits the heading bound, else it becomes the plain suggested-criteria heading. No other text changes."""
+
+    sections = semantic.get("sections")
+    if not isinstance(sections, list):
+        return None
+    positions = [index for index, section in enumerate(sections) if isinstance(section, dict)
+                 and any(block.get("kind") == "bullets" for block in _blocks(section))]
+    if not positions:
+        return None
+    section = sections[positions[-1]]
+    heading = str(section.get("heading") or "").strip()
+    if any(words in idm_fold(heading) for words in _SUGGESTED_WORDS):
+        return None
+    key = "vi" if locale == "vi" else "en"
+    labelled = heading + _SUGGESTED_SUFFIX[key]
+    new_heading = labelled if heading and len(labelled) <= max_heading_chars else _SUGGESTED_HEADING[key]
+    updated = [*sections[:positions[-1]], {**section, "heading": new_heading}, *sections[positions[-1] + 1:]]
+    return {**semantic, "sections": updated}
+
+
+__all__ = ["COMPACTED_CODE", "compact_worksheet", "label_suggested_self_check", "worksheet_fallback_html"]

@@ -262,12 +262,13 @@ class FaqPlanTests(unittest.TestCase):
         scope = scope_of(2)
         lesson = IdmLessonDesignV1.model_validate(edited("mod_03", lambda p: p["lessons"][0]["units"][0][
             "components"].append(component("la_faq", "clarify", ["cb_0007"])))["lessons"][0])
+        # With the job aid only: the practice lesson of md_5 (A5) has its own planned FAQ (conflicting time limits).
         result = gate_and_plan_faq([lesson, *[IdmLessonDesignV1.model_validate(item) for item in
-                                              edited("mod_03", lambda _p: None)["lessons"][1:]]], scope)
+                                              edited("mod_03", lambda _p: None)["lessons"][2:]]], scope)
         self.assertEqual((result.dropped, result.planned), (1, 0))
         unit = result.lessons[0].units[0]
         self.assertEqual([(c.type, c.block_ids, c.component_index) for c in unit.components],
-                         [("html", ["cb_0006", "cb_0007"], 1)])
+                         [("html", ["cb_0006", "cb_0007", "cb_0012"], 1)])
         self.assertIn('Đã bỏ phần hỏi đáp của "Tám bước đầu của quy trình"', result.lessons[0].notes)
 
     def test_blocks_only_the_faq_used_join_the_teaching_html_and_the_note_follows_the_locale(self) -> None:

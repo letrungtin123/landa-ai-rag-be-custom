@@ -12,7 +12,7 @@ from pydantic import ValidationError
 
 from app.core.errors import ServiceError
 from app.idm.architecture import _lesson_chunks, validate_w4
-from app.idm.blueprint import validate_w2
+from app.idm.blueprint import release_holds, validate_w2
 from app.idm.content_map import FactIndex, map_sections, page_furniture_keys
 from app.idm.contracts import (
     IdmContentBlockV1,
@@ -73,17 +73,21 @@ class ShardSizeTests(unittest.TestCase):
 
 
 class CombineHoldTests(unittest.TestCase):
-    def test_combine_across_a_hold_decision_is_rejected(self) -> None:
+    def test_combine_into_a_block_the_answer_holds_is_valid_once_released(self) -> None:
+        # Until A5 a combine across a hold decision was rejected; now every hold is released before validation, so
+        # combining two course blocks of the same classification is valid whatever the answer says about holding.
         design, _skeleton = golden_design()
 
         def change(payload: dict[str, Any]) -> dict[str, Any]:
             row = next(row for row in payload["rows"] if row["block_id"] == "cb_0011")
             row.update(treatment="combine", combine_into="cb_0010")
+            target = next(row for row in payload["rows"] if row["block_id"] == "cb_0010")
+            target.update(hold=True, hold_reason="24 giờ hay 48 giờ", sme_question="Thời hạn nào?")
             return payload
 
-        response = IdmW2BlueprintResponseV1.model_validate(mutate(W2_BLUEPRINT, change))
+        response, released = release_holds(IdmW2BlueprintResponseV1.model_validate(mutate(W2_BLUEPRINT, change)))
         found = validate_w2(response, design.blocks, design.learning_objectives, design.must_dos)
-        self.assertIn("IDM_W2_COMBINE_INVALID", {issue.code for issue in found})
+        self.assertEqual((released, {issue.code for issue in found}), (1, set()))
 
 
 class RuntimeBudgetTests(unittest.IsolatedAsyncioTestCase):

@@ -7,7 +7,6 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any, Final
 
-from app.idm.artifacts import plain_row_refs
 from app.idm.content_map import FactIndex
 from app.idm.contracts import (
     Classification,
@@ -65,7 +64,6 @@ TREATMENTS_BY_CLASSIFICATION: Final = {
     "nice_to_know": {"remove"},
     "remove": {"remove"},
 }
-COURSE_CLASSIFICATIONS: Final = frozenset({"must_do", "must_know"})
 FALLBACK_TREATMENT: Final[dict[str, Treatment]] = {
     "must_do": "condense", "must_know": "condense", "reference": "convert_to_job_aid",
     "nice_to_know": "remove", "remove": "remove",
@@ -74,6 +72,10 @@ FALLBACK_TREATMENT: Final[dict[str, Treatment]] = {
 # nice_to_know (the classification stays in the contract) is stored as remove: same placement (excluded) and treatment
 # (remove), so its facts are "remove" dispositions and the excluded total is unchanged; the code only counts them.
 NICE_TO_KNOW_AS_REMOVE_CODE: Final = "IDM_W2_NICE_TO_KNOW_AS_REMOVE"
+# A5 (owner 2026-10-22, contract K2): no Hold. A row W2 still holds is released before validation (counted), and a Must
+# Do no course row serves is attached to the course row of its objective (``serve_every_must_do``, counted).
+HOLD_RELEASED_CODE: Final = "IDM_W2_HOLD_RELEASED"
+MUST_DO_ATTACHED_CODE: Final = "IDM_W2_MUST_DO_ATTACHED"
 _MIN_SEPARATE_PARTS: Final = 2
 _MAX_BLOCK_ISSUES: Final = 16
 _MAX_BLOCK_SME: Final = 8
@@ -145,16 +147,12 @@ def validate_w2(
             issues.append(IdmIssue("IDM_W2_INCONSISTENT_ROW", path))
         if row.classification == "must_know" and not row.must_do_ids:
             issues.append(IdmIssue("IDM_W2_MUST_KNOW_WITHOUT_MUST_DO", f"{path}.must_do_ids"))
-        if row.hold and (not row.hold_reason or not row.sme_question
-                         or row.classification not in COURSE_CLASSIFICATIONS):
-            issues.append(IdmIssue("IDM_W2_HOLD_INVALID", path))
         if (row.combine_into is not None) != (row.treatment == "combine"):
             issues.append(IdmIssue("IDM_W2_COMBINE_INVALID", path))
         elif row.combine_into is not None:
             target = rows.get(row.combine_into)
             if (target is None or row.combine_into == row.block_id or target.classification != row.classification
-                    or target.combine_into is not None or target.treatment == "separate"
-                    or target.hold != row.hold):
+                    or target.combine_into is not None or target.treatment == "separate"):
                 issues.append(IdmIssue("IDM_W2_COMBINE_INVALID", f"{path}.combine_into"))
         if bool(row.separate_into) != (row.treatment == "separate"):
             issues.append(IdmIssue("IDM_W2_SEPARATE_PARTITION", path))
@@ -166,13 +164,27 @@ def validate_w2(
     return list(dict.fromkeys(issues))
 
 
+def release_holds(response: IdmW2BlueprintResponseV1) -> tuple[IdmW2BlueprintResponseV1, int]:
+    """A5 (owner decision 2026-10-22, contract K2): the AI never holds. A row W2 still marks hold keeps its
+    classification (a course row stays in the course for its Must Do; its practice gets suggested criteria in the
+    module stage) without hold, reason or SME question, before validation, so it never costs a repair call. The
+    answer's blocked_must_do_ids is dropped: the server computes it (``blocked_must_dos``). Returns the rows
+    released."""
+
+    released = sum(row.hold for row in response.rows)
+    if not released and not response.blocked_must_do_ids and not any(
+            row.hold_reason or row.sme_question for row in response.rows):
+        return response, 0
+    rows = [row.model_copy(update={"hold": False, "hold_reason": None, "sme_question": None}) for row in response.rows]
+    return response.model_copy(update={"rows": rows, "blocked_must_do_ids": []}), released
+
+
 def _normalize_row(row: IdmBlueprintRowV1) -> IdmBlueprintRowV1:
     return row.model_copy(update={
         "classification": "remove" if row.classification == "nice_to_know" else row.classification,
         "detail_level": single_line(row.detail_level, 300),
         "rationale": single_line(row.rationale, 300),
-        "hold_reason": single_line(row.hold_reason, 300) if row.hold_reason else None,
-        "sme_question": single_line(plain_row_refs(row.sme_question), 400) if row.sme_question else None,
+        "hold": False, "hold_reason": None, "sme_question": None,
         "must_do_ids": list(dict.fromkeys(row.must_do_ids)),
     })
 
@@ -355,8 +367,42 @@ def keep_term_definitions(
     return result, kept
 
 
+def serve_every_must_do(rows: Sequence[IdmBlueprintRowV1], links: Sequence[IdmBlockLoLinkV1],
+                        must_dos: Sequence[IdmMustDoV1]) -> tuple[list[IdmBlueprintRowV1], int]:
+    """A5 (contract K2: no Must Do is blocked): a Must Do no course row serves (its blocks went to the Job Aid or were
+    left out) joins the must_do_ids of the course row that serves its objective best: a block linked to the objective
+    (direct before supporting), else a row of the same objective or of another of its Must Dos, else the first course
+    row in document order; a row never lists more than 8 Must Dos. Without a course row nothing changes (the course
+    has nothing to teach; W4 reports it). Returns the rows and how many Must Dos were attached."""
+
+    result = list(rows)
+    served = {md for row in result if row.placement == "course" for md in row.must_do_ids}
+    relation = {(link.block_id, link.lo_id): _RELATION_RANK[link.relation] for link in links}
+    objective_of = {must_do.must_do_id: must_do.lo_id for must_do in must_dos}
+    attached = 0
+    for must_do in must_dos:
+        open_rows = [position for position, row in enumerate(result)
+                     if row.placement == "course" and len(row.must_do_ids) < _MAX_ROW_MUST_DOS]
+        if must_do.must_do_id in served or not open_rows:
+            continue
+
+        def rank(position: int, lo_id: str = must_do.lo_id) -> tuple[int, int, int]:
+            row = result[position]
+            same = row.lo_id == lo_id or any(objective_of.get(md) == lo_id for md in row.must_do_ids)
+            return relation.get((row.block_id, lo_id), len(_RELATION_RANK)), 0 if same else 1, position
+
+        best = min(open_rows, key=rank)
+        result[best] = result[best].model_copy(update={"must_do_ids": [*result[best].must_do_ids,
+                                                                        must_do.must_do_id]})
+        served.add(must_do.must_do_id)
+        attached += 1
+    return result, attached
+
+
 def blocked_must_dos(rows: Sequence[IdmBlueprintRowV1], must_dos: Sequence[IdmMustDoV1]) -> list[str]:
-    """Must Dos with no course block left that is not on hold (server-computed)."""
+    """Must Dos with no course block left that is not on hold (server-computed). Since A5 no row holds and
+    ``serve_every_must_do`` gives every Must Do a course row, so the list is empty whenever the course has a course
+    row."""
 
     served = {md for row in rows if row.placement == "course" and not row.hold for md in row.must_do_ids}
     return [must_do.must_do_id for must_do in must_dos if must_do.must_do_id not in served]
@@ -365,6 +411,8 @@ def blocked_must_dos(rows: Sequence[IdmBlueprintRowV1], must_dos: Sequence[IdmMu
 def hold_items(
     rows: Sequence[IdmBlueprintRowV1], blocks: Sequence[IdmContentBlockV1], blocked: Sequence[str],
 ) -> list[IdmHoldItemV1]:
+    """The Hold items of the design: always [] since A5 (no row holds); the field stays in the contract (K2)."""
+
     names = {block.block_id: block.name for block in blocks}
     blocked_set = set(blocked)
     return [IdmHoldItemV1(
@@ -479,11 +527,15 @@ async def run_w2(
                     raise
                 codes[error.code] += 1
                 break
+            response, released = release_holds(response)
+            if released:
+                codes[HOLD_RELEASED_CODE] += released
             found = validate_w2(response, batch, objectives, must_dos)
             codes.update(issue.code for issue in found)
             if not errors(found):
                 accepted = [_normalize_row(row) for row in response.rows]
-                codes[NICE_TO_KNOW_AS_REMOVE_CODE] += sum(row.classification == "nice_to_know" for row in response.rows)
+                if nice := sum(row.classification == "nice_to_know" for row in response.rows):
+                    codes[NICE_TO_KNOW_AS_REMOVE_CODE] += nice
                 break
             repair = repair_suffix([issue.as_repair_item() for issue in errors(found)])
         if accepted is None:
@@ -504,6 +556,9 @@ async def run_w2(
     applied_rows, enforced = enforce_treatments(applied_rows, applied_blocks, mode)
     if enforced:
         codes[TREATMENT_POLICY_CODE] += enforced
+    applied_rows, attached = serve_every_must_do(applied_rows, applied_links, must_dos)
+    if attached:
+        codes[MUST_DO_ATTACHED_CODE] += attached
     origin: StageOrigin = ("provider" if fallback_batches == 0
                            else "deterministic_fallback" if fallback_batches == len(batches) else "partial_fallback")
     return BlueprintResult(applied_blocks, applied_links, applied_rows, origin, dict(codes), kept, background_kept)

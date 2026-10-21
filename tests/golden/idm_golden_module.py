@@ -31,11 +31,11 @@ def _component(index: int, ctype: str, role: str, title: str, block_ids: list[st
 
 
 def _practice(sentence: str, criteria: list[str], *, origin: str = "ai_drafted", hold: bool = False,
-              question: str | None = None) -> dict[str, Any]:
+              question: str | None = None, criterion: str = "Tiêu chí của quy trình") -> dict[str, Any]:
     return {"practice_id": "pt_1", "sentence": sentence, "context_input": "Một tình huống khiếu nại cụ thể",
             "learner_action": "Chọn cách xử lý", "result": "Quyết định đúng tiêu chí", "bloom": "apply",
             "criteria_fact_keys": criteria, "scenario_origin": origin, "hold": hold, "hold_question": question,
-            "feedback_focus": {"criterion": "Tiêu chí của quy trình", "rationale": "Vì sao phương án đúng tốt hơn",
+            "feedback_focus": {"criterion": criterion, "rationale": "Vì sao phương án đúng tốt hơn",
                                "improvement": "Cần đối chiếu tiêu chí trước khi quyết định"}}
 
 
@@ -98,15 +98,28 @@ MODULE_RESPONSES: dict[str, dict[str, Any]] = {
                     _practice("Cho các bước tiếp nhận bị xáo trộn, người học sắp xếp lại đúng trình tự để không bỏ "
                               "sót bước", keys(5, 2, 13), origin="source"),
                 ], [
-            _unit(1, "context_explain", "Tám bước đầu của quy trình", ["cb_0006", "cb_0007"], [
-                _component(1, "html", "explain", "Tiếp nhận và định hướng xử lý", ["cb_0006", "cb_0007"]),
+            _unit(1, "context_explain", "Tám bước đầu của quy trình", ["cb_0006", "cb_0007", "cb_0012"], [
+                _component(1, "html", "explain", "Tiếp nhận và định hướng xử lý", ["cb_0006", "cb_0007", "cb_0012"]),
             ]),
             _unit(2, "practice_feedback", "Hoàn tất và sắp xếp trình tự", ["cb_0008"], [
                 _component(1, "html", "show", "Bốn bước hoàn tất hồ sơ", ["cb_0008"]),
                 _component(2, "la_sortable", "practice", "Sắp xếp các bước", ["cb_0008"], practice_id="pt_1"),
             ]),
         ]),
-        {"lesson_key": "lsn_005", "title": "Bảng tra mã khiếu nại và đầu mối liên hệ",
+        # QC feedback A5: the block W2 used to hold (24 h vs 48 h) is its own practice unit: a worksheet and the
+        # question that checks it, on criteria the AI suggests from what the lesson teaches.
+        _lesson("lsn_005", "Phản hồi khách hàng đúng thời hạn", "Phản hồi khách hàng đúng thời hạn", [
+            _practice("Cho một khiếu nại vừa tiếp nhận, người học lập lịch phản hồi khách hàng để đúng thời hạn đã "
+                      "cam kết", keys(7, 2, 4),
+                      criterion="Tiêu chí gợi ý: phản hồi trong thời hạn bài học nêu, tính từ lúc tiếp nhận"),
+        ], [
+            _unit(1, "practice_feedback", "Lập lịch phản hồi đúng hạn", ["cb_0010"], [
+                _component(1, "html", "practice", "Phiếu thực hành: lịch phản hồi khách hàng", ["cb_0010"],
+                           practice_id="pt_1"),
+                _component(2, "problem", "practice", "Lịch phản hồi nào đúng hạn?", ["cb_0010"], practice_id="pt_1"),
+            ]),
+        ]),
+        {"lesson_key": "lsn_006", "title": "Bảng tra mã khiếu nại và đầu mối liên hệ",
          "objective": "Tra cứu mã khiếu nại và đầu mối khi làm việc",
          "learning_objectives": ["Tra cứu mã khiếu nại và đầu mối khi làm việc"], "practice_tasks": [],
          "assessment": "Không đánh giá.", "units": [

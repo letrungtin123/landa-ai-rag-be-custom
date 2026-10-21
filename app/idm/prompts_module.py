@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Iterable, Sequence
 from typing import Any
 
+from app.idm.policy import SUGGESTED_CRITERIA_LABEL_EN, SUGGESTED_CRITERIA_LABEL_VI
 from app.idm.prompts_common import (
     Locale,
     _json,
@@ -13,6 +14,23 @@ from app.idm.prompts_common import (
     preamble,
 )
 from app.prompt_safety import untrusted_block
+
+
+def _criteria_rule(locale: Locale) -> str:
+    """Step 2 of the module prompt. A5 (owner decision 2026-10-22): a practice is never held for an SME; one whose
+    facts state no criteria gets suggested criteria drawn from what the lesson teaches, labelled as such."""
+
+    label = SUGGESTED_CRITERIA_LABEL_VI if locale == "vi" else SUGGESTED_CRITERIA_LABEL_EN
+    return (f"""2. criteria_fact_keys: the source facts that decide what a correct answer is; non-empty; at most 24 """
+            f"""(when more
+   apply, keep the statements of the Must Do block that decide right and wrong, not its labels or headings); only
+   facts of this lesson's blocks. Never hold a practice: hold is always false and hold_question null. When the facts
+   state no criteria that decide a correct answer, still design the practice as its own practice unit: put in
+   criteria_fact_keys the facts of this lesson's blocks the practice applies (what the lesson teaches about it),
+   start feedback_focus.criterion with "{label}: " and state there criteria drawn only from that taught content
+   (never a rule, number or threshold the facts do not state); the practice is a WORKSHEET checked by a problem when
+   the worksheet is allowed, else a problem. Contexts, characters and example situations may be drafted by you
+   (scenario_origin "ai_drafted") but must not introduce new rules, numbers or exceptions.""")
 
 
 def module_prompt(
@@ -64,11 +82,7 @@ Return the lessons in exactly the order and with exactly the lesson_key values o
    problem with role "practice" and the same practice_id in which the learner judges a sample answer against those
    criteria (single choice). Must Do of kind "decide" and recognition of Must Know keep problem (scenario or
    knowledge check).
-2. criteria_fact_keys: the source facts that decide what a correct answer is; non-empty; at most 24 (when more
-   apply, keep the statements of the Must Do block that decide right and wrong, not its labels or headings); only
-   facts of this lesson's blocks. If they do not exist, set hold = true and write hold_question for the SME, and do
-   not create a practice component for it. Contexts, characters and example situations may be drafted by you
-   (scenario_origin "ai_drafted") but must not introduce new rules, numbers or exceptions.
+{_criteria_rule(locale)}
 3. SUPPORTING INFO - the minimum needed for the practice: explain_concept, explain_principle (criteria/rules),
    example, non_example, worked_example, demonstration. Ask "if this were removed, could the learner still do the
    practice?" - if yes, leave it out or leave it for the Job Aid.

@@ -131,9 +131,10 @@ def procedure_steps() -> dict[str, Any]:
 
 
 def job_aid_table() -> dict[str, Any]:
-    """lsn_005 unit 1: one html slot on the complaint code table and the contacts."""
+    """The job aid's unit 1: one html slot on the complaint code table and the contacts. The case names keep the
+    lesson key it had before A5 (lsn_005; lsn_006 since the practice lesson of md_5), the buildable guard's keys."""
 
-    return body_for(2, 1, 0)
+    return body_for(2, 2, 0)
 
 
 def form_worksheet() -> dict[str, Any]:

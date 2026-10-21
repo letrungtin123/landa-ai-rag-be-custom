@@ -678,7 +678,7 @@ class NotesTests(unittest.TestCase):
                                confidence="medium", origin="ai_inferred", evidence=["source"], signals=[],
                                template_gaps=[])
         arguments: dict[str, Any] = {"ai_proposed": False, "total_minutes": 10, "lesson_count": 2, "module_count": 1,
-                                     "reference_block_count": 0, "excluded_block_count": 0, "holds": [],
+                                     "reference_block_count": 0, "excluded_block_count": 0,
                                      "sme_questions": [], "fallback_stages": [], "pattern_label": "New employee "
                                      "onboarding", "template_gaps": ["The source has no part on: X — please add it."],
                                      "kept_background": [KeptDefinitionNote("Company history", (), "remove")]}

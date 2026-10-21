@@ -24,6 +24,7 @@ from app.idm.module_layout import (
     ModuleScope,
     build_module_scope,
     fallback_lesson,
+    held_practice_obligations,
     must_do_unit_position,
     project_lesson,
 )
@@ -230,8 +231,9 @@ class ValidateLessonTests(unittest.TestCase):
         def long_theory(p: dict[str, Any]) -> None:
             lesson = p["lessons"][0]
             lesson["units"] = [
-                gm._unit(1, "context_explain", "Bốn bước đầu", ["cb_0006"], [
-                    component("html", "explain", ["cb_0006"]), component("la_faq", "clarify", ["cb_0006"])]),
+                gm._unit(1, "context_explain", "Bốn bước đầu", ["cb_0006", "cb_0012"], [
+                    component("html", "explain", ["cb_0006", "cb_0012"]),
+                    component("la_faq", "clarify", ["cb_0006"])]),
                 gm._unit(2, "example", "Bốn bước tiếp", ["cb_0007"], [
                     component("html", "show", ["cb_0007"]), component("la_faq", "clarify", ["cb_0007"])]),
                 gm._unit(3, "practice_feedback", "Hoàn tất", ["cb_0008"], [
@@ -326,9 +328,9 @@ class NormalizeLessonTests(unittest.TestCase):
 
     def test_job_aid_drops_practices_and_warnings_reach_notes(self) -> None:
         def job_aid_practice(p: dict[str, Any]) -> None:
-            p["lessons"][1]["practice_tasks"] = [p["lessons"][0]["practice_tasks"][0]]
+            p["lessons"][2]["practice_tasks"] = [p["lessons"][0]["practice_tasks"][0]]
 
-        job_aid = normalize_lesson(lesson_of(edited("mod_03", job_aid_practice), 1), self.plan(2, 1), "vi", [])
+        job_aid = normalize_lesson(lesson_of(edited("mod_03", job_aid_practice), 2), self.plan(2, 2), "vi", [])
         self.assertEqual(job_aid.practice_tasks, [])
         warnings = ["IDM_W4_THEORY_RUN", "IDM_W3_PRACTICE_SENTENCE_FORMAT"]
         vi = normalize_lesson(lesson_of(module_response("mod_01"), 0), self.plan(0, 0), "vi", warnings)
@@ -367,8 +369,8 @@ class ModuleScopeTests(unittest.TestCase):
     def test_golden_scope_lookups(self) -> None:
         scope = scope_of(2)
         self.assertEqual(scope.locale, "vi")
-        self.assertEqual([plan.lesson_key for plan in scope.lesson_plans], ["lsn_004", "lsn_005"])
-        self.assertEqual(scope.lesson_fact_keys(scope.lesson_plans[0]), set(keys(5, 1, 13)))
+        self.assertEqual([plan.lesson_key for plan in scope.lesson_plans], ["lsn_004", "lsn_005", "lsn_006"])
+        self.assertEqual(scope.lesson_fact_keys(scope.lesson_plans[0]), {*keys(5, 1, 13), *keys(9, 1, 2)})
         self.assertEqual(scope.must_do_statement["md_4"], "Thực hiện các bước tiếp nhận khiếu nại đúng trình tự")
 
     def test_scope_and_fact_mismatches_are_rejected(self) -> None:
@@ -417,7 +419,7 @@ class FallbackLessonTests(unittest.TestCase):
         lesson = fallback_lesson(plan, wide)
         self.assertEqual(len(lesson.units), 7)
         self.assertEqual([block for unit in lesson.units for block in unit.block_ids], blocks)
-        job_aid = fallback_lesson(scope.lesson_plans[1], dataclasses.replace(scope, locale="en"))
+        job_aid = fallback_lesson(scope.lesson_plans[2], dataclasses.replace(scope, locale="en"))
         self.assertEqual(job_aid.practice_tasks, [])
         self.assertEqual({unit.segment for unit in job_aid.units}, {"job_aid"})
         self.assertEqual({c.role for unit in job_aid.units for c in unit.components}, {"job_aid"})
@@ -425,7 +427,9 @@ class FallbackLessonTests(unittest.TestCase):
 
     def test_practice_targets_last_unit_without_primary_must_do(self) -> None:
         scope = scope_of(2)
-        plan = scope.lesson_plans[0].model_copy(update={"primary_must_do_id": "md_9"})
+        # Without the CRM block (A5 put it in this lesson; its single line gives no grounded question).
+        plan = scope.lesson_plans[0].model_copy(update={"primary_must_do_id": "md_9",
+                                                         "block_ids": ["cb_0006", "cb_0007", "cb_0008"]})
         lesson = fallback_lesson(plan, scope)
         self.assertEqual([c.type for c in lesson.units[-1].components], ["html", "problem"])
         self.assertEqual(lesson.practice_tasks[0].criteria_fact_keys, keys(5, 10, 13))
@@ -471,7 +475,7 @@ class FallbackLessonTests(unittest.TestCase):
             projected = project_lesson(lesson, plan, scope)
             self.assertEqual(projected["learning_activities"], [practice.sentence])
             self.assertEqual([[c["type"] for c in u["component_plan"]] for u in projected["units"]],
-                             [["html"], ["html"], ["html", "problem"]])
+                             [["html"], ["html"], ["html", "problem"], ["html"]])
         # The source scenario has no AI-drafted marker; without the problem type the worksheet stands alone.
         self.assertIsNone(lesson.units[2].components[0].author_review.example_scenario)
         drafted = [foreign[0].model_copy(update={"scenario_origin": "ai_drafted"})]
@@ -481,7 +485,7 @@ class FallbackLessonTests(unittest.TestCase):
         self.assertTrue(str(alone.units[2].components[0].author_review.example_scenario).startswith(
             AI_DRAFTED_MARKER_VI))
         # Without html among the allowed types the practice is kept as a scenario question (QC run 8de1c76b, Q5)
-        # and the note still asks for a worksheet; without problem either it stays a hold.
+        # and the note still asks for a worksheet; without problem either no practice is kept (A5: never a hold).
         no_html = fallback_lesson(plan, dataclasses.replace(scope, allowed_types=frozenset({"problem"})),
                                   provider_practices=foreign)
         self.assertFalse(no_html.practice_tasks[0].hold)
@@ -490,7 +494,7 @@ class FallbackLessonTests(unittest.TestCase):
         self.assertIn("cần bổ sung phiếu thực hành (worksheet)", no_html.notes)
         neither = fallback_lesson(plan, dataclasses.replace(scope, allowed_types=frozenset({"la_faq"})),
                                   provider_practices=foreign)
-        self.assertTrue(neither.practice_tasks[0].hold)
+        self.assertEqual(neither.practice_tasks, [])
         decide = scope_of(1)
         kept = fallback_lesson(decide.lesson_plans[0], decide, provider_practices=IdmLessonDesignV1.model_validate(
             module_response("mod_02")["lessons"][0]).practice_tasks)
@@ -646,64 +650,64 @@ class RunModuleDesignTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(provider.calls, [])
         self.assertEqual(result["shard"]["idm_design"]["stage_origin"], "deterministic_fallback")
 
-    async def test_held_practice_becomes_an_assessment_obligation(self) -> None:
+    async def test_a_held_practice_is_released_with_suggested_criteria(self) -> None:
+        # A5 (owner 2026-10-22, contract K2): the AI never holds. A practice the answer still holds, without criteria,
+        # is designed like any other: no SME question, the lesson's taught facts as criteria, its feedback criterion
+        # labelled as suggested; no assessment obligation is opened.
+        def hold(p: dict[str, Any]) -> None:
+            p["lessons"][0]["practice_tasks"][0].update(hold=True, criteria_fact_keys=[],
+                                                        hold_question="Khách VIP có yếu tố pháp lý thì sao?")
+
+        result, provider, runtime = await design_module(1, [edited("mod_02", hold)])
+        shard = result["shard"]
+        self.assertEqual((len(provider.calls), result["content_origin"]), (1, "provider_validated"))
+        practice = shard["idm_design"]["lessons"][0]["practice_tasks"][0]
+        self.assertEqual((practice["hold"], practice["hold_question"]), (False, None))
+        self.assertEqual(practice["criteria_fact_keys"], [*keys(6, 1, 6), *keys(8, 1, 3)])
+        self.assertTrue(practice["feedback_focus"]["criterion"].startswith("Tiêu chí gợi ý: "))
+        self.assertEqual(runtime.adjustments["IDM_W3_HOLD_RELEASED"], 1)
+        self.assertEqual(shard["assessment_obligations"], [])
+        self.assertIn("Never hold a practice: hold is always false", provider.calls[0]["prompt"])
+        self.assertIn('start feedback_focus.criterion with "Tiêu chí gợi ý: "', provider.calls[0]["prompt"])
+        ChapterBlueprintShardV2.model_validate({k: v for k, v in shard.items() if k != "idm_design"})
+
+    async def test_a_held_practice_without_its_component_is_repaired_never_held(self) -> None:
+        # The old answer shape (held practice, its question left out) fails the practice layout and is repaired.
         def hold(p: dict[str, Any]) -> None:
             lesson = p["lessons"][0]
             lesson["practice_tasks"][0].update(hold=True, hold_question="Khách VIP có yếu tố pháp lý thì sao?")
             lesson["units"][1]["components"].pop(0)
 
-        result, _, _ = await design_module(1, [edited("mod_02", hold)])
-        shard = result["shard"]
-        self.assertEqual(result["content_origin"], "provider_validated")
-        self.assertEqual(len(shard["assessment_obligations"]), 1)
-        obligation = shard["assessment_obligations"][0]
-        unit = shard["lessons"][0]["units"][obligation["unit_index"] - 1]
-        self.assertLessEqual(obligation["component_index"], 3)
-        self.assertEqual((obligation["lesson_index"], obligation["unit_index"], obligation["component_index"]),
-                         (1, 1, 2))
-        self.assertTrue(set(obligation["relevant_scope_ids"]) <= set(unit["source_scope_ids"]))
-        self.assertTrue(set(obligation["learning_objective_refs"]) <= set(unit["learning_objective_refs"]))
-        self.assertEqual(obligation["relevant_evidence_fact_ids"], keys(6, 1, 6))
-        self.assertEqual((obligation["required_assessment_kind"], obligation["unresolved_reason"]),
-                         ("single_choice", "ASSESSMENT_SOURCE_CHECK_REQUIRED"))
-        self.assertRegex(obligation["planned_slot_key"], r"^ao2_[a-f0-9]{32}$")
-        ChapterBlueprintShardV2.model_validate({k: v for k, v in shard.items() if k != "idm_design"})
-
-    async def test_held_practice_beyond_slot_three_has_no_obligation(self) -> None:
-        def hold_full_unit(p: dict[str, Any]) -> None:
-            lesson = p["lessons"][0]
-            lesson["practice_tasks"][0].update(hold=True)
-            lesson["units"][0]["components"] += [component("problem", "show", ["cb_0009"]),
-                                                 component("la_faq", "clarify", ["cb_0009"])]
-            lesson["units"][1]["components"].pop(0)
-
-        result, _, _ = await design_module(1, [edited("mod_02", hold_full_unit)])
+        result, provider, _ = await design_module(1, [edited("mod_02", hold), module_response("mod_02")])
+        self.assertEqual(len(provider.calls), 2)
+        self.assertIn('"IDM_W3_PRACTICE_COMPONENT_MISSING"', provider.calls[1]["prompt"])
         self.assertEqual(result["shard"]["idm_design"]["stage_origin"], "provider")
+        self.assertFalse(result["shard"]["idm_design"]["lessons"][0]["practice_tasks"][0]["hold"])
         self.assertEqual(result["shard"]["assessment_obligations"], [])
 
     # Regression: two held practices of one unit used to share one slot (duplicated planned_slot_key,
-    # ChapterBlueprintShardV2 ValidationError -> HTTP 500). Each now takes its own component_index.
-    async def test_two_held_practices_in_one_lesson_still_project_a_valid_shard(self) -> None:
-        def holds(count: int) -> Callable[[dict[str, Any]], None]:
-            def change(p: dict[str, Any]) -> None:
-                lesson = p["lessons"][0]
-                first = lesson["practice_tasks"][0]
-                first.update(hold=True)
-                lesson["practice_tasks"] += [{**first, "practice_id": f"pt_{n}"} for n in range(2, count + 1)]
-                lesson["units"][1]["components"].pop(0)
-            return change
-
-        result, _, _ = await design_module(1, [edited("mod_02", holds(2))])
-        obligations = result["shard"]["assessment_obligations"]
-        self.assertEqual([(o["unit_index"], o["component_index"]) for o in obligations], [(1, 2), (1, 3)])
-        self.assertEqual(len({o["planned_slot_key"] for o in obligations}), 2)
-        result, _, _ = await design_module(1, [edited("mod_02", holds(3))])
-        self.assertEqual([o["component_index"] for o in result["shard"]["assessment_obligations"]], [2, 3])
+    # ChapterBlueprintShardV2 ValidationError -> HTTP 500). Each takes its own component_index. Since A5 the module
+    # stage holds nothing, so the projection only meets a held practice in a design written before (checked directly).
+    def test_two_held_practices_in_one_lesson_still_take_their_own_slots(self) -> None:
+        scope = scope_of(1)
+        lesson = IdmLessonDesignV1.model_validate(module_response("mod_02")["lessons"][0])
+        first = lesson.practice_tasks[0].model_copy(update={"hold": True})
+        for count, expected in ((2, [(1, 2), (1, 3)]), (3, [(1, 2), (1, 3)])):
+            held = lesson.model_copy(update={
+                "practice_tasks": [first, *(first.model_copy(update={"practice_id": f"pt_{n}"})
+                                            for n in range(2, count + 1))],
+                "units": [lesson.units[0], lesson.units[1].model_copy(update={
+                    "components": lesson.units[1].components[1:]})]})
+            _, skeleton = golden_design()
+            obligations = held_practice_obligations([held], scope.lesson_plans, scope, skeleton=skeleton,
+                                                    plan=module_inputs(1)[1])
+            self.assertEqual([(o["unit_index"], o["component_index"]) for o in obligations], expected)
+            self.assertEqual(len({o["planned_slot_key"] for o in obligations}), len(expected))
 
     # Regression (spec §7.6.4/§7.6.5): a lesson that still fails after the repair keeps the provider's
-    # practice tasks (criteria filtered to lesson facts) instead of a synthesised check: the practice the provider
-    # held stays a hold for the SME (an obligation); since QC run 8de1c76b (Q5) the first practice it did not hold
-    # stays the scenario question of the Must Do unit.
+    # practice tasks (criteria filtered to lesson facts) instead of a synthesised check: since QC run 8de1c76b (Q5)
+    # the first practice stays the scenario question of the Must Do unit, and since A5 a practice the provider held is
+    # released first (suggested criteria), so it is kept the same way, never as a hold.
     async def test_partial_fallback_keeps_the_provider_practice(self) -> None:
         def bad_layout(p: dict[str, Any]) -> None:
             p["lessons"][1]["units"][0]["components"].reverse()
@@ -719,22 +723,15 @@ class RunModuleDesignTests(unittest.IsolatedAsyncioTestCase):
             shard = result["shard"]
             lesson = shard["idm_design"]["lessons"][1]
             practice = lesson["practice_tasks"][0]
-            self.assertEqual((practice["sentence"], practice["hold"]),
-                             (bad["lessons"][1]["practice_tasks"][0]["sentence"], held))
+            self.assertEqual((practice["sentence"], practice["hold"], practice["hold_question"]),
+                             (bad["lessons"][1]["practice_tasks"][0]["sentence"], False, None))
             self.assertEqual(practice["criteria_fact_keys"], keys(4, 2, 5))
+            self.assertEqual(practice["feedback_focus"]["criterion"].startswith("Tiêu chí gợi ý: "), held)
             types = [(c["type"], c["practice_id"]) for u in lesson["units"] for c in u["components"]]
-            if held:
-                self.assertIn("SME xác nhận tiêu chí", practice["hold_question"])
-                self.assertNotIn("problem", [kind for kind, _ in types])
-                self.assertEqual([(o["lesson_index"], o["unit_index"], o["component_index"])
-                                  for o in shard["assessment_obligations"]], [(2, 1, 2)])
-                self.assertIn("Chưa có bài luyện tập", shard["lessons"][1]["learning_activities"][0])
-            else:
-                self.assertIsNone(practice["hold_question"])
-                # QLT-8: without a held practice the floor gives the lesson's question unit an FAQ.
-                self.assertEqual(types, [("html", None), ("problem", practice["practice_id"]), ("la_faq", None)])
-                self.assertEqual(shard["assessment_obligations"], [])
-                self.assertEqual(shard["lessons"][1]["learning_activities"], [practice["sentence"]])
+            # QLT-8: the floor gives the lesson's question unit an FAQ.
+            self.assertEqual(types, [("html", None), ("problem", practice["practice_id"]), ("la_faq", None)])
+            self.assertEqual(shard["assessment_obligations"], [])
+            self.assertEqual(shard["lessons"][1]["learning_activities"], [practice["sentence"]])
             ChapterBlueprintShardV2.model_validate({k: v for k, v in shard.items() if k != "idm_design"})
 
     # Regression (QC course 364564, N1): the W4 repair answer carried a 300+ character learner_action (bound
@@ -774,17 +771,19 @@ class RunModuleDesignTests(unittest.IsolatedAsyncioTestCase):
         lesson = shard["idm_design"]["lessons"][0]
         self.assertEqual(shard["idm_design"]["stage_origin"], "partial_fallback")
         self.assertFalse(lesson["practice_tasks"][0]["hold"])
-        # QLT-8: the module's only FAQ is the one the floor adds after the worksheet's question.
-        self.assertEqual([(c["type"], c["role"]) for c in lesson["units"][-1]["components"]],
+        # QLT-8: the lesson's only FAQ is the one the floor adds after the worksheet's question; the CRM block (in the
+        # lesson since A5) keeps its own last unit.
+        self.assertEqual([(c["type"], c["role"]) for c in lesson["units"][2]["components"]],
                          [("html", "practice"), ("problem", "practice"), ("la_faq", "clarify")])
+        self.assertEqual(lesson["units"][-1]["block_ids"], ["cb_0012"])
         self.assertEqual(shard["assessment_obligations"], [])
         self.assertEqual(shard["lessons"][0]["learning_activities"], [lesson["practice_tasks"][0]["sentence"]])
         ChapterBlueprintShardV2.model_validate({k: v for k, v in shard.items() if k != "idm_design"})
         IdmShardDesignV1.model_validate(shard["idm_design"])
 
-    async def test_held_practice_obligation_goes_to_the_unit_that_owns_the_must_do_block(self) -> None:
-        # QC course 364564 (N1): both units listed the Must Do; the obligation went to unit 1, not to the unit
-        # whose block is the Must Do. A deciding Must Do keeps its single-choice obligation (lesson-local refs).
+    async def test_a_released_practice_goes_to_the_unit_that_owns_the_must_do_block(self) -> None:
+        # QC course 364564 (N1): both units listed the Must Do; the practice belongs to the unit whose block is the
+        # Must Do. Since A5 the practice the provider held is released and kept as that unit's question, no obligation.
         def swap(context: dict[str, Any]) -> None:
             for row in context["blueprint"]:
                 if row["block_id"] in {"cb_0009", "cb_0011"}:
@@ -798,11 +797,11 @@ class RunModuleDesignTests(unittest.IsolatedAsyncioTestCase):
         bad = edited("mod_02", foreign)
         result, _, _ = await design_module(1, [bad, bad], context_change=swap)
         shard = result["shard"]
-        self.assertTrue(shard["idm_design"]["lessons"][0]["practice_tasks"][0]["hold"])
-        obligation = shard["assessment_obligations"][0]
-        self.assertEqual((obligation["unit_index"], obligation["component_index"]), (2, 2))
-        self.assertEqual(obligation["required_assessment_kind"], "single_choice")
-        self.assertEqual(obligation["learning_objective_refs"], ["lo_1"])
+        lesson = shard["idm_design"]["lessons"][0]
+        self.assertFalse(lesson["practice_tasks"][0]["hold"])
+        self.assertEqual(shard["assessment_obligations"], [])
+        self.assertEqual([(c["type"], c["practice_id"]) for c in lesson["units"][1]["components"]][:2],
+                         [("html", None), ("problem", "pt_1")])
         self.assertEqual(shard["lessons"][0]["learning_objectives"],
                          ["Người học có thể quyết định tự xử lý hay escalate khiếu nại theo tiêu chí bắt buộc"])
         ChapterBlueprintShardV2.model_validate({k: v for k, v in shard.items() if k != "idm_design"})

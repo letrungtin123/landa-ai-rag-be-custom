@@ -58,7 +58,7 @@ from app.idm.module_autofix import (
 )
 from app.idm.module_design import attach_framework_items, validate_lesson
 from app.idm.module_layout import ModuleScope, fallback_lesson, must_do_unit_position, project_lesson
-from app.idm.notes import HoldNote, SkippedBlockNote, build_course_notes
+from app.idm.notes import SkippedBlockNote, build_course_notes
 from app.idm.policy import (
     AI_DRAFTED_MARKER_EN,
     AI_DRAFTED_MARKER_VI,
@@ -402,16 +402,19 @@ class FallbackPracticeTests(unittest.IsolatedAsyncioTestCase):
                          [("html", "practice"), ("problem", "practice")])
         self.assertIn("phiếu thực hành (worksheet)", lesson.notes)
 
-    def test_learning_activities_never_promise_a_held_practice(self) -> None:
+    def test_learning_activities_only_promise_the_practice_the_lesson_has(self) -> None:
+        # Since A5 the fallback holds nothing: a practice the provider held is the lesson's question, so the one
+        # activity it promises is that practice (before, it promised none and kept the practice on hold).
         scope = scope_of(1)
         plan = scope.lesson_plans[0]
         held = [practice.model_copy(update={"hold": True}) for practice in self.provider_practices(1)]
         lesson = fallback_lesson(plan, scope, provider_practices=held)
-        self.assertTrue(all(practice.hold for practice in lesson.practice_tasks))
+        self.assertEqual([(practice.hold, practice.hold_question) for practice in lesson.practice_tasks],
+                         [(False, None)])
         activities = project_lesson(lesson, plan, scope)["learning_activities"]
-        self.assertEqual(len(activities), 1)
-        self.assertIn("Chưa có bài luyện tập", activities[0])
-        self.assertNotIn(held[0].sentence, activities[0])
+        self.assertEqual(activities, [held[0].sentence])
+        without = project_lesson(lesson.model_copy(update={"practice_tasks": []}), plan, scope)["learning_activities"]
+        self.assertIn("Chưa có bài luyện tập", without[0])
 
     async def test_fallback_of_a_deciding_must_do_opens_no_obligation(self) -> None:
         def foreign(payload: dict[str, Any]) -> None:
@@ -850,23 +853,21 @@ class CourseNoteTests(unittest.TestCase):
 
     @staticmethod
     def note(locale: str, *, crowded: bool = False) -> str:
-        holds = [HoldNote(f"Khối giữ lại {n}", "Cần SME xác nhận số liệu." * (8 if crowded else 1),
-                          "Con số nào đúng cho doanh nghiệp vừa và nhỏ?" * (4 if crowded else 1)) for n in range(6)]
         skipped = [SkippedBlockNote(f"Khối tham khảo {n}", "Tóm tắt ngắn của khối." * (6 if crowded else 1))
                    for n in range(12)]
         return build_course_notes(
             locale="vi" if locale == "vi" else "en", ai_proposed=True, total_minutes=120, lesson_count=13,
-            module_count=4, reference_block_count=3, excluded_block_count=60, holds=holds,
-            # Crowded: long questions fill what the removed blocks leave (the Nice to Know list is gone since A6).
+            module_count=4, reference_block_count=3, excluded_block_count=60,
+            # Crowded: long questions fill what the removed blocks leave (no Hold or Nice to Know list since A5, A6).
             sme_questions=[f"Câu hỏi số {n} cho chuyên gia về quy trình này là gì?"
-                           + (" Ghi rõ nguồn và phiên bản đang áp dụng." * 6 if crowded else "") for n in range(22)],
+                           + (" Ghi rõ nguồn và phiên bản đang áp dụng." * 8 if crowded else "") for n in range(22)],
             fallback_stages=[], removed=skipped)
 
     def test_every_question_that_fits_is_listed(self) -> None:
         text = self.note("vi")
         self.assertLessEqual(len(text), IDM_NOTES_COURSE_MAX_CHARS)
         self.assertEqual(text.count("Câu hỏi số"), 22)
-        self.assertNotIn("mục khác", text.split("Câu hỏi khác cho SME")[1])
+        self.assertNotIn("mục khác", text.split("Câu hỏi cho SME")[1])
 
     def test_questions_that_do_not_fit_point_to_the_complete_list(self) -> None:
         for locale, pointer in (("vi", "câu hỏi khác (danh sách đầy đủ trong ghi chú AI ID của khoá học)"),

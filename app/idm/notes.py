@@ -24,17 +24,8 @@ from app.idm.text import sanitize_author_text, single_line
 Locale = Literal["vi", "en"]
 
 
-class HoldNote(NamedTuple):
-    """One Hold item for the course notes: Must Dos are statements, never ids."""
-
-    name: str
-    reason: str
-    question: str
-    blocked_must_dos: tuple[str, ...] = ()
-
-
 class SkippedBlockNote(NamedTuple):
-    """A block left out of the lessons: name and a one-line summary (Nice to Know) or reason (Remove)."""
+    """A block left out of the lessons (Remove): name and the W2 reason."""
 
     name: str
     summary: str
@@ -79,19 +70,6 @@ def _sentence(value: str) -> str:
     """Author text without its closing punctuation, so the template adds exactly one."""
 
     return value.strip().rstrip(" .;:")
-
-
-def _hold_line(index: int, hold: HoldNote, vi: bool) -> str:
-    reason = _sentence(hold.reason)
-    # W2 rows without a reason or question are stored as "-" (blueprint.hold_items).
-    line = f"  {index}. {hold.name}" + (f" — {reason}." if reason.strip(" -") else ".")
-    if hold.question.strip(" -"):
-        label = "Câu hỏi cho SME" if vi else "Question for the SME"
-        line += f" {label}: {hold.question.strip()}"
-    blocked = [_sentence(item) for item in hold.blocked_must_dos if item.strip()]
-    if blocked:
-        line += (" Must Do chưa dạy được: " if vi else " Must Do not taught yet: ") + "; ".join(blocked) + "."
-    return line
 
 
 class _Budget:
@@ -140,11 +118,9 @@ def build_course_notes(
     module_count: int,
     reference_block_count: int,
     excluded_block_count: int,
-    holds: Sequence[HoldNote | tuple[str, str, str]],
     sme_questions: Sequence[str],
     fallback_stages: Sequence[str],
     known_ids: Iterable[str] = (),
-    pending_objectives: Sequence[str] = (),
     removed: Sequence[SkippedBlockNote | tuple[str, str]] = (),
     kept_definitions: Sequence[KeptDefinitionNote] = (),
     purpose_line: str = "",
@@ -156,17 +132,16 @@ def build_course_notes(
 ) -> str:
     """Course ``implementation_notes`` (spec §8.4).
 
-    Every Hold item (block, reason, SME question, Must Dos it blocks), every objective that waits
-    for the SME, the definition blocks kept against the W2 proposal and the removed blocks with their
-    reason reach the author (QC course 234653 R3/R4, 364564 N4; no Nice to Know list since A6). Sections
-    are filled in that order within the 7,000-character limit; whatever does not fit is counted
-    ("và N mục khác") and stays complete in the workspace panels. The SME questions come last and take
-    all the room that is left (no count cap, QC run 8de1c76b); the few that may not fit are counted with
-    a pointer to the complete list in the course's AI ID notes.
+    The definition blocks kept against the W2 proposal and the removed blocks with their reason reach the author (QC
+    course 234653 R4, 364564 N4). Sections are filled in that order within the 7,000-character limit; whatever does not
+    fit is counted ("và N mục khác") and stays complete in the workspace panels. The SME questions come last and take
+    all the room that is left (no count cap, QC run 8de1c76b); the few that may not fit are counted with a pointer to
+    the complete list in the course's AI ID notes. Owner decision 2026-10-22 (QC feedback A5, A6): there is no Hold
+    list, no objective waiting for an SME and no Nice to Know list any more (the design never holds a block).
 
-    QLT-5: the head says which course purpose the design followed (``purpose_line``); right after the Holds come
-    the required parts of the purpose's course pattern the source lacks (``template_gaps``, plain notes the AI wrote
-    no content for), and after the kept definitions the onboarding background kept against the W2 proposal.
+    QLT-5: the head says which course purpose the design followed (``purpose_line``); then come the required parts of
+    the purpose's course pattern the source lacks (``template_gaps``, plain notes the AI wrote no content for), and
+    after the kept definitions the onboarding background kept against the W2 proposal.
 
     QLT-6: right after the workflow tag, what the author entered when starting AI ID (``brief_lines``: the learner
     audience and the course purpose, as entered); with an entered audience (``audience_entered``) only the
@@ -205,23 +180,12 @@ def build_course_notes(
     def more(count: int) -> str:
         return f"  và {count} mục khác" if vi else f"  and {count} more"
 
-    hold_notes = [item if isinstance(item, HoldNote) else HoldNote(*item) for item in holds]
-    budget.section(
-        f"• Cần chuyên gia bổ sung (Hold) — chờ SME xác nhận ({len(hold_notes)}), chưa đưa vào bài học:" if vi
-        else f"• Needs SME input (Hold) — awaiting SME confirmation ({len(hold_notes)}), not in the lessons yet:",
-        [_hold_line(index, hold, vi) for index, hold in enumerate(hold_notes, start=1)], more,
-        IDM_NOTES_MAX_HOLD_ITEMS)
     gaps = [item for item in dict.fromkeys(template_gaps) if item.strip()]
     budget.section(
         f"• Khung khoá học ({pattern_label}): tài liệu còn thiếu {len(gaps)} phần — AI không tự viết nội dung cho "
         "các phần này:" if vi else
         f"• Course pattern ({pattern_label}): the source lacks {len(gaps)} parts — the AI wrote no content for them:",
         [f"  - {item}" for item in gaps], more, IDM_NOTES_MAX_HOLD_ITEMS)
-    budget.section(
-        "• Mục tiêu học tập chờ SME (chưa hiển thị là kết quả đầu ra của khoá học):" if vi
-        else "• Learning objectives awaiting the SME (not shown as course outcomes):",
-        [f"  - {_sentence(item)}." for item in dict.fromkeys(pending_objectives) if item.strip()], more,
-        IDM_NOTES_MAX_HOLD_ITEMS)
     proposed_vi = {"remove": "Remove"}
     budget.section(
         f"• Giữ lại vì định nghĩa thuật ngữ cốt lõi (Week 2 đề xuất loại) — {len(kept_definitions)} khối:" if vi
@@ -251,7 +215,7 @@ def build_course_notes(
         return (f"  và {count} câu hỏi khác (danh sách đầy đủ trong ghi chú AI ID của khoá học)" if vi
                 else f"  and {count} more questions (full list in the course's AI ID notes)")
 
-    budget.section("• Câu hỏi khác cho SME:" if vi else "• Other questions for the SME:",
+    budget.section("• Câu hỏi cho SME:" if vi else "• Questions for the SME:",
                    [f"  - {question}" for question in questions], more_questions, len(questions))
     return clean_note(budget.text(), IDM_NOTES_COURSE_MAX_CHARS, known_ids)
 

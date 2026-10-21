@@ -262,6 +262,7 @@ def build_unit_author_note(
     review_reasons: Sequence[str] = (),
     unexplained_acronyms: Sequence[str] = (),
     notices: Sequence[str] = (),
+    suggested_criteria: bool = False,
 ) -> str:
     """Template note for the unit ``implementation_notes``; no IDs, no ``<``/``>``.
 
@@ -283,6 +284,8 @@ def build_unit_author_note(
     ``unexplained_acronyms``: abbreviations the learner text uses whose full form neither the facts nor the server's
     short list give, for the SME to spell out. ``notices`` (QLT-9): what the author should know about a unit that is
     not marked for review (``NOTICE_REASONS``), stated as "Lưu ý".
+
+    ``suggested_criteria`` (A5): the unit's practice has criteria the AI suggested from what the lesson teaches.
     """
 
     vi = locale == "vi"
@@ -339,16 +342,8 @@ def build_unit_author_note(
                      "lý thuyết — tác giả nên biên tập cho liền mạch." if vi
                      else f"A list of the framework's {framework_list_inserted} items (names from the source) was "
                           "inserted into the theory block — edit it into the text.")
-    if worksheet_compacted and worksheet_example_kept:
-        parts.append("Phiếu thực hành dài hơn giới hạn nên đã rút gọn gợi ý trong bảng (ví dụ mẫu vẫn giữ, có thể "
-                     "còn hai dòng) — tác giả có thể bổ sung lại gợi ý." if vi
-                     else "The worksheet was over its length budget, so the guidance in its table was shortened (the "
-                          "worked example stays, possibly with two entries) — the author may add the guidance back.")
-    elif worksheet_compacted:
-        parts.append("Phiếu thực hành dài hơn giới hạn nên đã bỏ phần ví dụ mẫu (hoặc rút gọn gợi ý trong bảng) — "
-                     "tác giả có thể bổ sung lại một ví dụ ngắn." if vi
-                     else "The worksheet was over its length budget, so its worked example (or the extra guidance in "
-                          "its table) was left out — the author may add a short example back.")
+    if worksheet_compacted:
+        parts.append(_worksheet_line(vi, example_kept=worksheet_example_kept))
     if not whole_fallback:
         parts.extend(_check_lines(vi, deterministic_codes, remaining, fixed_codes, slot_types))
     if drafted_examples and not whole_fallback:
@@ -363,7 +358,32 @@ def build_unit_author_note(
                      else "The illustrative scenario was drafted by AI; the SME should confirm it is realistic.")
     if unexplained_acronyms and not whole_fallback:
         parts.append(_acronyms_line(unexplained_acronyms, vi))
+    if suggested_criteria:
+        parts.append(_SUGGESTED_CRITERIA_LINE[vi])
     return sanitize_author_text(" ".join(parts), IDM_UNIT_AUTHOR_NOTE_MAX_CHARS)
+
+
+def _worksheet_line(vi: bool, *, example_kept: bool) -> str:
+    """The note of a worksheet the server shortened to fit its budget (QC run 8de1c76b, Q2; QLT-9)."""
+
+    if example_kept:
+        return ("Phiếu thực hành dài hơn giới hạn nên đã rút gọn gợi ý trong bảng (ví dụ mẫu vẫn giữ, có thể còn hai "
+                "dòng) — tác giả có thể bổ sung lại gợi ý." if vi
+                else "The worksheet was over its length budget, so the guidance in its table was shortened (the worked "
+                     "example stays, possibly with two entries) — the author may add the guidance back.")
+    return ("Phiếu thực hành dài hơn giới hạn nên đã bỏ phần ví dụ mẫu (hoặc rút gọn gợi ý trong bảng) — tác giả có "
+            "thể bổ sung lại một ví dụ ngắn." if vi
+            else "The worksheet was over its length budget, so its worked example (or the extra guidance in its table) "
+                 "was left out — the author may add a short example back.")
+
+
+# A5 (owner decision 2026-10-22): the practice of the unit has criteria the AI suggested; keyed by "Vietnamese".
+_SUGGESTED_CRITERIA_LINE: Final = {
+    True: "Tài liệu không nêu tiêu chí chấm cho bài thực hành này: AI gợi ý tiêu chí từ nội dung đã dạy (ghi là tiêu "
+          "chí gợi ý) — tác giả nên xem lại.",
+    False: "The source states no grading criteria for this practice: the AI suggested criteria from what the lesson "
+           "teaches (marked as suggested criteria) — the author should check them.",
+}
 
 
 def _drafted_examples_line(examples: Mapping[int, int], slot_types: Sequence[str], vi: bool) -> str:

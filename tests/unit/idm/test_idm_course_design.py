@@ -162,18 +162,21 @@ class GoldenCourseDesignTests(unittest.TestCase):
         self.assertLessEqual(len(procedure), 3)
         self.assertEqual({block.content_kind for block in procedure.values()}, {"procedure"})
 
-    def test_conflict_and_outdated_blocks_are_held_with_sme_questions(self) -> None:
+    def test_conflict_and_outdated_blocks_stay_in_the_course_with_their_sme_questions(self) -> None:
+        # A5 (owner 2026-10-22, contract K2): the AI never holds. The 24 h / 48 h block and the 2021 CRM block are
+        # taught (md_5 has its own practice lesson); their W1 questions stay in the course note for the SME.
         response_time = block_with(self.design, key(7, 2))
         crm = block_with(self.design, key(9, 2))
-        holds = {item.block_id: item for item in self.design.hold_items}
-        self.assertEqual(set(holds), {response_time.block_id, crm.block_id})
-        for item in holds.values():
-            self.assertIn(item.name, self.design.notes.course)
-            self.assertIn(item.sme_question, self.design.notes.course)
-        self.assertEqual(self.design.blocked_must_do_ids, ["md_5"])
-        self.assertEqual(holds[response_time.block_id].blocked_must_do_ids, ["md_5"])
-        held = {item.fact_key for item in self.design.dispositions if item.disposition == "hold"}
-        self.assertEqual(held, {*response_time.fact_keys, *crm.fact_keys})
+        self.assertEqual((self.design.hold_items, self.design.blocked_must_do_ids), ([], []))
+        self.assertEqual(self.lesson_of(response_time.block_id).primary_must_do_id, "md_5")
+        self.assertEqual(self.lesson_of(crm.block_id).primary_must_do_id, "md_4")
+        course = {item.fact_key for item in self.design.dispositions if item.disposition == "course"}
+        self.assertLessEqual({*response_time.fact_keys, *crm.fact_keys}, course)
+        self.assertNotIn("hold", {item.disposition for item in self.design.dispositions})
+        for block in (response_time, crm):
+            for question in block.sme_questions:
+                self.assertIn(question, self.design.notes.course)
+        self.assertNotIn("Hold", self.design.notes.course)
 
     def test_history_block_is_excluded_from_every_lesson(self) -> None:
         history = block_with(self.design, key(1, 2))
