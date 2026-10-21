@@ -1416,9 +1416,7 @@
        }
       ],
       "gaps": [],
-      "sme_questions": [
-       "Khiếu nại cấp 2 phải phản hồi trong 24 giờ hay 48 giờ?"
-      ],
+      "sme_questions": [],
       "origin": "provider"
      },
      {
@@ -1466,9 +1464,7 @@
         "note": "Thiếu các bước trên giao diện CRM hiện tại."
        }
       ],
-      "sme_questions": [
-       "Giao diện CRM hiện tại còn đúng các bước Tạo mới, chọn mã và đính kèm phiếu KN-01 không?"
-      ],
+      "sme_questions": [],
       "origin": "provider"
      },
      {
@@ -2483,7 +2479,7 @@
      }
     ],
     "notes": {
-     "course": "[Thiết kế theo quy trình ID — idm-1]\n• Mục đích khoá học: Quy trình, quy định, tuân thủ, an toàn — Giúp nhân viên Chăm sóc Khách hàng xử lý khiếu nại đúng quy trình, đúng tiêu chí escalate và đúng thời hạn (AI suy ra từ tên, mô tả khoá học và tài liệu — cần xác nhận).\n• Cách trình bày nội dung: giữ nguyên câu chữ của tài liệu cho quy định, quy trình và định nghĩa — chỉ chia khối, sắp xếp và thêm tiêu đề.\n• Mục tiêu học tập và đối tượng học: do AI đề xuất từ tài liệu — cần xác nhận.\n• Thời lượng ước tính: 30 phút (6 mục, 3 chương).\n• Nội dung chuyển sang Tài liệu tra cứu/Job Aid: 2 khối. Nội dung loại khỏi khoá học: 2 khối.\n• Nội dung đã loại khỏi khoá (Remove) — 2 khối, kèm lý do:\n  - Phiên bản và ngày áp dụng của quy trình: Quyết định theo luồng Week 2.\n  - Phòng Chăm sóc Khách hàng đã phát triển ra sao?: Quyết định theo luồng Week 2.\n• Câu hỏi cho SME:\n  - Khiếu nại cấp 2 phải phản hồi trong 24 giờ hay 48 giờ?\n  - Giao diện CRM hiện tại còn đúng các bước Tạo mới, chọn mã và đính kèm phiếu KN-01 không?\n• Một số bước thiết kế dùng phương án dự phòng tự động — cần rà soát kỹ.\n• Cấu trúc được thiết kế theo Must Do, không theo mục lục tài liệu.",
+     "course": "[Thiết kế theo quy trình ID — idm-1]\n• Mục đích khoá học: Quy trình, quy định, tuân thủ, an toàn — Giúp nhân viên Chăm sóc Khách hàng xử lý khiếu nại đúng quy trình, đúng tiêu chí escalate và đúng thời hạn (AI suy ra từ tên, mô tả khoá học và tài liệu — cần xác nhận).\n• Cách trình bày nội dung: giữ nguyên câu chữ của tài liệu cho quy định, quy trình và định nghĩa — chỉ chia khối, sắp xếp và thêm tiêu đề.\n• Mục tiêu học tập và đối tượng học: do AI đề xuất từ tài liệu — cần xác nhận.\n• Thời lượng ước tính: 30 phút (6 mục, 3 chương).\n• Nội dung chuyển sang Tài liệu tra cứu/Job Aid: 2 khối. Nội dung loại khỏi khoá học: 2 khối.\n• Nội dung đã loại khỏi khoá (Remove) — 2 khối, kèm lý do:\n  - Phiên bản và ngày áp dụng của quy trình: Quyết định theo luồng Week 2.\n  - Phòng Chăm sóc Khách hàng đã phát triển ra sao?: Quyết định theo luồng Week 2.\n• Một số bước thiết kế dùng phương án dự phòng tự động — cần rà soát kỹ.\n• Cấu trúc được thiết kế theo Must Do, không theo mục lục tài liệu.",
      "modules": {
       "mod_01": "Mục tiêu hiệu suất: Người học có thể phân loại khiếu nại theo nhóm và mức độ nghiêm trọng dựa trên bảng cấp độ\n• Mục tiêu học tập phục vụ:\n  - Người học có thể phân loại khiếu nại theo nhóm và mức độ nghiêm trọng dựa trên bảng cấp độ\n• 2 mục, ước tính 10 phút.",
       "mod_02": "Mục tiêu hiệu suất: Người học có thể quyết định tự xử lý hay escalate khiếu nại theo tiêu chí bắt buộc\n• Mục tiêu học tập phục vụ:\n  - Người học có thể quyết định tự xử lý hay escalate khiếu nại theo tiêu chí bắt buộc\n• 1 mục, ước tính 5 phút.",
@@ -2504,7 +2500,7 @@
      "w2": "provider",
      "w4": "deterministic_fallback"
     },
-    "design_hash": "b291d2b926a2687775cc8fb55c617f816ac62e86009ab84d34c1710ca05fadb5"
+    "design_hash": "0adbb5811d72bb400ae098b2e7b5382d547234c1fc6b27524f99908ab109def4"
    },
    "usage": {
     "inputTokens": 1924,

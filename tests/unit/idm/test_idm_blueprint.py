@@ -8,7 +8,7 @@ import time
 import unittest
 from collections import Counter
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any
 from unittest.mock import patch
 
@@ -28,6 +28,7 @@ from app.idm.contracts import (
     IdmBlockLoLinkV1,
     IdmBlueprintRowV1,
     IdmContentBlockV1,
+    IdmIssueV1,
     IdmLearningObjectiveV1,
     IdmMustDoV1,
     IdmNoiseDraftV1,
@@ -419,13 +420,33 @@ class RunW2Tests(unittest.IsolatedAsyncioTestCase):
                                                                              must_do_ids=["md_1", "md_1"]))
         result = await self.run_stage(FakeIdmProvider({"IdmW2BlueprintResponseV1": [payload]}))
         # The golden answer classifies cb_0001 nice_to_know: it is stored as remove (A6), counted, never repaired.
-        self.assertEqual((result.origin, result.codes), ("provider", {"IDM_W2_NICE_TO_KNOW_AS_REMOVE": 1}))
+        # The two blocks the old rule held (24 h vs 48 h, the 2021 CRM screen) lose their W1 SME questions (A5).
+        self.assertEqual((result.origin, result.codes), ("provider", {"IDM_W2_NICE_TO_KNOW_AS_REMOVE": 1,
+                                                                      "IDM_W2_SME_QUESTIONS_DROPPED": 2}))
         row = next(row for row in result.rows if row.block_id == "cb_0004")
         self.assertEqual((row.detail_level, row.must_do_ids), ("Giữ bảng nhóm", ["md_1"]))
         history = next(row for row in result.rows if row.block_id == "cb_0001")
         self.assertEqual((history.classification, history.placement, history.treatment),
                          ("remove", "excluded", "remove"))
         self.assertNotIn("nice_to_know", {row.classification for row in result.rows})
+
+    async def test_only_the_blocks_the_old_rule_held_lose_their_sme_questions(self) -> None:
+        # A5: a course block with a conflict/outdated/unclear issue or a missing-criteria gap is taught with suggested
+        # criteria, so no question goes to an SME for it; a plain course block and a Job Aid block keep theirs.
+        conflict = IdmIssueV1(type="conflict", note="Hai dòng nêu khác nhau.", fact_keys=[])
+        self.state = replace(self.state, blocks=[
+            block.model_copy(update={"sme_questions": ["Bảng cấp độ còn áp dụng không?"]})
+            if block.block_id == "cb_0005"
+            else block.model_copy(update={"issues": [conflict], "sme_questions": ["Mã nào còn dùng?"]})
+            if block.block_id == "cb_0013" else block
+            for block in self.state.blocks])
+        result = await self.run_stage(FakeIdmProvider({"IdmW2BlueprintResponseV1": [W2_BLUEPRINT]}))
+        self.assertEqual(result.codes["IDM_W2_SME_QUESTIONS_DROPPED"], 2)
+        questions = {block.block_id: block.sme_questions for block in result.blocks if block.sme_questions}
+        self.assertEqual(questions, {"cb_0005": ["Bảng cấp độ còn áp dụng không?"], "cb_0013": ["Mã nào còn dùng?"]})
+        placement = {row.block_id: row.placement for row in result.rows}
+        self.assertEqual((placement["cb_0010"], placement["cb_0012"], placement["cb_0013"]),
+                         ("course", "course", "reference_job_aid"))
 
     async def test_an_answer_that_still_holds_is_released_without_a_repair(self) -> None:
         # A5: the answer of the old prompt (two Hold rows, md_5 blocked) is accepted in one call, nothing held.
@@ -438,7 +459,8 @@ class RunW2Tests(unittest.IsolatedAsyncioTestCase):
         result = await self.run_stage(provider)
         self.assertEqual(len(provider.calls), 1)
         self.assertEqual((result.origin, result.codes),
-                         ("provider", {"IDM_W2_HOLD_RELEASED": 2, "IDM_W2_NICE_TO_KNOW_AS_REMOVE": 1}))
+                         ("provider", {"IDM_W2_HOLD_RELEASED": 2, "IDM_W2_NICE_TO_KNOW_AS_REMOVE": 1,
+                                       "IDM_W2_SME_QUESTIONS_DROPPED": 2}))
         self.assertEqual({(row.hold, row.hold_reason, row.sme_question) for row in result.rows}, {(False, None, None)})
         self.assertEqual(blocked_must_dos(result.rows, self.state.must_dos), [])
         prompt = provider.calls[0]["prompt"]
@@ -454,14 +476,15 @@ class RunW2Tests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("IDM_W2_ROW_MISSING", provider.calls[1]["prompt"].split("REPAIR_REQUIREMENTS", 1)[1])
         failing = await self.run_stage(FakeIdmProvider({"IdmW2BlueprintResponseV1": ["{", missing]}))
         self.assertEqual(failing.origin, "deterministic_fallback")
-        self.assertEqual(failing.codes, {"IDM_RESPONSE_SCHEMA_INVALID": 1, "IDM_W2_ROW_MISSING": 1})
+        self.assertEqual(failing.codes, {"IDM_RESPONSE_SCHEMA_INVALID": 1, "IDM_W2_ROW_MISSING": 1,
+                                         "IDM_W2_SME_QUESTIONS_DROPPED": 1})
 
     async def test_transient_budget_and_terminal_failures(self) -> None:
         transient = IdmProviderError("SERVICE_BUSY", terminal=False)
         self.assertEqual((await self.run_stage(FakeIdmProvider({"IdmW2BlueprintResponseV1": [transient]}))).origin,
                          "deterministic_fallback")
         self.assertEqual((await self.run_stage(FakeIdmProvider({}), seconds=0.0)).codes,
-                         {"IDM_DEADLINE_EXCEEDED": 1})
+                         {"IDM_DEADLINE_EXCEEDED": 1, "IDM_W2_SME_QUESTIONS_DROPPED": 1})
         terminal = IdmProviderError("AI_KEY_INVALID", terminal=True)
         with self.assertRaises(IdmProviderError):
             await self.run_stage(FakeIdmProvider({"IdmW2BlueprintResponseV1": [terminal]}))
