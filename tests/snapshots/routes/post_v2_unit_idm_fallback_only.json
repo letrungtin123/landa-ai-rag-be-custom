@@ -402,7 +402,7 @@
         "correct": false
        }
       ],
-      "explanation": "Cấp 1 tương ứng với Ảnh hưởng thấp, không thiệt hại tài chính. Các lựa chọn còn lại mô tả nội dung khác: Thiệt hại tài chính dưới 50 triệu đồng hoặc khách hàng phàn nàn lần thứ hai ↔ Cấp 2; Liên quan an toàn, pháp lý hoặc truyền thông ↔ Cấp 3."
+      "explanation": "Cấp 1 tương ứng với Ảnh hưởng thấp, không thiệt hại tài chính.\nA - Sai vì đây là dấu hiệu của Cấp 3, không phải của Cấp 1.\nB - Đúng vì đây là dấu hiệu của Cấp 1.\nC - Sai vì đây là dấu hiệu của Cấp 2, không phải của Cấp 1."
      }
     ],
     "source_locked_fallback": true,

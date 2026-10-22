@@ -456,3 +456,24 @@ class QuizLayoutBoundTests(unittest.TestCase):
         self.assertNotIn("w5_problem_explanation_laid_out", codes)
         shorter = paragraph[:1400]
         self.assertEqual(lay_out_quiz(problem(shorter))[0]["explanation"], layout_explanation(shorter, 3))
+
+
+class FallbackFeedbackTests(StoryboardEndpointTestCase):
+    """Owner decision 2026-10-22: the source-locked question that replaces a failed AI question explains itself in the
+    same shape: the principle line, then one line per option, its letter matching the option shown."""
+
+    async def test_a_fallback_question_has_one_line_per_option(self) -> None:
+        body = severity_body()
+        writer = severity_writer(body, explanation=LINES)
+        for choice in writer["components"]["c1"]["choices"]:
+            choice["correct"] = True
+        provider = FakeGenerate(**{WRITER: [writer], REPAIR: [slot_repair(writer, 1)], JUDGE: [judge()]})
+        status, data, _ = await self.post(body, provider)
+        self.assertEqual(status, 200)
+        slot = data["unit"]["components"][1]
+        lines = slot["explanation"].splitlines()
+        self.assertEqual(lines[0], "Cấp 1 tương ứng với Ảnh hưởng thấp, không thiệt hại tài chính.")
+        self.assertEqual(len(lines), len(slot["choices"]) + 1)
+        for letter, line, choice in zip("ABCD", lines[1:], slot["choices"], strict=False):
+            self.assertTrue(line.startswith(f"{letter} - {'Đúng' if choice['correct'] else 'Sai'} vì đây là dấu hiệu"))
+        self.assertEqual(explanation_report(slot), {})

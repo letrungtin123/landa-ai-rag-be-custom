@@ -86,6 +86,9 @@ _MAX_TERM_WORDS: Final = 8
 _MAX_EXPLANATION_CHARS: Final = 1000
 _MAX_QUESTION_CHARS: Final = 500
 _MAX_OPTION_CHARS: Final = 500
+_MAX_REASON_CHARS: Final = 160
+_OPTION_LETTERS: Final = "ABCDEF"
+_LINE_FEED: Final = "\n"
 
 
 def _key(value: str) -> str:
@@ -316,17 +319,39 @@ def _display_terms(values: Iterable[str]) -> dict[str, str]:
     return result
 
 
-def _explain_others(lead: str, others: list[str], locale: str) -> str:
-    """Feedback that teaches: the criterion, then why each other option is wrong."""
+def _lower_first(label: str) -> str:
+    """A header label inside a sentence: its first letter in lower case unless it starts an acronym ("Dấu hiệu" ->
+    "dấu hiệu", "KPI" stays)."""
 
-    lead = lead.rstrip()
+    return label[:1].lower() + label[1:] if label[1:2].islower() else label
+
+
+def _feedback(principle: str, choices: list[dict[str, Any]], reasons: dict[str, str], locale: str) -> str:
+    """Feedback in the shape the writer is asked for (QC feedback 2026-10-21, A1; owner decision 2026-10-22 for the
+    fallback): the principle line, then one line per option in letter order, "A - Đúng vì …" / "A - Sai vì …" (English
+    "Correct/Incorrect because …"). Every reason names only what the source structure the question was built from says
+    about that option (``reasons``: option key -> reason); the principle is cut to what the lines leave."""
+
+    en = locale == "en"
+    lines = []
+    for index, choice in enumerate(choices):
+        verdict = (("Correct because" if en else "Đúng vì") if choice["correct"]
+                   else ("Incorrect because" if en else "Sai vì"))
+        reason = reasons.get(_key(str(choice["text"])), "")
+        lines.append(f"{_OPTION_LETTERS[index]} - {verdict} {_reason_text(reason)}")
+    body = _LINE_FEED.join(lines)
+    lead = " ".join(principle.split())
     if not _TERMINAL_RE.search(lead):
         lead += "."
-    if others:
-        joined = "; ".join(others)
-        lead += (f" The other options describe something else: {joined}." if locale == "en"
-                 else f" Các lựa chọn còn lại mô tả nội dung khác: {joined}.")
-    return lead[:_MAX_EXPLANATION_CHARS]
+    room = _MAX_EXPLANATION_CHARS - len(body) - 1
+    if len(lead) > room:
+        lead = lead[:max(room - 1, 0)].rsplit(" ", 1)[0].rstrip(" ,;:") + "…"
+    return lead + _LINE_FEED + body
+
+
+def _reason_text(reason: str) -> str:
+    reason = " ".join(reason.split())[:_MAX_REASON_CHARS].rstrip()
+    return reason if _TERMINAL_RE.search(reason) else reason + "."
 
 
 def _choices(options: list[str], correct: str, seed: str) -> list[dict[str, Any]]:
@@ -342,13 +367,35 @@ def _distinct(options: list[str]) -> bool:
     return len({_key(option) for option in options}) >= _MIN_GROUNDED_CHOICES
 
 
+def _option_key(option: str) -> str:
+    """The key of an option as ``_choices`` shows it (normalised and bounded), for its reason."""
+
+    return _key(normalize_visible_text(option)[:_MAX_OPTION_CHARS])
+
+
+def _authored_feedback(question: dict[str, Any], locale: str) -> dict[str, Any]:
+    """A question the source itself writes (question, options, key and explanation): its explanation becomes the
+    principle line and every option gets its line; the source decides, so the reason is the key the source gives."""
+
+    choices = [choice for choice in question.get("choices") or [] if isinstance(choice, dict)]
+    letter = next((_OPTION_LETTERS[index] for index, choice in enumerate(choices) if choice.get("correct")), "")
+    en = locale == "en"
+    reasons = {_key(str(choice["text"])): (("this is the answer the source gives" if en
+                                            else "đây là đáp án tài liệu nêu") if choice.get("correct")
+                                           else (f"the source gives {letter} as the answer" if en
+                                                 else f"tài liệu nêu đáp án là {letter}"))
+               for choice in choices}
+    return {**question, "explanation": _feedback(str(question.get("explanation") or ""), choices, reasons, locale)}
+
+
 def idm_source_grounded_single_choice(title: str, values: Iterable[Any], *, locale: str) -> dict[str, Any] | None:
-    """One verifiable single-choice question built only from source structure (or ``None``)."""
+    """One verifiable single-choice question built only from source structure (or ``None``). Its explanation has the
+    shape the writer is asked for (``_feedback``): the principle line, then one line per option with its reason."""
 
     materialized = list(values)
     authored = build_source_locked_single_choice(title, materialized, locale=locale)
     if authored is not None:
-        return authored
+        return _authored_feedback(authored, locale)
     facts = clean_source_facts(materialized, preserve_table_numeric=True)
     en = locale == "en"
     definitions = source_term_definitions(facts)
@@ -359,14 +406,19 @@ def idm_source_grounded_single_choice(title: str, values: Iterable[Any], *, loca
         term, correct = named[0]
         options = [definition for _term, definition in named]
         if _distinct(options):
-            others = [(f"that is “{other}”" if en else f"đó là “{other}”") for other, _text in named[1:]]
+            choices = _choices(options, correct, f"definition:{title}:{term}")
+            reasons = {_option_key(text): (f"this is the definition of {term}" if en
+                                           else f"đây là định nghĩa của {term}") if other == term
+                       else (f"this defines {other}, not {term}" if en
+                             else f"đây là định nghĩa của {other}, không phải của {term}")
+                       for other, text in reversed(named)}
             return {
                 "problem_type": "multiple_choice",
                 "question": (f"Which description correctly matches the term {term}?" if en
                              else f"Mô tả nào phù hợp nhất với thuật ngữ {term}?")[:_MAX_QUESTION_CHARS],
-                "choices": _choices(options, correct, f"definition:{title}:{term}"),
-                "explanation": _explain_others(f"{term} is defined as: {correct}" if en
-                                               else f"{term} được xác định là: {correct}", others, locale),
+                "choices": choices,
+                "explanation": _feedback(f"{term} is defined as: {correct}" if en
+                                         else f"{term} được xác định là: {correct}", choices, reasons, locale),
             }
     rows = parse_structured_table_rows(facts)
     if len(rows) >= _MIN_TABLE_ROWS_FOR_QUESTION and len(rows[0]) >= _MIN_TABLE_CELLS:
@@ -374,28 +426,40 @@ def idm_source_grounded_single_choice(title: str, values: Iterable[Any], *, loca
         shown = body[:_MAX_GROUNDED_CHOICES]
         if len(shown) >= _MIN_GROUNDED_CHOICES and _distinct([row[1] for row in shown]):
             key, correct = shown[0][0], shown[0][1]
+            label = _lower_first(header[1])
+            choices = _choices([row[1] for row in shown], correct, f"table:{title}:{key}")
+            reasons = {_option_key(row[1]): (f"this is the {label} of {key}" if en
+                                             else f"đây là {label} của {key}") if row[0] == key
+                       else (f"this is the {label} of {row[0]}, not of {key}" if en
+                             else f"đây là {label} của {row[0]}, không phải của {key}")
+                       for row in reversed(shown)}
             return {
                 "problem_type": "multiple_choice",
                 "question": (f"According to {header[0]}, which {header[1]} corresponds to {key}?" if en
                              else f"Theo {header[0]}, {header[1]} nào tương ứng với {key}?")[:_MAX_QUESTION_CHARS],
-                "choices": _choices([row[1] for row in shown], correct, f"table:{title}:{key}"),
-                "explanation": _explain_others(f"{key} corresponds to {correct}." if en
-                                               else f"{key} tương ứng với {correct}.",
-                                               [f"{row[1]} ↔ {row[0]}" for row in shown[1:]], locale),
+                "choices": choices,
+                "explanation": _feedback(f"{key} corresponds to {correct}." if en
+                                         else f"{key} tương ứng với {correct}.", choices, reasons, locale),
             }
     steps = ordered_source_steps(facts, locale=locale)
     if len(steps) >= _MIN_GROUNDED_CHOICES:
         actions = [_STEP_LABEL_RE.sub("", step) for step in steps][:_MAX_GROUNDED_CHOICES]
         if _distinct(actions):
+            choices = _choices(actions, actions[0], f"procedure:{title}")
+            reasons = {_option_key(action): (("this is the first step of the procedure" if en
+                                              else "đây là bước đầu tiên của quy trình") if number == 1
+                                             else (f"this is step {number} of the procedure, not the first one" if en
+                                                   else f"đây là bước thứ {number} của quy trình, không phải bước đầu "
+                                                        "tiên"))
+                       for number, action in reversed(list(enumerate(actions, start=1)))}
             return {
                 "problem_type": "multiple_choice",
                 "question": ("Which action comes first in the procedure?" if en
                              else "Hoạt động nào được thực hiện đầu tiên trong quy trình?"),
-                "choices": _choices(actions, actions[0], f"procedure:{title}"),
-                "explanation": _explain_others(
+                "choices": choices,
+                "explanation": _feedback(
                     f"The procedure begins with: {actions[0]}" if en else f"Quy trình bắt đầu bằng: {actions[0]}",
-                    [(f"“{action}” is a later step" if en else f"“{action}” là bước sau") for action in actions[1:]],
-                    locale),
+                    choices, reasons, locale),
             }
     return None
 

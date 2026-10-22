@@ -15,6 +15,7 @@ from typing import Any
 from unittest.mock import patch
 
 from app import instructional_quality
+from app.idm.quiz_text import explanation_report
 from app.idm.source_locked import idm_source_grounded_single_choice, render_idm_source_locked_html
 from app.instructional_quality import render_source_locked_html
 from app.schemas.orchestration_v2 import RagLessonAuthorUnitV2Request
@@ -127,7 +128,16 @@ class IdmSingleChoiceTests(unittest.TestCase):
         self.assertEqual(len(problem["choices"]), 4)
         self.assertEqual(sum(choice["correct"] for choice in problem["choices"]), 1)
         self.assertFalse(problem["choices"][0]["correct"])
-        self.assertIn("“Lựa chọn chiến lược”", problem["explanation"])
+        # Owner decision 2026-10-22: the fallback feedback has the writer's shape, the principle line and one line per
+        # option with the reason the source structure gives.
+        lines = problem["explanation"].splitlines()
+        self.assertTrue(lines[0].startswith("Kiểm toán thực trạng được xác định là: Audit lại"))
+        self.assertEqual([line[:4] for line in lines[1:]], ["A - ", "B - ", "C - ", "D - "])
+        letter = "ABCD"[[choice["correct"] for choice in problem["choices"]].index(True)]
+        self.assertIn(f"{letter} - Đúng vì đây là định nghĩa của Kiểm toán thực trạng.", lines)
+        self.assertIn("Sai vì đây là định nghĩa của Lựa chọn chiến lược, không phải của Kiểm toán thực trạng.",
+                      problem["explanation"])
+        self.assertEqual(explanation_report({"type": "problem", **problem}), {})
         self.assertIsNone(finding({"type": "problem", **problem}))
 
     def test_table_and_step_questions_show_at_most_four_options(self) -> None:
@@ -137,13 +147,17 @@ class IdmSingleChoiceTests(unittest.TestCase):
         assert table is not None
         self.assertEqual(len(table["choices"]), 4)
         for n in (2, 3, 4):
-            self.assertIn(f"Tên gọi số {n} ↔ Bậc 0{n}", table["explanation"])
+            self.assertIn(f"Sai vì đây là tên gọi của Bậc 0{n}, không phải của Bậc 01.", table["explanation"])
+        self.assertIn("Đúng vì đây là tên gọi của Bậc 01.", table["explanation"])
+        self.assertEqual(explanation_report({"type": "problem", **table}), {})
         self.assertIsNone(finding({"type": "problem", **table}))
         steps = idm_source_grounded_single_choice(
             "Quy trình", [f"{n}. Bước xử lý khiếu nại thứ {n} theo quy định" for n in range(1, 7)], locale="en")
         assert steps is not None
         self.assertEqual(len(steps["choices"]), 4)
-        self.assertIn("is a later step", steps["explanation"])
+        self.assertIn("Correct because this is the first step of the procedure.", steps["explanation"])
+        self.assertIn("Incorrect because this is step 2 of the procedure, not the first one.", steps["explanation"])
+        self.assertEqual(len(steps["explanation"].splitlines()), 5)
 
     def test_authored_questions_pass_through_and_prose_yields_none(self) -> None:
         authored = ["Câu hỏi 1: Khi nào phải chuyển khiếu nại cho quản lý ngay lập tức?",
@@ -152,6 +166,9 @@ class IdmSingleChoiceTests(unittest.TestCase):
         problem = idm_source_grounded_single_choice("Escalate", authored, locale="vi")
         assert problem is not None
         self.assertEqual(problem["question"], "Khi nào phải chuyển khiếu nại cho quản lý ngay lập tức?")
+        self.assertEqual(problem["explanation"].splitlines(), [
+            "Khiếu nại liên quan an toàn phải escalate ngay theo quy định.", "A - Đúng vì đây là đáp án tài liệu nêu.",
+            "B - Sai vì tài liệu nêu đáp án là A.", "C - Sai vì tài liệu nêu đáp án là A."])
         self.assertIsNone(idm_source_grounded_single_choice("Văn xuôi", ["Một câu văn bình thường."], locale="vi"))
 
 
