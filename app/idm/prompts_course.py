@@ -60,9 +60,11 @@ TASK: Week 1 - build the SME Content Map for ONE section of the source.
    content_kind concept, named "X là gì?" / "What is X?"), never merged with the history, origin or background
    narrative around it, even on the same page: Week 2 may drop the history but must keep the definition.
 4. Record issues only with concrete evidence and the fact_keys involved: unclear | duplicate | conflict |
-   too_general | too_detailed | outdated. unclear is a rule, number or instruction a learner could apply in two
-   ways; a transition or signpost sentence ("Chúng ta lại đào sâu thêm…", "Let's look at…"), a slide title, a lone
-   letter or bracket and a word the PDF cut or glued are never an issue.
+   too_general | too_detailed | outdated. conflict is two facts that say different things, or one rule, number or
+   instruction a learner could apply in two ways (the author must settle it); unclear is a passage a learner cannot
+   follow as written (a sentence cut off before its point, a step without its object, a garbled list), never a rule
+   question; a transition or signpost sentence ("Chúng ta lại đào sâu thêm…", "Let's look at…"), a slide title, a
+   lone letter or bracket and a single word the PDF cut or glued are never an issue.
 5. Record content gaps that will matter for examples, practice, feedback or assessment: missing_example |
    missing_exception | missing_criteria | missing_step | missing_sample_output | missing_common_mistake |
    missing_feedback_basis | missing_unit_variation.

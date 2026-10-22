@@ -22,10 +22,13 @@ from app.idm.policy import IDM_IMAGE_PAGE_MIN_SHARE
 _LEGACY_STATUS: Final = "legacy_review_required"
 _OBSERVED: Final = frozenset({"observed", "reviewed"})
 _BOX_VALUES: Final = 4  # x0, y0, x1, y1
+# The bundle's own review requirements of an unread region; any other one means the pages cannot be told apart.
+_VISUAL_REQUIREMENTS: Final = ("VISUAL_OBSERVATION_REQUIRED:", "VISUAL_INFERENCE_REQUIRES_VERIFICATION:")
 
 
-def _share(region: Mapping[str, Any]) -> float:
-    """The page share of a region: its ``page_area_ratio``, else the area of its normalised box (vector drawings)."""
+def _share(region: Mapping[str, Any]) -> float | None:
+    """The page share of a region: its ``page_area_ratio``, else the area of its normalised box (vector drawings);
+    ``None`` without either."""
 
     ratio = region.get("page_area_ratio")
     if isinstance(ratio, (int, float)) and not isinstance(ratio, bool):
@@ -33,9 +36,15 @@ def _share(region: Mapping[str, Any]) -> float:
     locator = region.get("locator")
     box = locator.get("bbox_normalized") if isinstance(locator, Mapping) else None
     if (isinstance(box, (list, tuple)) and len(box) == _BOX_VALUES
-            and all(isinstance(value, (int, float)) for value in box)):
+            and all(isinstance(value, (int, float)) and not isinstance(value, bool) for value in box)):
         return max(0.0, min(1.0, (float(box[2]) - float(box[0])) * (float(box[3]) - float(box[1]))))
-    return 0.0
+    return None
+
+
+def _page(region: Mapping[str, Any]) -> int | None:
+    place = region.get("locator")
+    page = place.get("page") if isinstance(place, Mapping) else None
+    return page if isinstance(page, int) and not isinstance(page, bool) else None
 
 
 def _unread(region: Mapping[str, Any]) -> bool:
@@ -46,9 +55,8 @@ def _unread(region: Mapping[str, Any]) -> bool:
     return status not in _OBSERVED or bool(claims)
 
 
-def unread_image_pages(locators: Iterable[Mapping[str, Any]]) -> list[int]:
-    """The pages whose unobserved images cover at least ``IDM_IMAGE_PAGE_MIN_SHARE`` of them (each region once,
-    however many facts carry it)."""
+def _unread_regions(locators: Iterable[Mapping[str, Any]]) -> list[Mapping[str, Any]]:
+    """The unobserved regions of ``locators``, each once however many facts carry it."""
 
     regions: dict[str, Mapping[str, Any]] = {}
     for locator in locators:
@@ -56,21 +64,32 @@ def unread_image_pages(locators: Iterable[Mapping[str, Any]]) -> list[int]:
             if isinstance(region, Mapping) and _unread(region):
                 key = json.dumps([region.get("asset_revision"), region.get("locator")], sort_keys=True, default=str)
                 regions.setdefault(key, region)
+    return list(regions.values())
+
+
+def unread_image_pages(locators: Iterable[Mapping[str, Any]]) -> list[int]:
+    """The pages whose unobserved images cover at least ``IDM_IMAGE_PAGE_MIN_SHARE`` of them (each region once,
+    however many facts carry it)."""
+
     shares: defaultdict[int, float] = defaultdict(float)
-    for region in regions.values():
-        place = region.get("locator")
-        page = place.get("page") if isinstance(place, Mapping) else None
-        if isinstance(page, int) and not isinstance(page, bool):
-            shares[page] += _share(region)
+    for region in _unread_regions(locators):
+        if (page := _page(region)) is not None:
+            shares[page] += _share(region) or 0.0
     return sorted(page for page, share in shares.items() if share >= IDM_IMAGE_PAGE_MIN_SHARE)
 
 
-def evidence_needs_check(locators: Iterable[Mapping[str, Any]]) -> bool:
+def evidence_needs_check(locators: Iterable[Mapping[str, Any]], requirements: Iterable[Any] = ()) -> bool:
     """Whether the unit note asks the author to compare the source pages with the original document: a page that is
-    mostly an unread image, or a legacy document whose pages cannot be told apart."""
+    mostly an unread image. The old warning stays whenever the pages cannot be told apart (review of dfb6db2): a
+    legacy document, a bundle review requirement that is no visual one (``EVIDENCE_BUNDLE_ASSEMBLY_FAILED``, a limit
+    reached), or an unread region without its page or its size."""
 
     listed = [locator for locator in locators if isinstance(locator, Mapping)]
     if any(str(locator.get("source_evidence_status") or "").casefold() == _LEGACY_STATUS for locator in listed):
+        return True
+    if any(not str(code).startswith(_VISUAL_REQUIREMENTS) for code in requirements):
+        return True
+    if any(_page(region) is None or _share(region) is None for region in _unread_regions(listed)):
         return True
     return bool(unread_image_pages(listed))
 

@@ -34,7 +34,8 @@ from app.idm.contracts import IdmIssueV1, IdmUnitBriefV1
 from app.idm.text import glued_words, idm_fold, single_line
 
 # Owner decision 2026-10-22 (run 5496155c): a conflict or an out-of-date point marks the unit for review; an unclear
-# one is a soft edit note.
+# one is a soft edit note. Review of dfb6db2: W1 records a rule a learner could apply in two ways as a conflict (it
+# stays "Cần xem"); unclear is only text that cannot be followed as written (cut off, garbled), an edit.
 REVIEW_FLAG_TYPES: Final = frozenset({"conflict", "outdated"})
 SOFT_FLAG_TYPES: Final = frozenset({"unclear"})
 FLAG_ISSUE_TYPES: Final = REVIEW_FLAG_TYPES | SOFT_FLAG_TYPES

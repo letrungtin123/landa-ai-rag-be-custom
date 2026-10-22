@@ -2519,8 +2519,8 @@
     "op": "generate",
     "model": "test-model",
     "schema": "IdmW1SectionResponseV1",
-    "prompt_sha256": "b7f2268019b8f4e97c46eafc4d59dec91c1e1c3c7f30a9e8d625306abe24a416",
-    "prompt_chars": 11233,
+    "prompt_sha256": "32a11435d20a64f7388d4a4326345e94e9041efc9f11c835014bd0e3555aa717",
+    "prompt_chars": 11478,
     "config": {
      "max_output_tokens": 12000,
      "response_mime_type": "application/json",

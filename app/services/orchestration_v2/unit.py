@@ -148,7 +148,8 @@ def _idm_unit_deps(request: RagLessonAuthorUnitV2Request) -> IdmUnitDeps:
             manifest, _orchestration_v2_unit_source_rows(request)),
         # Run 5496155c: the note's image warning only for a page that is mostly an unread image.
         evidence_review_required=(isinstance(bundle, dict) and bundle.get("status") == "review_required"
-                                  and evidence_needs_check(fact.locator for fact in contract.source_facts)),
+                                  and evidence_needs_check((fact.locator for fact in contract.source_facts),
+                                                           bundle.get("review_requirements") or ())),
         judge_mode=settings.idm_judge_mode,
         recoverable_errors=(LessonAuthorProposalValidationError, WorkflowFailure, ValueError, TypeError, KeyError),
         on_recoverable_error=lambda stage, code, error: report_handled_exception(

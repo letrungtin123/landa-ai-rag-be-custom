@@ -7,8 +7,8 @@
   },
   {
    "schema": "IdmW1SectionResponseV1",
-   "sha256": "51b663d0cc4db90dac76f204b34b7e9945ca6ed81014279c0a709e3dd45ab9d0",
-   "chars": 11349
+   "sha256": "944b07af71d4579583798f6efcfc2c37ad22078ecda5da62211b23f39838125d",
+   "chars": 11594
   },
   {
    "schema": "IdmW2BlueprintResponseV1",
@@ -305,8 +305,8 @@
    },
    {
     "schema": "IdmW1SectionResponseV1",
-    "sha256": "51b663d0cc4db90dac76f204b34b7e9945ca6ed81014279c0a709e3dd45ab9d0",
-    "chars": 11349
+    "sha256": "944b07af71d4579583798f6efcfc2c37ad22078ecda5da62211b23f39838125d",
+    "chars": 11594
    },
    {
     "schema": "IdmW2BlueprintResponseV1",

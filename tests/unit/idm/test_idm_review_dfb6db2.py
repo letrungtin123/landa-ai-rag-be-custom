@@ -13,6 +13,7 @@ from typing import Any
 
 from app.idm.answer_checks import copies_example_measure, stem_copies_answer, unit_teaching
 from app.idm.hypothetical import SUPPOSITION_ADDED, as_supposition, suppose_semantic
+from app.idm.prompts_course import w1_section_prompt
 from app.idm.prompts_unit import unit_writer_prompt
 from app.idm.qa import (
     REVIEW_REASON_EVIDENCE,
@@ -23,8 +24,10 @@ from app.idm.qa import (
 )
 from app.idm.quiz_letters import number_item_letters
 from app.idm.quiz_text import EXPLANATION_NAMES_ONLY_CODE, _asks_early, explanation_report, lay_out_quiz
+from app.idm.source_flags import REVIEW_FLAG_TYPES
 from app.idm.source_locked import render_idm_source_locked_html
 from app.idm.text import evidence_index, glued_words
+from app.idm.visual_pages import evidence_needs_check
 from app.idm.worksheet import compact_worksheet, plan_worksheet_html
 from app.idm.worksheet_input import is_example_section, is_input_section, missing_input, reused_entries
 from tests.unit.idm.test_idm_qc_feedback import SUGGESTED
@@ -424,3 +427,44 @@ class LowFindingsTests(unittest.TestCase):
                      "năng nhằm xử lý tác vụ hàng ngày.\nB - Đúng vì phương án này đúng tiêu chí.")
         self.assertEqual(explanation_report(lay_out_quiz(items)[0]).get(EXPLANATION_NAMES_ONLY_CODE),
                          ["the lines of B never say what their item is"])
+
+
+def image(page: int | None, share: float | None, *, box: bool = True) -> dict[str, Any]:
+    locator: dict[str, Any] = {} if page is None else {"page": page}
+    if box:
+        locator["bbox_normalized"] = [0.5, 0.2, 0.95, 0.9]
+    region: dict[str, Any] = {"region_kind": "embedded_image", "asset_revision": "c" * 64, "locator": locator,
+                              "observation": {"status": "unreviewed", "facts": []},
+                              "inference": {"status": "not_performed", "claims": []}}
+    if share is not None:
+        region["page_area_ratio"] = share
+    return region
+
+
+class VisualWarningFallbackTests(unittest.TestCase):
+    """The image warning falls back to the old behaviour when the pages cannot be told apart."""
+
+    VISUAL = ("VISUAL_OBSERVATION_REQUIRED:" + "d" * 64,)
+
+    def test_a_decorative_picture_with_its_measures_is_no_warning(self) -> None:
+        self.assertFalse(evidence_needs_check([{"visual_regions": [image(14, 0.3)]}], self.VISUAL))
+
+    def test_a_failed_bundle_or_an_unmeasured_region_keeps_the_warning(self) -> None:
+        decorative = [{"visual_regions": [image(14, 0.3)]}]
+        self.assertTrue(evidence_needs_check(decorative, ["EVIDENCE_BUNDLE_ASSEMBLY_FAILED"]))
+        self.assertTrue(evidence_needs_check([{"visual_regions": [image(14, None, box=False)]}], self.VISUAL))
+        self.assertTrue(evidence_needs_check([{"visual_regions": [image(None, 0.3)]}], self.VISUAL))
+
+
+class UnclearDefinitionTests(unittest.TestCase):
+    """W1: a rule a learner could apply in two ways is a conflict (it stays "Cần xem"); unclear is only text that
+    cannot be followed as written (an edit note)."""
+
+    def test_a_two_way_rule_is_a_conflict(self) -> None:
+        prompt = flat(w1_section_prompt("vi", project_context={}, section_id="sec_001", section_title_path="A",
+                                        facts=[("f1", "Một dòng", None)]))
+        self.assertIn("conflict is two facts that say different things, or one rule, number or instruction a learner "
+                      "could apply in two ways (the author must settle it); unclear is a passage a learner cannot "
+                      "follow as written", prompt)
+        self.assertIn("conflict", REVIEW_FLAG_TYPES)
+        self.assertNotIn("unclear", REVIEW_FLAG_TYPES)

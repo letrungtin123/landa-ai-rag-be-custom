@@ -166,6 +166,11 @@ HASH_HISTORY: tuple[tuple[str, str], ...] = (
     # lines.
     ("b2f493bec890b1174305996f8d35cfa1cada804516ad44e5734865a43e65a9d5",
      "A question may practise on the worksheet's input data"),
+    # Review of dfb6db2: the W1 map rule records a rule, number or instruction a learner could apply in two ways as a
+    # conflict (it stays a review point, Cần xem) and keeps unclear for a passage that cannot be followed as written (an
+    # edit note).
+    ("b590b7c7ba124e1844d6ffeec9a7060daae4cfdaba9dca6465f41f6933857852",
+     "A two-way rule is a conflict; unclear is text that cannot be followed"),
 )
 PROMPT_NAME = re.compile(r"(prompt|_rules?$|_suffix$|rule_lines?$|_hint$|^rule_line$|_cue_line$)")
 
