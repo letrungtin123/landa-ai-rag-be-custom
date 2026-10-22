@@ -152,22 +152,22 @@ Writing rules (learner-facing, {locale_name(locale)}):
   learner and a short example. Keep every condition, negation, quantity, unit and exception that matters for the
   Must Do. Teach what the practice needs (detail_level).
 - Context building stays under 20% of the unit text.
-- Practice slots of type problem, la_sortable or la_crossword contain context, task, the input the learner works
-  with, exactly one correct answer, and feedback that teaches. Single-choice: 4 options (3 only when the criterion
-  leaves just two plausible mistakes); each distractor is a
-  plausible near-miss a learner of TARGET_AUDIENCE could choose, wrong by the stated criterion: a common mistake,
-  the old practice the facts reject, a criterion only half met or a step in the wrong order (never an obviously wrong,
-  extreme or absurd option: no "chi phí cực cao", "vượt ngân sách", "gửi email nhắc khách kiên nhẫn chờ"; each one is a
-  reasonable choice that applies the taught criterion wrongly); no "all/none of the above", correct option not always
-  first, every option of comparable
-  length and detail (the correct one is not the longest option: at least one distractor is as long or longer), and the
-  correct option never reuses the wording of the example, quotation, worked example or template shown before the
-  question, nor strings together the items of a list or table shown before it (it applies the criterion to the
-  question's own case); the question's case is not the worked example's case: other facts decide it and its answer
-  is not the worked example's answer; the case and its listed items never copy the words of the worked example, a
-  table row or a list item shown before it (the learner applies the criterion, never matches words), and the key never
-  repeats a number or detail of the worked example the case does not give; the case never names the cause, rule or
-  criterion the key is about (the learner finds it from the case's facts). A question on a formula, definition or
+- Practice slots of type problem, la_sortable or la_crossword contain context, task, the input the learner works with,
+  exactly one correct answer, and feedback that teaches. Single-choice: 4 options (3 only when the criterion leaves
+  just two plausible mistakes); each distractor is a plausible near-miss a learner of TARGET_AUDIENCE could choose,
+  wrong by the stated criterion: a common mistake, the old practice the facts reject, a criterion only half met or a
+  step in the wrong order (never an obviously wrong, extreme or absurd option: no "chi phí cực cao", "vượt ngân sách",
+  "gửi email nhắc khách kiên nhẫn chờ"; each one is a reasonable choice that applies the taught criterion wrongly); no
+  "all/none of the above", correct option not always first, every option of comparable length and detail (the correct
+  one is not the longest option: at least one distractor is as long or longer), and the correct option never reuses
+  the wording of the example, quotation, worked example or template shown before the question, nor strings together
+  the items of a list or table shown before it (it applies the criterion to the question's own case); the question's
+  case is not the worked example's case: other facts decide it and its answer is not the worked example's answer; the
+  case and its listed items never copy the words of the worked example, a table row or a list item shown before it
+  (the learner applies the criterion, never matches words; a worksheet's input data is no taught content: the question
+  may practise on the same entries, the worksheet gives no answer for them), and the key never repeats a number or
+  detail of the worked example the case does not give; the case never names the cause, rule or criterion the key is
+  about (the learner finds it from the case's facts). A question on a formula, definition or
   framework of several required parts ("đối tượng + lợi ích + cách làm khác biệt"): the key has every part; each
   distractor visibly lacks or misuses ONE named part (a different one each) and its explanation line names that
   part; never a distractor that also has every part. The question and the explanation follow QUIZ TEXT below. Never

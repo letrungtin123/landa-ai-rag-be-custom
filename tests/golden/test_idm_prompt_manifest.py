@@ -161,6 +161,11 @@ HASH_HISTORY: tuple[tuple[str, str], ...] = (
     # and the reuse hint.
     ("f1a44802e78015a0e5d1e2a445b10b084310a3f67f0fe4e475d9bc9ba4349453",
      "The worked example never uses the task's data; four items for four options"),
+    # Review of dfb6db2 (item 1): the W5 practice rules say a worksheet's input data is no taught content, so a question
+    # may practise on the same entries; the paragraph is rewrapped (same words) to keep unit_writer_prompt within 120
+    # lines.
+    ("b2f493bec890b1174305996f8d35cfa1cada804516ad44e5734865a43e65a9d5",
+     "A question may practise on the worksheet's input data"),
 )
 PROMPT_NAME = re.compile(r"(prompt|_rules?$|_suffix$|rule_lines?$|_hint$|^rule_line$|_cue_line$)")
 

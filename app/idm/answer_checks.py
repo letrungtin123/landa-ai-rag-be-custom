@@ -78,6 +78,7 @@ from app.idm.policy import (
 )
 from app.idm.quiz_text import named_items
 from app.idm.text import content_pairs, content_words, idm_fold, number_spans
+from app.idm.worksheet_input import is_input_section
 
 _WORD_RE: Final = re.compile(r"\w+", re.UNICODE)
 # A worked example in the html: a text that opens with an example label, the blocks after it in its section, and every
@@ -164,6 +165,8 @@ def example_passages(html_before: Sequence[Mapping[str, Any]]) -> list[str]:
     passages: list[str] = []
     for component in html_before:
         for section in _sections(component):
+            if is_input_section(section):
+                continue
             inside = any(word in idm_fold(str(section.get("heading") or "")) for word in _EXAMPLE_HEADING_WORDS)
             for block in section.get("blocks") or []:
                 if not isinstance(block, dict):
@@ -197,13 +200,17 @@ def fact_table_rows(texts: Iterable[str]) -> list[tuple[str, str]]:
 def unit_teaching(html_before: Sequence[Mapping[str, Any]], faq: Sequence[Mapping[str, Any]],
                   fact_rows: Sequence[tuple[str, str]] = ()) -> UnitTeaching:
     """The passages and taught labels of the html slots before a question, the sentences of the unit's FAQ, the
-    worked-example passages and ``fact_rows`` (``fact_table_rows`` of the facts the writer was given)."""
+    worked-example passages and ``fact_rows`` (``fact_table_rows`` of the facts the writer was given).
+
+    Review of dfb6db2 (item 1, r5 c3.l2.u1): a worksheet's input data ("Yêu cầu 1: …") is no taught content: a
+    question that practises on the same entries gives nothing away, the worksheet holds no answer for them."""
 
     passages: list[str] = []
     rows: list[tuple[str, str]] = []
     lists: list[tuple[str, ...]] = []
     for component in html_before:
-        for block in _blocks(component):
+        for block in (block for section in _sections(component) if not is_input_section(section)
+                      for block in section.get("blocks") or [] if isinstance(block, dict)):
             kind = block.get("kind")
             if kind in _TEXT_KINDS:
                 passages.extend(_block_texts(block))
@@ -538,8 +545,13 @@ def copies_example_measure(component: Mapping[str, Any], teaching: UnitTeaching)
         return False
     shown = set().union(*(_measures(passage) for passage in teaching.examples))
     others = set().union(*(_measures(text) for index, text in enumerate(texts) if index != key))
+    # Review of dfb6db2 (item 2): a number the lesson teaches as its rule ("phản hồi trong 24 giờ") is the answer the
+    # learner applies, not the example's figure.
+    taught = set().union(*(_measures(passage) for passage in [
+        *(text for text in teaching.passages if not any(example in text for example in teaching.examples)),
+        *teaching.faq_sentences, *(value for _label, value in teaching.fact_rows)]))
     return bool((_measures(texts[key]) & shown) - _measures(_case_lines(str(component.get("question") or "")))
-                - others)
+                - others - taught)
 
 
 def _item_share(text: str, passage: str) -> float:

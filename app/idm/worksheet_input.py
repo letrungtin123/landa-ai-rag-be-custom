@@ -56,8 +56,11 @@ _REFERENCES: Final[tuple[tuple[str, re.Pattern[str]], ...]] = (
 # The worked example: a section whose heading names an example or a model entry.
 _EXAMPLE_WORDS: Final = ("vi du", "example", "mau hoan thanh", "bai mau", "tham khao", "mau doi chieu", "ho so mau",
                          "minh hoa", "sample", "hoan chinh", "worked")
-# The input data section the writer is asked for ("Dữ liệu đầu vào" / "Input data", R1-R2).
+# The input data section the writer is asked for ("Dữ liệu đầu vào" / "Input data", R1-R2). Its heading wins over the
+# example words ("Dữ liệu minh họa" holds the task's five requests); a template the learner fills ("Bảng thu thập dữ
+# liệu khách hàng", guiding questions) is no input (review of dfb6db2, items 7 and 12).
 _INPUT_HEADING_RE: Final = re.compile(r"\b(?:du lieu|dau vao|input|data)\b")
+_TEMPLATE_HEADING_RE: Final = re.compile(r"\b(?:thu thap|can dien|bieu mau|mau dien|template|fill)\b")
 # A named entry ("Ý kiến 1: …", "Yêu cầu 2 - …") or a labelled one ("Thế mạnh cốt lõi: …", a label of a few words).
 _NAMED_ENTRY_RE: Final = re.compile(
     r"^\s*(?P<name>[^\W\d_]+(?:\s+[^\W\d_]+){0,3}\s+\d{1,2})\s*[:.)\-\N{EN DASH}]\s*(?P<text>.*)$", re.DOTALL)
@@ -110,17 +113,31 @@ def input_reference(texts: Iterable[str]) -> InputReference | None:
     return None
 
 
-def _is_example(section: Mapping[str, Any]) -> bool:
-    return any(word in idm_fold(str(section.get("heading") or "")) for word in _EXAMPLE_WORDS)
+def _questions_table(section: Mapping[str, Any]) -> bool:
+    """A table whose values are mostly guiding questions: the template the learner fills, never given data."""
+
+    rows = [row for block in _blocks(section) if block.get("kind") == "table"
+            for row in block.get("rows") or [] if isinstance(row, dict)]
+    return bool(rows) and 2 * sum(str(row.get("value") or "").strip().endswith("?") for row in rows) >= len(rows)
 
 
 def is_input_section(section: Mapping[str, Any]) -> bool:
-    """A section that gives the task's input data: its heading names the data and it is neither the worked example
-    nor the task itself."""
+    """A section that gives the task's input data: its heading names the data (even with an example word), it is not
+    a template the learner fills and not the task itself."""
 
     heading = idm_fold(str(section.get("heading") or ""))
-    return (not _is_example(section) and not any(block.get("kind") == "task" for block in _blocks(section))
-            and _INPUT_HEADING_RE.search(heading) is not None)
+    return (_INPUT_HEADING_RE.search(heading) is not None and _TEMPLATE_HEADING_RE.search(heading) is None
+            and not any(block.get("kind") == "task" for block in _blocks(section)) and not _questions_table(section))
+
+
+def is_example_section(section: Mapping[str, Any]) -> bool:
+    """The worked example: a heading that names an example or a model entry, and no input data heading."""
+
+    heading = idm_fold(str(section.get("heading") or ""))
+    return any(word in heading for word in _EXAMPLE_WORDS) and not is_input_section(section)
+
+
+_is_example = is_example_section
 
 
 def _entry_texts(section: Mapping[str, Any]) -> list[str]:
@@ -225,4 +242,5 @@ def references_of(components: Sequence[Mapping[str, Any]]) -> list[InputReferenc
 
 
 __all__ = ["EXAMPLE_REUSE_CODE", "WORKSHEET_INPUT_CODE", "InputReference", "input_hint", "input_reference",
-           "is_input_section", "missing_input", "references_of", "reuse_hint", "reused_entries"]
+           "is_example_section", "is_input_section", "missing_input", "references_of", "reuse_hint",
+           "reused_entries"]

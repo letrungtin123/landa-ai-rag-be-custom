@@ -113,8 +113,11 @@ def _short_rows(section: dict[str, Any]) -> dict[str, Any]:
 
 
 def _is_example(section: dict[str, Any]) -> bool:
-    """The worked example: a heading that names an example, or a text that opens with an example label."""
+    """The worked example: a heading that names an example, or a text that opens with an example label; never the
+    input data ("Dữ liệu minh họa" with the task's five requests stays whole, review of dfb6db2 item 7)."""
 
+    if is_input_section(section):
+        return False
     if any(word in idm_fold(str(section.get("heading") or "")) for word in _EXAMPLE_HEADING_WORDS):
         return True
     return any(block.get("kind") in _TEXT_BLOCKS and _EXAMPLE_OPENING_RE.match(str(block.get("text") or ""))
