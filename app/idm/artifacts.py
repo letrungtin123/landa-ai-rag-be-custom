@@ -26,7 +26,8 @@ from typing import Any, Final
 from app.idm.text import idm_fold
 
 # A "Row N:" label anywhere in a text (the facts carry it at the start; a writer may glue two rows).
-ROW_LABEL_ANY_RE: Final = re.compile(r"(?<!\w)row\s+\d{1,3}\s*:\s*", re.IGNORECASE)
+# Review m9: never across a line break (the label's spaces only), so the line after it keeps its own line (K1).
+ROW_LABEL_ANY_RE: Final = re.compile(r"(?<!\w)row[^\S\n]+\d{1,3}[^\S\n]*:[^\S\n]*", re.IGNORECASE)
 # A reference to the PDF reader's row label in author text ("Nội dung đầy đủ của Row 1 … và Row 3 …").
 _ROW_REFERENCE_RE: Final = re.compile(r"(?<!\w)row\s+(\d{1,3})(?!\w)", re.IGNORECASE)
 

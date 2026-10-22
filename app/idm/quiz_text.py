@@ -78,9 +78,14 @@ _OTHER_MARKER_RE: Final = re.compile(r"^[•*–][ \t]+(?=\S)")  # noqa: RUF001 
 # An option label at a line start: "A - ", "A: ", "A. ", "A) " or a dash other than the hyphen.
 _LINE_LABEL_RE: Final = re.compile(r"^([A-F])[ \t]*(?:-|–|—|:|\.|\))[ \t]+(?=\S)")  # noqa: RUF001 - dashes
 # The verdict and the reason connector right after the label.
+# Review m10: "Không đúng vì", "Chưa chính xác vì", "Not correct because" and a verdict followed by a colon and the
+# reason ("Incorrect: …") count too.
 _VERDICT_RE: Final = re.compile(
-    r"^(?:(?P<vi>đúng|sai|chưa đúng)(?:[ \t]*[,:])?[ \t]+(?:là vì|bởi vì|vì|bởi|do)"
-    r"|(?P<en>correct|incorrect|right|wrong)(?:[ \t]*[,:])?[ \t]+(?:because|since|as))(?!\w)", re.IGNORECASE)
+    r"^(?:(?P<vi>không đúng|không chính xác|chưa đúng|chưa chính xác|đúng|sai)"
+    r"(?:(?:[ \t]*[,:–—-])?[ \t]+(?:là vì|bởi vì|vì|bởi|do)(?!\w)|[ \t]*:[ \t]+(?=\S))"  # noqa: RUF001 - dashes
+    r"|(?P<en>not correct|incorrect|correct|right|wrong)"
+    r"(?:(?:[ \t]*[,:–—-])?[ \t]+(?:because|since|as)(?!\w)|[ \t]*:[ \t]+(?=\S)))",  # noqa: RUF001 - dashes
+    re.IGNORECASE)
 _POSITIVE_VERDICTS: Final = frozenset({"đúng", "correct", "right"})
 # A sentence ends at . ! ? or … followed by a space and a capital letter, a digit or an opening quote; never after an
 # abbreviation ("TP.", "v.v.", "e.g.").

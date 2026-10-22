@@ -7,14 +7,19 @@ before its fix. Every provider is a local fake.
 from __future__ import annotations
 
 import unittest
+from collections import Counter
 
+from app.idm.artifacts import clean_question
 from app.idm.contracts import IdmIssueV1
 from app.idm.mcq import normalize_single_choice
 from app.idm.notes import SkippedBlockNote, build_course_notes
 from app.idm.qa import JudgeOutcome, build_unit_author_note
 from app.idm.qa_checks import repeated_callouts
 from app.idm.quiz_text import (
+    EXPLANATION_VERDICT_CODE,
     QUESTION_LAYOUT_CODE,
+    explanation_report,
+    filler_phrases,
     lay_out_quiz,
     layout_explanation,
     layout_question,
@@ -22,6 +27,7 @@ from app.idm.quiz_text import (
     quiz_findings,
 )
 from app.idm.source_flags import SourceFact, flag_sentence, flag_sentences
+from app.idm.source_locked import idm_source_grounded_single_choice
 from tests.unit.idm.test_idm_storyboard import (
     JUDGE,
     REPAIR,
@@ -272,3 +278,57 @@ class SourceFlagSizeTests(unittest.TestCase):
         alone = flag_sentences([("Thời hạn phản hồi", [conflict])], {}, "en")
         self.assertEqual(alone, ["The source differs between “Thời hạn phản hồi” and another part of the source. "
                                  "Check this before applying it."])
+
+
+THREE = [{"text": "Báo trưởng ca ngay lập tức để xử lý", "correct": False},
+         {"text": "Phân loại mức độ khiếu nại trước khi xử lý", "correct": True},
+         {"text": "Hứa bồi thường để giữ chân khách hàng", "correct": False}]
+
+
+class SmallFixTests(unittest.TestCase):
+    """m8 / m9 / m10: a fallback reason cut at a word, a row label that kept its line break, the verdicts and the
+    empty-praise list."""
+
+    def test_a_fallback_reason_is_cut_at_a_word(self) -> None:
+        rows = ["Row 1: Mức độ vi phạm của nhân viên trong quá trình phục vụ khách hàng tại quầy | Hình thức xử lý kỷ "
+                "luật áp dụng theo nội quy công ty",
+                "Row 2: Vi phạm lần đầu, không gây thiệt hại cho khách hàng và uy tín công ty | Nhắc nhở bằng lời và "
+                "ghi nhận vào sổ theo dõi của trưởng ca",
+                "Row 3: Vi phạm lần thứ hai trong vòng ba tháng hoặc gây phàn nàn chính thức | Cảnh cáo bằng văn bản "
+                "và trừ điểm thi đua của tháng",
+                "Row 4: Vi phạm nghiêm trọng gây thiệt hại tài chính hoặc ảnh hưởng uy tín | Đình chỉ công việc và "
+                "chuyển hồ sơ cho Ban Giám đốc xem xét",
+                "Row 5: Tái phạm nhiều lần sau khi đã bị cảnh cáo bằng văn bản | Chấm dứt hợp đồng lao động theo quy "
+                "định của pháp luật"]
+        question = idm_source_grounded_single_choice("Kỷ luật", rows, locale="vi")
+        assert question is not None
+        source_words = {word.strip(",.|") for row in rows for word in row.split()}
+        for line in str(question["explanation"]).splitlines()[1:]:
+            last = line.rstrip(".").split()[-1]
+            self.assertTrue(last == "…" or last.endswith("…") or last in source_words, line)
+
+    def test_a_row_label_keeps_the_line_break(self) -> None:
+        fixes: Counter[str] = Counter()
+        cleaned = clean_question({"question": "Look at row 3:\n- Group X: 10 units\n- Group Y: 20 units\nWhich group?",
+                                  "explanation": "x"}, set(), fixes)
+        self.assertEqual(str(cleaned["question"]).splitlines()[1:], ["- Group X: 10 units", "- Group Y: 20 units",
+                                                                     "Which group?"])
+
+    def test_negative_verdicts_and_true_filler(self) -> None:
+        for wrong in ("Không đúng vì", "Chưa chính xác vì", "Sai, vì"):
+            explanation = (f"Nguyên tắc: phân loại trước khi xử lý.\nA - {wrong} chưa phân loại mức độ.\nB - Đúng vì "
+                           f"phân loại trước tiên.\nC - {wrong} hứa bồi thường khi chưa phân loại.")
+            self.assertEqual(explanation_report({"problem_type": "multiple_choice", "choices": THREE,
+                                                 "explanation": explanation}), {}, wrong)
+        for wrong in ("Not correct because", "Incorrect:", "Incorrect because"):
+            explanation = (f"Principle: classify first.\nA - {wrong} it skips classification.\nB - Correct because it "
+                           f"classifies first.\nC - {wrong} it promises compensation.")
+            self.assertEqual(explanation_report({"problem_type": "multiple_choice", "choices": THREE,
+                                                 "explanation": explanation}), {}, wrong)
+        flipped = ("Nguyên tắc: phân loại trước khi xử lý.\nA - Không đúng vì chưa phân loại mức độ.\n"
+                   "B - Không đúng vì phân loại trước tiên.\nC - Sai vì hứa bồi thường khi chưa phân loại.")
+        self.assertIn(EXPLANATION_VERDICT_CODE, explanation_report({"problem_type": "multiple_choice",
+                                                                     "choices": THREE, "explanation": flipped}))
+        self.assertEqual(filler_phrases("A - Incorrect because you must tell your superior first."), [])
+        self.assertEqual(filler_phrases("A - Sai vì mức xuất sắc chỉ dành cho nhân viên đạt 100% KPI."), [])
+        self.assertEqual(filler_phrases("B - Đúng vì đây là lựa chọn dũng cảm."), ["dũng cảm"])

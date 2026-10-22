@@ -232,15 +232,16 @@ NODE_EXPLANATION_MAX_CHARS: Final = 1_500
 # Empty praise and slogans that give no reason ("B - Đúng vì phương án này dũng cảm Say No … tạo điểm khác biệt tuyệt
 # đối", QC 2026-10-21). Matched as whole words, Vietnamese with its diacritics (NFC, lower case); a phrase the unit's
 # facts use themselves (a rule that says "tuyệt đối không …") is allowed.
+# Only true filler (review m10): a word a lesson may use for what it means ("xuất sắc" as a rating, a "superior" as
+# the learner's boss, an "outstanding" balance, an "excellent" grade, an "absolute" value) is not on the lists.
 QUIZ_FILLER_VI: Final = (
-    "dũng cảm", "tuyệt đối", "vượt trội", "say no", "đột phá", "bứt phá", "tối thượng", "hoàn hảo", "xuất sắc",
+    "dũng cảm", "tuyệt đối", "vượt trội", "say no", "đột phá", "bứt phá", "tối thượng", "hoàn hảo",
     "đỉnh cao", "vô cùng", "cực kỳ", "cực kì", "thần kỳ", "siêu việt", "không thể phủ nhận", "hiển nhiên",
     "tất nhiên", "rõ ràng là", "khác biệt tuyệt đối", "chiến lược khôn ngoan", "nước đi thông minh",
 )
 QUIZ_FILLER_EN: Final = (
-    "brave", "bravely", "bold", "boldly", "absolute", "absolutely", "outstanding", "superior", "breakthrough",
-    "game-changer", "game changer", "perfect", "perfectly", "excellent", "amazing", "incredible", "obviously",
-    "of course", "undeniably", "say no", "smart move", "wise choice",
+    "brave", "bravely", "boldly", "absolutely", "breakthrough", "game-changer", "game changer", "perfectly",
+    "amazing", "incredible", "obviously", "of course", "undeniably", "say no", "smart move", "wise choice",
 )
 # QC feedback 2026-10-21 (A3): a callout (a "warning" block, shown as a quotation) adds a point; one that only repeats
 # the paragraphs before it in its section goes (``app.idm.qa_checks.repeated_callouts``). Review M3 (2026-10-22): a

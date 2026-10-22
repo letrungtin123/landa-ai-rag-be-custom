@@ -350,7 +350,11 @@ def _feedback(principle: str, choices: list[dict[str, Any]], reasons: dict[str, 
 
 
 def _reason_text(reason: str) -> str:
-    reason = " ".join(reason.split())[:_MAX_REASON_CHARS].rstrip()
+    """One reason within ``_MAX_REASON_CHARS``, cut after a whole word with an ellipsis (review m8: "lần đ.")."""
+
+    reason = " ".join(reason.split())
+    if len(reason) > _MAX_REASON_CHARS:
+        reason = reason[:_MAX_REASON_CHARS].rsplit(" ", 1)[0].rstrip(" ,;:") + "…"
     return reason if _TERMINAL_RE.search(reason) else reason + "."
 
 
