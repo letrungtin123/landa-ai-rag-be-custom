@@ -105,6 +105,11 @@ class TitleCaser:
             found |= _proper_runs(text)
         return cls(frozenset(found))
 
+    def name_positions(self, lowered: Sequence[str]) -> set[int]:
+        """The positions of ``lowered`` (lower-case words) that belong to a known name or a name the texts write."""
+
+        return self._kept(lowered)
+
     def _kept(self, lowered: Sequence[str]) -> set[int]:
         kept = set(name_positions(list(lowered)))
         for phrase in self.protected:

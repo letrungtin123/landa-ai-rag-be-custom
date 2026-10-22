@@ -28,7 +28,8 @@ from __future__ import annotations
 import hashlib
 import html
 import re
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Iterable, Sequence
+from dataclasses import dataclass
 from typing import Any, Final
 
 from app.content.instructional_quality import (
@@ -49,6 +50,7 @@ from app.content.instructional_quality import (
 )
 from app.idm.acronyms import keeps_capitals
 from app.idm.text import idm_fold
+from app.idm.titles import TitleCaser
 
 _BULLET_RE: Final = re.compile(r"^[•●▪◦*-]\s+(.+)$")
 _INLINE_STEP_RE: Final = re.compile(r"(?<!\w)(?:(?:step|bước|buoc)\s*)?\d{1,3}\s*[:.)-]\s+", re.IGNORECASE)
@@ -91,15 +93,20 @@ _FILL_LEADER_RE: Final = re.compile(r"[.…_·]{4,}")
 # Run 5496155c: what the PDF reader left of a slide table. A "*" bullet after a label ("Job): * Sàng lọc") or alone; the
 # cell separator inside a line that is no table row ("… chung. | - Về Chức năng (Functional Pain): * Bị") and the list
 # marker that opens the next cell ("- Về", "-Về").
-_STAR_RE: Final = re.compile(r"(?<=[:)])[ \t]*\*[ \t]+|(?<=\s)\*(?=\s)")
+# Review of dfb6db2 (item 4): only such a bullet star (after a label, a bracket or a sentence end) or one left at the
+# end of a line goes; a star between two operands ("Doanh thu trung bình * Số năm") is the formula's.
+_STAR_RE: Final = re.compile(r"(?<=[:);.])[ \t]*\*[ \t]+|[ \t]+\*[ \t]*$")
 _CELL_SEPARATOR_RE: Final = re.compile(r"[ \t]+\|[ \t]+")
-_CELL_MARKER_RE: Final = re.compile(r"^[-*•][ \t]*(?=\S)")
+# A "-" before a digit is a sign ("| -5% | +3% |"), never a list marker (review of dfb6db2, item 4).
+_CELL_MARKER_RE: Final = re.compile(r"^(?:[*•][ \t]*|-[ \t]*(?![\d\s]))(?=\S)")
 STATEMENT_END_RE: Final = re.compile(r"[.!…]$")
 # A classroom exercise or discussion prompt of a slide ("BÀI TẬP 10 phút", "Câu hỏi thảo luận: …"), accent-folded: no
 # statement of the lesson and no FAQ answer (run 5496155c).
 EXERCISE_RE: Final = re.compile(r"^\W*(?:bai tap|cau hoi|thao luan|thuc hanh|exercise|question|discussion|homework)\b")
 _SENTENCE_INSIDE_RE: Final = re.compile(r"[.!?…][ \t]+\S")
 _CLOSING_MARKS: Final = "\"')" + chr(0x201D)
+_QUOTE_OPENINGS: Final = "\"" + chr(0x201C)
+_WORD_MARKS: Final = ".,;:!?()[]\"'" + chr(0x201C) + chr(0x201D)
 # The end of a label whose start the PDF reader lost ("Pain): Sợ bị coi là …" after a repeated label line was dropped as
 # a duplicate): the text after it is kept, the cut word goes.
 _ORPHAN_LABEL_END_RE: Final = re.compile(r"^[^\W\d_]+\)[ \t]*:[ \t]*(?=\S)")
@@ -138,8 +145,12 @@ def _structural(line: str) -> bool:
 
 
 def _is_label(line: str) -> bool:
+    """A short line without closing punctuation; never a quotation (review of dfb6db2, item 10: "“Tôi cần …”" was
+    joined to the heading above it), whose closing mark may follow its full stop."""
+
     return (len(line) <= _LABEL_MAX_CHARS and len(line.split()) <= _LABEL_MAX_WORDS
-            and not _TERMINAL_RE.search(line) and not TABLE_ROW_RE.match(line)
+            and line[:1] not in _QUOTE_OPENINGS and not _TERMINAL_RE.search(line.rstrip(_CLOSING_MARKS))
+            and not TABLE_ROW_RE.match(line)
             and not _BULLET_RE.match(line) and not CHECKLIST_ITEM_RE.match(line) and not CALLOUT_RE.match(line))
 
 
@@ -169,6 +180,11 @@ def _continues(previous: str, current: str) -> bool:
     if (_TERMINAL_RE.search(previous) or TABLE_ROW_RE.match(previous) or _structural(current)
             or not (labelled or _sentence_like(previous))):
         return False
+    # Review of dfb6db2 (item 10): a quotation after a list item or a heading is a line of its own (a labelled line,
+    # "Về Chức năng (Functional Pain): Bị" + "\"bủa vây\" bởi …", goes on).
+    if current[:1] in _QUOTE_OPENINGS and (_structural(previous)
+                                           or (_is_label(previous) and not labelled)):
+        return False
     if _CONNECTOR_END_RE.search(idm_fold(previous)) or current[:1] in _OPENING_CONTINUATION:
         return True
     if len(previous) < _WRAP_MIN_PREVIOUS_CHARS or (labelled and not _sentence_like(previous)):
@@ -197,7 +213,7 @@ def _closes(previous: str, current: str, joined: int) -> bool:
     "(Chữ" + "I" + "Implementation trong G-STIC): …"), within the join bounds; never a new table row."""
 
     return (_open_brackets(previous) > 0 and joined < _BRACKET_JOIN_LINES and not TABLE_ROW_RE.match(current)
-            and len(previous) + len(current) < _BRACKET_JOIN_CHARS)
+            and current[:1] not in _QUOTE_OPENINGS and len(previous) + len(current) < _BRACKET_JOIN_CHARS)
 
 
 def _row_goes_on(previous: str, current: str) -> bool:
@@ -324,14 +340,52 @@ def _flush_or_list(grid: list[list[str]], parts: list[str], flush: Callable[[], 
     flush()
 
 
-def _sentence_case(label: str) -> str:
+@dataclass(frozen=True)
+class _Names:
+    """The names of a unit's lines: known place and personal names, runs of capitalised Vietnamese words inside a
+    sentence (``TitleCaser``) and single words a sentence writes capitalised ("công ty Vinamilk")."""
+
+    caser: TitleCaser
+    words: frozenset[str]
+
+    @classmethod
+    def of(cls, lines: Sequence[str]) -> _Names:
+        words: set[str] = set()
+        for line in lines:
+            if _is_label(line) or not _sentence_like(line):
+                continue
+            tokens = line.split()
+            for position, token in enumerate(tokens[1:], 1):
+                core = token.strip(_WORD_MARKS)
+                if (len(core) > 1 and core[0].isupper() and core[1:].islower()
+                        and not tokens[position - 1].endswith((".", ":", "!", "?"))):
+                    words.add(core.lower())
+        return cls(TitleCaser.from_texts(lines), frozenset(words))
+
+    def positions(self, lowered: Sequence[str]) -> set[int]:
+        return self.caser.name_positions(lowered) | {index for index, word in enumerate(lowered) if word in self.words}
+
+
+def _capitalised(word: str) -> str:
+    letter = next((index for index, char in enumerate(word) if char.isalpha()), None)
+    return word.lower() if letter is None else word[:letter] + word[letter].upper() + word[letter + 1:].lower()
+
+
+def _sentence_case(label: str, names: _Names | None = None) -> str:
     """A heading in capitals in sentence case: "1.3 HỒ SƠ KHÁCH HÀNG B2B (VD2: NGƯỜI RA QUYẾT ĐỊNH)" -> "1.3 Hồ sơ
-    khách hàng B2B (VD2: người ra quyết định)"; codes and abbreviations keep their capitals (``keeps_capitals``)."""
+    khách hàng B2B (VD2: người ra quyết định)"; codes and abbreviations keep their capitals (``keeps_capitals``).
+
+    Review of dfb6db2 (item 11): "VINAMILK TẠI HÀ NỘI" lost its names. A known place or personal name and a name the
+    unit's other lines write capitalised (``names``) keep their capital: "CHI NHÁNH VINAMILK TẠI ĐÀ NẴNG" under "công
+    ty Vinamilk …" reads "Chi nhánh Vinamilk tại Đà Nẵng"."""
 
     letters = [char for char in label if char.isalpha()]
     if not letters or sum(char.isupper() for char in letters) / len(letters) < _UPPER_LABEL_SHARE:
         return label
-    words = [word if keeps_capitals(word) else word.lower() for word in label.split()]
+    raw = label.split()
+    kept = (names or _Names(TitleCaser(), frozenset())).positions([word.strip(_WORD_MARKS).lower() for word in raw])
+    words = [word if keeps_capitals(word) else (_capitalised(word) if position in kept else word.lower())
+             for position, word in enumerate(raw)]
     first = next((index for index, word in enumerate(words) if any(char.isalpha() for char in word)), None)
     if first is not None and not keeps_capitals(words[first]):
         word = words[first]
@@ -375,6 +429,7 @@ def render_idm_source_locked_html(
     # lone numbered lines keep the legacy list form so the required artifact is preserved.
     keep_single_ordered = "ordered_list" in required
     lines = _prepare_lines(title, values)
+    names = _Names.of(lines)
     parts = [f"<h2>{html.escape(title)}</h2>"]
     index = 0
     while index < len(lines):
@@ -402,11 +457,13 @@ def render_idm_source_locked_html(
                     end == index or _list_run(lines, end, keep_single_ordered) is None):
                 end += 1
             # A label whose brackets never close is a cut line, and a lone letter no heading: both stay text.
-            labels = [_sentence_case(label) for label in lines[index:end]]
+            labels = [_sentence_case(label, names) for label in lines[index:end]]
             if any(_open_brackets(label) or sum(char.isalpha() for char in label) < _MIN_HEADING_LETTERS
                    for label in labels):
+                # Review of dfb6db2 (item 4): a figure ("85%", "+32", "2024", "4P") is never dropped as a lone letter.
                 parts.extend(f"<p>{_inline(label)}</p>" for label in labels
-                             if sum(char.isalpha() for char in label) >= _MIN_HEADING_LETTERS)
+                             if sum(char.isalpha() for char in label) >= _MIN_HEADING_LETTERS
+                             or any(char.isdigit() for char in label))
                 index = end
                 continue
             has_body = end < len(lines)

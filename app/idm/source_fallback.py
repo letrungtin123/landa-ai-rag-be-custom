@@ -18,6 +18,7 @@ from typing import Any, Final
 from app.content.instructional_quality import faq_answer_is_complete
 from app.content.learner_content_purity import component_learner_text
 from app.idm.source_locked import (
+    _BULLET_RE,
     _FAQ_MAX_ITEMS,
     _FAQ_MIN_ITEMS,
     _FAQ_UNSAFE_RE,
@@ -38,6 +39,8 @@ _MAX_GLUED_WORDS: Final = 5
 # A statement is a complete sentence of at least this many words and at most this many characters (never cut).
 _STATEMENT_MIN_WORDS: Final = 8
 _STATEMENT_MAX_CHARS: Final = 300
+# A list item read as a statement has at least this many words ("Khách hàng mục tiêu").
+_ITEM_MIN_WORDS: Final = 2
 # A sentence opens with a capital letter, after its opening quotation marks; a lowercase or bracketed start is the rest
 # of a line the PDF cut ("\"nút thắt\" rủi ro …", "(Lý tính - Việc làm) | …").
 _OPENING_MARKS: Final = "\"'" + "".join(map(chr, (0x201C, 0x2018)))
@@ -63,16 +66,34 @@ def _statements(values: Iterable[Any], *, exercises: bool = False) -> list[str]:
     return list(dict.fromkeys(found))
 
 
+def _items(values: Iterable[Any]) -> list[str]:
+    """The bullet items of ``values`` (read before the shared cleaning drops their markers) a learner can read as a
+    statement: at least ``_ITEM_MIN_WORDS`` words, no question, no exercise prompt, balanced brackets; a full stop
+    closes one that has no closing punctuation."""
+
+    found = []
+    for line in (line for value in values for line in str(value).splitlines()):
+        match = _BULLET_RE.match(" ".join(line.split()))
+        text = match.group(1).strip() if match else ""
+        if (len(text.split()) < _ITEM_MIN_WORDS or "?" in text or EXERCISE_RE.match(idm_fold(text))
+                or text.count("(") != text.count(")") or len(text) > _STATEMENT_MAX_CHARS):
+            continue
+        found.append(text if STATEMENT_END_RE.search(text) else f"{text}.")
+    return list(dict.fromkeys(found))
+
+
 def lesson_statements(*groups: Iterable[Any]) -> list[str]:
     """The statements of ``groups`` (the slot's facts, then the unit's, then those of the lesson's earlier units), in
     that order, those without words the PDF glued together first; the exercise prompts only when there is nothing
-    else."""
+    else, and the list items of a bullet-only source after them."""
 
     materialized = [list(values) for values in groups]
     found = list(dict.fromkeys(text for values in materialized for text in _statements(values)))
     # A unit that only shows a classroom exercise of the slides ("Thực hành …: Các nhóm được phát …") states that.
     found = found or list(dict.fromkeys(text for values in materialized
                                         for text in _statements(values, exercises=True)))
+    # Review of dfb6db2: a source of bullets without punctuation states its items (with a closing full stop).
+    found = found or list(dict.fromkeys(text for values in materialized for text in _items(values)))
     return sorted(found, key=lambda text: bool(glued_words(text)))
 
 

@@ -15,9 +15,12 @@ from app.idm.answer_checks import copies_example_measure, stem_copies_answer, un
 from app.idm.hypothetical import SUPPOSITION_ADDED, as_supposition, suppose_semantic
 from app.idm.prompts_unit import unit_writer_prompt
 from app.idm.quiz_text import lay_out_quiz
+from app.idm.source_locked import render_idm_source_locked_html
 from app.idm.text import evidence_index
 from app.idm.worksheet import compact_worksheet
 from app.idm.worksheet_input import is_example_section, is_input_section, missing_input, reused_entries
+from tests.unit.idm.test_idm_qc_run_5496155c import facts_of
+from tests.unit.idm.test_idm_storyboard import StoryboardEndpointTestCase, severity_body
 
 
 def flat(text: str) -> str:
@@ -180,3 +183,51 @@ class SuppositionScopeTests(unittest.TestCase):
         counts: Counter[str] = Counter()
         self.assertIs(suppose_semantic(semantic, "vi", None, counts), semantic)
         self.assertEqual(counts[SUPPOSITION_ADDED], 0)
+
+
+def rendered(*facts: str) -> str:
+    return render_idm_source_locked_html("Tiêu đề", list(facts), locale="vi")
+
+
+class SourceLockedTextTests(StoryboardEndpointTestCase):
+    """Items 4, 10, 11 and bullet-only sources: the source-locked fallback keeps the source's numbers, operators and
+    signs, keeps a quotation apart from the list item or heading before it, keeps names in a capitals heading, and a
+    source of bullets still gives a valid whole-unit fallback."""
+
+    def test_figures_operators_and_signs_stay(self) -> None:
+        # (A lone "2024" line stays out: the shared cleaning reads it as a page or slide number.)
+        html_text = rendered("TỶ LỆ KHÁCH HÀNG QUAY LẠI", "85%", "TĂNG TRƯỞNG", "+32", "MÔ HÌNH", "4P",
+                             "Khách hàng quay lại sau ba tháng nhờ dịch vụ hậu mãi tốt.")
+        for figure in ("<p>85%</p>", "<p>+32</p>", "<p>4P</p>"):
+            self.assertIn(figure, html_text)
+        self.assertIn("Doanh thu trung bình * Số năm", rendered(
+            "Giá trị vòng đời khách hàng = Doanh thu trung bình * Số năm gắn bó với doanh nghiệp."))
+        self.assertIn("<p>-5%</p>", rendered("Biên lợi nhuận theo nhóm khách hàng năm nay:",
+                                              "Nhóm A | -5% | +3% so với cùng kỳ"))
+        # A bullet star after a label still goes.
+        self.assertNotIn("*", rendered("Về Chức năng (Functional Pain): * Bị chậm tiến độ vì chờ duyệt hồ sơ."))
+
+    def test_a_quotation_is_never_joined_to_a_list_item_or_heading(self) -> None:
+        listed = rendered("Ba mong muốn của khách hàng:", "- Khách hàng muốn được ghi nhận vì kết quả làm việc tốt",
+                          "“Tôi muốn sếp thấy kết quả của mình.”", "Đây là nhu cầu xã hội của khách hàng.")
+        self.assertIn("<p>“Tôi muốn sếp thấy kết quả của mình.”</p>", listed)
+        self.assertNotIn("làm việc tốt “Tôi", listed)
+        heading = rendered("CHÂN DUNG KHÁCH HÀNG", "“Tôi cần báo giá trong ngày để kịp trình sếp.”",
+                           "Đây là lời của trưởng phòng mua hàng.")
+        self.assertIn("<h3>Chân dung khách hàng</h3><p>“Tôi cần báo giá trong ngày để kịp trình sếp.”</p>", heading)
+
+    def test_a_capitals_heading_keeps_its_names(self) -> None:
+        self.assertIn("<h3>Vinamilk tại Hà Nội</h3>", rendered(
+            "VINAMILK TẠI HÀ NỘI", "Doanh nghiệp mở rộng kênh phân phối tại các tỉnh phía Bắc trong năm nay."))
+        self.assertIn("<h3>Chi nhánh Vinamilk tại Đà Nẵng</h3>", rendered(
+            "CHI NHÁNH VINAMILK TẠI ĐÀ NẴNG", "Công ty Vinamilk mở thêm kênh phân phối cho các tỉnh miền Trung."))
+        self.assertIn("<h3>Chiến lược của Tân Hiệp Phát</h3>", rendered(
+            "CHIẾN LƯỢC CỦA TÂN HIỆP PHÁT", "Công ty Tân Hiệp Phát mở rộng kênh bán lẻ trong năm nay."))
+
+    async def test_a_bullet_only_source_still_falls_back_whole(self) -> None:
+        body = facts_of(severity_body(), dict(zip("abcde", ("- Khách hàng mục tiêu", "- Lợi ích cốt lõi",
+                                                            "- Cách làm khác biệt", "- Bằng chứng tin cậy",
+                                                            "- Lời kêu gọi hành động"), strict=True)))
+        status, data, provider = await self.post({**body, "fallback_only": True})
+        self.assertEqual((status, provider.calls), (200, []), data.get("detail"))
+        self.assertIn("- Khách hàng mục tiêu.", data["unit"]["components"][1]["question"])
