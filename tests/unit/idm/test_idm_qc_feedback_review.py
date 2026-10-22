@@ -478,3 +478,20 @@ class FallbackPlanTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result.origin, "deterministic_fallback")
         self.assertEqual(result.codes["IDM_W4_FALLBACK_INVALID"], 1)
         self.assertIn("IDM_W4_MUST_DO_UNPLACED", result.warnings)
+
+
+class SourceFlagQuoteTests(unittest.TestCase):
+    """m6 follow-up: a shortened quote keeps the number that differs between the conflicting facts."""
+
+    def test_the_differing_numbers_survive_the_shortening(self) -> None:
+        facts = {"a": SourceFact("Nhân viên cần phản hồi khách hàng trong vòng 24 giờ.", 2),
+                 "b": SourceFact("Theo slide đào tạo năm 2024, khiếu nại cấp 2 được phản hồi trong vòng 48 giờ kể từ "
+                                 "khi tiếp nhận.", 2)}
+        sentence = str(flag_sentence("Phải phản hồi khách hàng trong bao lâu?",
+                                     IdmIssueV1(type="conflict", note="x", fact_keys=["a", "b"]), facts, "vi"))
+        self.assertIn("24 giờ", sentence)
+        self.assertIn("48 giờ", sentence)
+        self.assertLessEqual(len(sentence), 300)
+        # A single fact (an out-of-date point) is quoted from its start.
+        alone = str(flag_sentence("CRM", IdmIssueV1(type="outdated", note="x", fact_keys=["b"]), facts, "vi"))
+        self.assertIn("“Theo slide đào tạo năm 2024", alone)

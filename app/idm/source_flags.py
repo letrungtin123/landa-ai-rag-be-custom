@@ -14,7 +14,8 @@ blocks its brief describes (``faq_material.blocks``; Node sends them for a unit 
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Mapping, Sequence
+import re
+from collections.abc import Collection, Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Final
 
@@ -30,6 +31,7 @@ _QUOTE_CHARS: Final = 60
 _NAME_CHARS: Final = 70
 # A unit note names at most this many points (the note has 1,500 characters).
 MAX_UNIT_FLAGS: Final = 3
+_NUMBER_RE: Final = re.compile(r"\d+(?:[.,:]\d+)*")
 _LEAD_VI: Final = {"conflict": "Tài liệu ghi khác nhau", "unclear": "Tài liệu ghi chưa rõ",
                    "outdated": "Tài liệu có thể đã cũ"}
 _LEAD_EN: Final = {"conflict": "The source differs", "unclear": "The source is unclear",
@@ -44,10 +46,44 @@ class SourceFact:
     page: int | None = None
 
 
-def _quote(fact: SourceFact, vi: bool) -> str:
+def _excerpt(text: str, focus: Collection[str]) -> str:
+    """``text`` within ``_QUOTE_CHARS``: its start, or, when a number of ``focus`` (one the other quoted facts do not
+    state) would be cut, the words around that number, the cut sides marked with an ellipsis."""
+
+    text = " ".join(text.split())
+    if len(text) <= _QUOTE_CHARS:
+        return text
+    # The first differing number the start would cut (the start keeps those it holds).
+    spot = next((match for match in _NUMBER_RE.finditer(text)
+                 if match.group() in focus and match.end() > _QUOTE_CHARS - 1), None)
+    if spot is None:
+        return single_line(text, _QUOTE_CHARS)
+    # Start at the word boundary before the window that centres the number.
+    start = text.rfind(" ", 0, max(0, spot.start() - _QUOTE_CHARS // 2)) + 1
+    end = min(len(text), start + _QUOTE_CHARS - 2)
+    if end < len(text):
+        end = text.rfind(" ", start, end) if text.rfind(" ", start, end) > spot.end() else end
+    return ("…" if start else "") + text[start:end].strip(" ,;:") + ("…" if end < len(text) else "")
+
+
+def _quote(fact: SourceFact, vi: bool, focus: Collection[str] = ()) -> str:
     where = "" if fact.page is None else (f" (trang {fact.page})" if vi else f" (page {fact.page})")
     # The PDF reader's "Row N:" label is not the author's text (QLT-8).
-    return f"“{single_line(ROW_LABEL_ANY_RE.sub('', fact.text), _QUOTE_CHARS)}”{where}"
+    return f"“{_excerpt(ROW_LABEL_ANY_RE.sub('', fact.text), focus)}”{where}"
+
+
+def _quotes(issue: IdmIssueV1, facts: Mapping[str, SourceFact], vi: bool) -> list[str]:
+    """The facts the issue names, at most ``_MAX_QUOTES``, each quoted around a number the others do not state (the
+    point that differs: "24 giờ" against "48 giờ")."""
+
+    named = list(dict.fromkeys(facts[key] for key in issue.fact_keys if key in facts))[:_MAX_QUOTES]
+    # A number differs only between two facts or more; a single fact is quoted from its start.
+    numbers = [set(_NUMBER_RE.findall(ROW_LABEL_ANY_RE.sub("", fact.text))) if len(named) > 1 else set()
+               for fact in named]
+    return list(dict.fromkeys(
+        _quote(fact, vi, numbers[index] - set().union(*(other for position, other in enumerate(numbers)
+                                                         if position != index)))
+        for index, fact in enumerate(named)))
 
 
 def _end(vi: bool) -> str:
@@ -64,7 +100,7 @@ def flag_sentence(block_name: str, issue: IdmIssueV1, facts: Mapping[str, Source
     if issue.type not in FLAG_ISSUE_TYPES:
         return None
     vi = locale != "en"
-    quoted = list(dict.fromkeys(_quote(facts[key], vi) for key in issue.fact_keys if key in facts))[:_MAX_QUOTES]
+    quoted = _quotes(issue, facts, vi)
     name = single_line(block_name, _NAME_CHARS)
     if issue.type == "conflict" and not quoted:
         others = [f"“{single_line(other, _NAME_CHARS)}”" for other in dict.fromkeys(partners) if other != block_name]
