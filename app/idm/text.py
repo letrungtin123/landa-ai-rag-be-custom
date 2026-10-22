@@ -424,6 +424,10 @@ def grounding_verdict(text: str, index: EvidenceIndex) -> GroundingVerdict:
 # plain ASCII is never judged (English words have several vowel groups; "toichon" is not caught, by design).
 _LETTERS_RE: Final = re.compile(r"[^\W\d_]+")
 _VOWELS: Final = frozenset("aeiouy")
+# Review of dfb6db2 (item 13): a glued word is made of Vietnamese syllables (an initial Vietnamese has, a vowel group, a
+# final): "café", "Zürich", "Nestlé" or "José" are not ("f", "z", "j", "w" and "-stl-" are no Vietnamese spelling).
+_SYLLABLES_RE: Final = re.compile(r"(?:(?:ngh|ng|nh|ch|gh|gi|kh|ph|qu|th|tr|[bcdđghklmnprstvx])?[aeiouy]{1,3}"
+                                  r"(?:ch|ng|nh|[cmnpt])?){2,}")
 
 
 def _vowel_groups(base: str) -> int:
@@ -444,6 +448,6 @@ def glued_words(text: str) -> list[str]:
     for word in _LETTERS_RE.findall(unicodedata.normalize("NFC", text)):
         base = casefold_strip_marks(word)
         vietnamese = "đ" in base or base != word.casefold()
-        if vietnamese and _vowel_groups(base) > 1:
+        if vietnamese and _vowel_groups(base) > 1 and _SYLLABLES_RE.fullmatch(base):
             found.append(word)
     return list(dict.fromkeys(found))

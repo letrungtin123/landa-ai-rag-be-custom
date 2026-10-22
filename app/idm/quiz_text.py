@@ -133,6 +133,13 @@ _NAMED_ITEM_RE: Final = re.compile(r"^-[ \t]+(?P<name>[^\W\d_]+(?:[ \t]+[^\W\d_]
                                    r"(?:[ \t]*\([^()\n]{1,80}\))?[ \t]*:[ \t]*(?P<text>\S.*)$")
 _MIN_NAMED_ITEMS: Final = 2
 # A quotation inside a stem line ("Khách hỏi: “Bao giờ giao?”"): its question mark asks nothing of the learner.
+# What a person in the case asks or says after a speech verb and a colon ("… và hỏi: Khi nào thì hàng về kho?").
+_SPEECH_RE: Final = re.compile(r"(?i:hỏi|nói|thắc mắc|than|phàn nàn|chia sẻ|nhắn|viết|asks?|asked|says?|said|writes?"
+                               r"|wrote)[ \t]*:[^?\n]*\?")
+# An explanation line that only points at the option ("phương án này", "this option"), not at the item's content.
+_GENERIC_REFERENCE_RE: Final = re.compile(r"\b(?:phuong an|lua chon|(?:cach|y|de xuat|phat bieu|tinh huong|nhan dinh"
+                                          r"|yeu cau) (?:nay|do)|this (?:option|choice|item|one)|the option)\b")
+_SHORT_REASON_WORDS: Final = 3
 _QUOTED_RE: Final = re.compile("\"[^\"]*\"|\u201c[^\u201d]*\u201d|\u00ab[^\u00bb]*\u00bb")
 
 
@@ -463,17 +470,23 @@ def _names_only(component: Mapping[str, Any], options: Sequence[tuple[str, str]]
         if name not in items:
             continue
         own = set(content_words(items[name])) - set(content_words(name))
-        if own and not own & set(content_words(_VERDICT_RE.sub("", rest.strip(), count=1))):
+        reason = _VERDICT_RE.sub("", rest.strip(), count=1)
+        words = set(content_words(reason))
+        # Review of dfb6db2 (item 15): a line that describes the item in other words ("đây là việc cần làm …") is no
+        # bare name; only a line that points at "the option" or says almost nothing is.
+        if own and not own & words and (_GENERIC_REFERENCE_RE.search(idm_fold(reason))
+                                        or len(words) <= _SHORT_REASON_WORDS):
             found.append(letter)
     return found
 
 
 def _asks_early(lines: Sequence[str]) -> list[str]:
     """The line numbers (1-based) before the last line that ask a question of the learner: a context line with a
-    sentence that ends with "?" outside a quotation (list items may be questions)."""
+    sentence that ends with "?" outside a quotation, quoted or reported speech ("Khách hàng hỏi: Khi nào hàng về?",
+    review of dfb6db2 item 14) left out (list items may be questions)."""
 
     return [str(number) for number, line in enumerate(lines[:-1], start=1)
-            if not line.startswith(LIST_MARKER) and "?" in _QUOTED_RE.sub("", line)]
+            if not line.startswith(LIST_MARKER) and "?" in _SPEECH_RE.sub("", _QUOTED_RE.sub("", line))]
 
 
 def explanation_report(component: Mapping[str, Any], evidence: EvidenceIndex | None = None) -> dict[str, list[str]]:

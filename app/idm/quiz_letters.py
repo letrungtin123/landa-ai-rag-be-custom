@@ -67,6 +67,10 @@ _ARTICLE_AFTER_RE: Final = re.compile(r"[ \t]+([a-z]+)(?!\w)")
 _LABEL_VERBS: Final = frozenset({"is", "was", "has", "had", "and", "or", "vs", "would", "will", "can", "could",
                                  "should", "may", "might", "must", "does", "did", "costs", "keeps", "gives", "works"})
 _SENTENCE_STARTS: Final = frozenset({"", ".", "!", "?", ":"})
+# Review of dfb6db2 (item 9): "lựa chọn"/"chọn" after a modal or a subject is a verb ("Bạn nên lựa chọn A, B hay C?"),
+# no item label: such a quiz is left as written (an edit note), never "Bạn nên cách 1, 2 hay 3?".
+_VERB_BEFORE_RE: Final = re.compile(r"(?<!\w)(?i:nên|hãy|sẽ|cần|phải|muốn|bạn|để|được|thể|will|should|would|to|you)"
+                                    r"[ \t]+$")
 
 
 def _canonical(label: str) -> str:
@@ -172,6 +176,8 @@ def _scan(text: str, label: str, numbers: Mapping[str, str], prefixes: set[int])
             if same and char not in numbers:
                 return None
             if same:
+                if neutral and pattern is _FIRST_LETTER_RE and _VERB_BEFORE_RE.search(text, 0, found.start(1)):
+                    return None
                 if neutral and pattern is _FIRST_LETTER_RE:
                     renames.append((found.start(1), found.end(1), _noun(found.group(1), neutral)))
                 renames.append((letter.start(1), letter.end(1), numbers[char]))

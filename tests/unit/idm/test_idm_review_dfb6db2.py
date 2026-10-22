@@ -21,9 +21,10 @@ from app.idm.qa import (
     SlotFinding,
     build_unit_author_note,
 )
-from app.idm.quiz_text import lay_out_quiz
+from app.idm.quiz_letters import number_item_letters
+from app.idm.quiz_text import EXPLANATION_NAMES_ONLY_CODE, _asks_early, explanation_report, lay_out_quiz
 from app.idm.source_locked import render_idm_source_locked_html
-from app.idm.text import evidence_index
+from app.idm.text import evidence_index, glued_words
 from app.idm.worksheet import compact_worksheet, plan_worksheet_html
 from app.idm.worksheet_input import is_example_section, is_input_section, missing_input, reused_entries
 from tests.unit.idm.test_idm_qc_feedback import SUGGESTED
@@ -390,3 +391,36 @@ class OwnDataTests(unittest.TestCase):
         reference = missing_input(self.worksheet("Đọc danh sách 5 yêu cầu dưới đây và chọn 2 yêu cầu ưu tiên."))
         self.assertIsNotNone(reference)
         self.assertIsNotNone(missing_input(self.worksheet("Phân loại 3 khách hàng mục tiêu theo dữ liệu sau.")))
+
+
+class LowFindingsTests(unittest.TestCase):
+    """Items 9, 13, 14, 15: a verb is no item label, a foreign word is no glued word, reported speech is no second
+    question, an explanation in other words is no bare name."""
+
+    def test_a_verb_choose_is_no_item_label(self) -> None:
+        verb = quiz("Nhóm bạn có ba lựa chọn:\n- Lựa chọn A: Giảm giá ngay.\n- Lựa chọn B: Tặng quà.\n- Lựa chọn C: "
+                    "Gọi lại sau.\nBạn nên lựa chọn A, B hay C?",
+                    [("Lựa chọn A", False), ("Lựa chọn B", True), ("Lựa chọn C", False)])
+        self.assertEqual(number_item_letters(verb), (verb, 0))
+        noun = {**verb, "question": verb["question"].replace("Bạn nên lựa chọn A, B hay C?", "Lựa chọn nào đúng?")}
+        self.assertEqual(number_item_letters(noun)[0]["question"].splitlines()[1], "- Cách 1: Giảm giá ngay.")
+
+    def test_foreign_words_are_not_glued(self) -> None:
+        self.assertEqual(glued_words("Khách hàng ở café Zürich gửi thư cho Nestlé và José."), [])
+        self.assertEqual(glued_words("Lập bộchân dung và chọn sáng kiến khảthi."), ["bộchân", "khảthi"])
+
+    def test_reported_speech_is_no_second_question(self) -> None:
+        self.assertEqual(_asks_early(["Khách hàng gọi điện và hỏi: Khi nào thì hàng về kho?", "- Cách 1: a",
+                                      "- Cách 2: b", "Bạn nên trả lời theo cách nào?"]), [])
+        self.assertEqual(_asks_early(["Khách hàng gọi điện. Bạn làm gì trước?", "- Cách 1: a", "- Cách 2: b",
+                                      "Cách nào đúng?"]), ["1"])
+
+    def test_an_explanation_in_other_words_is_no_bare_name(self) -> None:
+        items = quiz("Trưởng bộ phận đưa ra các phản hồi sau:\n- Phát biểu 1: Cần xuất báo cáo tồn kho mỗi chiều để "
+                     "đối soát dữ liệu.\n- Phát biểu 2: Giải pháp tự động gợi ý đặt hàng sớm, mang lại kết quả bất ngờ."
+                     "\nPhát biểu nào là một lợi ích kỳ vọng?",
+                     [("Phát biểu 1", False), ("Phát biểu 2", True)],
+                     "Nguyên tắc: lợi ích kỳ vọng là kết quả vượt mong đợi.\nA - Sai vì đây là việc cần làm thuộc chức "
+                     "năng nhằm xử lý tác vụ hàng ngày.\nB - Đúng vì phương án này đúng tiêu chí.")
+        self.assertEqual(explanation_report(lay_out_quiz(items)[0]).get(EXPLANATION_NAMES_ONLY_CODE),
+                         ["the lines of B never say what their item is"])
