@@ -155,6 +155,12 @@ HASH_HISTORY: tuple[tuple[str, str], ...] = (
     # facts do: never a part's name for the whole, never a new metaphor, never axes or steps the facts do not list.
     ("6afa78c0891699ccfa745a55d02af110caa5d1b31a6c23f5b1cfc57580f1dd8b",
      "Frameworks and their parts keep the source's names"),
+    # Paid verification of 3ed380d: the worksheet's worked example never uses the task's input entries and the input
+    # data counts toward the budget (entries of at most 20 words); options that name the listed items have one item
+    # each (4 items for 4 options); repair rules IDM_W5_WORKSHEET_EXAMPLE_REUSES_INPUT and IDM_W5_QUESTION_FEW_OPTIONS
+    # and the reuse hint.
+    ("f1a44802e78015a0e5d1e2a445b10b084310a3f67f0fe4e475d9bc9ba4349453",
+     "The worked example never uses the task's data; four items for four options"),
 )
 PROMPT_NAME = re.compile(r"(prompt|_rules?$|_suffix$|rule_lines?$|_hint$|^rule_line$|_cue_line$)")
 

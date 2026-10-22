@@ -40,6 +40,7 @@ from app.idm.policy import (
     IDM_MCQ_EXPLANATION_RESTATE_MIN_WORDS,
     IDM_MCQ_EXPLANATION_RESTATE_NGRAM,
     IDM_MCQ_EXPLANATION_RESTATE_SHARE,
+    IDM_MCQ_OPTION_COUNT,
     IDM_MCQ_STEM_CONTEXT_MAX_SENTENCES,
     IDM_MCQ_STEM_ITEM_MAX_WORDS,
     IDM_MCQ_STEM_MAX_ITEMS,
@@ -71,18 +72,22 @@ QUESTION_ITEM_LETTERS_CODE: Final = "IDM_W5_QUESTION_ITEM_LETTERS"
 QUESTION_ITEM_NOUN_CODE: Final = "IDM_W5_QUESTION_ITEM_NOUN"
 QUESTION_TWICE_CODE: Final = "IDM_W5_QUESTION_ASKED_TWICE"
 EXPLANATION_NAMES_ONLY_CODE: Final = "IDM_W5_EXPLANATION_NAMES_ONLY"
+# R3 of the paid verification of 3ed380d (c2.l4.u2): options that only name the case's three listed items.
+QUESTION_FEW_OPTIONS_CODE: Final = "IDM_W5_QUESTION_FEW_OPTIONS"
 QUIZ_CODES: Final = frozenset({EXPLANATION_LAYOUT_CODE, EXPLANATION_VERDICT_CODE, EXPLANATION_FILLER_CODE,
                                EXPLANATION_LENGTH_CODE, EXPLANATION_RESTATES_CODE, QUESTION_LAYOUT_CODE,
                                QUESTION_LENGTH_CODE, QUESTION_LIMIT_CODE, QUESTION_ITEM_LETTERS_CODE,
-                               QUESTION_ITEM_NOUN_CODE, QUESTION_TWICE_CODE, EXPLANATION_NAMES_ONLY_CODE})
+                               QUESTION_ITEM_NOUN_CODE, QUESTION_TWICE_CODE, EXPLANATION_NAMES_ONLY_CODE,
+                               QUESTION_FEW_OPTIONS_CODE})
 QUESTION_CODES: Final = frozenset({QUESTION_LAYOUT_CODE, QUESTION_LENGTH_CODE, QUESTION_LIMIT_CODE,
-                                   QUESTION_ITEM_LETTERS_CODE, QUESTION_ITEM_NOUN_CODE, QUESTION_TWICE_CODE})
+                                   QUESTION_ITEM_LETTERS_CODE, QUESTION_ITEM_NOUN_CODE, QUESTION_TWICE_CODE,
+                                   QUESTION_FEW_OPTIONS_CODE})
 # Findings about the wording, not the correctness: a slot kept with only these is a polish notice.
 # Owner decision 2026-10-22: a stem over the readability cap is one of them (an edit note, never "Cần xem"); one over
 # the 1,000 characters Node keeps is not (review m18): after its repair it falls back like any blocking finding.
 QUIZ_STYLE_CODES: Final = frozenset({EXPLANATION_FILLER_CODE, EXPLANATION_LENGTH_CODE, QUESTION_LAYOUT_CODE,
                                      QUESTION_LENGTH_CODE, QUESTION_ITEM_LETTERS_CODE, QUESTION_ITEM_NOUN_CODE,
-                                     QUESTION_TWICE_CODE, EXPLANATION_NAMES_ONLY_CODE})
+                                     QUESTION_TWICE_CODE, EXPLANATION_NAMES_ONLY_CODE, QUESTION_FEW_OPTIONS_CODE})
 # The quiz findings a writer's slot is kept with for review when the repair does not settle them.
 QUIZ_REVIEW_CODES: Final = QUIZ_CODES - {QUESTION_LIMIT_CODE}
 QUESTION_LAID_OUT: Final = "w5_problem_question_laid_out"
@@ -544,7 +549,22 @@ def question_report(component: Mapping[str, Any]) -> dict[str, list[str]]:
         report[QUESTION_ITEM_NOUN_CODE] = ["listed items named with the noun of the answer options"]
     if early := _asks_early(lines):
         report[QUESTION_TWICE_CODE] = [f"a question on line {', '.join(early)} before the last line"]
+    if few := _few_named_options(component, lines):
+        report[QUESTION_FEW_OPTIONS_CODE] = [few]
     return report
+
+
+def _few_named_options(component: Mapping[str, Any], lines: Sequence[str]) -> str:
+    """R3: options that only name the stem's listed items ("Đề xuất 2"), fewer than ``IDM_MCQ_OPTION_COUNT`` of
+    them (the case listed three items, so the question had three options)."""
+
+    items = _named_items(lines)
+    names = [idm_fold(str(choice.get("text") or "")).strip(" .:;,") for choice in _choices(component)]
+    if len(items) < _MIN_NAMED_ITEMS or not names or len(names) >= IDM_MCQ_OPTION_COUNT:
+        return ""
+    if not all(name in items for name in names):
+        return ""
+    return f"{len(names)} options that name the listed items (write {IDM_MCQ_OPTION_COUNT})"
 
 
 def quiz_findings(component: Mapping[str, Any], evidence: EvidenceIndex | None = None, *,
@@ -584,6 +604,7 @@ __all__ = [
     "LIST_MARKER",
     "OPTION_SEPARATOR",
     "QUESTION_CODES",
+    "QUESTION_FEW_OPTIONS_CODE",
     "QUESTION_ITEM_LETTERS_CODE",
     "QUESTION_ITEM_NOUN_CODE",
     "QUESTION_LAID_OUT",

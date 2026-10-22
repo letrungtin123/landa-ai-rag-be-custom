@@ -82,6 +82,7 @@ from app.idm.quiz_text import (
     EXPLANATION_NAMES_ONLY_CODE,
     EXPLANATION_RESTATES_CODE,
     EXPLANATION_VERDICT_CODE,
+    QUESTION_FEW_OPTIONS_CODE,
     QUESTION_ITEM_LETTERS_CODE,
     QUESTION_ITEM_NOUN_CODE,
     QUESTION_LAYOUT_CODE,
@@ -106,7 +107,7 @@ from app.idm.unit_note_lines import (
     supposition_line,
     worksheet_line,
 )
-from app.idm.worksheet_input import WORKSHEET_INPUT_CODE
+from app.idm.worksheet_input import EXAMPLE_REUSE_CODE, WORKSHEET_INPUT_CODE
 
 _CRITERION_LABEL_VI: Final = {
     "Q1_support_sufficient": "phần hỗ trợ chưa đủ cho bài luyện tập",
@@ -177,6 +178,7 @@ _CODE_TEXT_VI: Final[dict[str, str]] = {
     SOURCE_ARTIFACT_CODE: "chữ bị cắt như trong PDF",
     WORKSHEET_INCOMPLETE_CODE: "phiếu thực hành thiếu phần",
     WORKSHEET_INPUT_CODE: "phiếu thực hành thiếu dữ liệu đầu vào",
+    EXAMPLE_REUSE_CODE: "ví dụ mẫu dùng lại dữ liệu của bài tập",
     "IDM_W5_WORKSHEET_COMPACTED": "rút gọn phiếu thực hành",
     "HTML_INSTRUCTIONAL_DENSITY_EXCEEDED": "phần lý thuyết dài quá giới hạn",
     "IDM_W5_REPAIR_INVALID": "lần sửa của AI sai định dạng",
@@ -198,6 +200,7 @@ _CODE_TEXT_VI: Final[dict[str, str]] = {
     QUESTION_ITEM_LETTERS_CODE: "các ý trong đề đặt tên bằng chữ cái của đáp án",
     QUESTION_ITEM_NOUN_CODE: "các ý trong đề đặt tên giống phương án trả lời",
     QUESTION_TWICE_CODE: "đề hỏi hai lần",
+    QUESTION_FEW_OPTIONS_CODE: "câu hỏi thiếu phương án",
     EXPLANATION_NAMES_ONLY_CODE: "lời giải chỉ nhắc tên ý, không nói nội dung",
 }
 _CODE_TEXT_EN: Final[dict[str, str]] = {
@@ -229,6 +232,7 @@ _CODE_TEXT_EN: Final[dict[str, str]] = {
     SOURCE_ARTIFACT_CODE: "text cut as in the PDF",
     WORKSHEET_INCOMPLETE_CODE: "an incomplete worksheet",
     WORKSHEET_INPUT_CODE: "a worksheet without its input data",
+    EXAMPLE_REUSE_CODE: "a worked example on the task's own data",
     "IDM_W5_WORKSHEET_COMPACTED": "a shortened worksheet",
     "HTML_INSTRUCTIONAL_DENSITY_EXCEEDED": "theory over its length",
     "IDM_W5_REPAIR_INVALID": "an AI repair in the wrong format",
@@ -249,6 +253,7 @@ _CODE_TEXT_EN: Final[dict[str, str]] = {
     QUESTION_ITEM_LETTERS_CODE: "items in the question named with the answer letters",
     QUESTION_ITEM_NOUN_CODE: "items in the question named like the answer options",
     QUESTION_TWICE_CODE: "a question asked twice",
+    QUESTION_FEW_OPTIONS_CODE: "a question with too few options",
     EXPLANATION_NAMES_ONLY_CODE: "feedback that names an item without its content",
 }
 # A code without its own words, by family.
@@ -507,6 +512,8 @@ _PLAIN_HINT_VI: Final = {
                              "nên đổi tên ý (Cách 1, Đề xuất 1, Tình huống 1) ở cả đề, đáp án và lời giải",
     QUESTION_TWICE_CODE: "đề hỏi hai lần (câu hỏi ở dòng bối cảnh hoặc trước danh sách và ở dòng cuối) — chỉ giữ một "
                          "câu hỏi ở dòng cuối",
+    QUESTION_FEW_OPTIONS_CODE: "câu hỏi chỉ có 3 phương án vì đề chỉ liệt kê 3 ý — nên thêm một ý hợp lý thứ tư và "
+                               "phương án, lời giải tương ứng",
     EXPLANATION_NAMES_ONLY_CODE: "đáp án chỉ ghi tên ý (như «Cách 2») mà lời giải không nói ý đó là gì — nên nêu nội "
                                  "dung của ý trong lời giải",
 }
@@ -542,6 +549,8 @@ _PLAIN_HINT_EN: Final = {
                              "rename them (Approach 1, Proposal 1) in the question, the options and the feedback",
     QUESTION_TWICE_CODE: "the question is asked twice (on a context line or before the list, and on the last line) — "
                          "keep one question on the last line",
+    QUESTION_FEW_OPTIONS_CODE: "the question has only 3 options because the case lists 3 items — add a plausible "
+                               "fourth item with its option and feedback",
     EXPLANATION_NAMES_ONLY_CODE: "an option only names an item («Approach 2») and its feedback never says what it is — "
                                  "say the item's content in the feedback",
 }
@@ -566,6 +575,8 @@ _REVIEW_HINT_VI: Final = {
     # Run 5496155c: a worksheet that names data it does not give cannot be done.
     WORKSHEET_INPUT_CODE: "phiếu thực hành nhắc tới dữ liệu để làm bài (danh sách, nội dung phỏng vấn, các yêu cầu) "
                           "nhưng không đưa dữ liệu đó — cần bổ sung để người học làm được bài",
+    EXAMPLE_REUSE_CODE: "ví dụ mẫu của phiếu thực hành giải chính các mục dữ liệu đầu vào của bài tập nên đã cho sẵn "
+                        "đáp án — cần đổi ví dụ sang trường hợp khác",
     # QC feedback 2026-10-21 (A1): the feedback must tell the learner why each option is right or wrong.
     EXPLANATION_LAYOUT_CODE: "lời giải chưa theo bố cục: một dòng nêu nguyên tắc, rồi mỗi phương án một dòng «A - Đúng "
                              "vì …» hoặc «A - Sai vì …» — cần viết lại để người học thấy vì sao đúng, vì sao sai",
@@ -591,6 +602,8 @@ _REVIEW_HINT_EN: Final = {
     QUESTION_INCOMPLETE_CODE: "the question stops before it asks anything — write the question out in full",
     WORKSHEET_INPUT_CODE: "the worksheet refers to data to work on (a list, an interview, requests) but does not give "
                           "it — add it so learners can do the task",
+    EXAMPLE_REUSE_CODE: "the worksheet's worked example solves the task's own input entries, so it gives the answer "
+                        "away — move the example to another case",
     EXPLANATION_LAYOUT_CODE: "the feedback is not laid out as one line with the principle, then one line per option "
                              "(«A - Correct because …» or «A - Incorrect because …») — rewrite it so learners see why "
                              "each option is right or wrong",

@@ -23,6 +23,7 @@ from app.idm.policy import (
     IDM_MCQ_EXPLANATION_MAX_CHARS,
     IDM_MCQ_EXPLANATION_OPTION_MAX_WORDS,
     IDM_MCQ_EXPLANATION_PRINCIPLE_MAX_WORDS,
+    IDM_MCQ_OPTION_COUNT,
     IDM_MCQ_STEM_ITEM_MAX_WORDS,
     IDM_MCQ_STEM_MAX_ITEMS,
     IDM_MCQ_STEM_PROSE_MAX_WORDS,
@@ -56,7 +57,8 @@ _QUIZ_TEXT_RULE: Final = f"""\
   descriptive name. Ask ONE question, once: the question sentence itself alone on the last line, ending with "?";
   no context line and no line before the list asks it (or another question) too. An option states its content (what
   the learner chooses); an option that only names an item ("Cách 2") is allowed, but then its explanation line says
-  what that item is or does, never only "phương án này".
+  what that item is or does, never only "phương án này"; options that name the listed items have one item each, so
+  the case lists {IDM_MCQ_OPTION_COUNT} items for {IDM_MCQ_OPTION_COUNT} options.
   explanation: line 1 the principle of the lesson that decides the answer (one sentence, two at most, at most
   {IDM_MCQ_EXPLANATION_PRINCIPLE_MAX_WORDS} words; never restate several definitions); then one line per option in
   the order A, B, C …: "A - Đúng vì …" or "A - Sai vì …" (English: "A - Correct because …" or "A - Incorrect
@@ -88,9 +90,11 @@ _WORKSHEET_RULE: Final = """\
   (exactly one option meets them). When the task refers to data the learner works on (a list of people, an
   interview, requests, cases, figures), the worksheet gives that data in full in its own section right after the task
   (heading "Dữ liệu đầu vào" / "Input data"), as a bullets list or a table with exactly the entries the task names
-  (at most 6), about a case other than the worked example's; never refer to data the worksheet does not show. A
-  worksheet has the same length budget as any html slot, so keep it lean: one
-  template row per field (its value one guiding question of at most 15 words), a worked example of at most two
+  (at most 6), about a case other than the worked example's; never refer to data the worksheet does not show. The
+  worked example works on other data: never one of the input entries, not even shortened or renamed (an example that
+  solves the learner's own entries gives the answer away). A worksheet has the same length budget as any html slot,
+  and the input data counts toward it, so keep it lean: one template row per field (its value one guiding question
+  of at most 15 words), input entries of one sentence of at most 20 words each, a worked example of at most two
   filled entries and at most 6 self-check items; a worksheet still over the budget loses its worked example."""
 # N9 and QC feedback 2026-10-21 (A3): a callout quotes the source and adds a point its slot does not already make.
 _CALLOUT_RULE: Final = """\
@@ -523,6 +527,15 @@ UNIT_RULE_TEXT: Final[dict[str, str]] = {
                                    "steps) and a final self-check bullets block whose items are the practice "
                                    "criteria taken from the facts",
     # Run 5496155c: "đọc danh sách nhân sự …" without the list (``app.idm.worksheet_input``).
+    "IDM_W5_WORKSHEET_EXAMPLE_REUSES_INPUT": "the worked example works on entries of the task's own input data "
+                                             "(listed below), so it gives the learner the answer: rewrite the worked "
+                                             "example on another case or other entries (never one of the input "
+                                             "entries, not even shortened or renamed); keep the task, the input data, "
+                                             "the template and the self-check",
+    "IDM_W5_QUESTION_FEW_OPTIONS": f"the options only name the case's listed items and there are fewer than "
+                                   f"{IDM_MCQ_OPTION_COUNT}: add one more plausible item to the case (its own line, "
+                                   f"the same naming), its option and its explanation line, so the question has "
+                                   f"{IDM_MCQ_OPTION_COUNT} options; keep the other items and the answer key",
     "IDM_W5_WORKSHEET_INPUT_MISSING": "the worksheet's task refers to data the learner works on (a list, an interview, "
                                       "requests or cases) that the worksheet does not give: add that data in full in "
                                       "its own section right after the task (heading \"Dữ liệu đầu vào\" / \"Input "

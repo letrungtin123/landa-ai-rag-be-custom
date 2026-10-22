@@ -8,14 +8,22 @@ Node's acceptance rule too (``idmUnitOutputBudget``), so a larger worksheet budg
 
 * :func:`compact_worksheet` brings an over-long worksheet within the budget: first the second and later sentences of
   the template's guidance cells go, then the worked example is cut to two filled entries, then the other optional
-  sections go, and only then the worked example (QLT-9). The task, every template field and the self-check list
-  stay, so the worksheet stays complete (``qa.worksheet_complete``).
+  sections go, and only then the worked example (QLT-9). The task, its input data, every template field and the
+  self-check list stay, so the worksheet stays complete (``qa.worksheet_complete``).
 * :func:`worksheet_fallback_html` is the fallback of a worksheet slot: the form's fields as one table
   (field, guiding question, what to write) built from the source lines in their order, the source
   introduction and closing lines as paragraphs, and a self-check list from the placeholders. It returns
-  ``None`` when the facts hold no form, and the generic source-locked html is used.
+  ``None`` when the facts hold no form; :func:`plan_worksheet_html` is then used.
 
-Both are deterministic and never add a claim the source does not make.
+Paid verification of 3ed380d (R1, decided 2026-10-22): the input data a worksheet must now give (run 5496155c) made
+c1.l2.u2 411 words against 400, and with a soft finding (an incomplete self-check) compaction refused it, so the slot
+fell back to its loose source lines. The input data and the worked example still count toward the budget: Node
+measures every provider html slot with the same rule (``idmOutputBudgetFinding``), so counting them apart in Python
+alone would make Node reject the unit. Instead compaction keeps the input data, accepts a slot that keeps the soft
+findings it had (they keep the AI slot for the author's review), and the writer is told the input counts toward the
+budget. A separate worksheet budget remains possible as a change on both sides.
+
+All are deterministic and never add a claim the source or the approved plan does not make.
 """
 
 from __future__ import annotations
@@ -23,12 +31,13 @@ from __future__ import annotations
 import html
 import re
 import unicodedata
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from typing import Any, Final
 
 from app.content.instructional_quality import TABLE_ROW_RE
 from app.idm.acronyms import keeps_capitals
 from app.idm.text import idm_fold, trim_at_boundary
+from app.idm.worksheet_input import is_input_section
 
 COMPACTED_CODE: Final = "IDM_W5_WORKSHEET_COMPACTED"
 _PLACEHOLDER_RE: Final = re.compile(r"^\[\s*(.+?)\s*\]$")
@@ -45,7 +54,8 @@ _MAX_GROUP: Final = 6
 _GUIDANCE_CELL_CHARS: Final = 160
 _TEMPLATE_KINDS: Final = frozenset({"table", "steps"})
 # The worked example (QLT-9): its heading names an example, or a text opens with an example label.
-_EXAMPLE_HEADING_WORDS: Final = ("vi du", "example", "mau hoan thanh", "bai mau", "tham khao")
+_EXAMPLE_HEADING_WORDS: Final = ("vi du", "example", "mau hoan thanh", "bai mau", "tham khao", "hoan chinh", "minh hoa",
+                                  "sample", "worked")
 _EXAMPLE_OPENING_RE: Final = re.compile(r"^\s*(?:ví dụ|illustrative example|worked example|example)\b", re.IGNORECASE)
 _TEXT_BLOCKS: Final = frozenset({"paragraph", "task", "warning"})
 _EXAMPLE_ENTRIES: Final = 2
@@ -54,12 +64,14 @@ _TEXT: Final[dict[str, dict[str, str]]] = {
                                       "phiếu.",
            "template": "Mẫu cần điền", "field": "Ô cần điền", "question": "Câu hỏi gợi ý", "hint": "Cần ghi",
            "blank": "(ghi trên bản của bạn)", "after": "Lưu ý khi hoàn thành", "check": "Tự kiểm tra",
-           "filled": "Đã điền"},
+           "filled": "Đã điền", "input": "Dữ liệu đầu vào", "do": "Cách làm", "result": "Kết quả cần có",
+           "use": "Nội dung cần áp dụng"},
     "en": {"task": "Task", "how": "Fill in each field below on your own copy, then check it against the list at the "
                                   "end.",
            "template": "Template", "field": "Field", "question": "Guiding question", "hint": "What to write",
            "blank": "(write on your own copy)", "after": "Before you finish", "check": "Self-check",
-           "filled": "Filled in"},
+           "filled": "Filled in", "input": "Input data", "do": "What to do", "result": "Expected result",
+           "use": "What to apply"},
 }
 
 
@@ -74,9 +86,11 @@ def _kinds(section: dict[str, Any]) -> set[str]:
 
 
 def _essential(sections: list[dict[str, Any]]) -> set[int]:
-    """Sections a worksheet cannot lose: the task, the first template and the closing self-check list."""
+    """Sections a worksheet cannot lose: the task, its input data (R1 of the paid verification of 3ed380d), the first
+    template and the closing self-check list."""
 
-    keep = {index for index, section in enumerate(sections) if "task" in _kinds(section)}
+    keep = {index for index, section in enumerate(sections)
+            if "task" in _kinds(section) or is_input_section(section)}
     template = next((index for index, section in enumerate(sections) if _kinds(section) & _TEMPLATE_KINDS), None)
     check = next((index for index in range(len(sections) - 1, -1, -1) if "bullets" in _kinds(sections[index])), None)
     keep.update(index for index in (template, check) if index is not None)
@@ -252,6 +266,39 @@ def _form_rows(lines: list[str]) -> tuple[list[tuple[str, str, str]], set[int]]:
         used.update(range(index, end))
         index = end
     return rows, used
+
+
+_SUGGESTED_LABEL_RE: Final = re.compile(r"^\s*(?:tiêu chí gợi ý|suggested criteria)\s*[:\-\N{EN DASH}]\s*",
+                                        re.IGNORECASE)
+
+
+def plan_worksheet_html(title: str, plan: Mapping[str, str], locale: str,
+                        reference: Sequence[str] = ()) -> str | None:
+    """A worksheet from its approved practice plan (task, input, what to do, the result and its criterion) and the
+    complete statements of its facts (``reference``, what the learner applies), or ``None`` without a task.
+
+    Paid verification of 3ed380d (R1): a worksheet slot whose facts hold no form fell back on its loose source lines
+    (the slot title, a cut "1.2." heading and a discussion question). The plan is the design's own text for this
+    practice (the form fallback above already uses its task); the facts' statements stay word for word, their
+    headings, questions and cut lines do not; the criterion loses its "Tiêu chí gợi ý" label."""
+
+    text = _TEXT["vi" if locale == "vi" else "en"]
+    task = _clean(plan.get("sentence") or "")
+    if not task:
+        return None
+    parts = [f"<h2>{html.escape(title)}</h2>", f"<h3>{text['task']}</h3>", f"<p>{html.escape(task)}</p>"]
+    if value := _clean(plan.get("context_input") or ""):
+        parts.extend((f"<h3>{text['input']}</h3>", f"<p>{html.escape(value)}</p>"))
+    if statements := [_clean(line) for line in reference if _clean(line)]:
+        parts.extend((f"<h3>{text['use']}</h3>",
+                      "<ul>" + "".join(f"<li>{html.escape(line)}</li>" for line in statements) + "</ul>"))
+    for key, heading in (("learner_action", "do"), ("result", "result")):
+        if value := _clean(plan.get(key) or ""):
+            parts.extend((f"<h3>{text[heading]}</h3>", f"<p>{html.escape(value)}</p>"))
+    if criterion := _SUGGESTED_LABEL_RE.sub("", _clean(plan.get("criterion") or "")):
+        criterion = criterion[:1].upper() + criterion[1:]
+        parts.extend((f"<h3>{text['check']}</h3>", f"<ul><li>{html.escape(criterion)}</li></ul>"))
+    return "".join(parts)
 
 
 def worksheet_fallback_html(title: str, fact_texts: Sequence[str], task: str | None, locale: str) -> str | None:

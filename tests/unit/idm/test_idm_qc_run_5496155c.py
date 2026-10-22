@@ -15,6 +15,7 @@ from typing import Any
 from app.idm.answer_checks import copies_example_measure, resolved_choices, stem_copies_answer, unit_teaching
 from app.idm.contracts import IdmIssueV1, brief_hash_of
 from app.idm.faq_checks import faq_writer_rules
+from app.idm.html_rules import visible_text
 from app.idm.hypothetical import SUPPOSITION_ADDED, as_supposition, suppose_semantic
 from app.idm.notes import build_course_notes
 from app.idm.prompts_judge import judge_prompt
@@ -33,6 +34,7 @@ from app.idm.qa_checks import WORKSHEET_INCOMPLETE_CODE
 from app.idm.quiz_text import (
     EXPLANATION_FILLER_CODE,
     EXPLANATION_NAMES_ONLY_CODE,
+    QUESTION_FEW_OPTIONS_CODE,
     QUESTION_ITEM_NOUN_CODE,
     QUESTION_TWICE_CODE,
     explanation_report,
@@ -51,10 +53,11 @@ from app.idm.source_flags import (
     is_transition,
 )
 from app.idm.source_locked import render_idm_source_locked_html
+from app.idm.storyboard import build_idm_expected, parse_brief
 from app.idm.text import evidence_index, glued_words
 from app.idm.visual_pages import evidence_needs_check, unread_image_pages
-from app.idm.worksheet import plain_self_check
-from app.idm.worksheet_input import InputReference, input_hint, missing_input
+from app.idm.worksheet import compact_worksheet, plain_self_check, plan_worksheet_html
+from app.idm.worksheet_input import InputReference, input_hint, missing_input, reuse_hint, reused_entries
 from app.schemas.orchestration_v2 import RagLessonAuthorUnitV2Request
 from app.services.orchestration_v2 import unit as unit_service
 from tests.support.idm_test_support import rehash_contract
@@ -477,6 +480,12 @@ class StemNamingTests(StoryboardEndpointTestCase):
         renamed["explanation"] = ("Nguyên tắc: lời cam kết đủ ba thành phần.\nA - Sai vì quản lý kho chưa nêu đối "
                                   "tượng mục tiêu.\nB - Đúng vì trưởng phòng mua hàng, duyệt báo giá và cổng duyệt tự "
                                   "động đủ ba phần.\nC - Sai vì tăng doanh thu chưa nêu cách làm khác biệt.")
+        # R3 of the paid verification: three options that only name the listed items are one too few.
+        laid = lay_out_quiz(renamed)[0]
+        self.assertEqual({**question_report(laid), **explanation_report(laid)},
+                         {QUESTION_FEW_OPTIONS_CODE: ["3 options that name the listed items (write 4)"]})
+        renamed["choices"].append({"text": "Cách 4", "correct": False})
+        renamed["explanation"] += "\nD - Sai vì học sản phẩm mới trong 5 phút chưa nêu đối tượng mua hàng."
         laid = lay_out_quiz(renamed)[0]
         self.assertEqual({**question_report(laid), **explanation_report(laid)}, {})
 
@@ -850,3 +859,193 @@ class NamingFidelityTests(unittest.TestCase):
         self.assertIn("A title that names a framework, model or process, or one of its parts, uses the name the facts "
                       "give it: never a part's name for the whole, never a new metaphor, never axes or steps the facts "
                       "do not list.", flat(module))
+
+
+
+def worksheet_section(heading: str, *blocks: dict[str, Any]) -> dict[str, Any]:
+    return {"heading": heading, "learning_block_ids": [],
+            "blocks": [{"text": None, "items": [], "rows": [], **block} for block in blocks]}
+
+
+INPUT_HEADING = "Dữ liệu đầu vào"
+# The shape of c1.l2.u2 in the paid run: the worksheet with its new input section was 411 words against 400 and its
+# self-check items were not the criteria facts (incomplete); the repair answered the same.
+GUIDANCE = (" Đọc kỹ mô tả của khách hàng, ghi lại thiệt hại, số lần phàn nàn và các yếu tố an toàn, pháp lý, truyền "
+            "thông trước khi chọn cấp độ cho từng trường hợp.")
+
+
+def long_worksheet(body: dict[str, Any]) -> dict[str, Any]:
+    writer = worksheet_writer(body)
+    task, template, example, check = writer["components"]["c0"]["semantic_content"]["sections"]
+    complaints = task["blocks"].pop()
+    for row in template["blocks"][0]["rows"]:
+        row["value"] += GUIDANCE * 4
+    check["blocks"][0]["items"] = ["Bảng của bạn trình bày gọn gàng, dễ đọc.",
+                                   "Bạn hoàn thành bảng trong thời gian quy định."]
+    writer["components"]["c0"]["semantic_content"]["sections"] = [
+        task, worksheet_section(INPUT_HEADING, complaints), template, example, check]
+    return writer
+
+
+class WorksheetBudgetTests(StoryboardEndpointTestCase):
+    """R1 of the paid verification of 3ed380d: a worksheet over Node's budget that also has a soft finding fell back
+    to its loose source lines; it is compacted, keeps its input data and is kept for the author's review."""
+
+    async def test_an_over_budget_incomplete_worksheet_is_compacted_and_kept(self) -> None:
+        body = worksheet_body()
+        writer = long_worksheet(body)
+        request = RagLessonAuthorUnitV2Request.model_validate(body)
+        contract = request.unit_contract
+        budget = build_idm_expected(contract, parse_brief(contract), unit_service._idm_unit_deps(request),
+                                    "vi")["instructional_output_budget"]
+        semantic = writer["components"]["c0"]["semantic_content"]
+        self.assertGreater(len(re.findall(r"\w+", visible_text(semantic))), budget["max_words"])
+        provider = FakeGenerate(**{WRITER: [writer], REPAIR: [slot_repair(writer, 0)], JUDGE: [judge()]})
+        status, data, _ = await self.post(body, provider)
+        self.assertEqual(status, 200, data.get("detail"))
+        self.assertEqual(provider.names, [WRITER, REPAIR, JUDGE])
+        self.assert_envelope(data, "provider_validated", "review_required", "provider")
+        slot = data["unit"]["components"][0]
+        self.assertNotIn("source_locked_fallback", slot)
+        headings = [section["heading"] for section in slot["semantic_content"]["sections"]]
+        self.assertIn(INPUT_HEADING, headings)
+        self.assertEqual(len(slot["semantic_content"]["sections"][headings.index(INPUT_HEADING)]["blocks"][0]["items"]),
+                         3)
+        self.assertLessEqual(len(re.findall(r"\w+", visible_text(slot["semantic_content"]))), budget["max_words"])
+        note = data["unit"]["idm_quality"]["author_note"]
+        self.assertIn("Giữ bản AI để tác giả rà soát: khối 1 (Lý thuyết): phiếu thực hành thiếu phần.", note)
+        self.assertIn("Phiếu thực hành dài hơn giới hạn nên đã rút gọn", note)
+        self.assertNotIn("bản dự phòng", note)
+
+    def test_compaction_never_drops_the_input_data(self) -> None:
+        writer = long_worksheet(worksheet_body())
+        slot = writer["components"]["c0"]
+        # Only the shortest candidate fits: the task, the input, the template (short rows) and the self-check.
+        compacted = compact_worksheet(slot, lambda value: "Ví dụ" not in json.dumps(value, ensure_ascii=False))
+        self.assertIsNotNone(compacted)
+        assert compacted is not None
+        headings = [section["heading"] for section in compacted[0]["semantic_content"]["sections"]]
+        self.assertIn(INPUT_HEADING, headings)
+        self.assertFalse(compacted[1])
+
+    def test_a_worksheet_without_a_form_falls_back_on_its_practice_plan(self) -> None:
+        plan = {"sentence": "Phân loại năm nhân sự của dự án vào đúng vai trò trong hội đồng mua hàng.",
+                "context_input": "Một dự án gồm trợ lý giám đốc, trưởng phòng tài chính, kỹ sư trưởng và trưởng kho.",
+                "learner_action": "Ghi vai trò của từng nhân sự.", "result": "Bảng phân loại năm nhân sự.",
+                "criterion": "Tiêu chí gợi ý: mỗi nhân sự đúng một vai trò theo bài học."}
+        html = plan_worksheet_html("Phiếu phân loại vai trò", plan, "vi") or ""
+        self.assertEqual(re.findall(r"<h3>([^<]+)</h3>", html),
+                         ["Nhiệm vụ", "Dữ liệu đầu vào", "Cách làm", "Kết quả cần có", "Tự kiểm tra"])
+        self.assertIn("<li>Mỗi nhân sự đúng một vai trò theo bài học.</li>", html)
+        self.assertNotIn("gợi ý", html)
+        # The facts' complete statements stay word for word, what the learner applies.
+        rule = "Người quyết định là người duyệt ngân sách cuối cùng của dự án mua sắm."
+        with_rule = plan_worksheet_html("Phiếu phân loại vai trò", plan, "vi", [rule]) or ""
+        self.assertIn(f"<h3>Nội dung cần áp dụng</h3><ul><li>{rule}</li></ul><h3>Cách làm</h3>", with_rule)
+        self.assertIsNone(plan_worksheet_html("Phiếu", {"sentence": " "}, "vi"))
+
+    async def test_fallback_only_never_shows_the_loose_source_lines(self) -> None:
+        # c1.l2.u2's facts held a cut slide heading and a discussion question, no form: here the slide heading.
+        question = "Câu hỏi thảo luận 5 phút: Nhóm bạn còn những nhóm khách hàng nào khác?"
+        body = facts_of(worksheet_body(), {"a": question})
+        status, data, provider = await self.post({**body, "fallback_only": True})
+        self.assertEqual((status, provider.calls), (200, []), data.get("detail"))
+        html = data["unit"]["components"][0]["html"]
+        self.assertIn("<h3>Nhiệm vụ</h3>", html)
+        self.assertIn("<h3>Dữ liệu đầu vào</h3>", html)
+        self.assertNotIn("Câu hỏi thảo luận", html)
+        self.assertEqual(data["unit"]["components"][0]["source_locked_fallback"], True)
+
+
+# c1.l3.u4 of the paid run: the worked example solved the three interview entries of the input data.
+REUSED = {"semantic_content": {"sections": [
+    worksheet_section("Nhiệm vụ", {"kind": "task", "text": "Phân loại các ý kiến phỏng vấn vào ba tầng."}),
+    worksheet_section("Dữ liệu phỏng vấn đầu vào", {"kind": "bullets", "items": [
+        "Ý kiến 1: Tôi cần duyệt khoản đầu tư có tỷ suất hoàn vốn cao và phân bổ nguồn lực chuẩn xác.",
+        "Ý kiến 2: Tôi lo áp lực khi là người chịu trách nhiệm cuối cùng cho kết quả kinh doanh.",
+        "Ý kiến 3: Tôi muốn xây một tổ chức tự vận hành và để lại giá trị lâu dài."]}),
+    worksheet_section("Mẫu phân tích hoàn chỉnh", {"kind": "table", "rows": [
+        {"label": "Ý kiến 1 (duyệt đầu tư hoàn vốn cao)", "value": "Việc chức năng: phân bổ nguồn lực và dòng tiền."},
+        {"label": "Ý kiến 2 (áp lực trách nhiệm)", "value": "Nỗi đau cảm xúc: áp lực của người chịu trách nhiệm."},
+        {"label": "Ý kiến 3", "value": "Việc xã hội: một tổ chức tự vận hành, giá trị lâu dài."}]}),
+    worksheet_section("Tự kiểm tra", {"kind": "bullets", "items": ["Mỗi ý kiến đúng một tầng.", "Có đủ ba tầng."]}),
+]}}
+
+
+class ExampleReuseTests(StoryboardEndpointTestCase):
+    """R2 of the paid verification of 3ed380d: a worked example on the task's own data gives the answer away."""
+
+    def test_an_example_on_the_tasks_entries_is_found(self) -> None:
+        self.assertEqual(reused_entries(REUSED), [1, 2, 3])
+        self.assertEqual(reuse_hint([1, 2, 3]), " (input entries 1, 2, 3 reappear in the worked example)")
+        # c2.l2.u2: the example's statement copies the strength the learner is asked to use.
+        copied = json.loads(json.dumps(REUSED, ensure_ascii=False))
+        sections = copied["semantic_content"]["sections"]
+        sections[1]["blocks"][0]["items"] = ["Thế mạnh được khách hàng khen ngợi: ứng dụng công nghệ AI kết hợp "
+                                             "phương pháp thiết kế bài giảng hiện đại."]
+        sections[2]["blocks"][0]["rows"] = [{"label": "Câu tuyên ngôn", "value": (
+            "Giúp giám đốc nhân sự rút ngắn thời gian nhờ ứng dụng công nghệ AI kết hợp thiết kế bài giảng hiện đại.")}]
+        self.assertEqual(reused_entries(copied), [1])
+
+    def test_an_example_on_other_data_is_no_reuse(self) -> None:
+        other = json.loads(json.dumps(REUSED, ensure_ascii=False))
+        other["semantic_content"]["sections"][2]["blocks"][0]["rows"] = [
+            {"label": "Phát biểu mẫu (trưởng phòng mua hàng)", "value": "Việc chức năng: rút ngắn thời gian duyệt "
+                                                                          "báo giá."},
+            {"label": "Phát biểu mẫu (giám đốc vận hành)", "value": "Nỗi đau cảm xúc: sợ gián đoạn dây chuyền."}]
+        self.assertEqual(reused_entries(other), [])
+        # Without an input or an example section nothing is measured.
+        self.assertEqual(reused_entries({"semantic_content": {"sections": REUSED["semantic_content"]["sections"][:2]}}),
+                         [])
+
+    async def test_the_writer_moves_the_example_once_else_the_unit_is_reviewed(self) -> None:
+        body = worksheet_body()
+        writer = worksheet_writer(body)
+        sections = writer["components"]["c0"]["semantic_content"]["sections"]
+        complaints = sections[0]["blocks"].pop()
+        sections.insert(1, worksheet_section(INPUT_HEADING, complaints))
+        example = sections[3]
+        example["blocks"][0]["text"] = ("Ví dụ: khách hàng bị thiệt hại tài chính dưới 50 triệu đồng vì lô hàng giao "
+                                        "thiếu: ghi cấp 2 và thông báo trưởng nhóm.")
+        self.assertEqual(reused_entries(writer["components"]["c0"]), [2])
+        provider = FakeGenerate(**{WRITER: [writer], REPAIR: [slot_repair(writer, 0)], JUDGE: [judge()]})
+        status, data, _ = await self.post(body, provider)
+        self.assertEqual(status, 200, data.get("detail"))
+        self.assertIn("c0 IDM_W5_WORKSHEET_EXAMPLE_REUSES_INPUT at c0: the worked example works on entries of the "
+                      "task's own input data", provider.calls[1]["prompt"])
+        self.assertIn("(input entries 2 reappear in the worked example)", provider.calls[1]["prompt"])
+        self.assertNotIn("source_locked_fallback", data["unit"]["components"][0])
+        self.assertEqual(data["quality_state"], "review_required")
+        self.assertIn("Cần xem khối 1 (Lý thuyết): ví dụ mẫu của phiếu thực hành giải chính các mục dữ liệu đầu vào",
+                      data["unit"]["idm_quality"]["author_note"])
+
+    def test_the_prompt_keeps_the_example_off_the_tasks_data(self) -> None:
+        self.assertIn("The worked example works on other data: never one of the input entries, not even shortened or "
+                      "renamed", flat(_WORKSHEET_RULE))
+        self.assertIn("and the input data counts toward it", flat(_WORKSHEET_RULE))
+
+
+class OptionCountTests(unittest.TestCase):
+    """R3 of the paid verification of 3ed380d (c2.l4.u2): three listed items named by three options."""
+
+    def test_options_that_name_three_items_are_one_too_few(self) -> None:
+        three = stem_quiz("Giả sử khách hàng lo hệ thống mới làm gián đoạn vận hành.\n- Đề xuất 1: Gửi hồ sơ năng lực."
+                          "\n- Đề xuất 2: Chạy thử có giới hạn kèm cam kết chuyển dữ liệu an toàn.\n- Đề xuất 3: Mời "
+                          "dự hội thảo một ngày.\nĐề xuất nào phù hợp nhất?",
+                          [("Đề xuất 3", False), ("Đề xuất 2", True), ("Đề xuất 1", False)], "")
+        laid = lay_out_quiz(three)[0]
+        self.assertEqual(question_report(laid)[QUESTION_FEW_OPTIONS_CODE],
+                         ["3 options that name the listed items (write 4)"])
+        # Options that state their content may stay three (the prompt's exception); four named options are fine.
+        stated = {**three, "choices": [{"text": "Chạy thử có giới hạn kèm cam kết", "correct": True},
+                                       {"text": "Gửi hồ sơ năng lực", "correct": False},
+                                       {"text": "Mời dự hội thảo", "correct": False}]}
+        self.assertNotIn(QUESTION_FEW_OPTIONS_CODE, question_report(lay_out_quiz(stated)[0]))
+        four = {**three, "question": three["question"].replace("\nĐề xuất nào", "\n- Đề xuất 4: Giảm giá 5%.\nĐề "
+                                                                                 "xuất nào"),
+                "choices": [*three["choices"], {"text": "Đề xuất 4", "correct": False}]}
+        self.assertNotIn(QUESTION_FEW_OPTIONS_CODE, question_report(lay_out_quiz(four)[0]))
+
+    def test_the_prompt_lists_one_item_per_option(self) -> None:
+        self.assertIn("options that name the listed items have one item each, so the case lists 4 items for 4 options",
+                      flat(PRACTICE_RULES))

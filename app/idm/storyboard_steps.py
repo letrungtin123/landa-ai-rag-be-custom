@@ -58,6 +58,7 @@ from app.idm.qa_checks import CALLOUT_REPEAT_DROPPED, repeated_callouts, without
 from app.idm.quiz_letters import ITEM_LETTERS_NUMBERED, number_item_letters
 from app.idm.quiz_text import lay_out_quiz
 from app.idm.runtime import IdmResponseInvalidError, IdmRuntime, ThinkingLevel, log_stage, record_deterministic_fallback
+from app.idm.source_fallback import lesson_statements
 from app.idm.source_flags import unit_flags
 from app.idm.source_locked import FAQ_FALLBACK_REPEATED_CODE, faq_answers_repeat
 from app.idm.storyboard_context import (
@@ -77,8 +78,15 @@ from app.idm.storyboard_context import (
 from app.idm.text import evidence_index, is_suggested_criteria
 from app.idm.titles import TitleCaser
 from app.idm.worksheet import COMPACTED_CODE as WORKSHEET_COMPACTED_CODE
-from app.idm.worksheet import compact_worksheet, plain_self_check, worksheet_fallback_html
-from app.idm.worksheet_input import WORKSHEET_INPUT_CODE, input_hint, missing_input
+from app.idm.worksheet import compact_worksheet, plain_self_check, plan_worksheet_html, worksheet_fallback_html
+from app.idm.worksheet_input import (
+    EXAMPLE_REUSE_CODE,
+    WORKSHEET_INPUT_CODE,
+    input_hint,
+    missing_input,
+    reuse_hint,
+    reused_entries,
+)
 
 
 class IdmUnitWriterSteps:
@@ -291,12 +299,15 @@ class IdmUnitWriterSteps:
 
     def slot_hint(self, code: str, component: Any) -> str | None:
         """The repair line's server-measured detail of a slot-wide finding (run 5496155c), ``None`` for another code:
-        the data a worksheet's task refers to, the hype words of the FAQ answers."""
+        the data a worksheet's task refers to, the input entries its example reuses, the hype words of the FAQ
+        answers."""
 
         if not isinstance(component, dict):
             return None
         if code == WORKSHEET_INPUT_CODE:
             return input_hint(missing_input(component))
+        if code == EXAMPLE_REUSE_CODE:
+            return reuse_hint(reused_entries(component))
         return self.faq.hype_hint(component) if code == FAQ_HYPE_CODE else None
 
     def count_artefacts(self, artefacts: Counter[str]) -> None:
@@ -454,7 +465,8 @@ class IdmUnitWriterSteps:
 
     def worksheet_fallback(self, index: int) -> dict[str, Any] | None:
         """The source-locked component of a worksheet slot as a structured form (QC run 8de1c76b, Q2): the
-        fields in one table, the closing lines and a self-check list; ``None`` when the facts hold no form."""
+        fields in one table, the closing lines and a self-check list; without a form, the worksheet of its practice
+        plan; ``None`` without either."""
 
         base = self.fallback_component(index)
         if base is None or not self.is_worksheet(index):
@@ -462,9 +474,17 @@ class IdmUnitWriterSteps:
         plan = self.plans[index]
         keys = list(dict.fromkeys([*plan["source_fact_ids"], *plan["supporting_evidence_fact_ids"]]))
         practice = self.brief.components[index].practice
-        structured = worksheet_fallback_html(str(base.get("title") or self.contract.unit_title),
-                                             [self.text_by_id[key] for key in keys if key in self.text_by_id],
+        title = str(base.get("title") or self.contract.unit_title)
+        structured = worksheet_fallback_html(title, [self.text_by_id[key] for key in keys if key in self.text_by_id],
                                              practice.sentence if practice else None, self.runtime.locale)
+        # R1: without a form in the facts, the approved practice plan and the facts' complete statements, never the
+        # loose source lines (headings, questions, cut lines).
+        if structured is None and practice is not None:
+            structured = plan_worksheet_html(title, {
+                "sentence": practice.sentence, "context_input": practice.context_input,
+                "learner_action": practice.learner_action, "result": practice.result,
+                "criterion": practice.feedback_focus.criterion}, self.runtime.locale,
+                lesson_statements([self.text_by_id[key] for key in keys if key in self.text_by_id]))
         return {**base, "html": structured} if structured else None
 
     def repeated_faq_fallback(self, index: int) -> list[str]:
@@ -568,11 +588,17 @@ class IdmUnitWriterSteps:
                           list(draft.fallback_slots), draft.repair_applied, list(draft.review_slots),
                           dict(draft.reasons))
 
+        # R1 of the paid verification of 3ed380d: a worksheet over the budget that also has a soft finding (incomplete,
+        # no input data) is compacted all the same, as long as compaction adds no finding; the soft ones then keep the
+        # AI slot for review. Node measures the same budget on provider slots, so an over-budget slot is never kept.
+        _finding, before = self.problems(draft)
+        soft = {code for code, slot in before if slot == index}
+
         def fits(value: dict[str, Any]) -> bool:
             if self.html_violations(value):
                 return False
             finding, idm = self.problems(with_slot(value))
-            return _slot_of(finding) != index and not any(slot == index for _code, slot in idm)
+            return _slot_of(finding) != index and {code for code, slot in idm if slot == index} <= soft
 
         compacted = compact_worksheet(component, fits)
         if compacted is None:

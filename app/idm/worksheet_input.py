@@ -18,11 +18,19 @@ from __future__ import annotations
 import re
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
+from itertools import pairwise
 from typing import Any, Final
 
-from app.idm.text import idm_fold
+from app.idm.policy import (
+    IDM_WORKSHEET_REUSE_MIN_PAIRS,
+    IDM_WORKSHEET_REUSE_MIN_WORDS,
+    IDM_WORKSHEET_REUSE_PAIR_SHARE,
+)
+from app.idm.text import content_words, idm_fold
 
 WORKSHEET_INPUT_CODE: Final = "IDM_W5_WORKSHEET_INPUT_MISSING"
+# Paid verification of 3ed380d (R2): the worked example solves the task's own input entries, so it gives the answer.
+EXAMPLE_REUSE_CODE: Final = "IDM_W5_WORKSHEET_EXAMPLE_REUSES_INPUT"
 _NUMBERS: Final = {"hai": 2, "ba": 3, "bon": 4, "nam": 5, "sau": 6, "bay": 7, "tam": 8, "chin": 9, "muoi": 10,
                    "two": 2, "three": 3, "four": 4, "five": 5, "six": 6, "seven": 7, "eight": 8, "nine": 9, "ten": 10}
 _COUNT: Final = r"(\d{1,2}|" + "|".join(_NUMBERS) + r")"
@@ -47,7 +55,13 @@ _REFERENCES: Final[tuple[tuple[str, re.Pattern[str]], ...]] = (
 )
 # The worked example: a section whose heading names an example or a model entry.
 _EXAMPLE_WORDS: Final = ("vi du", "example", "mau hoan thanh", "bai mau", "tham khao", "mau doi chieu", "ho so mau",
-                         "minh hoa", "sample")
+                         "minh hoa", "sample", "hoan chinh", "worked")
+# The input data section the writer is asked for ("Dữ liệu đầu vào" / "Input data", R1-R2).
+_INPUT_HEADING_RE: Final = re.compile(r"\b(?:du lieu|dau vao|input|data)\b")
+# A named entry ("Ý kiến 1: …", "Yêu cầu 2 - …") or a labelled one ("Thế mạnh cốt lõi: …", a label of a few words).
+_NAMED_ENTRY_RE: Final = re.compile(
+    r"^\s*(?P<name>[^\W\d_]+(?:\s+[^\W\d_]+){0,3}\s+\d{1,2})\s*[:.)\-\N{EN DASH}]\s*(?P<text>.*)$", re.DOTALL)
+_LABEL_MAX_WORDS: Final = 10
 _LIST_KINDS: Final = frozenset({"bullets", "steps", "table"})
 _TEXT_KINDS: Final = frozenset({"paragraph", "task", "warning"})
 _MIN_LIST_ENTRIES: Final = 2
@@ -100,6 +114,74 @@ def _is_example(section: Mapping[str, Any]) -> bool:
     return any(word in idm_fold(str(section.get("heading") or "")) for word in _EXAMPLE_WORDS)
 
 
+def is_input_section(section: Mapping[str, Any]) -> bool:
+    """A section that gives the task's input data: its heading names the data and it is neither the worked example
+    nor the task itself."""
+
+    heading = idm_fold(str(section.get("heading") or ""))
+    return (not _is_example(section) and not any(block.get("kind") == "task" for block in _blocks(section))
+            and _INPUT_HEADING_RE.search(heading) is not None)
+
+
+def _entry_texts(section: Mapping[str, Any]) -> list[str]:
+    """The entries of a section: list items, table rows ("label: value") and texts."""
+
+    entries: list[str] = []
+    for block in _blocks(section):
+        kind = block.get("kind")
+        if kind == "table":
+            entries.extend(f"{row.get('label') or ''}: {row.get('value') or ''}" for row in block.get("rows") or []
+                           if isinstance(row, dict))
+        elif kind in {"bullets", "steps"}:
+            entries.extend(str(item) for item in block.get("items") or [])
+        elif kind in _TEXT_KINDS:
+            entries.append(str(block.get("text") or ""))
+    return [entry for entry in entries if entry.strip(" :")]
+
+
+def _name_and_body(entry: str) -> tuple[str | None, str]:
+    if match := _NAMED_ENTRY_RE.match(entry):
+        return idm_fold(match.group("name")), match.group("text")
+    label, colon, rest = entry.partition(":")
+    return None, rest if colon and rest.strip() and len(label.split()) <= _LABEL_MAX_WORDS else entry
+
+
+def _pairs(text: str) -> set[tuple[str, str]]:
+    return set(pairwise(re.findall(r"\w+", idm_fold(text))))
+
+
+def _reused(entry: str, examples: Sequence[str]) -> bool:
+    name, body = _name_and_body(entry)
+    words, pairs = set(content_words(body)), _pairs(body)
+    for example in examples:
+        if (name is not None and re.search(rf"\b{re.escape(name)}\b", idm_fold(example))
+                and len(words & set(content_words(example))) >= IDM_WORKSHEET_REUSE_MIN_WORDS):
+            return True
+        if (len(pairs) >= IDM_WORKSHEET_REUSE_MIN_PAIRS
+                and len(pairs & _pairs(example)) / len(pairs) >= IDM_WORKSHEET_REUSE_PAIR_SHARE):
+            return True
+    return False
+
+
+def reused_entries(component: Mapping[str, Any]) -> list[int]:
+    """The 1-based positions of the input data entries the worked example works on (R2: the example then gives the
+    learner the answer of the task), or ``[]``."""
+
+    sections = _sections(component)
+    inputs = [entry for section in sections if is_input_section(section) for entry in _entry_texts(section)]
+    examples = [entry for section in sections if _is_example(section) for entry in _entry_texts(section)]
+    if not inputs or not examples:
+        return []
+    return [position for position, entry in enumerate(inputs, 1) if _reused(entry, examples)]
+
+
+def reuse_hint(positions: Sequence[int]) -> str:
+    """The repair line's server words: which input entries reappear in the worked example (positions only)."""
+
+    listed = ", ".join(str(position) for position in positions)
+    return f" (input entries {listed} reappear in the worked example)" if positions else ""
+
+
 def missing_input(component: Mapping[str, Any]) -> InputReference | None:
     """The data reference of a worksheet html slot whose data the worksheet does not give, or ``None``."""
 
@@ -142,5 +224,5 @@ def references_of(components: Sequence[Mapping[str, Any]]) -> list[InputReferenc
     return [missing_input(component) for component in components]
 
 
-__all__ = ["WORKSHEET_INPUT_CODE", "InputReference", "input_hint", "input_reference", "missing_input",
-           "references_of"]
+__all__ = ["EXAMPLE_REUSE_CODE", "WORKSHEET_INPUT_CODE", "InputReference", "input_hint", "input_reference",
+           "is_input_section", "missing_input", "references_of", "reuse_hint", "reused_entries"]

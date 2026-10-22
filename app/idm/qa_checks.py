@@ -67,7 +67,7 @@ from app.idm.text import (
     ngram_overlap,
     word_ngrams,
 )
-from app.idm.worksheet_input import WORKSHEET_INPUT_CODE, missing_input
+from app.idm.worksheet_input import EXAMPLE_REUSE_CODE, WORKSHEET_INPUT_CODE, missing_input, reused_entries
 
 MIN_FEEDBACK_CHARS: Final = 60
 # An option is named by its text when the explanation contains the start of it (accent-folded).
@@ -367,6 +367,9 @@ def deterministic_slot_findings(
             # Run 5496155c: a worksheet whose task refers to a list, an interview or requests it does not give.
             if worksheet and missing_input(component) is not None:
                 findings.append(SlotFinding(WORKSHEET_INPUT_CODE, index))
+            # R2 of the paid verification of 3ed380d: a worked example on the task's own data answers the task.
+            if worksheet and reused_entries(component):
+                findings.append(SlotFinding(EXAMPLE_REUSE_CODE, index))
             if evidence is not None and ungrounded_callouts(component, evidence):
                 findings.append(SlotFinding(CALLOUT_UNGROUNDED_CODE, index))
             if cut_fragments(component.get("semantic_content")):

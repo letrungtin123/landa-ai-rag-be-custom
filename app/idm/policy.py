@@ -385,6 +385,18 @@ IDM_ANSWER_STEM_ITEM_COPY_SHARE: Final = 0.5
 IDM_ANSWER_STEM_ITEM_MIN_WORDS: Final = 4
 IDM_ANSWER_STEM_ITEM_WORD_SHARE: Final = 0.7
 IDM_ANSWER_STEM_ITEM_MARGIN: Final = 0.1
+# Paid verification of 3ed380d (R2, c1.l3.u4): the worked example of a worksheet solved exactly the three interview
+# entries of its own input data. An input entry reappears in the example when an example entry names it ("Ý kiến 1")
+# and shares at least ``IDM_WORKSHEET_REUSE_MIN_WORDS`` content words with it, or holds at least
+# ``IDM_WORKSHEET_REUSE_PAIR_SHARE`` of its word pairs (an entry of at least ``IDM_WORKSHEET_REUSE_MIN_PAIRS`` pairs,
+# its label of at most 10 words before a colon left out). In the paid run, c1.l3.u4's example named its three entries;
+# c2.l2.u2's example held 0.75 of one entry's pairs (the strength it was asked to use); every other entry at most 0.28.
+IDM_WORKSHEET_REUSE_MIN_WORDS: Final = 3
+IDM_WORKSHEET_REUSE_PAIR_SHARE: Final = 0.5
+IDM_WORKSHEET_REUSE_MIN_PAIRS: Final = 3
+# R3 (c2.l4.u2): a single-choice question has this many options; one whose options only name the case's listed items
+# and has fewer is an edit finding (the prompt still allows 3 when the criterion leaves two plausible mistakes).
+IDM_MCQ_OPTION_COUNT: Final = 4
 
 # --- FAQ value and callout grounding (QC course 364564, N9/N11) --------------------------------
 # 3 of 5 FAQs only repeated the table taught just above them. An FAQ answer restates the html before

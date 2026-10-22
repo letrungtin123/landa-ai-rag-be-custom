@@ -43,7 +43,7 @@ from app.idm.qa import (
 )
 from app.idm.quiz_text import QUIZ_CODES, QUIZ_REVIEW_CODES
 from app.idm.runtime import IdmStageError
-from app.idm.worksheet_input import WORKSHEET_INPUT_CODE
+from app.idm.worksheet_input import EXAMPLE_REUSE_CODE, WORKSHEET_INPUT_CODE
 from app.instructional_density import INSTRUCTIONAL_DENSITY_POLICY_VERSION
 
 _SLOT_RE: Final = re.compile(r"components\[(\d+)\]")
@@ -75,11 +75,12 @@ _REVIEW_FIRST_CODES: Final = frozenset({WORKSHEET_INCOMPLETE_CODE, WORKSHEET_INP
                                         ANSWER_CONTESTED_CODE,
                                         CALLOUT_UNGROUNDED_CODE, FAQ_RESTATES_HTML_CODE, FAQ_TITLE_MISMATCH_CODE,
                                         FRAMEWORK_INCOMPLETE_CODE, SOURCE_ARTIFACT_CODE, VERBATIM_COPY_CODE,
-                                        *FIDELITY_CODES, *FAQ_VALUE_CODES, *QUIZ_REVIEW_CODES, FAQ_HYPE_CODE})
+                                        *FIDELITY_CODES, *FAQ_VALUE_CODES, *QUIZ_REVIEW_CODES, FAQ_HYPE_CODE,
+                                        EXAMPLE_REUSE_CODE})
 # Findings whose repair is dropped when it breaks a shared or Node rule: they end as review notes anyway.
 # Run 5496155c: a worksheet repair that adds its input data but breaks a rule (the length budget) is dropped too.
 _REVIEW_ONLY_CODES: Final = frozenset({*FIDELITY_CODES, *FAQ_VALUE_CODES, *QUIZ_REVIEW_CODES, WORKSHEET_INPUT_CODE,
-                                       FAQ_HYPE_CODE})
+                                       FAQ_HYPE_CODE, EXAMPLE_REUSE_CODE})
 # Findings a deterministic step settles when the repair does not (a list inserted, an FAQ item dropped, a callout
 # turned into prose, a review note): their repair alone is a targeted one, a scoped rewrite at low thinking. QC run
 # ab8d67e1 (R3): two leak repairs at medium thinking were cut by the unit deadline.

@@ -48,6 +48,7 @@ PROMPT_TEMPLATE_SOURCES: Final = (
     "app.idm.framework:framework_support_lines",
     "app.idm.quiz_text:quiz_hint",
     "app.idm.worksheet_input:input_hint",
+    "app.idm.worksheet_input:reuse_hint",
     "app.idm.preserve_lines:heading_hint",
     "app.idm.preserve_segment:_prompt_line",
     "app.idm.preserve_segment:segment_prompt",
