@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import re
 from collections.abc import Collection, Mapping, Sequence
-from typing import Final
+from typing import Any, Final
 
 from app.idm.faq_checks import (
     FAQ_INVENTED_REASON_CODE,
@@ -297,6 +297,7 @@ def build_unit_author_note(
     notices: Sequence[str] = (),
     suggested_criteria: bool = False,
     source_flags: Sequence[str] = (),
+    source_notes: Sequence[str] = (),
 ) -> str:
     """Template note for the unit ``implementation_notes``; no IDs, no ``<``/``>``.
 
@@ -320,8 +321,9 @@ def build_unit_author_note(
     not marked for review (``NOTICE_REASONS``), stated as "Lưu ý".
 
     ``suggested_criteria`` (A5): the unit's practice has criteria the AI suggested from what the lesson teaches.
-    ``source_flags`` (owner decision 2026-10-22): one sentence per point of the source to check, right after the
-    review reasons.
+    ``source_flags`` (owner decision 2026-10-22): one sentence per contradictory or out-of-date point of the source,
+    right after the review reasons; ``source_notes`` (run 5496155c): one per unclear point, an edit note after the
+    notices.
     """
 
     vi = locale == "vi"
@@ -334,20 +336,9 @@ def build_unit_author_note(
     parts.extend(fit_flags(source_flags, IDM_UNIT_SOURCE_FLAGS_MAX_CHARS, locale))
     if line := _notices_line(notices, vi):
         parts.append(line)
-    if judge.status in {"pass", "review_required", "reject"}:
-        if problems:
-            described = "; ".join(dict.fromkeys(labels[finding.criterion] for finding in problems[:4]))
-            parts.append(f"QA tự động: {len(problems)} vấn đề cần xem — {described}." if vi
-                         else f"Automatic QA: {len(problems)} issue(s) to review — {described}.")
-        elif not review_reasons:
-            # QLT-9: never "no major issue" on a unit marked for review.
-            parts.append("QA tự động: không phát hiện vấn đề lớn." if vi
-                         else "Automatic QA: no major issue found.")
-    elif judge.status == "skipped_budget":
-        parts.append("QA tự động: bỏ qua do hết thời gian." if vi else "Automatic QA: skipped (time budget).")
-    elif judge.status == "failed":
-        parts.append("QA tự động: không chạy được, cần rà soát thủ công." if vi
-                     else "Automatic QA: unavailable, review manually.")
+    parts.extend(fit_flags(source_notes, IDM_UNIT_SOURCE_FLAGS_MAX_CHARS, locale, soft=True))
+    if line := _judge_line(judge, problems, labels, vi, marked=bool(review_reasons)):
+        parts.append(line)
     failures = _codes([*failure_codes, *deterministic_codes], vi)
     if whole_fallback:
         parts.append(("Cả bài dùng bản dự phòng dựng từ tài liệu — cần biên tập." if vi
@@ -394,6 +385,26 @@ def build_unit_author_note(
     if suggested_criteria:
         parts.append(_SUGGESTED_CRITERIA_LINE[vi])
     return sanitize_author_text(" ".join(parts), IDM_UNIT_AUTHOR_NOTE_MAX_CHARS)
+
+
+def _judge_line(judge: JudgeOutcome, problems: Sequence[Any], labels: Mapping[str, str], vi: bool, *,
+                marked: bool) -> str:
+    """The automatic review's line: its major problems, or that it found none (never on a unit ``marked`` for
+    review, QLT-9), or why it did not run."""
+
+    if judge.status in {"pass", "review_required", "reject"}:
+        if problems:
+            described = "; ".join(dict.fromkeys(labels[finding.criterion] for finding in problems[:4]))
+            return (f"QA tự động: {len(problems)} vấn đề cần xem — {described}." if vi
+                    else f"Automatic QA: {len(problems)} issue(s) to review — {described}.")
+        if not marked:
+            return "QA tự động: không phát hiện vấn đề lớn." if vi else "Automatic QA: no major issue found."
+    elif judge.status == "skipped_budget":
+        return "QA tự động: bỏ qua do hết thời gian." if vi else "Automatic QA: skipped (time budget)."
+    elif judge.status == "failed":
+        return ("QA tự động: không chạy được, cần rà soát thủ công." if vi
+                else "Automatic QA: unavailable, review manually.")
+    return ""
 
 
 def _callout_lines(vi: bool, *, to_prose: int, repeating: int) -> list[str]:
@@ -611,8 +622,9 @@ REVIEW_REASON_SERVER_EDIT: Final = "server_edit"
 REVIEW_REASON_EVIDENCE: Final = "evidence"
 REVIEW_REASON_JUDGE: Final = "judge"
 REVIEW_REASON_SCENARIO: Final = "ai_scenario"
-# Owner decision 2026-10-22: the source of the unit's blocks is contradictory, unclear or out of date in places (the
-# note quotes each point, ``app.idm.source_flags``); the old W2 rule held such a block for an SME.
+# Owner decision 2026-10-22: the source of the unit's blocks is contradictory or out of date in places (the note quotes
+# each point, ``app.idm.source_flags``); the old W2 rule held such a block for an SME. Since run 5496155c an unclear
+# point is an edit note only.
 REVIEW_REASON_SOURCE: Final = "source_check"
 # QLT-9 (QC run ffaf7318: 14 of 18 units marked, so the mark meant little): reasons that are a notice ("Lưu ý"), not a
 # review mark: the source pages with images or tables, and AI slots kept with style findings only (long or copied
@@ -637,7 +649,7 @@ _REVIEW_REASON_VI: Final = {
                             "chiếu với tài liệu gốc",
     REVIEW_REASON_JUDGE: "kiểm tra tự động phát hiện vấn đề lớn (chi tiết bên dưới)",
     REVIEW_REASON_SCENARIO: "câu hỏi dùng tình huống do AI soạn, tác giả nên kiểm tra lại tình huống và đáp án",
-    REVIEW_REASON_SOURCE: "tài liệu nguồn có chỗ ghi khác nhau, chưa rõ hoặc có thể đã cũ (chi tiết bên dưới)",
+    REVIEW_REASON_SOURCE: "tài liệu nguồn có chỗ ghi khác nhau hoặc có thể đã cũ (chi tiết bên dưới)",
     REVIEW_REASON_STYLE: "có khối AI còn câu dài hoặc câu gần chép tài liệu, nên biên tập lại (chi tiết bên dưới)",
     REVIEW_REASON_EXAMPLE_NUMBERS: "ví dụ minh hoạ do AI soạn có số liệu không có trong tài liệu (chi tiết bên dưới)",
 }
@@ -651,7 +663,7 @@ _REVIEW_REASON_EN: Final = {
     REVIEW_REASON_JUDGE: "the automatic review found a major issue (details below)",
     REVIEW_REASON_SCENARIO: "the question uses an AI-drafted scenario; the author should check the scenario and "
                             "the answer",
-    REVIEW_REASON_SOURCE: "the source differs, is unclear or may be out of date in places (details below)",
+    REVIEW_REASON_SOURCE: "the source differs or may be out of date in places (details below)",
     REVIEW_REASON_STYLE: "some AI blocks keep long or copied sentences; polish them (details below)",
     REVIEW_REASON_EXAMPLE_NUMBERS: "AI-drafted illustrative examples state numbers that are not in the source (details "
                                    "below)",

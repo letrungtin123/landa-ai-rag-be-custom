@@ -133,6 +133,7 @@ def build_course_notes(
     brief_lines: Sequence[str] = (),
     audience_entered: bool = False,
     source_checks: Sequence[str] = (),
+    source_unclear: Sequence[str] = (),
     loose_must_dos: Sequence[str] = (),
     unserved_must_dos: Sequence[str] = (),
 ) -> str:
@@ -152,8 +153,9 @@ def build_course_notes(
     audience and the course purpose, as entered); with an entered audience (``audience_entered``) only the
     objectives are marked as proposed by AI.
 
-    ``source_checks`` (owner decision 2026-10-22): one plain sentence per contradictory, unclear or out-of-date point of
-    a taught block (``app.idm.source_flags``), the first section after the head. Review m20: then the Must Dos attached
+    ``source_checks`` (owner decision 2026-10-22): one plain sentence per contradictory or out-of-date point of a taught
+    block (``app.idm.source_flags``), the first section after the head; ``source_unclear`` (run 5496155c): the unclear
+    points, a softer section right after it. Review m20: then the Must Dos attached
     to a block without a relation ("statement → “block”", ``loose_must_dos``) and those with nothing to teach in the
     course (``unserved_must_dos``; the design never blocks a Must Do, contract K2).
     """
@@ -190,9 +192,7 @@ def build_course_notes(
     def more(count: int) -> str:
         return f"  và {count} mục khác" if vi else f"  and {count} more"
 
-    checks = [item for item in dict.fromkeys(source_checks) if item.strip()]
-    budget.section("• Chỗ tài liệu cần kiểm tra trước khi áp dụng:" if vi else "• Points to check in the source:",
-                   [f"  - {item}" for item in checks], more, len(checks), IDM_NOTES_SOURCE_CHECKS_MAX_CHARS)
+    _source_sections(budget, source_checks, source_unclear, vi, more)
     budget.section("• Cần xem — Must Do chưa có phần riêng trong tài liệu, đã gắn vào phần gần nhất:" if vi
                    else "• Review needed — Must Dos without content of their own, attached to the closest part:",
                    [f"  - {item}" for item in loose_must_dos], more, len(loose_must_dos))
@@ -229,6 +229,20 @@ def build_course_notes(
         [f"  - {item.name}: {single_line(item.summary, IDM_NOTES_SUMMARY_CHARS)}" for item in dropped], more,
         IDM_NOTES_MAX_REMOVED)
     return clean_note(budget.text(), IDM_NOTES_COURSE_MAX_CHARS, known_ids)
+
+
+def _source_sections(budget: _Budget, checks: Sequence[str], unclear: Sequence[str], vi: bool,
+                     more: Callable[[int], str]) -> None:
+    """The points to check in the source (contradictory or out of date), then the unclear ones (run 5496155c: an edit
+    note, never a check before applying), each within its own room."""
+
+    titles = (("• Chỗ tài liệu cần kiểm tra trước khi áp dụng:",
+               "• Chỗ tài liệu ghi chưa rõ, nên đọc lại khi biên tập:") if vi
+              else ("• Points to check in the source:",
+                    "• Points where the source is unclear, to reread when editing:"))
+    for title, items in zip(titles, (checks, unclear), strict=True):
+        shown = [item for item in dict.fromkeys(items) if item.strip()]
+        budget.section(title, [f"  - {item}" for item in shown], more, len(shown), IDM_NOTES_SOURCE_CHECKS_MAX_CHARS)
 
 
 def build_module_notes(

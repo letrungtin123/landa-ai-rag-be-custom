@@ -122,9 +122,10 @@ class IdmUnitWriterSteps:
             brief, {**{item.fact_key: item.fact_text for item in brief.lesson_context_facts}, **self.text_by_id},
             plan_texts=[*plan_texts, *brief.lesson_practice_sentences, *background], withheld=withheld)
         self.has_faq = any(slot.type == FAQ_COMPONENT_TYPE for slot in brief.components)
-        # Owner decision 2026-10-22: what the source says in two ways, unclearly or out of date about the unit's blocks;
-        # the unit is marked for the author's review and the note quotes it.
-        self.source_flags = unit_flags(brief, contract.source_facts, runtime.locale)
+        # Owner decision 2026-10-22: what the source says in two ways or out of date about the unit's blocks marks the
+        # unit for the author's review and the note quotes it; what it says unclearly is an edit note (run 5496155c).
+        flags = unit_flags(brief, contract.source_facts, runtime.locale)
+        self.source_flags, self.source_notes = flags.review, flags.soft
         # QLT-7: the table rows of the facts (a contested key is read against them too) and the sentence case of the
         # slot titles, keeping the proper names the facts and the plan write.
         self.fact_rows = fact_table_rows(given)

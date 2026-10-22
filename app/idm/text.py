@@ -14,6 +14,7 @@ from dataclasses import dataclass
 from itertools import pairwise
 from typing import Final, Literal
 
+from app.core.text import casefold_strip_marks
 from app.idm.policy import (
     CAPABILITY_LEAD_INS,
     CASE_DECISION_VERBS,
@@ -414,3 +415,35 @@ def grounding_verdict(text: str, index: EvidenceIndex) -> GroundingVerdict:
                 and words < IDM_FAQ_SENTENCE_MIN_WORD_SUPPORT):
             return "sentence"
     return "grounded"
+
+
+# --- Words the PDF reader glued together ----------------------------------------------------------------------------
+# Run 5496155c (2026-10-22): the PDF text layer lost spaces between syllables ("bộchân", "từchối", "bỏlỡmột"). A
+# Vietnamese syllable has one vowel group (the "u" of "qu" and the "i" of "gi" sit next to the vowel), so a word with
+# Vietnamese letters (a diacritic or "đ") and two vowel groups or more is two syllables without their space. A word in
+# plain ASCII is never judged (English words have several vowel groups; "toichon" is not caught, by design).
+_LETTERS_RE: Final = re.compile(r"[^\W\d_]+")
+_VOWELS: Final = frozenset("aeiouy")
+
+
+def _vowel_groups(base: str) -> int:
+    groups = 0
+    previous = False
+    for char in base:
+        vowel = char in _VOWELS
+        groups += vowel and not previous
+        previous = vowel
+    return groups
+
+
+def glued_words(text: str) -> list[str]:
+    """The words of ``text`` that hold two Vietnamese syllables or more without a space ("bộchân", "từchối"), in
+    order and without repeats. Only reported, never split: where the space goes is a guess."""
+
+    found = []
+    for word in _LETTERS_RE.findall(unicodedata.normalize("NFC", text)):
+        base = casefold_strip_marks(word)
+        vietnamese = "đ" in base or base != word.casefold()
+        if vietnamese and _vowel_groups(base) > 1:
+            found.append(word)
+    return list(dict.fromkeys(found))

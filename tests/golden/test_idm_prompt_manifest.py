@@ -117,6 +117,11 @@ HASH_HISTORY: tuple[tuple[str, str], ...] = (
     # new repair rule asks the writer to number them (IDM_W5_QUESTION_ITEM_LETTERS), then an edit note.
     ("2f04609467c5a27c9fb127603adf7374f1562e7b6d889f6cf1a1de0e06204596",
      "Repair rule for lettered stem items"),
+    # Run 5496155c (QC 2026-10-22): W1 map says what an unclear issue is (a rule, number or instruction a learner could
+    # apply in two ways); a transition sentence, a slide title, a lone letter or bracket and a cut or glued word are no
+    # issue.
+    ("1680497c915930bcf9cd58459634f8345264b12bd88329bb2accec7268119ed7",
+     "W1: what an unclear source point is"),
 )
 PROMPT_NAME = re.compile(r"(prompt|_rules?$|_suffix$|rule_lines?$|_hint$|^rule_line$|_cue_line$)")
 

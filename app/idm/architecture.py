@@ -83,7 +83,7 @@ from app.idm.runtime import (
     record_deterministic_fallback,
     repair_thinking,
 )
-from app.idm.source_flags import SourceFact, flag_sentences
+from app.idm.source_flags import REVIEW_FLAG_TYPES, SOFT_FLAG_TYPES, SourceFact, flag_sentences
 from app.idm.text import content_pairs, is_generic_title, must_do_title, objective_title, single_line
 from app.idm.validation import IdmIssue, errors
 
@@ -574,15 +574,17 @@ def _build_notes(data: AssemblyInput) -> IdmAuthorNotesV1:
     pending = pending_objective_ids(data.objectives, data.must_dos, data.blocked)
     purpose = data.purpose or default_purpose(data.context)
     author_purpose = author_brief(data.context).course_purpose is not None
+    taught = [(block.name, block.issues) for block in data.blocks
+              if block.block_id in row_by_id and row_by_id[block.block_id].placement == "course"]
+    page_facts = {key: SourceFact(text, data.fact_page.get(key)) for key, text in data.fact_text.items()}
     course = build_course_notes(
         locale=locale, ai_proposed=ai_proposed, total_minutes=sum(lesson.est_minutes for lesson in lessons),
         lesson_count=len(lessons), module_count=len(data.plan.modules), reference_block_count=reference_count,
         excluded_block_count=excluded_count, **_must_do_note_lines(data),
-        # Owner decision 2026-10-22: contradictory, unclear or out-of-date points of taught blocks, from their facts.
-        source_checks=flag_sentences(
-            ((block.name, block.issues) for block in data.blocks
-             if block.block_id in row_by_id and row_by_id[block.block_id].placement == "course"),
-            {key: SourceFact(text, data.fact_page.get(key)) for key, text in data.fact_text.items()}, locale),
+        # Owner decision 2026-10-22: contradictory or out-of-date points of taught blocks, from their facts; since run
+        # 5496155c the unclear ones in a softer section of their own.
+        source_checks=flag_sentences(taught, page_facts, locale, REVIEW_FLAG_TYPES),
+        source_unclear=flag_sentences(taught, page_facts, locale, SOFT_FLAG_TYPES),
         fallback_stages=[stage for stage, origin in data.stage_origins.items() if origin != "provider"],
         known_ids=known_ids,
         # QC course 364564 (N4): the removed "BiC Legacy" block was never mentioned to the author. Since A6 (QC feedback

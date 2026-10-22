@@ -521,10 +521,11 @@ class SourceFlagTests(StoryboardEndpointTestCase):
                          "The source differs in “Response time”: “Nhân viên cần phản hồi khách hàng trong vòng 24 "
                          "giờ.” (page 4) and “Khiếu nại cấp 2 được phản hồi trong vòng 48 giờ.” (page 7). Check this "
                          "before applying it.")
-        # Without facts it names the block; the AI's own note is never quoted.
+        # Without facts it names the block; the AI's own note is never quoted. Run 5496155c: an unclear point is an
+        # edit note, never a check before applying.
         unclear = IdmIssueV1(type="unclear", note="Không rõ ai duyệt.", fact_keys=[])
         self.assertEqual(flag_sentence("Ai duyệt hoàn tiền?", unclear, facts, "vi"),
-                         "Tài liệu ghi chưa rõ ở phần “Ai duyệt hoàn tiền?”. Hãy kiểm tra trước khi áp dụng.")
+                         "Tài liệu ghi chưa rõ ở phần “Ai duyệt hoàn tiền?” — nên đọc lại khi biên tập.")
         outdated = IdmIssueV1(type="outdated", note="CRM 2021.", fact_keys=["k1"])
         self.assertTrue(str(flag_sentence("CRM", outdated, facts, "en")).startswith("The source may be out of date"))
         for kind in ("duplicate", "too_general", "too_detailed"):
@@ -540,8 +541,8 @@ class SourceFlagTests(StoryboardEndpointTestCase):
         self.assertEqual((data["content_origin"], data["quality_state"]), ("provider_validated", "review_required"))
         self.assertEqual(provider.names, [WRITER, JUDGE])
         note = data["unit"]["idm_quality"]["author_note"]
-        self.assertTrue(note.startswith("Cần tác giả xem lại vì: tài liệu nguồn có chỗ ghi khác nhau, chưa rõ hoặc có "
-                                        "thể đã cũ (chi tiết bên dưới). Tài liệu ghi khác nhau ở phần"))
+        self.assertTrue(note.startswith("Cần tác giả xem lại vì: tài liệu nguồn có chỗ ghi khác nhau hoặc có thể đã "
+                                        "cũ (chi tiết bên dưới). Tài liệu ghi khác nhau ở phần"))
         self.assertIn("Tài liệu ghi khác nhau ở phần “Những lỗi nào nhân viên thường mắc khi xử lý khiếu nại?”: "
                       "“Ví dụ: Nhân viên hứa hoàn tiền ngay", note)
         self.assertIn("(trang 2) và “Lưu ý: Nhiều nhân viên ghi nhận khiếu nại cấp 3 thành cấp 2", note)
