@@ -38,8 +38,9 @@ from app.idm.policy import (
     IDM_MCQ_EXPLANATION_RESTATE_NGRAM,
     IDM_MCQ_EXPLANATION_RESTATE_SHARE,
     IDM_MCQ_STEM_CONTEXT_MAX_SENTENCES,
-    IDM_MCQ_STEM_MAX_CHARS,
-    IDM_MCQ_STEM_MAX_WORDS,
+    IDM_MCQ_STEM_ITEM_MAX_WORDS,
+    IDM_MCQ_STEM_MAX_ITEMS,
+    IDM_MCQ_STEM_PROSE_MAX_WORDS,
     NODE_EXPLANATION_MAX_CHARS,
     NODE_QUESTION_MAX_CHARS,
     QUIZ_FILLER_EN,
@@ -54,16 +55,19 @@ EXPLANATION_LENGTH_CODE: Final = "IDM_W5_EXPLANATION_LENGTH"
 EXPLANATION_RESTATES_CODE: Final = "IDM_W5_EXPLANATION_RESTATES_OPTION"
 QUESTION_LAYOUT_CODE: Final = "IDM_W5_QUESTION_LAYOUT"
 QUESTION_LENGTH_CODE: Final = "IDM_W5_QUESTION_LENGTH"
+# Owner decision 2026-10-22: over the 1000 UTF-16 units Node keeps (it would cut the question): blocking.
+QUESTION_LIMIT_CODE: Final = "IDM_W5_QUESTION_OVER_LIMIT"
 QUIZ_CODES: Final = frozenset({EXPLANATION_LAYOUT_CODE, EXPLANATION_VERDICT_CODE, EXPLANATION_FILLER_CODE,
                                EXPLANATION_LENGTH_CODE, EXPLANATION_RESTATES_CODE, QUESTION_LAYOUT_CODE,
-                               QUESTION_LENGTH_CODE})
-QUESTION_CODES: Final = frozenset({QUESTION_LAYOUT_CODE, QUESTION_LENGTH_CODE})
+                               QUESTION_LENGTH_CODE, QUESTION_LIMIT_CODE})
+QUESTION_CODES: Final = frozenset({QUESTION_LAYOUT_CODE, QUESTION_LENGTH_CODE, QUESTION_LIMIT_CODE})
 # Findings about the wording, not the correctness: a slot kept with only these is a polish notice.
-# Review m18: a question over its cap is not one of them: Node cuts a question at 1,000 characters, so a question the
-# repair leaves too long falls back like any blocking finding.
-QUIZ_STYLE_CODES: Final = frozenset({EXPLANATION_FILLER_CODE, EXPLANATION_LENGTH_CODE, QUESTION_LAYOUT_CODE})
+# Owner decision 2026-10-22: a stem over the readability cap is one of them (an edit note, never "Cần xem"); one over
+# the 1,000 characters Node keeps is not (review m18): after its repair it falls back like any blocking finding.
+QUIZ_STYLE_CODES: Final = frozenset({EXPLANATION_FILLER_CODE, EXPLANATION_LENGTH_CODE, QUESTION_LAYOUT_CODE,
+                                     QUESTION_LENGTH_CODE})
 # The quiz findings a writer's slot is kept with for review when the repair does not settle them.
-QUIZ_REVIEW_CODES: Final = QUIZ_CODES - {QUESTION_LENGTH_CODE}
+QUIZ_REVIEW_CODES: Final = QUIZ_CODES - {QUESTION_LIMIT_CODE}
 QUESTION_LAID_OUT: Final = "w5_problem_question_laid_out"
 EXPLANATION_LAID_OUT: Final = "w5_problem_explanation_laid_out"
 
@@ -457,6 +461,24 @@ def explanation_report(component: Mapping[str, Any], evidence: EvidenceIndex | N
     return report
 
 
+def _stem_length(lines: Sequence[str]) -> list[str]:
+    """What of the stem is over the readability cap (owner decision 2026-10-22): the context and the question sentence
+    together, the number of listed items, each item; as repair-prompt facts."""
+
+    items = [line[len(LIST_MARKER):] for line in lines if line.startswith(LIST_MARKER)]
+    prose = sum(_words(line) for line in lines if not line.startswith(LIST_MARKER))
+    over = []
+    if prose > IDM_MCQ_STEM_PROSE_MAX_WORDS:
+        over.append(f"{prose} words of context and question (at most {IDM_MCQ_STEM_PROSE_MAX_WORDS})")
+    if len(items) > IDM_MCQ_STEM_MAX_ITEMS:
+        over.append(f"{len(items)} listed items (at most {IDM_MCQ_STEM_MAX_ITEMS})")
+    long_items = [str(position) for position, item in enumerate(items, start=1)
+                  if _words(item) > IDM_MCQ_STEM_ITEM_MAX_WORDS]
+    if long_items:
+        over.append(f"listed items {', '.join(long_items)} over {IDM_MCQ_STEM_ITEM_MAX_WORDS} words")
+    return over
+
+
 def question_report(component: Mapping[str, Any]) -> dict[str, list[str]]:
     """Code -> the measured facts behind it for the question (stem) of ``component``."""
 
@@ -472,10 +494,11 @@ def question_report(component: Mapping[str, Any]) -> dict[str, list[str]]:
         layout.append(f"{context} context sentences (at most {IDM_MCQ_STEM_CONTEXT_MAX_SENTENCES})")
     if layout:
         report[QUESTION_LAYOUT_CODE] = layout
-    words, chars = sum(_words(line) for line in lines), utf16_length(LINE_FEED.join(lines))
-    if words > IDM_MCQ_STEM_MAX_WORDS or chars > IDM_MCQ_STEM_MAX_CHARS:
-        report[QUESTION_LENGTH_CODE] = [f"{words} words, {chars} characters (at most {IDM_MCQ_STEM_MAX_WORDS} words "
-                                        f"and {IDM_MCQ_STEM_MAX_CHARS} characters)"]
+    chars = utf16_length(LINE_FEED.join(lines))
+    if over := _stem_length(lines):
+        report[QUESTION_LENGTH_CODE] = over
+    if chars > NODE_QUESTION_MAX_CHARS:
+        report[QUESTION_LIMIT_CODE] = [f"{chars} characters (the system keeps {NODE_QUESTION_MAX_CHARS})"]
     return report
 
 
@@ -507,7 +530,8 @@ def quiz_hint(code: str, component: Mapping[str, Any], evidence: EvidenceIndex |
 __all__ = [
     "EXPLANATION_FILLER_CODE", "EXPLANATION_LAID_OUT", "EXPLANATION_LAYOUT_CODE", "EXPLANATION_LENGTH_CODE",
     "EXPLANATION_RESTATES_CODE", "EXPLANATION_VERDICT_CODE", "LINE_FEED", "LIST_MARKER", "OPTION_SEPARATOR",
-    "QUESTION_CODES", "QUESTION_LAID_OUT", "QUESTION_LAYOUT_CODE", "QUESTION_LENGTH_CODE", "QUIZ_CODES",
+    "QUESTION_CODES", "QUESTION_LAID_OUT", "QUESTION_LAYOUT_CODE", "QUESTION_LENGTH_CODE", "QUESTION_LIMIT_CODE",
+    "QUIZ_CODES",
     "QUIZ_REVIEW_CODES", "QUIZ_STYLE_CODES", "explanation_report", "filler_phrases", "lay_out_quiz",
     "layout_explanation", "layout_question", "number_item_letters", "question_report", "quiz_findings", "quiz_hint",
     "sentence_spans", "utf16_length",

@@ -31,7 +31,7 @@ from app.idm.qa_checks import repeated_callouts
 from app.idm.quiz_text import (
     EXPLANATION_VERDICT_CODE,
     QUESTION_LAYOUT_CODE,
-    QUESTION_LENGTH_CODE,
+    QUESTION_LIMIT_CODE,
     explanation_report,
     filler_phrases,
     lay_out_quiz,
@@ -367,9 +367,10 @@ class QuestionCapTests(StoryboardEndpointTestCase):
 
     def test_the_cap_counts_utf16_units(self) -> None:
         stem = "Khách hàng gửi ảnh gói hàng " + EMOJI * 500 + ". Khiếu nại thuộc cấp nào?"
-        self.assertLessEqual(len(stem), 800)
-        self.assertGreater(len(stem.encode("utf-16-le")) // 2, 800)
-        self.assertIn(QUESTION_LENGTH_CODE, question_report({"question": stem}))
+        self.assertLessEqual(len(stem), 1000)
+        self.assertGreater(len(stem.encode("utf-16-le")) // 2, 1000)
+        # Owner decision 2026-10-22: Node's limit is its own blocking finding (the readability cap is an edit note).
+        self.assertIn(QUESTION_LIMIT_CODE, question_report({"question": stem}))
 
     def test_the_layout_never_grows_a_text_past_node_in_utf16_units(self) -> None:
         reason = "vì" + " tiêu chí" * 52

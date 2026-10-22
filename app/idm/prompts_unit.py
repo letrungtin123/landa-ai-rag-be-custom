@@ -23,7 +23,9 @@ from app.idm.policy import (
     IDM_MCQ_EXPLANATION_MAX_CHARS,
     IDM_MCQ_EXPLANATION_OPTION_MAX_WORDS,
     IDM_MCQ_EXPLANATION_PRINCIPLE_MAX_WORDS,
-    IDM_MCQ_STEM_MAX_WORDS,
+    IDM_MCQ_STEM_ITEM_MAX_WORDS,
+    IDM_MCQ_STEM_MAX_ITEMS,
+    IDM_MCQ_STEM_PROSE_MAX_WORDS,
 )
 from app.idm.prompts_common import (
     Locale,
@@ -45,8 +47,9 @@ _PURPOSE_LINE: Final = ("- Keep the unit on COURSE_PURPOSE (what the course is f
 _QUIZ_TEXT_RULE: Final = f"""\
 - QUIZ TEXT of a single-choice slot: plain text whose only layout is the line feed ("\\n" inside the JSON string),
   never markdown or HTML.
-  question: the whole case and its question, at most {IDM_MCQ_STEM_MAX_WORDS} words: one or two short context
-  sentences; when the case lists several items (groups, offers, figures, steps), each item on its own line starting
+  question: the whole case and its question: one or two short context sentences and the question sentence, together
+  at most {IDM_MCQ_STEM_PROSE_MAX_WORDS} words; when the case lists several items (groups, offers, figures, steps; at
+  most {IDM_MCQ_STEM_MAX_ITEMS}, each at most {IDM_MCQ_STEM_ITEM_MAX_WORDS} words), each item on its own line starting
   "- ", never labelled with the option letters A-H (after the options are shuffled they read as answer letters):
   number them ("Phương án 1", "Tương tác 2") or name them; the question sentence itself alone on the last line,
   ending with "?".
@@ -417,7 +420,12 @@ UNIT_RULE_TEXT: Final[dict[str, str]] = {
     "IDM_W5_QUESTION_LAYOUT": "lay the question out in lines: one or two short context sentences; each listed item "
                               "on its own line starting \"- \"; the question sentence alone on the last line; keep "
                               "the case's facts, the options and the answer key",
-    "IDM_W5_QUESTION_LENGTH": f"shorten the question to at most {IDM_MCQ_STEM_MAX_WORDS} words: keep the facts that "
+    "IDM_W5_QUESTION_OVER_LIMIT": "shorten the question to well under 1000 characters (the system cuts a longer "
+                                  "one): keep the facts that decide the answer and the question sentence; keep the "
+                                  "options and the answer key",
+    "IDM_W5_QUESTION_LENGTH": f"shorten the question: the context and the question sentence together at most "
+                              f"{IDM_MCQ_STEM_PROSE_MAX_WORDS} words, at most {IDM_MCQ_STEM_MAX_ITEMS} listed items of "
+                              f"at most {IDM_MCQ_STEM_ITEM_MAX_WORDS} words each; keep the facts that "
                               "decide the answer and the question sentence; keep the options and the answer key",
     # QLT-5 C: the content mode checks of a teaching html slot (``app.idm.fidelity_checks``).
     "IDM_W5_SENTENCE_COPY": "too many sentences repeat the facts word for word: rewrite the listed sentences in your "

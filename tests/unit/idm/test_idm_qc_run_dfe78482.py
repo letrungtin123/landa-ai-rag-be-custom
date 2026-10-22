@@ -14,7 +14,26 @@ from pathlib import Path
 from typing import Any
 
 from app.idm.mcq import normalize_single_choice
-from app.idm.quiz_text import lay_out_quiz, number_item_letters
+from app.idm.quiz_text import (
+    QUESTION_LENGTH_CODE,
+    QUESTION_LIMIT_CODE,
+    QUIZ_STYLE_CODES,
+    lay_out_quiz,
+    number_item_letters,
+    question_report,
+    utf16_length,
+)
+from tests.unit.idm.test_idm_storyboard import (
+    JUDGE,
+    REPAIR,
+    WRITER,
+    FakeGenerate,
+    StoryboardEndpointTestCase,
+    judge,
+    severity_body,
+    severity_writer,
+    slot_repair,
+)
 
 FIXTURE = Path(__file__).resolve().parents[2] / "fixtures" / "qc_run_dfe78482.json"
 RUN = json.loads(FIXTURE.read_text(encoding="utf-8"))
@@ -60,3 +79,47 @@ class LetteredItemTests(unittest.TestCase):
         self.assertEqual(number_item_letters(component), (component, 0))
         mention = {**problem(LETTERED), "question": "Bốn phương án được nêu. Phương án nào đúng?"}
         self.assertEqual(number_item_letters(mention)[1], 0)
+
+
+LONG_READABLE = ("chapter_2.lesson_2.unit_3.component_2", LETTERED, "chapter_3.lesson_2.unit_1.component_2")
+# A stem whose context runs long (90 words of context and question), under Node's 1000 characters.
+WORDY_STEM = ("Tại một doanh nghiệp, khách hàng gọi lần thứ hai để phàn nàn vì đơn hàng giao trễ ba ngày so với "
+              "cam kết ban đầu, chưa có thiệt hại tài chính nào được ghi nhận nhưng khách hàng tỏ ra rất bực bội và "
+              "yêu cầu được gặp người phụ trách ngay trong buổi sáng hôm nay để giải quyết dứt điểm sự việc trước khi "
+              "họ chuyển sang dùng dịch vụ của một nhà cung cấp khác trong khu vực. Theo bảng cấp độ đã học trong bài "
+              "này, khiếu nại này thuộc cấp độ nào?")
+
+
+class StemLengthTests(StoryboardEndpointTestCase):
+    """Fix 2: a stem over the readability cap is an edit note, never "Cần xem"; a short context, a list of 4-5 scenario
+    items and the question are a normal stem; only Node's 1000 UTF-16 units stay blocking."""
+
+    def test_the_three_readable_list_stems_are_normal(self) -> None:
+        for path in LONG_READABLE:
+            question = problem(path)["question"]
+            self.assertGreater(len(question.split()), 120, path)
+            self.assertEqual(question_report({"question": question}), {}, path)
+
+    def test_the_hard_limit_is_its_own_blocking_finding(self) -> None:
+        over = "Khách hàng phàn nàn. " * 52 + "Khiếu nại thuộc cấp nào?"
+        self.assertGreater(utf16_length(over), 1000)
+        report = question_report({"question": over})
+        self.assertIn(QUESTION_LIMIT_CODE, report)
+        self.assertNotIn(QUESTION_LIMIT_CODE, QUIZ_STYLE_CODES)
+        self.assertIn(QUESTION_LENGTH_CODE, QUIZ_STYLE_CODES)
+        self.assertIn(QUESTION_LENGTH_CODE, question_report({"question": WORDY_STEM}))
+
+    async def test_a_wordy_stem_is_an_edit_note_without_a_review_mark(self) -> None:
+        body = severity_body()
+        writer = severity_writer(body)
+        writer["components"]["c1"]["question"] = WORDY_STEM
+        provider = FakeGenerate(**{WRITER: [writer], REPAIR: [slot_repair(writer, 1)], JUDGE: [judge()]})
+        status, data, _ = await self.post(body, provider)
+        self.assertEqual(status, 200)
+        self.assertEqual(provider.names, [WRITER, REPAIR, JUDGE])
+        self.assertEqual(data["unit"]["components"][1]["question"].split("\n")[-1],
+                         "Theo bảng cấp độ đã học trong bài này, khiếu nại này thuộc cấp độ nào?")
+        self.assertEqual(data["quality_state"], "validated")
+        note = data["unit"]["idm_quality"]["author_note"]
+        self.assertIn("Nên biên tập khối 2 (Quiz): đề câu hỏi dài", note)
+        self.assertNotIn("Cần tác giả xem lại", note)

@@ -199,7 +199,7 @@ class QuizCheckTests(unittest.TestCase):
         self.assertEqual(question_report({"question": four})[QUESTION_LAYOUT_CODE],
                          ["3 context sentences (at most 2)"])
         long = " ".join(["từ"] * 130) + " là gì?"
-        self.assertIn("132 words", question_report({"question": long})[QUESTION_LENGTH_CODE][0])
+        self.assertIn("132 words of context and question", question_report({"question": long})[QUESTION_LENGTH_CODE][0])
         self.assertEqual(quiz_findings(problem(question=WALL_STEM)), [])
         self.assertEqual(quiz_findings({**problem(), "problem_type": "numerical"}), [])
 

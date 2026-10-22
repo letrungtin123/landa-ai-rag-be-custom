@@ -82,6 +82,7 @@ from app.idm.quiz_text import (
     EXPLANATION_VERDICT_CODE,
     QUESTION_LAYOUT_CODE,
     QUESTION_LENGTH_CODE,
+    QUESTION_LIMIT_CODE,
     QUIZ_STYLE_CODES,
 )
 from app.idm.source_flags import fit_flags
@@ -174,6 +175,7 @@ _CODE_TEXT_VI: Final[dict[str, str]] = {
     EXPLANATION_RESTATES_CODE: "lời giải chỉ chép lại phương án",
     QUESTION_LAYOUT_CODE: "đề câu hỏi dồn thành một khối",
     QUESTION_LENGTH_CODE: "đề câu hỏi quá dài",
+    QUESTION_LIMIT_CODE: "đề câu hỏi dài hơn mức hệ thống nhận",
 }
 _CODE_TEXT_EN: Final[dict[str, str]] = {
     ANSWER_LEAK_CODE: "an option gives the answer away",
@@ -218,6 +220,7 @@ _CODE_TEXT_EN: Final[dict[str, str]] = {
     EXPLANATION_RESTATES_CODE: "feedback that only repeats the option",
     QUESTION_LAYOUT_CODE: "a question written as one block",
     QUESTION_LENGTH_CODE: "a question that is too long",
+    QUESTION_LIMIT_CODE: "a question longer than the system accepts",
 }
 # A code without its own words, by family.
 _CODE_FAMILY_VI: Final = (("HTML_", "lỗi định dạng phần lý thuyết"), ("DIAGRAM_", "lỗi sơ đồ"),
@@ -516,7 +519,7 @@ _PLAIN_HINT_VI: Final = {
                              "câu ngắn",
     QUESTION_LAYOUT_CODE: "đề câu hỏi còn dồn thành một khối — nên để một hai câu bối cảnh, mỗi ý của danh sách một "
                           "dòng và câu hỏi ở dòng cuối",
-    QUESTION_LENGTH_CODE: "đề câu hỏi dài quá giới hạn — nên rút gọn phần bối cảnh",
+    QUESTION_LENGTH_CODE: "đề câu hỏi dài — nên rút gọn phần bối cảnh hoặc các ý liệt kê",
 }
 _PLAIN_HINT_EN: Final = {
     SENTENCE_COPY_CODE: "many sentences copy the source almost word for word — rewrite them in plain words and explain "
@@ -540,7 +543,7 @@ _PLAIN_HINT_EN: Final = {
                              "short sentence per option",
     QUESTION_LAYOUT_CODE: "the question is still one block of text — keep one or two context sentences, each list item "
                           "on its own line and the question on the last line",
-    QUESTION_LENGTH_CODE: "the question is over its length — shorten the context",
+    QUESTION_LENGTH_CODE: "the question is long — shorten the context or the listed items",
 }
 
 

@@ -108,6 +108,11 @@ HASH_HISTORY: tuple[tuple[str, str], ...] = (
     # A-H (number or name them); the server numbers them when they still are (``quiz_text.number_item_letters``).
     ("b4e5b81747f49d3e074bf7ddec1323aa7264c2cfed1718f9e97a0ec1676303a1",
      "Stem items numbered, never lettered"),
+    # Owner decision 2026-10-22 (run dfe78482): the stem's readability cap counts the parts apart (context and question
+    # at most 80 words, at most 6 listed items of at most 40 words); a new repair rule for a question over the 1000
+    # characters Node keeps (IDM_W5_QUESTION_OVER_LIMIT).
+    ("689e64cb0de1628aec24da1a270eeda0496ab9c60c50143deeead86bb0d6ed21",
+     "Stem readability cap by parts; Node's question limit"),
 )
 PROMPT_NAME = re.compile(r"(prompt|_rules?$|_suffix$|rule_lines?$|_hint$|^rule_line$|_cue_line$)")
 

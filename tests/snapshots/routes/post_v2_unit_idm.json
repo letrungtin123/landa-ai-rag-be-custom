@@ -515,8 +515,8 @@
     "op": "generate",
     "model": "gemini-3.8-flash",
     "schema": "StagedInstancePayloadUnit",
-    "prompt_sha256": "aebe33cbdacfd96342a7d7ef1da2ef7d36124e58a3593716474707712776f94c",
-    "prompt_chars": 16923,
+    "prompt_sha256": "8cca05c0de2be5b818b7b749baec259167bede0c51d75d57d167ce1c1e9f46e2",
+    "prompt_chars": 16993,
     "config": {
      "max_output_tokens": 16000,
      "response_mime_type": "application/json",
@@ -533,8 +533,8 @@
     "op": "generate",
     "model": "gemini-3.8-flash",
     "schema": "StagedMultiRepair",
-    "prompt_sha256": "71ba548beb6c50a543e48b14738de003be97bbf501f7be71b0bbf43342127b45",
-    "prompt_chars": 17818,
+    "prompt_sha256": "04dd9bd4cfc30d6ab7a01294a5aa12c9b7daa2f219a0c1d7cb9e99a60a36b172",
+    "prompt_chars": 17888,
     "config": {
      "max_output_tokens": 16000,
      "response_mime_type": "application/json",

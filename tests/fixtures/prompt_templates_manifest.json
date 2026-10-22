@@ -1,6 +1,6 @@
 {
  "prompt_policy_version": "idm-prompt-1",
- "prompt_templates_hash": "b4e5b81747f49d3e074bf7ddec1323aa7264c2cfed1718f9e97a0ec1676303a1",
+ "prompt_templates_hash": "689e64cb0de1628aec24da1a270eeda0496ab9c60c50143deeead86bb0d6ed21",
  "sources": {
   "app.idm.example_roles:role_rule": "ade567182c9b222f982cc9e9c3371c58f59ae9cec5cab401dd514e800daa83c1",
   "app.idm.faq_checks:FaqChecker.plan_hint": "a4bba0bf2bf5959893d32f5dce7ceb4172f67a822559e39bc64a827803aa8bae",
@@ -19,7 +19,7 @@
   "app.idm.prompts_judge": "ae24cca94f145f6b1e8bd2dffa5d3d1ca84ed483b16659aba0601e7c7d04a18d",
   "app.idm.prompts_module": "c8ea5a067b39c142ec0f8baba49046087606812c38b7a8d47aa61e1fe51e5eeb",
   "app.idm.prompts_org_distill": "f65cb5379ae298ba4a9ff8c5eb5254309e935442ad0b2e24b3701bf4fc0791f3",
-  "app.idm.prompts_unit": "5113beebee9f01038ead82ef39b205873f6950e58b7609155663a27abae9c0c7",
+  "app.idm.prompts_unit": "6477f3408bc9890d1811b974bbe32946093eae07b7c1abf8c032acbbc852dfcc",
   "app.idm.purpose": "1b6fff70f99aeb0868c696f0a63324944de9dd0ddaf97326e9f9bf4478a357ff",
   "app.idm.quiz_text:quiz_hint": "deef82296106fad5fe4fb07dd30fbd30dcf5b6fa66344ed01ebc1be565c45739",
   "app.idm.storyboard:IdmUnitWriter.acceptance_rule_lines": "ae3dd87886fd4ccd5eb2cb9fcf7673e60ec7b6a0a4ba8105ddc37bf4b3792495",
@@ -30,7 +30,7 @@
   "app.idm.storyboard:IdmUnitWriter.fidelity_rule_line": "a0f002214c8ab19cc39a7fa9499677436cfaff501d1e5d31508e6010cc5017d5",
   "app.idm.storyboard:IdmUnitWriter.framework_rule_line": "fd4c9d6099dcd0762843902255affd569aeaeb81c2933b7c3e9ee0df1ab4639c",
   "app.idm.storyboard:IdmUnitWriter.length_cue_line": "78425e3c0043bd32eec8aadc44b5084603f6e6afbe217fbc4dc1b9216cbb8713",
-  "app.idm.storyboard:IdmUnitWriter.rule_lines": "291a59f58aeb3a6bc384ceb699cd595f2c9c08587416ec0c282658985425d881",
+  "app.idm.storyboard:IdmUnitWriter.rule_lines": "6444efae20105912ee435e28153b289c987204aa40755a6cf7b27d5176f5da2a",
   "app.idm.storyboard:IdmUnitWriter.writer_prompt": "9123edf27215736c6b3194062f4956f5c5ee9b2fb2a75a86a9eaf4ea08a8c566",
   "app.prompt_safety": "5f73b94e58312c214cb3817dd2134cc90984f6fd773073f5a2d91ea981f2c70b"
  }

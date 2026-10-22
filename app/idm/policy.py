@@ -220,12 +220,16 @@ IDM_MCQ_EXPLANATION_RESTATE_NGRAM: Final = 3
 IDM_MCQ_EXPLANATION_RESTATE_SHARE: Final = 0.7
 IDM_MCQ_EXPLANATION_RESTATE_MIN_WORDS: Final = 8
 # The stem: at most two context sentences (list lines and the question line not counted), each list item on its own
-# line starting "- ", the question alone on the last line, and a whole stem of at most this many words.
+# line starting "- ", the question alone on the last line. Owner decision 2026-10-22 (run dfe78482: three stems of
+# 132-189 words, a short context, 4-5 scenario items and the question, were marked "Cần xem"): the readability cap
+# counts the parts apart: the context and the question together at most this many words, at most this many listed
+# items of at most this many words each. Over it is an edit note, never a review mark.
 IDM_MCQ_STEM_CONTEXT_MAX_SENTENCES: Final = 2
-IDM_MCQ_STEM_MAX_WORDS: Final = 120
+IDM_MCQ_STEM_PROSE_MAX_WORDS: Final = 80
+IDM_MCQ_STEM_MAX_ITEMS: Final = 6
+IDM_MCQ_STEM_ITEM_MAX_WORDS: Final = 40
 # Node's generation normaliser cuts a question at 1,000 and an explanation at 1,500 characters (a line feed counts one):
-# both caps stay well below.
-IDM_MCQ_STEM_MAX_CHARS: Final = 800
+# the question's hard limit (``quiz_text.QUESTION_LIMIT_CODE``, blocking); the explanation's cap stays well below.
 # Those Node limits: the layout never makes a text longer than them (it keeps the writer's text instead).
 NODE_QUESTION_MAX_CHARS: Final = 1_000
 NODE_EXPLANATION_MAX_CHARS: Final = 1_500
