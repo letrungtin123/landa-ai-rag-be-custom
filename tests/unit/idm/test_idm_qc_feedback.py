@@ -7,6 +7,8 @@
 * A3: a callout that only repeats its slot's paragraphs, lists or tables is removed (its text stays there).
 * A4: the description of a suggested infographic or video says what to draw (layout, text, one element per point);
   a thin one is completed from the content points and noted.
+* Owner decisions 2026-10-22: no question for an SME; a contradictory, unclear or out-of-date source point marks its
+  unit "Cần xem" with a sentence quoting the facts; the fallback question explains itself line by line.
 * A5 (no Hold): a worksheet whose practice criteria the AI suggested from what the lesson teaches heads its self-check
   as suggested criteria, and the unit note says so.
 
@@ -21,7 +23,7 @@ from typing import Any
 
 from app.contracts.orchestration_v2.blueprint import ArchitectureMediaBriefV2
 from app.idm.artifacts import clean_text
-from app.idm.contracts import brief_hash_of
+from app.idm.contracts import IdmIssueV1, brief_hash_of
 from app.idm.mcq import normalize_single_choice
 from app.idm.media_detail import MEDIA_BRIEF_COMPLETED_CODE, complete_media_brief, media_brief_gaps
 from app.idm.node_acceptance_problems import _problem_xml, workspace_problem_code
@@ -43,6 +45,7 @@ from app.idm.quiz_text import (
     quiz_findings,
     quiz_hint,
 )
+from app.idm.source_flags import SourceFact, flag_sentence, flag_sentences
 from app.idm.text import evidence_index
 from app.idm.worksheet import label_suggested_self_check
 from tests.idm_golden import key
@@ -54,6 +57,8 @@ from tests.unit.idm.test_idm_storyboard import (
     WRITER,
     FakeGenerate,
     StoryboardEndpointTestCase,
+    escalate_body,
+    escalate_writer,
     judge,
     severity_body,
     severity_writer,
@@ -477,3 +482,91 @@ class FallbackFeedbackTests(StoryboardEndpointTestCase):
         for letter, line, choice in zip("ABCD", lines[1:], slot["choices"], strict=False):
             self.assertTrue(line.startswith(f"{letter} - {'Đúng' if choice['correct'] else 'Sai'} vì đây là dấu hiệu"))
         self.assertEqual(explanation_report(slot), {})
+
+
+def flagged_escalate_body(issues: list[dict[str, Any]], gaps: list[dict[str, Any]] | None = None) -> dict[str, Any]:
+    """The escalate unit (its FAQ material describes block cb_0011) with W1 issues and gaps on that block."""
+
+    body = escalate_body()
+    brief = body["unit_contract"]["idm_unit_brief"]
+    brief["faq_material"]["blocks"][0].update(issues=issues, gaps=gaps or [])
+    brief["brief_hash"] = brief_hash_of(brief)
+    rehash_contract(body["unit_contract"])
+    return body
+
+
+CONFLICT = {"type": "conflict", "note": "Ví dụ và lưu ý nêu hai cách xử lý khác nhau.",
+            "fact_keys": ["d1-c8-f2", "d1-c8-f3"]}
+
+
+class SourceFlagTests(StoryboardEndpointTestCase):
+    """Owner decision 2026-10-22: a contradictory, unclear or out-of-date source point is taught and flagged for the
+    author ("Cần xem"), quoted from the facts with its page; never a question for an SME."""
+
+    def test_one_plain_sentence_per_point_from_the_facts(self) -> None:
+        facts = {"k1": SourceFact("Nhân viên cần phản hồi khách hàng trong vòng 24 giờ.", 4),
+                 "k2": SourceFact("Khiếu nại cấp 2 được phản hồi trong vòng 48 giờ.", 7)}
+        conflict = IdmIssueV1(type="conflict", note="24 giờ hay 48 giờ? (ghi chú của AI)", fact_keys=["k1", "k2"])
+        self.assertEqual(flag_sentence("Thời hạn phản hồi", conflict, facts, "vi"),
+                         "Tài liệu ghi khác nhau ở phần “Thời hạn phản hồi”: “Nhân viên cần phản hồi khách hàng trong "
+                         "vòng 24 giờ.” (trang 4) và “Khiếu nại cấp 2 được phản hồi trong vòng 48 giờ.” (trang 7). Hãy "
+                         "kiểm tra trước khi áp dụng.")
+        self.assertEqual(flag_sentence("Response time", conflict, facts, "en"),
+                         "The source differs in “Response time”: “Nhân viên cần phản hồi khách hàng trong vòng 24 "
+                         "giờ.” (page 4) and “Khiếu nại cấp 2 được phản hồi trong vòng 48 giờ.” (page 7). Check this "
+                         "before applying it.")
+        # Without facts it names the block; the AI's own note is never quoted.
+        unclear = IdmIssueV1(type="unclear", note="Không rõ ai duyệt.", fact_keys=[])
+        self.assertEqual(flag_sentence("Ai duyệt hoàn tiền?", unclear, facts, "vi"),
+                         "Tài liệu ghi chưa rõ ở phần “Ai duyệt hoàn tiền?”. Hãy kiểm tra trước khi áp dụng.")
+        outdated = IdmIssueV1(type="outdated", note="CRM 2021.", fact_keys=["k1"])
+        self.assertTrue(str(flag_sentence("CRM", outdated, facts, "en")).startswith("The source may be out of date"))
+        for kind in ("duplicate", "too_general", "too_detailed"):
+            self.assertIsNone(flag_sentence("X", IdmIssueV1(type=kind, note="n", fact_keys=["k1"]), facts, "vi"))
+        self.assertEqual(flag_sentences([("A", [conflict]), ("A", [conflict])], facts, "vi"),
+                         [flag_sentence("A", conflict, facts, "vi")])
+
+    async def test_a_contradictory_block_marks_its_unit_for_review(self) -> None:
+        body = flagged_escalate_body([CONFLICT])
+        status, data, provider = await self.post(body, FakeGenerate(**{WRITER: [escalate_writer(body)],
+                                                                       JUDGE: [judge()]}))
+        self.assertEqual(status, 200)
+        self.assertEqual((data["content_origin"], data["quality_state"]), ("provider_validated", "review_required"))
+        self.assertEqual(provider.names, [WRITER, JUDGE])
+        note = data["unit"]["idm_quality"]["author_note"]
+        self.assertTrue(note.startswith("Cần tác giả xem lại vì: tài liệu nguồn có chỗ ghi khác nhau, chưa rõ hoặc có "
+                                        "thể đã cũ (chi tiết bên dưới). Tài liệu ghi khác nhau ở phần"))
+        self.assertIn("Tài liệu ghi khác nhau ở phần “Những lỗi nào nhân viên thường mắc khi xử lý khiếu nại?”: "
+                      "“Ví dụ: Nhân viên hứa hoàn tiền ngay", note)
+        self.assertIn("(trang 2) và “Lưu ý: Nhiều nhân viên ghi nhận khiếu nại cấp 3 thành cấp 2", note)
+        self.assertIn("Hãy kiểm tra trước khi áp dụng.", note)
+        self.assertNotIn("Câu hỏi cho SME", note)
+        self.assertNotIn(CONFLICT["note"], note)
+
+    async def test_missing_criteria_alone_is_no_flag(self) -> None:
+        body = flagged_escalate_body([], gaps=[{"type": "missing_criteria", "note": "Không có tiêu chí chấm."}])
+        status, data, _ = await self.post(body, FakeGenerate(**{WRITER: [escalate_writer(body)], JUDGE: [judge()]}))
+        self.assertEqual(status, 200)
+        self.assertEqual(data["quality_state"], "validated")
+        self.assertNotIn("Hãy kiểm tra trước khi áp dụng", data["unit"]["idm_quality"]["author_note"])
+
+    async def test_a_unit_without_an_faq_reads_only_the_issues_of_its_material(self) -> None:
+        # When Node sends the blocks of a unit without an FAQ slot, Python flags their points and never gives the
+        # material to the writer.
+        body = severity_body()
+        brief = body["unit_contract"]["idm_unit_brief"]
+        brief["faq_material"] = {"blocks": [{
+            "block_id": "cb_0005", "name": "Đánh giá mức độ nghiêm trọng của khiếu nại như thế nào?",
+            "intent": "decide", "content_kind": "decision", "support_role": None,
+            "issues": [{"type": "outdated", "note": "Ngưỡng 50 triệu đồng có thể đã đổi.", "fact_keys": ["d1-c4-f4"]}],
+            "gaps": [], "sme_questions": []}], "practices": []}
+        brief["brief_hash"] = brief_hash_of(brief)
+        rehash_contract(body["unit_contract"])
+        provider = FakeGenerate(**{WRITER: [severity_writer(body, explanation=LINES)], JUDGE: [judge()]})
+        status, data, _ = await self.post(body, provider)
+        self.assertEqual(status, 200)
+        self.assertEqual(data["quality_state"], "review_required")
+        self.assertIn("Tài liệu có thể đã cũ ở phần “Đánh giá mức độ nghiêm trọng của khiếu nại như thế nào?”: “Cấp 2 "
+                      "| Thiệt hại tài chính dưới 50 triệu", data["unit"]["idm_quality"]["author_note"])
+        self.assertNotIn("FAQ_MATERIAL", provider.calls[0]["prompt"])
+        self.assertNotIn("faq_material", provider.calls[0]["prompt"])

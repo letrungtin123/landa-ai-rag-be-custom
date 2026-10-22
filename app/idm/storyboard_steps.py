@@ -57,6 +57,7 @@ from app.idm.qa import (
 from app.idm.qa_checks import CALLOUT_REPEAT_DROPPED, repeated_callouts, without_blocks
 from app.idm.quiz_text import lay_out_quiz
 from app.idm.runtime import IdmResponseInvalidError, IdmRuntime, ThinkingLevel, log_stage, record_deterministic_fallback
+from app.idm.source_flags import unit_flags
 from app.idm.source_locked import FAQ_FALLBACK_REPEATED_CODE, faq_answers_repeat
 from app.idm.storyboard_context import (
     _MAX_LOGGED_DETAILS,
@@ -120,6 +121,9 @@ class IdmUnitWriterSteps:
             brief, {**{item.fact_key: item.fact_text for item in brief.lesson_context_facts}, **self.text_by_id},
             plan_texts=[*plan_texts, *brief.lesson_practice_sentences, *background], withheld=withheld)
         self.has_faq = any(slot.type == FAQ_COMPONENT_TYPE for slot in brief.components)
+        # Owner decision 2026-10-22: what the source says in two ways, unclearly or out of date about the unit's blocks;
+        # the unit is marked for the author's review and the note quotes it.
+        self.source_flags = unit_flags(brief, contract.source_facts, runtime.locale)
         # QLT-7: the table rows of the facts (a contested key is read against them too) and the sentence case of the
         # slot titles, keeping the proper names the facts and the plan write.
         self.fact_rows = fact_table_rows(given)

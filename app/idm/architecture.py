@@ -83,6 +83,7 @@ from app.idm.runtime import (
     record_deterministic_fallback,
     repair_thinking,
 )
+from app.idm.source_flags import SourceFact, flag_sentences
 from app.idm.text import is_generic_title, must_do_title, objective_title, single_line
 from app.idm.validation import IdmIssue, errors
 
@@ -458,6 +459,8 @@ class AssemblyInput:
     # QLT-5: the course purpose (with its pattern gaps) and the onboarding background kept against W2.
     purpose: IdmPurposeV1 | None = None
     kept_background: Sequence[KeptBackground] = ()
+    # Owner decision 2026-10-22: the page of each fact, quoted with it in the points to check (``source_flags``).
+    fact_page: Mapping[str, int | None] = field(default_factory=dict)
 
 
 def assemble_idm_course_design(data: AssemblyInput) -> IdmCourseDesignV1:
@@ -529,6 +532,11 @@ def _build_notes(data: AssemblyInput) -> IdmAuthorNotesV1:
         locale=locale, ai_proposed=ai_proposed, total_minutes=sum(lesson.est_minutes for lesson in lessons),
         lesson_count=len(lessons), module_count=len(data.plan.modules), reference_block_count=reference_count,
         excluded_block_count=excluded_count,
+        # Owner decision 2026-10-22: contradictory, unclear or out-of-date points of taught blocks, from their facts.
+        source_checks=flag_sentences(
+            ((block.name, block.issues) for block in data.blocks
+             if block.block_id in row_by_id and row_by_id[block.block_id].placement == "course"),
+            {key: SourceFact(text, data.fact_page.get(key)) for key, text in data.fact_text.items()}, locale),
         fallback_stages=[stage for stage, origin in data.stage_origins.items() if origin != "provider"],
         known_ids=known_ids,
         # QC course 364564 (N4): the removed "BiC Legacy" block was never mentioned to the author. Since A6 (QC feedback

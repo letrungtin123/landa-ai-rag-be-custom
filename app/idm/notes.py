@@ -128,6 +128,7 @@ def build_course_notes(
     kept_background: Sequence[KeptDefinitionNote] = (),
     brief_lines: Sequence[str] = (),
     audience_entered: bool = False,
+    source_checks: Sequence[str] = (),
 ) -> str:
     """Course ``implementation_notes`` (spec §8.4).
 
@@ -144,6 +145,9 @@ def build_course_notes(
     QLT-6: right after the workflow tag, what the author entered when starting AI ID (``brief_lines``: the learner
     audience and the course purpose, as entered); with an entered audience (``audience_entered``) only the
     objectives are marked as proposed by AI.
+
+    ``source_checks`` (owner decision 2026-10-22): one plain sentence per contradictory, unclear or out-of-date point of
+    a taught block (``app.idm.source_flags``), the first section after the head.
     """
 
     vi = locale == "vi"
@@ -178,6 +182,9 @@ def build_course_notes(
     def more(count: int) -> str:
         return f"  và {count} mục khác" if vi else f"  and {count} more"
 
+    checks = [item for item in dict.fromkeys(source_checks) if item.strip()]
+    budget.section("• Chỗ tài liệu cần kiểm tra trước khi áp dụng:" if vi else "• Points to check in the source:",
+                   [f"  - {item}" for item in checks], more, len(checks))
     gaps = [item for item in dict.fromkeys(template_gaps) if item.strip()]
     budget.section(
         f"• Khung khoá học ({pattern_label}): tài liệu còn thiếu {len(gaps)} phần — AI không tự viết nội dung cho "

@@ -691,7 +691,7 @@ async def run_idm_unit(
         faq_items_recall=writer.faq_items_recall, faq_inferred=inferred, faq_items_open=writer.faq_items_open,
         review_reasons=review_reasons if reviewable and not whole_fallback else (),
         unexplained_acronyms=unexplained_acronyms, notices=() if whole_fallback else notices,
-        suggested_criteria=writer.suggested_criteria())
+        suggested_criteria=writer.suggested_criteria(), source_flags=writer.source_flags)
     quality = build_unit_quality(mode=deps.judge_mode, judge=judge, repair_applied=draft.repair_applied,
                                  deterministic_codes=[*writer.codes, *(item.code for item in remaining)],
                                  author_note=note)

@@ -610,10 +610,12 @@ class IdmFaqMaterialV1(IdmModel):
 class IdmUnitBriefV1(IdmModel):
     """``purpose_profile``/``purpose_summary`` keep the writer and the judge on the course purpose; a brief built
     from a contract-1 design (no purpose) leaves them out or null. ``fidelity_mode`` is the design purpose's content
-    mode (QLT-5 C); absent or null reads as "structured", today's behaviour. ``faq_material`` (QLT-5 D) is set only for
-    a unit with an la_faq slot. ``design_mode`` (contract 3, QLT-6) is how the author started AI ID; absent or null in
-    a brief built from an older design. ``organization_context`` (optional, contract 3): the organization profile of
-    the design's project context; absent when the run has none."""
+    mode (QLT-5 C); absent or null reads as "structured", today's behaviour. ``faq_material`` (QLT-5 D) is set for a
+    unit with an la_faq slot; for any other unit Python reads only its blocks' issues (the points of the source to
+    check, ``app.idm.source_flags``, owner decision 2026-10-22) and never gives it to the writer. ``design_mode``
+    (contract 3, QLT-6) is how the author started AI ID; absent or null in a brief built from an older design.
+    ``organization_context`` (optional, contract 3): the organization profile of the design's project context; absent
+    when the run has none."""
 
     pipeline_version: Literal["idm-1"]
     course_title: str = Field(min_length=1, max_length=500)

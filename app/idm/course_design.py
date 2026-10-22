@@ -142,7 +142,7 @@ async def run_idm_course_design(
     }
     design = await runtime.run_cpu(assemble_idm_course_design, AssemblyInput(
         source_snapshot_hash=source_snapshot_hash, context=context,
-        snapshot_fact_keys=[fact.fact_key for fact in facts],
+        snapshot_fact_keys=[fact.fact_key for fact in facts], fact_page={f.fact_key: f.source_page for f in facts},
         fact_text={fact.fact_key: fact.fact_text for fact in facts},
         fact_source_ref={fact.fact_key: fact.source_ref for fact in facts},
         audience=reduce_response.target_audience, objectives=objectives, must_dos=must_dos,

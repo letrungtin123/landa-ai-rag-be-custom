@@ -24,6 +24,7 @@ from app.idm.qa import (
     REVIEW_REASON_KEPT_SLOTS,
     REVIEW_REASON_SCENARIO,
     REVIEW_REASON_SERVER_EDIT,
+    REVIEW_REASON_SOURCE,
     REVIEW_REASON_STEP_INCOMPLETE,
     REVIEW_REASON_STYLE,
     STYLE_CODES,
@@ -129,6 +130,7 @@ def unit_review_reasons(writer: IdmUnitWriter, draft: _Draft, judge: JudgeOutcom
         (REVIEW_REASON_JUDGE, blocking_count(judge.findings) > 0),
         (REVIEW_REASON_SCENARIO, ai_drafted and q5_verdict(judge) != "pass"),
         (REVIEW_REASON_EXAMPLE_NUMBERS, example_numbers),
+        (REVIEW_REASON_SOURCE, bool(writer.source_flags)),
     ) if applies]
     return ([reason for reason in reasons if reason not in NOTICE_REASONS],
             [reason for reason in reasons if reason in NOTICE_REASONS])

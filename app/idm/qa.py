@@ -289,6 +289,7 @@ def build_unit_author_note(
     unexplained_acronyms: Sequence[str] = (),
     notices: Sequence[str] = (),
     suggested_criteria: bool = False,
+    source_flags: Sequence[str] = (),
 ) -> str:
     """Template note for the unit ``implementation_notes``; no IDs, no ``<``/``>``.
 
@@ -312,6 +313,8 @@ def build_unit_author_note(
     not marked for review (``NOTICE_REASONS``), stated as "Lưu ý".
 
     ``suggested_criteria`` (A5): the unit's practice has criteria the AI suggested from what the lesson teaches.
+    ``source_flags`` (owner decision 2026-10-22): one sentence per point of the source to check, right after the
+    review reasons.
     """
 
     vi = locale == "vi"
@@ -321,6 +324,7 @@ def build_unit_author_note(
     parts: list[str] = []
     if line := _review_reasons_line(review_reasons, vi):
         parts.append(line)
+    parts.extend(source_flags)
     if line := _notices_line(notices, vi):
         parts.append(line)
     if judge.status in {"pass", "review_required", "reject"}:
@@ -595,6 +599,9 @@ REVIEW_REASON_SERVER_EDIT: Final = "server_edit"
 REVIEW_REASON_EVIDENCE: Final = "evidence"
 REVIEW_REASON_JUDGE: Final = "judge"
 REVIEW_REASON_SCENARIO: Final = "ai_scenario"
+# Owner decision 2026-10-22: the source of the unit's blocks is contradictory, unclear or out of date in places (the
+# note quotes each point, ``app.idm.source_flags``); the old W2 rule held such a block for an SME.
+REVIEW_REASON_SOURCE: Final = "source_check"
 # QLT-9 (QC run ffaf7318: 14 of 18 units marked, so the mark meant little): reasons that are a notice ("Lưu ý"), not a
 # review mark: the source pages with images or tables, and AI slots kept with style findings only (long or copied
 # sentences, an FAQ title, an FAQ that recalls) - the content is correct, the author may polish it.
@@ -618,6 +625,7 @@ _REVIEW_REASON_VI: Final = {
                             "chiếu với tài liệu gốc",
     REVIEW_REASON_JUDGE: "kiểm tra tự động phát hiện vấn đề lớn (chi tiết bên dưới)",
     REVIEW_REASON_SCENARIO: "câu hỏi dùng tình huống do AI soạn, SME cần xác nhận tình huống và đáp án",
+    REVIEW_REASON_SOURCE: "tài liệu nguồn có chỗ ghi khác nhau, chưa rõ hoặc có thể đã cũ (chi tiết bên dưới)",
     REVIEW_REASON_STYLE: "có khối AI còn câu dài hoặc câu gần chép tài liệu, nên biên tập lại (chi tiết bên dưới)",
     REVIEW_REASON_EXAMPLE_NUMBERS: "ví dụ minh hoạ do AI soạn có số liệu không có trong tài liệu (chi tiết bên dưới)",
 }
@@ -631,6 +639,7 @@ _REVIEW_REASON_EN: Final = {
     REVIEW_REASON_JUDGE: "the automatic review found a major issue (details below)",
     REVIEW_REASON_SCENARIO: "the question uses an AI-drafted scenario; the SME should confirm the scenario and the "
                             "answer",
+    REVIEW_REASON_SOURCE: "the source differs, is unclear or may be out of date in places (details below)",
     REVIEW_REASON_STYLE: "some AI blocks keep long or copied sentences; polish them (details below)",
     REVIEW_REASON_EXAMPLE_NUMBERS: "AI-drafted illustrative examples state numbers that are not in the source (details "
                                    "below)",
@@ -718,7 +727,8 @@ __all__ = [
     "JUDGE_CRITERIA", "NOTICE_REASONS", "NOT_APPLICABLE", "PRACTICE_CRITERIA", "PURPOSE_CRITERION",
     "REVIEW_REASON_EVIDENCE", "REVIEW_REASON_EXAMPLE_NUMBERS", "REVIEW_REASON_FALLBACK", "REVIEW_REASON_JUDGE",
     "REVIEW_REASON_KEPT_SLOTS",
-    "REVIEW_REASON_SCENARIO", "REVIEW_REASON_SERVER_EDIT", "REVIEW_REASON_STEP_INCOMPLETE", "REVIEW_REASON_STYLE",
+    "REVIEW_REASON_SCENARIO", "REVIEW_REASON_SERVER_EDIT", "REVIEW_REASON_SOURCE", "REVIEW_REASON_STEP_INCOMPLETE",
+    "REVIEW_REASON_STYLE",
     "SOURCE_ARTIFACT_CODE", "TITLE_CRITERION", "WORKSHEET_INCOMPLETE_CODE", "JudgeMode", "JudgeOutcome", "SlotFinding",
     "advisory_slot_findings", "blocking_count", "build_unit_author_note", "build_unit_quality",
     "callouts_as_paragraphs", "copied_options", "criteria_summary", "deterministic_slot_findings", "faq_title_mismatch",

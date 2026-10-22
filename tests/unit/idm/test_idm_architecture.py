@@ -547,6 +547,11 @@ class NotesTests(unittest.TestCase):
         self.assertNotIn("Hold", design.notes.course)
         self.assertEqual([block.sme_questions for block in design.blocks if block.sme_questions], [])
         self.assertNotIn("Câu hỏi cho SME", design.notes.course)
+        # The two points the old rule held (24 h vs 48 h, the 2021 CRM screen) are quoted for the author instead.
+        checks = design.notes.course.split("• Chỗ tài liệu cần kiểm tra trước khi áp dụng:\n", 1)[1].split("\n• ")[0]
+        self.assertEqual(checks.count("Hãy kiểm tra trước khi áp dụng."), 2)
+        self.assertIn("  - Tài liệu ghi khác nhau ở phần “Phải phản hồi khách hàng trong bao lâu?”: “", checks)
+        self.assertIn("  - Tài liệu có thể đã cũ ở phần “Ghi nhận khiếu nại trên CRM như thế nào?”: “", checks)
         names = {block.block_id: block.name for block in design.blocks}
         # A6: no Nice to Know list; removed blocks are named with their reason.
         self.assertNotIn("Nice to", design.notes.course)
