@@ -47,7 +47,9 @@ _QUIZ_TEXT_RULE: Final = f"""\
   never markdown or HTML.
   question: the whole case and its question, at most {IDM_MCQ_STEM_MAX_WORDS} words: one or two short context
   sentences; when the case lists several items (groups, offers, figures, steps), each item on its own line starting
-  "- "; the question sentence itself alone on the last line, ending with "?".
+  "- ", never labelled with the option letters A-H (after the options are shuffled they read as answer letters):
+  number them ("Phương án 1", "Tương tác 2") or name them; the question sentence itself alone on the last line,
+  ending with "?".
   explanation: line 1 the principle of the lesson that decides the answer (one sentence, two at most, at most
   {IDM_MCQ_EXPLANATION_PRINCIPLE_MAX_WORDS} words; never restate several definitions); then one line per option in
   the order A, B, C …: "A - Đúng vì …" or "A - Sai vì …" (English: "A - Correct because …" or "A - Incorrect

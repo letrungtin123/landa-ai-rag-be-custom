@@ -55,7 +55,7 @@ from app.idm.qa import (
     ungrounded_callouts,
 )
 from app.idm.qa_checks import CALLOUT_REPEAT_DROPPED, repeated_callouts, without_blocks
-from app.idm.quiz_text import lay_out_quiz
+from app.idm.quiz_text import ITEM_LETTERS_NUMBERED, lay_out_quiz, number_item_letters
 from app.idm.runtime import IdmResponseInvalidError, IdmRuntime, ThinkingLevel, log_stage, record_deterministic_fallback
 from app.idm.source_flags import unit_flags
 from app.idm.source_locked import FAQ_FALLBACK_REPEATED_CODE, faq_answers_repeat
@@ -217,6 +217,10 @@ class IdmUnitWriterSteps:
                 ordinal += practice_key_shift(slot.practice.practice_id)
             elif ordinal is not None:
                 ordinal = free_key_letter(self.contract.source_snapshot_hash, self.contract.unit_path)
+            # Owner decision 2026-10-22: stem items labelled A-D are numbered before the options are shuffled.
+            component, numbered = number_item_letters(component)
+            if numbered:
+                self.runtime.adjustments[ITEM_LETTERS_NUMBERED] += numbered
             normalized, codes = normalize_single_choice(component, str(self.plans[index]["component_plan_id"]),
                                                         ordinal)
             # QC feedback A1/A2 (K1): the stem and the explanation in lines, after the options got their letters.

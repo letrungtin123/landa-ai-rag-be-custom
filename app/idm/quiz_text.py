@@ -74,6 +74,13 @@ _SINGLE_CHOICE_TYPES: Final = frozenset({"multiple_choice", "single_choice"})
 # An inline list item: a marker between spaces before an item that starts with a capital letter or a digit.
 _INLINE_MARKER_RE: Final = re.compile(r"[ \t]+[-–•][ \t]+(?=\S)")  # noqa: RUF001 - the en dash is a marker
 _MIN_INLINE_ITEMS: Final = 2
+# A stem item labelled with an option letter: a label word or two (or three) and a letter A-H and a colon, at the start
+# of a line, after an inline "- " marker or after a colon ("- Phương án A: …").
+_ITEM_LETTER_RE: Final = re.compile(
+    r"(?:^|(?<=\n)|(?<=[-–•] )|(?<=: ))(?P<word>[^\W\d_]+(?:[ \t]+[^\W\d_]+){0,2}?)[ \t]+(?P<letter>[A-H])[ \t]*:",  # noqa: RUF001
+    re.MULTILINE)
+OPTION_LETTERS_ITEMS: Final = "ABCDEFGH"
+ITEM_LETTERS_NUMBERED: Final = "w5_problem_item_letters_numbered"
 # The label an inline list item starts with: one to four words and a colon ("Mức 1:", "Phân khúc X:", "KPI 2:").
 _ITEM_LABEL_RE: Final = re.compile(r"([^\s:–—-][^\s:]*)(?:[ \t]+[^\s:]+){0,3}:[ \t]")  # noqa: RUF001 - dashes
 # A list item written with another marker at a line start (a bullet, a star or an en dash).
@@ -266,6 +273,56 @@ def layout_explanation(text: str, option_count: int) -> str:
     return _labelled_lines(LINE_FEED.join(lines))
 
 
+def _letter_group(question: str) -> tuple[str, dict[str, str]] | None:
+    """The label word and the letter -> number map of stem items labelled with option letters ("- Phương án A: …",
+    "- Phương án B: …"): at least two, lettered A, B, C … in order, after the same word; ``None`` otherwise."""
+
+    groups: dict[str, list[tuple[str, str]]] = {}
+    for match in _ITEM_LETTER_RE.finditer(question):
+        groups.setdefault(match.group("word").casefold(), []).append((match.group("word"), match.group("letter")))
+    for labels in groups.values():
+        letters = [letter for _word, letter in labels]
+        if len(letters) >= _MIN_INLINE_ITEMS and letters == list(OPTION_LETTERS_ITEMS[:len(letters)]):
+            return labels[0][0], {letter: str(position) for position, letter in enumerate(letters, start=1)}
+    return None
+
+
+def number_item_letters(component: dict[str, Any]) -> tuple[dict[str, Any], int]:
+    """Owner decision 2026-10-22 (run dfe78482, chapter_3.lesson_1.unit_3): stem items labelled with option letters
+    ("- Phương án A: …") read as answer letters once the options are shuffled ("A: Phương án C: …"). The items are
+    numbered ("Phương án 1", "Phương án 2" …) consistently in the stem, the choice texts and the explanation; only a
+    letter right after the same label word changes, never an option prefix "A - " of the explanation. Returns the
+    component and how many labels changed (0: unchanged)."""
+
+    question = component.get("question")
+    group = _letter_group(question) if isinstance(question, str) else None
+    if group is None:
+        return component, 0
+    word, numbers = group
+    mention = re.compile(rf"(?<!\w)({re.escape(word)})([ \t]+)([A-H])(?!\w)", re.IGNORECASE)
+    changed = 0
+
+    def renumber(text: str) -> str:
+        nonlocal changed
+
+        def swap(match: re.Match[str]) -> str:
+            nonlocal changed
+            if match.group(3) not in numbers:
+                return match.group(0)
+            changed += 1
+            return f"{match.group(1)}{match.group(2)}{numbers[match.group(3)]}"
+
+        return mention.sub(swap, text)
+
+    result = {**component, "question": renumber(str(question))}
+    if isinstance(component.get("choices"), list):
+        result["choices"] = [{**choice, "text": renumber(str(choice.get("text") or ""))}
+                             if isinstance(choice, dict) else choice for choice in component["choices"]]
+    if isinstance(component.get("explanation"), str):
+        result["explanation"] = renumber(component["explanation"])
+    return (result, changed) if changed else (component, 0)
+
+
 def lay_out_quiz(component: dict[str, Any]) -> tuple[dict[str, Any], Counter[str]]:
     """A single-choice ``component`` with its question and explanation laid out (``layout_question``,
     ``layout_explanation``) and the counts of what changed; a layout that would push a text over the length Node keeps
@@ -452,6 +509,6 @@ __all__ = [
     "EXPLANATION_RESTATES_CODE", "EXPLANATION_VERDICT_CODE", "LINE_FEED", "LIST_MARKER", "OPTION_SEPARATOR",
     "QUESTION_CODES", "QUESTION_LAID_OUT", "QUESTION_LAYOUT_CODE", "QUESTION_LENGTH_CODE", "QUIZ_CODES",
     "QUIZ_REVIEW_CODES", "QUIZ_STYLE_CODES", "explanation_report", "filler_phrases", "lay_out_quiz",
-    "layout_explanation", "layout_question", "question_report", "quiz_findings", "quiz_hint", "sentence_spans",
-    "utf16_length",
+    "layout_explanation", "layout_question", "number_item_letters", "question_report", "quiz_findings", "quiz_hint",
+    "sentence_spans", "utf16_length",
 ]
