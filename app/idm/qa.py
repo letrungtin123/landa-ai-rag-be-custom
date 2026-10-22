@@ -286,6 +286,12 @@ def _codes(values: Sequence[str], vi: bool = True) -> str:
     return ", ".join(dict.fromkeys(_code_text(code, vi) for code in codes))
 
 
+def _block_names(slots: Sequence[int], vi: bool) -> str:
+    """"khối 1, khối 3": the blocks without the label of their type (a worksheet is no "Lý thuyết", review 4)."""
+
+    return ", ".join(f"{'khối' if vi else 'block'} {index + 1}" for index in sorted(slots))
+
+
 def _slot_reasons(slots: Sequence[int], reasons: Mapping[int, Sequence[str]], slot_types: Sequence[str],
                   vi: bool) -> str:
     labels = _SLOT_LABEL_VI if vi else _SLOT_LABEL_EN
@@ -433,7 +439,7 @@ def _slot_lines(vi: bool, reasons: Mapping[int, Sequence[str]], slot_types: Sequ
         if placeholder_slots:
             lines.append(placeholder_line(_slot_reasons(placeholder_slots, {}, slot_types, vi), vi))
         if fallback_inputs:
-            lines.append(fallback_input_line(_slot_reasons(fallback_inputs, {}, slot_types, vi), vi))
+            lines.append(fallback_input_line(_block_names(fallback_inputs, vi), vi))
         return lines, set()
     lines = []
     if fallback_slots:
@@ -443,7 +449,7 @@ def _slot_lines(vi: bool, reasons: Mapping[int, Sequence[str]], slot_types: Sequ
         if explained:
             lines.append(("Lý do: " if vi else "Reason: ") + _slot_reasons(explained, reasons, slot_types, vi) + ".")
         if fallback_inputs:
-            lines.append(fallback_input_line(_slot_reasons(fallback_inputs, {}, slot_types, vi), vi))
+            lines.append(fallback_input_line(_block_names(fallback_inputs, vi), vi))
     hinted = {(item.component_index, item.code) for item in remaining or ()
               if item.code in _REVIEW_HINT_VI or item.code in _PLAIN_HINT_VI}
     kept = {index: [code for code in reasons.get(index, ()) if (index, code) not in hinted] for index in review_slots}

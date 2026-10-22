@@ -134,11 +134,13 @@ _NAMED_ITEM_RE: Final = re.compile(r"^-[ \t]+(?P<name>[^\W\d_]+(?:[ \t]+[^\W\d_]
 _MIN_NAMED_ITEMS: Final = 2
 # A quotation inside a stem line ("Khách hỏi: “Bao giờ giao?”"): its question mark asks nothing of the learner.
 # What a person in the case asks or says after a speech verb and a colon ("… và hỏi: Khi nào thì hàng về kho?").
-_SPEECH_RE: Final = re.compile(r"(?i:hỏi|nói|thắc mắc|than|phàn nàn|chia sẻ|nhắn|viết|asks?|asked|says?|said|writes?"
-                               r"|wrote)[ \t]*:[^?\n]*\?")
+# Review 4: a whole word, and never the label "Câu hỏi:" that asks the learner ("Câu hỏi: Bạn sẽ xử lý thế nào?").
+_SPEECH_RE: Final = re.compile(r"(?<!\w)(?<![Cc]âu )(?i:hỏi|nói|thắc mắc|than|phàn nàn|chia sẻ|nhắn|viết|asks?|asked"
+                               r"|says?|said|writes?|wrote)(?!\w)[ \t]*:[^?\n]*\?")
 # An explanation line that only points at the option ("phương án này", "this option"), not at the item's content.
-_GENERIC_REFERENCE_RE: Final = re.compile(r"\b(?:phuong an|lua chon|(?:cach|y|de xuat|phat bieu|tinh huong|nhan dinh"
-                                          r"|yeu cau) (?:nay|do)|this (?:option|choice|item|one)|the option)\b")
+_GENERIC_REFERENCE_RE: Final = re.compile(r"\b(?:phuong an|lua chon|dap an|(?:cach|y|de xuat|phat bieu|tinh huong"
+                                          r"|nhan dinh|yeu cau) (?:nay|do)|this (?:option|choice|item|one)"
+                                          r"|the option)\b")
 _SHORT_REASON_WORDS: Final = 3
 _QUOTED_RE: Final = re.compile("\"[^\"]*\"|\u201c[^\u201d]*\u201d|\u00ab[^\u00bb]*\u00bb")
 

@@ -284,7 +284,7 @@ class PlanWorksheetTests(StoryboardEndpointTestCase):
     async def test_input_the_plan_only_describes_is_named_in_the_note(self) -> None:
         data = await self.fallback(plan_body(sentence="Đánh giá 5 khiếu nại mẫu và xếp mỗi khiếu nại vào đúng cấp độ.",
                                              context="Danh sách 5 khiếu nại mẫu của khách hàng doanh nghiệp."))
-        self.assertIn("Phiếu thực hành dự phòng ở khối 1 (Lý thuyết) chỉ mô tả dữ liệu đầu vào, chưa có dữ liệu để học "
+        self.assertIn("Phiếu thực hành dự phòng ở khối 1 chỉ mô tả dữ liệu đầu vào, chưa có dữ liệu để học "
                       "viên làm bài — tác giả cần bổ sung dữ liệu.", data["unit"]["idm_quality"]["author_note"])
         listed = await self.fallback(plan_body(
             sentence="Đánh giá 3 khiếu nại mẫu và xếp mỗi khiếu nại vào đúng cấp độ.",
@@ -499,8 +499,11 @@ class Review4RendererTests(unittest.TestCase):
             "Điểm ưu tiên = (Tác động + Mức khẩn) * Khả thi của từng sáng kiến trong danh mục."))
 
 
-class Review4GivenDataTests(OwnDataTests):
+class Review4GivenDataTests(unittest.TestCase):
     """Review 4, M3: the "learner's own data" exception never swallows data the task says it gives."""
+
+    def worksheet(self, task: str) -> dict[str, Any]:
+        return html(section("Nhiệm vụ", {"kind": "task", "text": task}), OwnDataTests.TEMPLATE, OwnDataTests.CHECK)
 
     def test_given_data_named_near_the_learner_is_still_required(self) -> None:
         for task in ("Đánh giá 3 đề xuất sau của nhóm bạn theo tiêu chí khả thi.",
@@ -574,3 +577,34 @@ class AmbiguousRuleTests(unittest.TestCase):
             "Tài liệu ghi khác nhau ở phần “Ba cấp độ”: “"))
         self.assertTrue(flag_sentence("Ba cấp độ", conflict(), self.FACTS, "vi", partners=["Ba cấp độ", "Thời hạn"]
                                       ).startswith("Tài liệu ghi khác nhau giữa phần “Ba cấp độ” và phần “Thời hạn”"))
+
+
+class Review4QuizTextTests(unittest.TestCase):
+    """Review 4, L6 and L7: "Câu hỏi:" asks the learner; a line that only points at "the answer" names no content."""
+
+    def test_a_question_label_is_no_reported_speech(self) -> None:
+        self.assertEqual(_asks_early(["Câu hỏi: Bạn sẽ xử lý thế nào?", "- Cách 1: a", "- Cách 2: b",
+                                      "Cách nào đúng?"]), ["1"])
+
+    def test_a_line_that_only_points_at_the_answer_is_a_bare_name(self) -> None:
+        items = quiz("Trưởng bộ phận đưa ra các phản hồi sau:\n- Phát biểu 1: Cần xuất báo cáo tồn kho mỗi chiều để "
+                     "đối soát dữ liệu.\n- Phát biểu 2: Giải pháp tự động gợi ý đặt hàng sớm, mang lại kết quả bất ngờ."
+                     "\nPhát biểu nào là một lợi ích kỳ vọng?",
+                     [("Phát biểu 1", False), ("Phát biểu 2", True)],
+                     "Nguyên tắc: lợi ích kỳ vọng là kết quả vượt mong đợi.\nA - Sai vì đây là việc cần làm thuộc chức "
+                     "năng nhằm xử lý tác vụ hàng ngày.\nB - Đúng vì đây là đáp án chính xác nhất theo nội dung bài "
+                     "học.")
+        self.assertEqual(explanation_report(lay_out_quiz(items)[0]).get(EXPLANATION_NAMES_ONLY_CODE),
+                         ["the lines of B never say what their item is"])
+
+
+class Review4NoteTests(StoryboardEndpointTestCase):
+    """Review 4, L9: the note names the fallback worksheet's block without calling it "Lý thuyết"."""
+
+    async def test_the_fallback_worksheet_block_is_named_plainly(self) -> None:
+        body = plan_body(sentence="Đánh giá 5 khiếu nại mẫu và xếp mỗi khiếu nại vào đúng cấp độ.",
+                         context="Danh sách 5 khiếu nại mẫu của khách hàng doanh nghiệp.")
+        data = await PlanWorksheetTests.fallback(self, body)
+        note = data["unit"]["idm_quality"]["author_note"]
+        self.assertIn("Phiếu thực hành dự phòng ở khối 1 chỉ mô tả dữ liệu đầu vào", note)
+        self.assertNotIn("khối 1 (Lý thuyết) chỉ mô tả", note)
