@@ -70,9 +70,8 @@ TASK: Week 1 - build the SME Content Map for ONE section of the source.
    exception inside the decision or policy block it limits. When a decision, policy or procedure block has none in
    the source, record the gap missing_common_mistake (and missing_exception when the rule clearly needs one); never
    write a mistake or exception the source does not state.
-6. Write SME questions that point at the exact rule, example or gap
-   (good: "Ngoài an toàn và pháp lý, giá trị giao dịch có phải tiêu chí bắt buộc escalate không?";
-   bad: "Phần nào quan trọng?").
+6. Write no question for a subject-matter expert: sme_questions is always []. What is unclear, contradictory or
+   out of date is an issue with the fact_keys that show it (the author is told from those facts).
 7. Do NOT decide keep/remove, do NOT choose formats, do NOT write course content.
 Use local ids b1, b2, ... for blocks.
 
@@ -92,7 +91,8 @@ TASK: Consolidate the section Content Maps into ONE course-level SME Content Map
 propose the learning objectives and the Must Do list for that purpose.
 {purpose_step}{organization_context}
 1. Merge duplicate blocks across sections (same purpose): keep one block_id, list the merged ids, give a reason.
-   Flag cross-section conflicts (blocks that give different instructions) with a specific SME question.
+   Flag cross-section conflicts (blocks that give different instructions) with a note naming what differs;
+   sme_question is always null (no question for a subject-matter expert).
 2. Target audience: if PROJECT_CONTEXT.target_audience is null, propose one that fits the course purpose (role,
    experience level, work context, constraints) with origin "ai_proposed"; otherwise copy it with origin "client".
 3. Learning objectives: if PROJECT_CONTEXT.learning_objectives is not empty, copy them verbatim in order with

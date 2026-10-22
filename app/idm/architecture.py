@@ -519,11 +519,6 @@ def _build_notes(data: AssemblyInput) -> IdmAuthorNotesV1:
         item.origin == "ai_proposed" for item in data.objectives)
     reference_count = sum(1 for row in data.rows if row.placement == "reference_job_aid")
     excluded_count = sum(1 for row in data.rows if row.placement == "excluded")
-    priority = [block for block in data.blocks
-                if any(issue.type in {"conflict", "outdated"} for issue in block.issues)]
-    others = [block for block in data.blocks if block not in priority]
-    # The W1 questions of every block (A5: no block is held, so none has its question on a Hold item).
-    questions = [question for block in [*priority, *others] for question in block.sme_questions]
     statements = {item.lo_id: item.statement for item in data.objectives}
     row_by_id = {row.block_id: row for row in data.rows}
     names = {block.block_id: block.name for block in data.blocks}
@@ -533,7 +528,7 @@ def _build_notes(data: AssemblyInput) -> IdmAuthorNotesV1:
     course = build_course_notes(
         locale=locale, ai_proposed=ai_proposed, total_minutes=sum(lesson.est_minutes for lesson in lessons),
         lesson_count=len(lessons), module_count=len(data.plan.modules), reference_block_count=reference_count,
-        excluded_block_count=excluded_count, sme_questions=questions,
+        excluded_block_count=excluded_count,
         fallback_stages=[stage for stage, origin in data.stage_origins.items() if origin != "provider"],
         known_ids=known_ids,
         # QC course 364564 (N4): the removed "BiC Legacy" block was never mentioned to the author. Since A6 (QC feedback

@@ -141,7 +141,8 @@ Return the lessons in exactly the order and with exactly the lesson_key values o
    retry once, continue, open the Job Aid).
 8. Lesson fields: objective = the main Must Do as an observable action; learning_objectives = the objective
    statements this lesson serves; assessment = feedback criterion + where the practice sits (after Must Know /
-   end of lesson / end of module); notes = Bloom level, estimated blocks and minutes, ordering rationale, SME flags.
+   end of lesson / end of module); notes = Bloom level, estimated blocks and minutes, ordering rationale (no
+   question for a subject-matter expert).
 {_MEDIA_BRIEF_RULE}
 9. Lessons of kind job_aid: 1-3 units of segment "job_aid" with an html checklist / lookup table / decision tree
    (and optionally la_faq); no practice tasks. Contact lists: names and extensions only, no emails or URLs.

@@ -33,6 +33,7 @@ from app.idm.faq_checks import (
     FAQ_TYPE_MIX_CODE,
     FAQ_VALUE_CODES,
     RECALL,
+    faq_prompt_material,
     faq_writer_rules,
     question_types,
 )
@@ -156,11 +157,7 @@ class IdmUnitWriter(IdmUnitRepairSteps):
             **slot_marks(brief, index),
             **({"faq_items": [item.model_dump(mode="json") for item in slot.faq_items]} if slot.faq_items else {}),
         } for index, slot in enumerate(brief.components)]
-        material: dict[str, Any] = ({"faq_material": brief.faq_material.model_dump(mode="json")}
-                                    if brief.faq_material is not None else {})
-        # QLT-7: the open SME questions the FAQ must leave unanswered, listed apart from the material.
-        if self.has_faq and self.faq.open_questions:
-            material["open_questions"] = list(self.faq.open_questions)
+        material = faq_prompt_material(brief, has_faq=self.has_faq)
         return unit_writer_prompt(
             self.runtime.locale, course_title=brief.course_title, audience=brief.target_audience,
             lesson_title=brief.lesson_title, lesson_objective=brief.lesson_objective,

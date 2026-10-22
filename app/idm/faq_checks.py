@@ -299,14 +299,26 @@ def unsupported_reasoning(answer: str, facts: Sequence[str]) -> bool:
 
 
 def open_questions(brief: IdmUnitBriefV1) -> tuple[str, ...]:
-    """The SME questions still open for the unit: its blocks' W1 questions and the lesson's Hold questions
-    (``faq_material.open_questions``, contract 3), without repeats."""
+    """The SME questions still open for the unit: none since the owner decision of 2026-10-22 (the AI writes no
+    question for an SME). The questions a brief built from an older design may still carry (its blocks' W1 questions,
+    ``faq_material.open_questions``) are ignored, so they never reach the writer, the checks or the note."""
+
+    del brief
+    return ()
+
+
+def faq_prompt_material(brief: IdmUnitBriefV1, *, has_faq: bool) -> dict[str, Any]:
+    """The FAQ_MATERIAL of the writer prompt: only for a unit with an la_faq slot, and without any SME question (owner
+    decision 2026-10-22: none reaches the writer, not even from a brief built from an older design)."""
 
     material = brief.faq_material
-    if material is None:
-        return ()
-    return tuple(dict.fromkeys([*(question for block in material.blocks for question in block.sme_questions),
-                                *material.open_questions]))
+    if material is None or not has_faq:
+        return {}
+    data = material.model_dump(mode="json")
+    data.pop("open_questions", None)
+    data["blocks"] = [{key: value for key, value in block.items() if key != "sme_questions"}
+                      for block in data["blocks"]]
+    return {"faq_material": data}
 
 
 # --- the checker ----------------------------------------------------------------------------------------------------
@@ -510,11 +522,9 @@ def faq_writer_rules(mode: FidelityMode) -> str:
         'anchor facts do not explain (no "Vì sao lại là 30% …?" answered with a reason the facts never give); ask '
         "what the facts do say about it, or another question.\n"
         "  * FAQ_MATERIAL in UNIT_BRIEF (when present) lists what the source analysis found for this unit's blocks "
-        "(their role, unclear points, gaps, open SME questions) and the feedback focus of the lesson practices: use "
-        "it to pick real confusions. A gap means the source is silent: never fill it with an invented rule.\n"
-        "  * OPEN_QUESTIONS in UNIT_BRIEF (when present) are questions the SME has not answered yet: do not answer "
-        "them; these are unresolved. Never ask or answer any of them, not even in other words or inside another "
-        "item.\n"
+        "(their role, unclear points, gaps) and the feedback focus of the lesson practices: use it to pick real "
+        "confusions. A gap means the source is silent: never fill it with an invented rule; a point the source states "
+        "in two different ways is never settled by an answer.\n"
         "  * When this unit has a problem slot, base the common_mistake items on its own distractors: the belief "
         "behind a wrong option and why the criterion rules it out, consistent with the answer key. An answer never "
         "places a case in another level, group or label than the unit's question and table do, and never states a "
@@ -526,6 +536,6 @@ def faq_writer_rules(mode: FidelityMode) -> str:
 __all__ = [
     "FAQ_INVENTED_REASON_CODE", "FAQ_NEW_FACT_CODE", "FAQ_OPEN_QUESTION_CODE", "FAQ_RESTATES_SOURCE_CODE",
     "FAQ_TYPE_MIX_CODE", "FAQ_VALUE_CODES", "RECALL", "FaqChecker", "asks_open_question", "copies_one_fact",
-    "extra_recall_items", "faq_writer_rules", "invents_reason", "lcs_length", "open_questions", "question_type",
-    "question_types", "reasoned", "threshold_numbers", "type_mix_ok", "unsupported_reasoning",
+    "extra_recall_items", "faq_prompt_material", "faq_writer_rules", "invents_reason", "lcs_length", "open_questions",
+    "question_type", "question_types", "reasoned", "threshold_numbers", "type_mix_ok", "unsupported_reasoning",
 ]

@@ -94,6 +94,11 @@ HASH_HISTORY: tuple[tuple[str, str], ...] = (
     # point with its on-image text and numbers, arrows only for steps or a cause and its effect.
     ("c011de35a0dbd792e58649faf319caae9a1e67985e2a37806e47aa6395020b83",
      "QC A4: a media brief describes what to draw"),
+    # Owner decision 2026-10-22: no question for an SME anywhere. W1 map (step 6, COMPACT_W1_MAP) and W1 reduce (step
+    # 1) ask for none, the W1-reduce conflict schema's sme_question is optional, the module notes no longer ask for
+    # "SME flags", and the FAQ rules and material (``faq_checks.faq_prompt_material``) carry no open SME question.
+    ("9040b3a024bd9e3583798225f49fb9c69ad6476ff37685bcaaf10ebe810bd370",
+     "No question for an SME in any prompt"),
 )
 PROMPT_NAME = re.compile(r"(prompt|_rules?$|_suffix$|rule_lines?$|_hint$|^rule_line$|_cue_line$)")
 

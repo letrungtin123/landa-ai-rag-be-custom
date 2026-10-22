@@ -103,7 +103,13 @@ class SectionValidatorTests(unittest.TestCase):
     def test_golden_section_has_no_errors(self) -> None:
         found = validate_w1_section(section_response(), SECTION.fact_keys)
         self.assertEqual(errors(found), [])
-        self.assertEqual(warnings(found), [IdmIssue("IDM_W1_BLOCK_COMPOUND_NAME", "blocks[0].name", "warning")])
+        # Owner decision 2026-10-22: the recorded answer still has two SME questions; they are dropped, never shown.
+        dropped = "IDM_W1_SME_QUESTIONS_DROPPED"
+        self.assertEqual(warnings(found), [IdmIssue("IDM_W1_BLOCK_COMPOUND_NAME", "blocks[0].name", "warning"),
+                                           IdmIssue(dropped, "blocks[9].sme_questions", "warning"),
+                                           IdmIssue(dropped, "blocks[11].sme_questions", "warning")])
+        drafts, _noise = normalize_w1_section(section_response(), SECTION.fact_keys, INDEX)
+        self.assertEqual([draft.sme_questions for draft in drafts if draft.sme_questions], [])
 
     def test_every_error_code(self) -> None:
         cases: list[tuple[Callable[[dict[str, Any]], Any], str, str]] = [
@@ -126,8 +132,7 @@ class SectionValidatorTests(unittest.TestCase):
             (lambda p: p["blocks"][3].update(name="Tiếp nhận và phân loại khiếu nại"), "IDM_W1_BLOCK_COMPOUND_NAME"),
             (lambda p: p["blocks"][3].update(name="Receive and classify complaints"), "IDM_W1_BLOCK_COMPOUND_NAME"),
             (lambda p: p["blocks"][3].update(sme_questions=["Phần nào quan trọng nhất trong tài liệu này vậy?"]),
-             "IDM_W1_SME_QUESTION_TOO_BROAD"),
-            (lambda p: p["blocks"][3].update(sme_questions=["Đúng không?"]), "IDM_W1_SME_QUESTION_TOO_BROAD"),
+             "IDM_W1_SME_QUESTIONS_DROPPED"),
         ]
         for apply, code in cases:
             with self.subTest(code=code):
@@ -359,17 +364,18 @@ class ApplyReduceTests(unittest.TestCase):
         kept = next(block for block in blocks if block.block_id == "cb_0006")
         self.assertTrue(kept.issues[-1].note.startswith("Merged duplicate content from:"))
 
-    def test_conflicts_add_an_issue_and_an_sme_question(self) -> None:
-        conflict = {"block_ids": ["cb_0007", "cb_0010"], "note": "Hai mục nêu thời hạn khác nhau.",
-                    "sme_question": "Thời hạn nào đúng cho khiếu nại cấp 2?"}
-        blocks, _links = apply_w1_reduce(reduce_response(lambda p: p["conflicts"].append(conflict)), golden_blocks(),
-                                         INDEX, "vi")
+    def test_conflicts_add_an_issue_and_never_an_sme_question(self) -> None:
+        # Owner decision 2026-10-22: a conflict is an issue of its blocks; an answer that still asks the SME (older
+        # prompt) or leaves the question out is accepted, and no block gets a question.
+        asked = {"block_ids": ["cb_0007", "cb_0010"], "note": "Hai mục nêu thời hạn khác nhau.",
+                 "sme_question": "Thời hạn nào đúng cho khiếu nại cấp 2?"}
+        silent = {"block_ids": ["cb_0005"], "note": "Bảng cấp độ khác phần mô tả."}
+        blocks, _links = apply_w1_reduce(reduce_response(lambda p: p["conflicts"].extend([asked, silent])),
+                                         golden_blocks(), INDEX, "vi")
         by_id = {block.block_id: block for block in blocks}
-        for block_id in ("cb_0007", "cb_0010"):
-            self.assertEqual((by_id[block_id].issues[-1].type, by_id[block_id].issues[-1].note),
-                             ("conflict", conflict["note"]))
-            self.assertEqual(by_id[block_id].sme_questions[-1], conflict["sme_question"])
-        self.assertEqual(len(by_id["cb_0010"].sme_questions), 2)
+        for block_id, note in (("cb_0007", asked["note"]), ("cb_0010", asked["note"]), ("cb_0005", silent["note"])):
+            self.assertEqual((by_id[block_id].issues[-1].type, by_id[block_id].issues[-1].note), ("conflict", note))
+        self.assertEqual([block.sme_questions for block in blocks if block.sme_questions], [])
 
     def test_conflict_on_a_merged_block_lands_once_on_the_kept_block(self) -> None:
         def apply(payload: dict[str, Any]) -> None:

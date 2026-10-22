@@ -88,8 +88,8 @@ def repair_suffix(issues: Sequence[dict[str, str]]) -> str:
 
 
 # What each stage may shorten when its answer was cut at the output limit (QC course 234653).
-COMPACT_W1_MAP: Final = ("Use fewer, larger blocks; summary at most 150 characters; at most 2 SME questions per "
-                         "block; record issues and gaps only when they change correctness.")
+COMPACT_W1_MAP: Final = ("Use fewer, larger blocks; summary at most 150 characters; sme_questions always []; "
+                         "record issues and gaps only when they change correctness.")
 COMPACT_W1_REDUCE: Final = ("List lo_links ONLY for relation direct (omit supporting, context, unrelated and "
                             "unknown); list merges and conflicts only when essential; reasons and notes at most 120 "
                             "characters; at most 3 Must Dos per objective.")

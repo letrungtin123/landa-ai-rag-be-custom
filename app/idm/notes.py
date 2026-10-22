@@ -118,7 +118,6 @@ def build_course_notes(
     module_count: int,
     reference_block_count: int,
     excluded_block_count: int,
-    sme_questions: Sequence[str],
     fallback_stages: Sequence[str],
     known_ids: Iterable[str] = (),
     removed: Sequence[SkippedBlockNote | tuple[str, str]] = (),
@@ -134,10 +133,9 @@ def build_course_notes(
 
     The definition blocks kept against the W2 proposal and the removed blocks with their reason reach the author (QC
     course 234653 R4, 364564 N4). Sections are filled in that order within the 7,000-character limit; whatever does not
-    fit is counted ("và N mục khác") and stays complete in the workspace panels. The SME questions come last and take
-    all the room that is left (no count cap, QC run 8de1c76b); the few that may not fit are counted with a pointer to
-    the complete list in the course's AI ID notes. Owner decision 2026-10-22 (QC feedback A5, A6): there is no Hold
-    list, no objective waiting for an SME and no Nice to Know list any more (the design never holds a block).
+    fit is counted ("và N mục khác") and stays complete in the workspace panels. Owner decisions 2026-10-22 (QC
+    feedback A5, A6): there is no Hold list, no objective waiting for an SME, no Nice to Know list and no question for
+    an SME any more (the design never holds a block and the AI writes no SME question).
 
     QLT-5: the head says which course purpose the design followed (``purpose_line``); then come the required parts of
     the purpose's course pattern the source lacks (``template_gaps``, plain notes the AI wrote no content for), and
@@ -209,14 +207,6 @@ def build_course_notes(
         else f"• Content removed from the course (Remove) — {len(dropped)} blocks, with the reason:",
         [f"  - {item.name}: {single_line(item.summary, IDM_NOTES_SUMMARY_CHARS)}" for item in dropped], more,
         IDM_NOTES_MAX_REMOVED)
-    questions = [question for question in dict.fromkeys(sme_questions) if question]
-
-    def more_questions(count: int) -> str:
-        return (f"  và {count} câu hỏi khác (danh sách đầy đủ trong ghi chú AI ID của khoá học)" if vi
-                else f"  and {count} more questions (full list in the course's AI ID notes)")
-
-    budget.section("• Câu hỏi cho SME:" if vi else "• Questions for the SME:",
-                   [f"  - {question}" for question in questions], more_questions, len(questions))
     return clean_note(budget.text(), IDM_NOTES_COURSE_MAX_CHARS, known_ids)
 
 

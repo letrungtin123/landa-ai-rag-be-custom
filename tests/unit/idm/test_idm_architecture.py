@@ -451,7 +451,6 @@ class NotesTests(unittest.TestCase):
             "locale": locale, "ai_proposed": True, "total_minutes": 35, "lesson_count": 5, "module_count": 3,
             "reference_block_count": 2, "excluded_block_count": 2,
             "removed": [("Thời hạn <phản hồi> cb_0010", "Mâu thuẫn 24h > 48h [d1-c7-f2]")],
-            "sme_questions": ["Câu hỏi lo_1 về scope3_00_a?", "Câu hỏi lo_1 về scope3_00_a?", ""],
             "fallback_stages": ["w2"], "known_ids": ["d1-c7-f2"], **changes,
         }
         return build_course_notes(**arguments)
@@ -460,21 +459,17 @@ class NotesTests(unittest.TestCase):
         text = self.course_notes("vi")
         self.assert_clean(text, 7_000, ["d1-c7-f2"])
         for expected in ("[Thiết kế theo quy trình ID — idm-1]", "do AI đề xuất", "35 phút (5 mục, 3 chương)",
-                         "• Câu hỏi cho SME:", "phương án dự phòng",
-                         "Cấu trúc được thiết kế theo Must Do, không theo mục lục tài liệu."):
+                         "phương án dự phòng", "Cấu trúc được thiết kế theo Must Do, không theo mục lục tài liệu."):
             self.assertIn(expected, text)
-        self.assertEqual(text.count("Câu hỏi lo"), 0)
-        self.assertEqual(text.count("Câu hỏi về"), 1)
-        # A5 (owner 2026-10-22): no Hold list and no objective waiting for an SME.
-        for absent in ("Hold", "chờ SME", "Câu hỏi khác cho SME"):
+        # A5 (owner 2026-10-22): no Hold list, no objective waiting for an SME and no question for an SME.
+        for absent in ("Hold", "chờ SME", "Câu hỏi cho SME", "Câu hỏi khác cho SME"):
             self.assertNotIn(absent, text)
 
     def test_course_notes_list_removed_blocks_without_hold_or_nice_to_know(self) -> None:
         # QC course 234653 (R4): the author sees what was left out (as Remove since A6); A5: nothing is held.
         expectations = {
-            "vi": ("• Nội dung đã loại khỏi khoá (Remove) — 2 khối, kèm lý do:", "• Câu hỏi cho SME:"),
-            "en": ("• Content removed from the course (Remove) — 2 blocks, with the reason:",
-                   "• Questions for the SME:"),
+            "vi": ("• Nội dung đã loại khỏi khoá (Remove) — 2 khối, kèm lý do:",),
+            "en": ("• Content removed from the course (Remove) — 2 blocks, with the reason:",),
         }
         for locale, labels in expectations.items():
             removed = [SkippedBlockNote("Lịch sử phòng CSKH", "Thành lập năm 2009. " * 30),
@@ -487,7 +482,7 @@ class NotesTests(unittest.TestCase):
             summary = next(line for line in text.splitlines() if "Lịch sử phòng CSKH" in line)
             self.assertLessEqual(len(summary), len("  - Lịch sử phòng CSKH: ") + 160)
             for absent in ("Nice to know", "Hold", "Must Do chưa dạy được", "Must Do not taught yet",
-                           "awaiting the SME"):
+                           "awaiting the SME", "Câu hỏi cho SME", "Questions for the SME"):
                 self.assertNotIn(absent, text)
 
     # Regression (fixed): scrub_internal_ids collapses every run of spaces, so the two-space list indentation of the
@@ -498,15 +493,14 @@ class NotesTests(unittest.TestCase):
 
     def test_course_notes_en_and_caps(self) -> None:
         text = self.course_notes("en", ai_proposed=False, fallback_stages=[],
-                                 removed=[(f"Removed block {n}", "Not needed for the Must Do.") for n in range(20)],
-                                 sme_questions=[f"Question number {n} for the SME?" for n in range(14)])
+                                 removed=[(f"Removed block {n}", "Not needed for the Must Do.") for n in range(20)])
         self.assert_clean(text, 7_000, ["d1-c7-f2"])
         self.assertIn("[Designed with the ID workflow — idm-1]", text)
         self.assertIn("• Content removed from the course (Remove) — 20 blocks, with the reason:", text)
         self.assertIn("and 8 more", text)
         self.assertNotIn("proposed by AI", text)
-        # QC run 8de1c76b: no count cap on the SME questions, only the 7,000-character limit.
-        self.assertEqual(text.count("Question number"), 14)
+        # Owner decision 2026-10-22: no question for an SME.
+        self.assertNotIn("Questions for the SME", text)
 
     def test_course_notes_fit_the_limit_and_count_what_does_not_fit(self) -> None:
         gaps = [f"Phần {n}: " + "g" * 280 for n in range(15)]
@@ -547,12 +541,12 @@ class NotesTests(unittest.TestCase):
         design = assemble_idm_course_design(assembly_input(inputs))
         known = [fact.fact_key for fact in source_facts()]
         self.assert_clean(design.notes.course, 7_000, known)
-        # A5 (contract K2): nothing is held and no Must Do is blocked; the W1 questions of every block are listed.
+        # A5 (contract K2): nothing is held and no Must Do is blocked; owner decision 2026-10-22: no block has a
+        # question for an SME and the note has no such section.
         self.assertEqual((design.hold_items, design.blocked_must_do_ids), ([], []))
         self.assertNotIn("Hold", design.notes.course)
-        for block in design.blocks:
-            for question in block.sme_questions:
-                self.assertIn(question, design.notes.course)
+        self.assertEqual([block.sme_questions for block in design.blocks if block.sme_questions], [])
+        self.assertNotIn("Câu hỏi cho SME", design.notes.course)
         names = {block.block_id: block.name for block in design.blocks}
         # A6: no Nice to Know list; removed blocks are named with their reason.
         self.assertNotIn("Nice to", design.notes.course)

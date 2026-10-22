@@ -130,7 +130,6 @@ THINKING_TARGETED_REPAIR: Final = "low"
 IDM_LO_MIN_COUNT: Final = 3
 IDM_LO_MAX_COUNT: Final = 8
 IDM_BLOCK_TOO_SMALL_CHARS: Final = 60
-IDM_SME_QUESTION_MIN_CHARS: Final = 25
 IDM_DUPLICATE_JACCARD_THRESHOLD: Final = 0.85
 IDM_DUPLICATE_NGRAM: Final = 5
 IDM_HEADING_MAX_CHARS: Final = 120
@@ -153,10 +152,8 @@ IDM_NOTES_COURSE_MAX_CHARS: Final = 7_000
 IDM_NOTES_MODULE_MAX_CHARS: Final = 3_000
 IDM_NOTES_LESSON_MAX_CHARS: Final = 2_000
 IDM_NOTES_MAX_HOLD_ITEMS: Final = 15
-# The "other questions for the SME" have no count cap of their own (QC run 8de1c76b: 10 shown, "và 12 mục khác"):
-# they fill what the 7,000-character course note has left. The complete list is in the course_skeleton artifact
-# (``payload.idm.blocks[].sme_questions`` of the non-Hold blocks; Hold questions on ``payload.idm.hold_items``),
-# which Apply copies to the course-root author notes (``idm_guidance.sme_questions``).
+# Owner decision 2026-10-22: no question for an SME anywhere; ``payload.idm.blocks[].sme_questions`` and
+# ``payload.idm.hold_items`` stay in contract 3 and are always empty.
 # One-line summary of a removed block in the course note. The Nice to Know list (QC course 234653, R4) is gone since the
 # QC feedback of 2026-10-21 (A6): such blocks are stored and listed as Remove.
 IDM_NOTES_SUMMARY_CHARS: Final = 160
@@ -430,7 +427,6 @@ UNMEASURABLE_VERBS: Final = frozenset({
 })
 MUST_DO_TOPIC_PREFIXES: Final = ("kien thuc ve", "tong quan", "gioi thieu", "overview of", "introduction to")
 CAPABILITY_LEAD_INS: Final = ("co the", "can", "will be able to", "be able to")
-BROAD_SME_QUESTION_PATTERN: Final = r"^(phan nao|noi dung nao) (quan trong|can thiet)"
 AI_DRAFTED_MARKER_VI: Final = "[AI soạn — cần SME xác nhận]"
 AI_DRAFTED_MARKER_EN: Final = "[AI-drafted — SME to confirm]"
 # No Hold (owner decision 2026-10-22, QC feedback A5, contract K2): the AI never holds a block or a practice for an SME.

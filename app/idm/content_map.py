@@ -28,7 +28,6 @@ from app.idm.contracts import (
 )
 from app.idm.org_context import design_block
 from app.idm.policy import (
-    BROAD_SME_QUESTION_PATTERN,
     IDM_BLOCK_TOO_SMALL_CHARS,
     IDM_FALLBACK_NAME_CHARS,
     IDM_FALLBACK_SUMMARY_CHARS,
@@ -36,7 +35,6 @@ from app.idm.policy import (
     IDM_LO_MIN_COUNT,
     IDM_PAGE_FURNITURE_MIN_REPEATS,
     IDM_PROCEDURE_SHARE,
-    IDM_SME_QUESTION_MIN_CHARS,
     IDM_TABLE_SHARE,
     IDM_W1_MAP_MAX_OUTPUT_TOKENS,
     IDM_W1_REDUCE_MAX_OUTPUT_TOKENS,
@@ -81,7 +79,9 @@ from app.idm.text import (
 )
 from app.idm.validation import IdmIssue, errors
 
-_BROAD_SME_RE: Final = re.compile(BROAD_SME_QUESTION_PATTERN)
+# Owner decision 2026-10-22: the AI writes no question for a subject-matter expert. A W1 block that still has some
+# loses them (counted per block); the W1-reduce conflicts never become one.
+SME_QUESTIONS_DROPPED_CODE: Final = "IDM_W1_SME_QUESTIONS_DROPPED"
 _PAGE_NUMBER_RE: Final = re.compile(
     r"^(?:trang|page|tr\.?)\s*\d+(?:\s*(?:/|of|tren)\s*\d+)?$|^-?\s*\d+\s*-?$",
 )
@@ -100,7 +100,6 @@ _MIN_CHAPTER_MARKERS: Final = 2
 _CHAPTER_SUBTITLE_MAX_DISTANCE: Final = 2
 _PART_COUNTER_RE: Final = re.compile(r"\s*\(\d{1,2}\)\s*$")
 _MAX_BLOCK_ISSUES: Final = 16
-_MAX_BLOCK_SME: Final = 8
 _MAX_REDUCE_LOS: Final = IDM_LO_MAX_COUNT
 _MIN_NAME_CHARS: Final = 3
 # Headers, footers and page numbers are short; long repeated lines are content.
@@ -178,10 +177,9 @@ def validate_w1_section(response: IdmW1SectionResponseV1, section_keys: Sequence
                 issues.append(IdmIssue("IDM_W1_FACT_UNKNOWN", f"{path}.fact_keys"))
         if re.search(r"\s(và|and)\s", block.name, flags=re.IGNORECASE):
             issues.append(IdmIssue("IDM_W1_BLOCK_COMPOUND_NAME", f"{path}.name", "warning"))
-        for question_index, question in enumerate(block.sme_questions):
-            if len(question) < IDM_SME_QUESTION_MIN_CHARS or _BROAD_SME_RE.match(idm_fold(question)):
-                issues.append(IdmIssue("IDM_W1_SME_QUESTION_TOO_BROAD",
-                                       f"{path}.sme_questions[{question_index}]", "warning"))
+        if block.sme_questions:
+            # Owner decision 2026-10-22: the AI writes no question for an SME; any the answer still has are dropped.
+            issues.append(IdmIssue(SME_QUESTIONS_DROPPED_CODE, f"{path}.sme_questions", "warning"))
     for index, item in enumerate(response.noise):
         seen[item.fact_key] += 1
         if item.fact_key not in allowed:
@@ -221,7 +219,7 @@ def normalize_w1_section(
                 "fact_keys": [key for key in issue.fact_keys if key in allowed],
             }) for issue in block.issues],
             "gaps": [gap.model_copy(update={"note": single_line(plain_row_refs(gap.note), 500)}) for gap in block.gaps],
-            "sme_questions": [single_line(plain_row_refs(question), 400) for question in block.sme_questions],
+            "sme_questions": [],
         }))
     blocks.sort(key=lambda block: index.order[block.fact_keys[0]])
     return blocks, list(response.noise)
@@ -375,7 +373,7 @@ def rekey_blocks(results: Sequence[SectionMapResult], index: FactIndex) -> tuple
         block_id=f"cb_{position:04d}", section_id=result.section.section_id, name=block.name,
         summary=block.summary, intent=block.intent, support_role=block.support_role,
         content_kind=block.content_kind, fact_keys=list(block.fact_keys), issues=list(block.issues),
-        gaps=list(block.gaps), sme_questions=list(block.sme_questions),
+        gaps=list(block.gaps), sme_questions=[],
         origin="provider" if result.origin == "provider" else "deterministic_fallback",
     ) for position, (result, block) in enumerate(drafts, start=1)]
     noise = [item for result in results for item in result.noise]
@@ -656,8 +654,6 @@ def apply_w1_reduce(
             by_id[block_id] = block.model_copy(update={
                 "issues": [*block.issues, IdmIssueV1(type="conflict", note=single_line(conflict.note, 500),
                                                      fact_keys=[])][:_MAX_BLOCK_ISSUES],
-                "sme_questions": list(dict.fromkeys(
-                    [*block.sme_questions, single_line(plain_row_refs(conflict.sme_question), 400)]))[:_MAX_BLOCK_SME],
             })
     links: dict[tuple[str, str], IdmBlockLoLinkV1] = {}
     rank = {"direct": 0, "supporting": 1, "context": 2, "unknown": 3, "unrelated": 4}

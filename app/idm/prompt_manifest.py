@@ -42,6 +42,7 @@ PROMPT_TEMPLATE_SOURCES: Final = (
     "app.idm.fidelity:writer_fidelity_rules",
     "app.idm.example_roles:role_rule",
     "app.idm.faq_checks:faq_writer_rules",
+    "app.idm.faq_checks:faq_prompt_material",
     "app.idm.faq_checks:FaqChecker.plan_hint",
     "app.idm.framework:framework_support_lines",
     "app.idm.quiz_text:quiz_hint",

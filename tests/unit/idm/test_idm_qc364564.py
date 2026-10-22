@@ -825,7 +825,7 @@ class TermDefinitionCourseTests(unittest.IsolatedAsyncioTestCase):
                       "  - Phòng Chăm sóc Khách hàng đã phát triển ra sao?: Quyết định theo luồng Week 2.", notes)
         common: dict[str, Any] = {"ai_proposed": False, "total_minutes": 10, "lesson_count": 1, "module_count": 1,
                                   "reference_block_count": 0, "excluded_block_count": 1,
-                                  "sme_questions": [], "fallback_stages": []}
+                                  "fallback_stages": []}
         english = build_course_notes(locale="en", removed=[SkippedBlockNote("BiC history", "Outdated programme.")],
                                      kept_definitions=[KeptDefinitionNote("What is BiC?", ("BiC",), "remove")],
                                      **common)

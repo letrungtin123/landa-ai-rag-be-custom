@@ -76,15 +76,8 @@ NICE_TO_KNOW_AS_REMOVE_CODE: Final = "IDM_W2_NICE_TO_KNOW_AS_REMOVE"
 # Do no course row serves is attached to the course row of its objective (``serve_every_must_do``, counted).
 HOLD_RELEASED_CODE: Final = "IDM_W2_HOLD_RELEASED"
 MUST_DO_ATTACHED_CODE: Final = "IDM_W2_MUST_DO_ATTACHED"
-# The blocks the old W2 rule held (step d: unclear, conflicting or outdated content that affects correctness, or a
-# decision block that lacks the criteria needed to judge practice), read from their W1 issues and gaps: their SME
-# questions are dropped (``drop_hold_questions``, counted).
-SME_QUESTIONS_DROPPED_CODE: Final = "IDM_W2_SME_QUESTIONS_DROPPED"
-_HOLD_ISSUES: Final = frozenset({"unclear", "conflict", "outdated"})
-_HOLD_GAPS: Final = frozenset({"missing_criteria", "missing_feedback_basis"})
 _MIN_SEPARATE_PARTS: Final = 2
 _MAX_BLOCK_ISSUES: Final = 16
-_MAX_BLOCK_SME: Final = 8
 _MAX_ROW_MUST_DOS: Final = 8
 _RELATION_RANK: Final = {"direct": 0, "supporting": 1, "context": 2, "unknown": 3, "unrelated": 4}
 
@@ -258,7 +251,7 @@ def apply_w2(
             "fact_keys": index.sort([*target.fact_keys, *source.fact_keys]),
             "issues": [*target.issues, *source.issues][:_MAX_BLOCK_ISSUES],
             "gaps": [*target.gaps, *source.gaps][:8],
-            "sme_questions": list(dict.fromkeys([*target.sme_questions, *source.sme_questions]))[:_MAX_BLOCK_SME],
+            "sme_questions": [],
         })
         target_row = row_by_id[target.block_id]
         row_by_id[target.block_id] = target_row.model_copy(update={
@@ -282,7 +275,7 @@ def apply_w2(
                 "fact_keys": index.sort(part.fact_keys),
                 "issues": original.issues if part_index == 0 else [],
                 "gaps": original.gaps if part_index == 0 else [],
-                "sme_questions": original.sme_questions if part_index == 0 else [],
+                "sme_questions": [],
             })
             row_by_id[block_id] = row.model_copy(update={
                 "block_id": block_id, "treatment": "condense", "separate_into": [],
@@ -403,25 +396,6 @@ def serve_every_must_do(rows: Sequence[IdmBlueprintRowV1], links: Sequence[IdmBl
         served.add(must_do.must_do_id)
         attached += 1
     return result, attached
-
-
-def drop_hold_questions(blocks: Sequence[IdmContentBlockV1], rows: Sequence[IdmBlueprintRowV1],
-                        ) -> tuple[list[IdmContentBlockV1], int]:
-    """A5 (QC feedback 2026-10-21): no question goes to an SME for a block the old W2 rule would have held. A course
-    block with unclear, conflicting or outdated content (W1 issues) or without the criteria to judge its practice (W1
-    gaps) is taught, its practice gets suggested criteria, and its W1 SME questions are dropped from the design (so
-    neither the course note nor Node's SME list nor the unit's open FAQ questions carry them). Other blocks keep theirs.
-    Returns the blocks and how many questions were dropped."""
-
-    course = {row.block_id for row in rows if row.placement == "course"}
-    result: list[IdmContentBlockV1] = []
-    dropped = 0
-    for block in blocks:
-        held = block.block_id in course and (any(issue.type in _HOLD_ISSUES for issue in block.issues)
-                                             or any(gap.type in _HOLD_GAPS for gap in block.gaps))
-        dropped += len(block.sme_questions) if held else 0
-        result.append(block.model_copy(update={"sme_questions": []}) if held and block.sme_questions else block)
-    return result, dropped
 
 
 def blocked_must_dos(rows: Sequence[IdmBlueprintRowV1], must_dos: Sequence[IdmMustDoV1]) -> list[str]:
@@ -584,9 +558,6 @@ async def run_w2(
     applied_rows, attached = serve_every_must_do(applied_rows, applied_links, must_dos)
     if attached:
         codes[MUST_DO_ATTACHED_CODE] += attached
-    applied_blocks, dropped = drop_hold_questions(applied_blocks, applied_rows)
-    if dropped:
-        codes[SME_QUESTIONS_DROPPED_CODE] += dropped
     origin: StageOrigin = ("provider" if fallback_batches == 0
                            else "deterministic_fallback" if fallback_batches == len(batches) else "partial_fallback")
     return BlueprintResult(applied_blocks, applied_links, applied_rows, origin, dict(codes), kept, background_kept)

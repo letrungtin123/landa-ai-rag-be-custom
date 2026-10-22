@@ -255,7 +255,8 @@ class IdmMergeV1(IdmModel):
 class IdmConflictV1(IdmModel):
     block_ids: list[BlockId] = Field(min_length=1, max_length=8)
     note: str = Field(min_length=1, max_length=500)
-    sme_question: str = Field(min_length=5, max_length=400)
+    # Owner decision 2026-10-22: no question for an SME; the field stays for older answers and is never used.
+    sme_question: str | None = Field(default=None, max_length=400)
 
 
 class IdmAudienceV1(IdmModel):

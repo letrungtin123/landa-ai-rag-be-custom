@@ -299,7 +299,7 @@ class NotesTests(unittest.TestCase):
         self.assertEqual(purpose_note_line(purpose, "en", author_purpose=True),
                          "• Course designed as: New employee onboarding (from the purpose the author entered).")
         notes = build_course_notes(locale="en", ai_proposed=True, total_minutes=10, lesson_count=1, module_count=1,
-                                   reference_block_count=0, excluded_block_count=0, sme_questions=[],
+                                   reference_block_count=0, excluded_block_count=0,
                                    fallback_stages=[], brief_lines=["• Learner audience (entered by the author): X."],
                                    audience_entered=True)
         self.assertIn("• Learner audience (entered by the author): X.", notes)

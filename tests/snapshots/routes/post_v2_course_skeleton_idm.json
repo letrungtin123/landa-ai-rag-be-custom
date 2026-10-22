@@ -2519,8 +2519,8 @@
     "op": "generate",
     "model": "test-model",
     "schema": "IdmW1SectionResponseV1",
-    "prompt_sha256": "a5e5a13748d619b99381d68e8222a47d9acaeee3d0a37284cc6192e057f33a38",
-    "prompt_chars": 10914,
+    "prompt_sha256": "9f49c819e9cc014b6f25d0160b224cf9772e43adc1236f23e34ede4aea14e0ae",
+    "prompt_chars": 10924,
     "config": {
      "max_output_tokens": 12000,
      "response_mime_type": "application/json",
@@ -2535,14 +2535,14 @@
     "op": "generate",
     "model": "test-model",
     "schema": "IdmW1ReduceResponseV1",
-    "prompt_sha256": "09f356037455507e221e98f04dede9f203eeeeebffe698d7bc091e6d001bc550",
-    "prompt_chars": 13938,
+    "prompt_sha256": "c44d49fe12263302421cbdc3447856eb6188fef49fedbb112ba1e73879361530",
+    "prompt_chars": 14015,
     "config": {
      "max_output_tokens": 24000,
      "response_mime_type": "application/json",
      "response_schema": {
-      "sha256": "5f975cdf3d63881f5d8c2e24ef3fe9609c25f03e74fea8bb389c84ee750542d5",
-      "chars": 3457
+      "sha256": "eb04a78163ee970f5f0dbefeba5b02dbee638ea5e5c7671b01e6a0b06e984be2",
+      "chars": 3489
      },
      "temperature": 0.2
     }

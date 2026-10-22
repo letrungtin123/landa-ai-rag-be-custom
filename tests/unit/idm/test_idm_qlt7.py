@@ -32,6 +32,7 @@ from app.idm.faq_checks import (
     FAQ_OPEN_QUESTION_CODE,
     FaqChecker,
     asks_open_question,
+    faq_prompt_material,
     faq_writer_rules,
     invents_reason,
     open_questions,
@@ -383,25 +384,30 @@ class FaqTests(unittest.TestCase):
         self.assertFalse(asks_open_question("Sai lầm phổ biến nào khiến doanh nghiệp thất bại khi áp dụng kiểm tra "
                                             "chất lượng ở giai đoạn Check?", open_words))
 
-    def test_open_questions_reach_the_checker_and_the_rules(self) -> None:
+    def test_sme_questions_of_an_older_brief_reach_neither_the_checker_nor_the_writer(self) -> None:
+        # Owner decision 2026-10-22: no question for an SME. A brief built from an older design may still carry some;
+        # they are ignored (no open question, no OPEN_QUESTIONS rule, no question in the FAQ material).
         raw = escalate_body()["unit_contract"]["idm_unit_brief"]
         raw["faq_material"]["blocks"][0]["sme_questions"] = ["Có nên hứa hoàn tiền cho khách VIP trước khi xác minh "
                                                              "đơn hàng không?"]
         raw["faq_material"]["open_questions"] = ["Tiêu chí nào để đánh giá đạt bản cam kết?"]
         unit_brief = IdmUnitBriefV1.model_validate(raw)
-        self.assertEqual(open_questions(unit_brief), ("Có nên hứa hoàn tiền cho khách VIP trước khi xác minh đơn hàng "
-                                                      "không?", "Tiêu chí nào để đánh giá đạt bản cam kết?"))
+        self.assertEqual(open_questions(unit_brief), ())
         checker = FaqChecker.build(unit_brief, {}, plan_texts=[])
         faq = {"type": "la_faq", "items": [
             {"question": "Có nên hứa hoàn tiền khi khách vừa gọi đến không?", "answer": EXPLAINED},
             {"question": "Vì sao cần xác minh?", "answer": WHAT_IF}]}
-        self.assertEqual(checker.open_items(faq), [0])
-        self.assertIn(FAQ_OPEN_QUESTION_CODE, checker.findings(1, faq))
+        self.assertEqual(checker.open_items(faq), [])
+        self.assertNotIn(FAQ_OPEN_QUESTION_CODE, checker.findings(1, faq))
         rules = faq_writer_rules("explain")
-        self.assertIn("OPEN_QUESTIONS in UNIT_BRIEF (when present) are questions the SME has not answered yet: do not "
-                      "answer them; these are unresolved.", rules)
+        self.assertNotIn("OPEN_QUESTIONS", rules)
+        self.assertNotIn("SME", rules)
         self.assertIn("Never give a reason, cause or purpose for a number, percentage, amount, deadline or threshold",
                       rules)
+        material = faq_prompt_material(unit_brief, has_faq=True)["faq_material"]
+        self.assertNotIn("open_questions", material)
+        self.assertNotIn("sme_questions", material["blocks"][0])
+        self.assertEqual(faq_prompt_material(unit_brief, has_faq=False), {})
 
     def test_open_questions_are_optional_in_the_material(self) -> None:
         material = {"blocks": [], "practices": []}
@@ -624,7 +630,9 @@ class UnitTests(StoryboardEndpointTestCase):
                       "any sentence)", provider.calls[1]["prompt"])
         self.assertIn("Đã tự sửa: câu quá dài.", quality.author_note)
 
-    async def test_an_faq_item_that_answers_an_open_sme_question_is_dropped(self) -> None:
+    async def test_an_older_briefs_sme_question_is_ignored(self) -> None:
+        # Owner decision 2026-10-22: the question an older design asked the SME neither reaches the writer nor drops an
+        # FAQ item that is about the same point.
         body = escalate_body()
         unit_brief = body["unit_contract"]["idm_unit_brief"]
         unit_brief["faq_material"]["blocks"][0]["sme_questions"] = [
@@ -635,16 +643,15 @@ class UnitTests(StoryboardEndpointTestCase):
                             ("Điều gì xảy ra nếu xử lý khiếu nại mà bỏ qua yếu tố truyền thông?", WHAT_IF),
                             ("Vì sao khiếu nại cấp 3 hay bị ghi nhầm thành cấp 2?",
                              WHAT_IF.replace("Khi bỏ", "Nếu bỏ")))
-        provider = FakeGenerate(**{WRITER: [writer], REPAIR: [slot_repair(writer, 1)], JUDGE: [judge()]})
+        provider = FakeGenerate(**{WRITER: [writer], JUDGE: [judge()]})
         status, data, _ = await self.post(body, provider)
         self.assertEqual(status, 200)
         quality = self.assert_envelope(data, "provider_validated", "validated", "provider")
-        self.assertIn('"open_questions":["Có nên hứa hoàn tiền cho khách VIP trước khi xác minh đơn hàng không?"]',
-                      provider.calls[0]["prompt"])
-        self.assertIn("c1 IDM_W5_FAQ_OPEN_QUESTION at c1.items[0]: the listed items ask or answer a question the SME "
-                      "has not settled", provider.calls[1]["prompt"])
-        self.assertEqual(len(data["unit"]["components"][1]["items"]), 2)
-        self.assertIn("Đã bỏ 1 câu hỏi đáp trả lời câu hỏi còn chờ SME xác nhận.", quality.author_note)
+        self.assertEqual(provider.names, [WRITER, JUDGE])
+        self.assertNotIn("Có nên hứa hoàn tiền cho khách VIP trước khi xác minh", provider.calls[0]["prompt"])
+        self.assertNotIn("open_questions", provider.calls[0]["prompt"])
+        self.assertEqual(len(data["unit"]["components"][1]["items"]), 3)
+        self.assertNotIn("chờ SME", quality.author_note)
 
 
 class FrameworkBriefTests(unittest.TestCase):

@@ -2,13 +2,13 @@
  "course_design": [
   {
    "schema": "IdmW1ReduceResponseV1",
-   "sha256": "9a4ed2428bad76910d25b7357c67dffefec42005e4ebd567701526a32a549efc",
-   "chars": 14054
+   "sha256": "da3884c5903d5248870be23bdf56f3c999a004f563b88952065fd3ecb35fa56f",
+   "chars": 14131
   },
   {
    "schema": "IdmW1SectionResponseV1",
-   "sha256": "c70706a7a287f792b4af1d32f047abe197022b21bd27c90d4ec46e128c455dff",
-   "chars": 11030
+   "sha256": "625c2bd4f1150cdb95ab2f1659db3b472a290f26d94824adec04dc081d825a1e",
+   "chars": 11040
   },
   {
    "schema": "IdmW2BlueprintResponseV1",
@@ -25,22 +25,22 @@
   "mod_01": [
    {
     "schema": "IdmW3W4ModuleResponseV1",
-    "sha256": "4a9c1a2ca0cfcd806ae24735618edbaf5adef3f0dea71bfe5a5546c3bf25a079",
-    "chars": 15863
+    "sha256": "ba0741a00ded4ef502c3f41dc47ced1a0974935198e54a6a2e1ea461addcbab3",
+    "chars": 15897
    }
   ],
   "mod_02": [
    {
     "schema": "IdmW3W4ModuleResponseV1",
-    "sha256": "9fe6f151015fa9a03631b8e2e591da777cd7061bc573a10e479c18dd1eb92bf1",
-    "chars": 14978
+    "sha256": "b144ff64f653bd4644d5f9408c6c3bed118ac36184f17a2039f67370d58527ec",
+    "chars": 15012
    }
   ],
   "mod_03": [
    {
     "schema": "IdmW3W4ModuleResponseV1",
-    "sha256": "0043c820d035e358886963178b2a05469626b8f03aae502d82862997650dff31",
-    "chars": 18102
+    "sha256": "14f0d24a6745082aa8318dc9b4b1c1f6e46cabae816354f8f13f04edac11cb8c",
+    "chars": 18136
    }
   ]
  },
@@ -48,8 +48,8 @@
   "escalate": [
    {
     "schema": "StagedInstancePayloadUnitIdmWire",
-    "sha256": "f83be9333032b863ed3e6c223021e951620453720e33ccce788833372d8de62c",
-    "chars": 18403
+    "sha256": "d0bb741342ea4e9bd3073dd85d1295fd87d349d69f6fd7b1bbcc90b811d47b0c",
+    "chars": 18228
    },
    {
     "schema": "IdmJudgeResponseV1IdmWire",
@@ -160,16 +160,16 @@
    "chars": 291
   },
   "truncation_suffix/COMPACT_W1_MAP": {
-   "sha256": "c2d3a1f0513aa432205c07ab2101ee102032cc2e3a8ee61f645c10b9aa68972c",
-   "chars": 434
+   "sha256": "490161da6dd1612558ab9d5ac4cae17a866ab225ec9b7f8419f5dfb7807296ba",
+   "chars": 424
   },
   "answer_repair/COMPACT_W1_MAP": {
    "sha256": "9bbd963ad609571d80bb146e609e03b4140af12f53541190c46c92cbfbaf6a46",
    "chars": 290
   },
   "answer_repair/truncated/COMPACT_W1_MAP": {
-   "sha256": "c2d3a1f0513aa432205c07ab2101ee102032cc2e3a8ee61f645c10b9aa68972c",
-   "chars": 434
+   "sha256": "490161da6dd1612558ab9d5ac4cae17a866ab225ec9b7f8419f5dfb7807296ba",
+   "chars": 424
   },
   "truncation_suffix/COMPACT_W1_REDUCE": {
    "sha256": "efae34220ed065837634688b796dc474e521e58af83f0acec552f1f8df4efab5",
@@ -300,13 +300,13 @@
   "course_design": [
    {
     "schema": "IdmW1ReduceResponseV1",
-    "sha256": "fdc61e50fc3b172c252edda95c5b021287197be9db784acd5d615ec08b200ab3",
-    "chars": 15751
+    "sha256": "0c87d4397e7e6769b763563e05aa6bc06c14eda6be499c6b8f9942c7bb5d5188",
+    "chars": 15828
    },
    {
     "schema": "IdmW1SectionResponseV1",
-    "sha256": "c70706a7a287f792b4af1d32f047abe197022b21bd27c90d4ec46e128c455dff",
-    "chars": 11030
+    "sha256": "625c2bd4f1150cdb95ab2f1659db3b472a290f26d94824adec04dc081d825a1e",
+    "chars": 11040
    },
    {
     "schema": "IdmW2BlueprintResponseV1",
@@ -323,22 +323,22 @@
    "mod_01": [
     {
      "schema": "IdmW3W4ModuleResponseV1",
-     "sha256": "f7acdade5165859dbf3d60dabaa31c1fa52e37035157e235632a9a479197c15f",
-     "chars": 17560
+     "sha256": "654b8db0ada6b81895bccb4880d06b0166a15765140fed75237bce08d062c056",
+     "chars": 17594
     }
    ],
    "mod_02": [
     {
      "schema": "IdmW3W4ModuleResponseV1",
-     "sha256": "33ffe5645243fd7140ca153ad51143569ec431b387ff6b291214c6c13186ffb2",
-     "chars": 16675
+     "sha256": "1eba5793148f3bc45fdcd6d8f3f4fbbc733a4323c0c7512c75e34fe5dcfd7859",
+     "chars": 16709
     }
    ],
    "mod_03": [
     {
      "schema": "IdmW3W4ModuleResponseV1",
-     "sha256": "444a2c9162a44eb6d5dbb590244a00daaba1c7a3917cbc893836114963c5451a",
-     "chars": 19799
+     "sha256": "670e9cfb459a700e315f652c30c0e09a101e3e047e3fac78ae399271833f8270",
+     "chars": 19833
     }
    ]
   },
@@ -346,8 +346,8 @@
    "escalate": [
     {
      "schema": "StagedInstancePayloadUnitIdmWire",
-     "sha256": "18c85a3c695fd0dc441408a244c9c9fdb5635b506132c0d754ddf7e16b0a4e2e",
-     "chars": 19553
+     "sha256": "fa0a04b44f01f23ddb04021ddac2ae29960c36dc7d5e22e00496c7d2656bbd02",
+     "chars": 19378
     },
     {
      "schema": "IdmJudgeResponseV1IdmWire",
