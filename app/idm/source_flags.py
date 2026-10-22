@@ -64,11 +64,17 @@ _TRANSITION_RE: Final = re.compile(
     r"look at|turn to|move on|dig|explore|go deeper)\b")
 # A unit note names at most this many points of each kind (the note has 1,500 characters).
 MAX_UNIT_FLAGS: Final = 3
+# Facts a conflict needs to be quoted as two statements that differ.
+_MIN_CONFLICT_FACTS: Final = 2
 _NUMBER_RE: Final = re.compile(r"\d+(?:[.,:]\d+)*")
+# Review 4 of dfb6db2..266d5df: a conflict without a second fact is a rule a learner could apply in two ways (W1 records
+# it as a conflict): its own sentence, never "ghi khác nhau" with one quote or with "một phần khác của tài liệu".
+_AMBIGUOUS: Final = "ambiguous"
 _LEAD_VI: Final = {"conflict": "Tài liệu ghi khác nhau", "unclear": "Tài liệu ghi chưa rõ",
-                   "outdated": "Tài liệu có thể đã cũ"}
+                   "outdated": "Tài liệu có thể đã cũ", _AMBIGUOUS: "Tài liệu có quy định có thể hiểu theo hai cách"}
 _LEAD_EN: Final = {"conflict": "The source differs", "unclear": "The source is unclear",
-                   "outdated": "The source may be out of date"}
+                   "outdated": "The source may be out of date",
+                   _AMBIGUOUS: "The source has a rule that can be read two ways"}
 
 
 @dataclass(frozen=True)
@@ -186,7 +192,8 @@ def _point_sentence(point: _Point, vi: bool) -> str:
     name = single_line(point.name, _NAME_CHARS)
     head = (f"{_LEAD_VI[point.kind]} ở phần “{name}”" if vi else f"{_LEAD_EN[point.kind]} in “{name}”")
     joiner = " và " if vi else " and "
-    body = f"{head}: {joiner.join(point.quotes[:_MAX_QUOTES])}" if point.quotes else head + _pages_text(point.pages, vi)
+    body = (f"{head}: {joiner.join(point.quotes[:_MAX_QUOTES])}" if point.quotes and point.kind != _AMBIGUOUS
+            else head + _pages_text(point.pages, vi))
     return body + _end(point.kind, vi)
 
 
@@ -204,14 +211,14 @@ def flag_sentence(block_name: str, issue: IdmIssueV1, facts: Mapping[str, Source
     named = _named(issue, facts)
     if issue.type in SOFT_FLAG_TYPES and named and all(is_transition(fact.text) for fact in named):
         return None
-    if issue.type == "conflict" and not named:
+    others = [f"“{single_line(other, _NAME_CHARS)}”" for other in dict.fromkeys(partners) if other != block_name]
+    if issue.type == "conflict" and not named and others:
         name = single_line(block_name, _NAME_CHARS)
-        others = [f"“{single_line(other, _NAME_CHARS)}”" for other in dict.fromkeys(partners) if other != block_name]
-        between = (" và ".join(f"phần {other}" for other in others) if others else "một phần khác của tài liệu"
-                   ) if vi else (" and ".join(others) if others else "another part of the source")
+        between = " và ".join(f"phần {other}" for other in others) if vi else " and ".join(others)
         return (f"Tài liệu ghi khác nhau giữa phần “{name}” và {between}" if vi
                 else f"The source differs between “{name}” and {between}") + _end(issue.type, vi)
-    point = _Point(issue.type, block_name, _quotes(named, vi), [fact.page for fact in named if fact.page is not None])
+    kind = _AMBIGUOUS if issue.type == "conflict" and len(named) < _MIN_CONFLICT_FACTS else issue.type
+    point = _Point(kind, block_name, _quotes(named, vi), [fact.page for fact in named if fact.page is not None])
     return _point_sentence(point, vi)
 
 
@@ -248,10 +255,11 @@ def flag_sentences(blocks: Iterable[tuple[str, Sequence[IdmIssueV1]]], facts: Ma
                 continue
             if issue.type in SOFT_FLAG_TYPES and named and all(is_transition(fact.text) for fact in named):
                 continue
-            key = (issue.type, name)
+            kind = _AMBIGUOUS if issue.type == "conflict" and len(named) < _MIN_CONFLICT_FACTS else issue.type
+            key = (kind, name)
             point = points.get(key)
             if point is None:
-                point = points[key] = _Point(issue.type, name)
+                point = points[key] = _Point(kind, name)
                 entries.append(point)
             point.quotes = list(dict.fromkeys([*point.quotes, *_quotes(named, vi)]))
             point.pages.extend(fact.page for fact in named if fact.page is not None)

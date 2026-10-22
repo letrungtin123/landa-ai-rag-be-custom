@@ -297,9 +297,10 @@ class SourceFlagSizeTests(unittest.TestCase):
         sentences = flag_sentences([("Thời hạn phản hồi", [conflict]), ("Escalate khiếu nại", [conflict])], {}, "vi")
         self.assertEqual(sentences, ["Tài liệu ghi khác nhau giữa phần “Thời hạn phản hồi” và phần “Escalate khiếu "
                                      "nại”. Hãy kiểm tra trước khi áp dụng."])
+        # Review 4 of dfb6db2..266d5df: without a second part or fact it is a rule that can be read two ways.
         alone = flag_sentences([("Thời hạn phản hồi", [conflict])], {}, "en")
-        self.assertEqual(alone, ["The source differs between “Thời hạn phản hồi” and another part of the source. "
-                                 "Check this before applying it."])
+        self.assertEqual(alone, ["The source has a rule that can be read two ways in “Thời hạn phản hồi”. Check this "
+                                 "before applying it."])
 
 
 THREE = [{"text": "Báo trưởng ca ngay lập tức để xử lý", "correct": False},

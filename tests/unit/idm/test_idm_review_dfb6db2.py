@@ -9,9 +9,11 @@ from __future__ import annotations
 import json
 import unittest
 from collections import Counter
-from typing import Any
+from types import MappingProxyType
+from typing import Any, Final
 
 from app.idm.answer_checks import copies_example_measure, quoted_key, stem_copies_answer, unit_teaching
+from app.idm.contracts import IdmIssueV1
 from app.idm.hypothetical import SUPPOSITION_ADDED, as_supposition, suppose_semantic
 from app.idm.prompts_course import w1_section_prompt
 from app.idm.prompts_unit import unit_writer_prompt
@@ -24,7 +26,7 @@ from app.idm.qa import (
 )
 from app.idm.quiz_letters import number_item_letters
 from app.idm.quiz_text import EXPLANATION_NAMES_ONLY_CODE, _asks_early, explanation_report, lay_out_quiz
-from app.idm.source_flags import REVIEW_FLAG_TYPES
+from app.idm.source_flags import REVIEW_FLAG_TYPES, SourceFact, flag_sentence, flag_sentences
 from app.idm.source_locked import render_idm_source_locked_html
 from app.idm.text import evidence_index, glued_words
 from app.idm.visual_pages import evidence_needs_check
@@ -543,3 +545,32 @@ class Review4TaughtDataTests(unittest.TestCase):
         data = next(item for item in compacted[0]["semantic_content"]["sections"]
                     if item["heading"] == "Dữ liệu đầu vào")
         self.assertEqual(data["blocks"][0]["rows"], rows)
+
+
+def conflict(*keys: str) -> IdmIssueV1:
+    return IdmIssueV1.model_validate({"type": "conflict", "note": "hai cách hiểu", "fact_keys": list(keys)})
+
+
+class AmbiguousRuleTests(unittest.TestCase):
+    """Review 4 (W1 wording): a conflict without a second fact is a rule that can be read two ways."""
+
+    FACTS: Final = MappingProxyType({
+        "a": SourceFact("Khiếu nại cấp 2 được phản hồi trong vòng 48 giờ kể từ khi tiếp nhận.", 7),
+        "b": SourceFact("Khiếu nại cấp 2 được phản hồi trong vòng 24 giờ kể từ khi tiếp nhận.", 9)})
+
+    def test_one_fact_or_none_reads_as_two_readings(self) -> None:
+        self.assertEqual(flag_sentence("Ba cấp độ", conflict("a"), self.FACTS, "vi"),
+                         "Tài liệu có quy định có thể hiểu theo hai cách ở phần “Ba cấp độ” (trang 7). Hãy kiểm tra "
+                         "trước khi áp dụng.")
+        self.assertEqual(flag_sentence("Ba cấp độ", conflict(), self.FACTS, "vi"),
+                         "Tài liệu có quy định có thể hiểu theo hai cách ở phần “Ba cấp độ”. Hãy kiểm tra trước khi "
+                         "áp dụng.")
+        self.assertEqual(flag_sentences([("Ba cấp độ", [conflict("a")])], self.FACTS, "en"),
+                         ["The source has a rule that can be read two ways in “Ba cấp độ” (page 7). Check this before "
+                          "applying it."])
+
+    def test_two_facts_and_two_parts_still_differ(self) -> None:
+        self.assertTrue(flag_sentence("Ba cấp độ", conflict("a", "b"), self.FACTS, "vi").startswith(
+            "Tài liệu ghi khác nhau ở phần “Ba cấp độ”: “"))
+        self.assertTrue(flag_sentence("Ba cấp độ", conflict(), self.FACTS, "vi", partners=["Ba cấp độ", "Thời hạn"]
+                                      ).startswith("Tài liệu ghi khác nhau giữa phần “Ba cấp độ” và phần “Thời hạn”"))
