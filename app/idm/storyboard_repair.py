@@ -25,6 +25,7 @@ from typing import Final
 from app.idm.budget import repair_thinking_for
 from app.idm.faq_checks import FAQ_HYPE_CODE
 from app.idm.fidelity_checks import NEW_FACT_CODE
+from app.idm.html_rules import DENSITY_CODE
 from app.idm.policy import FAQ_COMPONENT_TYPE, IDM_REPAIR_RETRY_MIN_SECONDS
 from app.idm.qa import (
     ANSWER_CONTESTED_CODE,
@@ -123,6 +124,19 @@ class IdmUnitRepairSteps(IdmUnitWriterSteps):
             return found
 
         made_worse = worse_slots(after)
+        # Review of dfb6db2 (item 6): a worksheet repair that adds its input data and so goes over the budget is
+        # compacted (as the settle step would) before it is judged worse; the compaction's note stays only when kept.
+        over = [index for index, added in made_worse.items() if DENSITY_CODE in added and self.is_worksheet(index)]
+        if over:
+            noted = (self.worksheet_compacted, self.worksheet_example_kept, len(self.codes))
+            compacted = after
+            for index in over:
+                compacted = self.compact_worksheet(compacted, index) or compacted
+            if compacted is not after and not set(over) & set(worse_slots(compacted)):
+                after, made_worse = compacted, worse_slots(compacted)
+            else:
+                self.worksheet_compacted, self.worksheet_example_kept = noted[0], noted[1]
+                del self.codes[noted[2]:]
         if not made_worse:
             return after
         slots = sorted(made_worse)

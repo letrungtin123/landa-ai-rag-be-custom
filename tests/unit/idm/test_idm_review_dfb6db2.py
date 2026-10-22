@@ -28,7 +28,19 @@ from app.idm.worksheet import compact_worksheet, plan_worksheet_html
 from app.idm.worksheet_input import is_example_section, is_input_section, missing_input, reused_entries
 from tests.unit.idm.test_idm_qc_feedback import SUGGESTED
 from tests.unit.idm.test_idm_qc_run_5496155c import facts_of
-from tests.unit.idm.test_idm_storyboard import StoryboardEndpointTestCase, rehashed_brief, severity_body, worksheet_body
+from tests.unit.idm.test_idm_storyboard import (
+    JUDGE,
+    REPAIR,
+    WRITER,
+    FakeGenerate,
+    StoryboardEndpointTestCase,
+    judge,
+    rehashed_brief,
+    severity_body,
+    slot_repair,
+    worksheet_body,
+    worksheet_writer,
+)
 
 
 def flat(text: str) -> str:
@@ -320,3 +332,37 @@ class NoteOrderTests(unittest.TestCase):
             callouts_repeating=1, suppositions=2, framework_list_inserted=5, worksheet_compacted=True)
         self.assertLessEqual(len(note), 1500)
         self.assertIn("Cần xem khối 2 (Quiz)", note)
+
+
+GUIDANCE = (" Đọc kỹ mô tả của khách hàng, ghi lại thiệt hại, số lần phàn nàn và các yếu tố an toàn, pháp lý, truyền "
+            "thông trước khi chọn cấp độ cho từng trường hợp.")
+
+
+class RepairOverBudgetTests(StoryboardEndpointTestCase):
+    """Item 6: a repair that adds the worksheet's data and goes over the budget was reverted to the data-less
+    draft; it is compacted first."""
+
+    async def test_the_repair_with_the_data_is_compacted_not_reverted(self) -> None:
+        body = worksheet_body()
+        repaired = worksheet_writer(body)
+        task, template, example, check = repaired["components"]["c0"]["semantic_content"]["sections"]
+        complaints = task["blocks"].pop()
+        for row in template["blocks"][0]["rows"]:
+            row["value"] += GUIDANCE * 4
+        repaired["components"]["c0"]["semantic_content"]["sections"] = [
+            task, section("Dữ liệu đầu vào", complaints), template, example, check]
+        writer = worksheet_writer(body)
+        writer["components"]["c0"]["semantic_content"]["sections"][0]["blocks"].pop()
+        self.assertIsNotNone(missing_input(writer["components"]["c0"]))
+        provider = FakeGenerate(**{WRITER: [writer], REPAIR: [slot_repair(repaired, 0)], JUDGE: [judge()]})
+        status, data, _ = await self.post(body, provider)
+        self.assertEqual(status, 200, data.get("detail"))
+        slot = data["unit"]["components"][0]
+        self.assertNotIn("source_locked_fallback", slot)
+        data_section = next(item for item in slot["semantic_content"]["sections"]
+                            if item["heading"] == "Dữ liệu đầu vào")
+        self.assertEqual(len(data_section["blocks"][0]["items"]), 3)
+        note = data["unit"]["idm_quality"]["author_note"]
+        self.assertNotIn("Cần xem khối 1", note)
+        self.assertIn("Phiếu thực hành dài hơn giới hạn nên đã rút gọn", note)
+        self.assertIn("Đã tự sửa: phiếu thực hành thiếu dữ liệu đầu vào", note)
