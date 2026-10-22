@@ -13,7 +13,9 @@ import unittest
 from pathlib import Path
 from typing import Any
 
+from app.contracts.orchestration_v2.blueprint import ArchitectureMediaBriefV2
 from app.idm.mcq import normalize_single_choice
+from app.idm.media_detail import complete_media_brief, media_brief_gaps
 from app.idm.quiz_text import (
     QUESTION_LENGTH_CODE,
     QUESTION_LIMIT_CODE,
@@ -123,3 +125,45 @@ class StemLengthTests(StoryboardEndpointTestCase):
         note = data["unit"]["idm_quality"]["author_note"]
         self.assertIn("Nên biên tập khối 2 (Quiz): đề câu hỏi dài", note)
         self.assertNotIn("Cần tác giả xem lại", note)
+
+
+THIN_POINTS = ["Cấp 1: ảnh hưởng thấp, nhân viên tự xử lý", "Cấp 2: thiệt hại dưới 50 triệu đồng, báo trưởng nhóm"]
+LONG_POINT = ("Cấp 3: khiếu nại liên quan an toàn, pháp lý hoặc truyền thông phải được escalate ngay cho quản lý và bộ "
+              "phận Pháp chế theo quy trình CR-04 trong cùng ngày tiếp nhận")
+
+
+def brief(case: dict[str, Any], **changes: Any) -> ArchitectureMediaBriefV2:
+    fields = {key: case[key] for key in ("type", "title", "content_points", "context_description", "rationale")}
+    return ArchitectureMediaBriefV2.model_validate({**fields, **changes})
+
+
+class MediaBriefCompletionTests(unittest.TestCase):
+    """Fix 3: the completion ran on a detailed AI brief ("Nửa dưới gồm 4 cột … Khung 1 đến Khung 4") and appended "5
+    khung" with cut quotes. Only a really thin brief is completed, never with a numbering of its own when the AI
+    numbered its frames or scenes, and a point is quoted whole or not at all."""
+
+    def test_the_four_briefs_of_the_run_stay_as_the_ai_wrote_them(self) -> None:
+        for case in RUN["media_briefs"]:
+            original = brief(case)
+            self.assertEqual(media_brief_gaps(original), [], case["lesson_key"])
+            self.assertIs(complete_media_brief(original, "vi"), original)
+
+    def test_a_thin_brief_quotes_whole_short_points_only(self) -> None:
+        case = RUN["media_briefs"][0]
+        thin = brief(case, context_description="Một bảng kiểm treo tại phòng họp.",
+                     content_points=[*THIN_POINTS, LONG_POINT])
+        completed = complete_media_brief(thin, "vi")
+        assert completed is not None
+        text = completed.context_description
+        self.assertIn(f"Khung 1: “{THIN_POINTS[0]}”", text)
+        self.assertIn(f"Khung 2: “{THIN_POINTS[1]}”", text)
+        self.assertIn("Khung 3: ý 3 của nội dung", text)
+        self.assertNotIn("…", text)
+        self.assertLessEqual(len(text), 1000)
+
+    def test_a_short_brief_that_numbers_its_frames_gets_no_second_numbering(self) -> None:
+        case = RUN["media_briefs"][0]
+        numbered = brief(case, context_description="Khung 1 ghi Cấp 1. Khung 2 ghi Cấp 2.",
+                         content_points=THIN_POINTS)
+        self.assertEqual(media_brief_gaps(numbered), [])
+        self.assertIs(complete_media_brief(numbered, "vi"), numbered)

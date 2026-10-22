@@ -385,8 +385,11 @@ class MediaBriefTests(unittest.IsolatedAsyncioTestCase):
     """A4: the description of a suggested infographic or video is a brief a designer can draw from."""
 
     def test_the_gaps_of_a_thin_description(self) -> None:
-        self.assertEqual(media_brief_gaps(media(THIN)), [
-            "7 words (at least 40)", "no layout", "no text on the image", "content points 1, 2, 3 not described"])
+        # Owner decision 2026-10-22: judged by meaning (length, layout, something drawn or written); a "bảng kiểm" is
+        # drawn.
+        self.assertEqual(media_brief_gaps(media(THIN)), ["7 words (at least 40)", "no layout"])
+        self.assertEqual(media_brief_gaps(media("Không khí vui vẻ.")),
+                         ["4 words (at least 40)", "no layout", "nothing drawn or written on the image"])
         self.assertEqual(media_brief_gaps(media(RICH)), [])
         # A point the description names by its words (not its number) counts as described.
         by_words = RICH.replace("Khung 2 ở giữa ghi “Cấp 2” với con số “dưới 50 triệu đồng”",
@@ -411,10 +414,12 @@ class MediaBriefTests(unittest.IsolatedAsyncioTestCase):
     def test_the_completion_fits_the_contract(self) -> None:
         long_points = [" ".join(["Bước", str(number), *(["xử lý khiếu nại đúng quy trình"] * 20)])[:600]
                        for number in range(1, 7)]
-        completed = complete_media_brief(media("Một cảnh văn phòng. " * 40, long_points), "vi")
+        completed = complete_media_brief(media("Một cảnh văn phòng. " * 5, long_points), "vi")
         assert completed is not None
         self.assertLessEqual(len(completed.context_description), 1000)
-        self.assertIn("Khung 6: “Bước 6", completed.context_description)
+        # Owner decision 2026-10-22: a long point is named by its number, never quoted cut.
+        self.assertIn("Khung 6: ý 6 của nội dung", completed.context_description)
+        self.assertNotIn("…", completed.context_description)
         ArchitectureMediaBriefV2.model_validate(completed.model_dump(mode="json"))
 
     async def test_the_module_stage_completes_a_thin_brief_without_a_call(self) -> None:

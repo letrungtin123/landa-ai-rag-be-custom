@@ -260,6 +260,9 @@ QUIZ_FILLER_EN: Final = (
 # words (``app.idm.media_detail``; the contract allows 1000 characters). A thinner one is completed by the server from
 # the content points' own words, each quoted with at most this many words.
 IDM_MEDIA_CONTEXT_MIN_WORDS: Final = 40
+# Owner decision 2026-10-22 (run dfe78482): a description of this many words or more is never completed by the server,
+# nor one that numbers its frames or scenes; a point is quoted whole when it has at most the label words, else named.
+IDM_MEDIA_CONTEXT_DETAILED_WORDS: Final = 80
 IDM_MEDIA_POINT_LABEL_MAX_WORDS: Final = 24
 IDM_MEDIA_CONTEXT_MAX_CHARS: Final = 1000
 IDM_CALLOUT_REPEAT_NGRAM: Final = 3
