@@ -128,7 +128,6 @@ from app.idm.storyboard_context import (
 from app.idm.storyboard_judge import judge_and_repair as _judge_and_repair
 from app.idm.storyboard_judge import unit_review_reasons
 from app.idm.storyboard_repair import IdmUnitRepairSteps
-from app.idm.worksheet_input import WORKSHEET_INPUT_CODE, input_hint, missing_input
 
 _FIELD_OF_PATH_RE: Final = re.compile(r"^components\[\d+\]\.?")
 # FAQ findings settled by dropping the items concerned while the slot keeps two items.
@@ -214,8 +213,8 @@ class IdmUnitWriter(IdmUnitRepairSteps):
                         lines.append(self.length_cue_line(slot, component))
                     elif code == ANSWER_CONTESTED_CODE and isinstance(component, dict):
                         lines.append(self.contested_rule_line(slot, index, component, unit))
-                    elif code == WORKSHEET_INPUT_CODE and isinstance(component, dict):
-                        lines.append(rule_line(slot, code, slot) + input_hint(missing_input(component)))
+                    elif (hint := self.slot_hint(code, component)) is not None:
+                        lines.append(rule_line(slot, code, slot) + hint)
                     elif code in QUIZ_CODES and isinstance(component, dict):
                         field = "question" if code in QUESTION_CODES else "explanation"
                         lines.append(rule_line(slot, code, f"{slot}.{field}")
@@ -363,12 +362,12 @@ class IdmUnitWriter(IdmUnitRepairSteps):
 
         def parse(text: str) -> dict[str, Any]:
             delta: Any = None
-            drops = dict(self.callout_drops)
+            drops = dict(self.callout_drops), dict(self.supposed)
             try:
                 delta = self.decode_repair(text, draft.unit, targets, coverage)
                 return self.deps.merge_repair(draft.unit, delta, targets, coverage)
             except self.deps.recoverable_errors as error:
-                self.callout_drops = drops
+                self.callout_drops, self.supposed = drops
                 self.report_recoverable("idm_w5_repair", "IDM_W5_REPAIR_INVALID", error)
                 details = (safe_error_details(error) + self.delta_details(delta))[:_MAX_LOGGED_DETAILS]
                 raise IdmResponseInvalidError("IDM_W5_REPAIR_INVALID", details) from error
@@ -700,7 +699,8 @@ async def run_idm_unit(
         suggested_criteria=not whole_fallback and writer.suggested_criteria(draft.fallback_slots),
         placeholder_slots=writer.placeholder_slots if whole_fallback else (),
         glued=fallback_glued_words(components, draft.fallback_slots), source_flags=writer.source_flags,
-        source_notes=writer.source_notes)
+        source_notes=writer.source_notes,
+        suppositions=0 if whole_fallback else writer.supposed_count(draft.fallback_slots))
     quality = build_unit_quality(mode=deps.judge_mode, judge=judge, repair_applied=draft.repair_applied,
                                  deterministic_codes=[*writer.codes, *(item.code for item in remaining)],
                                  author_note=note)

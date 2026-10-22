@@ -189,10 +189,15 @@ class QuizCheckTests(unittest.TestCase):
         no_principle = "A - Sai vì x.\nB - Đúng vì y.\nC - Sai vì z."
         self.assertIn(EXPLANATION_LAYOUT_CODE, explanation_report(problem(no_principle)))
 
-    def test_a_phrase_the_facts_use_is_no_filler(self) -> None:
+    def test_a_phrase_the_facts_use_is_no_filler_unless_it_is_hype(self) -> None:
+        # Owner decision 2026-10-22 (run 5496155c): a hype word is filler even when the facts use it.
         rule = "B - Đúng vì quy định tuyệt đối không hứa bồi thường trước khi phân loại."
         self.assertEqual(filler_phrases(rule), ["tuyệt đối"])
-        self.assertEqual(filler_phrases(rule, evidence_index(["Tuyệt đối không hứa bồi thường trước."])), [])
+        self.assertEqual(filler_phrases(rule, evidence_index(["Tuyệt đối không hứa bồi thường trước."])),
+                         ["tuyệt đối"])
+        plain = "B - Đúng vì đây hiển nhiên là bước đầu tiên của quy trình."
+        self.assertEqual(filler_phrases(plain), ["hiển nhiên"])
+        self.assertEqual(filler_phrases(plain, evidence_index(["Kiểm tra hồ sơ hiển nhiên là bước đầu."])), [])
 
     def test_the_stem_layout_and_length(self) -> None:
         four = "Câu một. Câu hai. Câu ba.\nCâu hỏi nào?"
@@ -238,9 +243,10 @@ class LineFeedEndToEndTests(StoryboardEndpointTestCase):
         self.assertEqual(status, 200)
         self.assertEqual(provider.names, [WRITER, REPAIR, JUDGE])
         self.assertEqual(provider.calls[1]["thinking_level"], "low")
-        self.assertIn('c1 IDM_W5_EXPLANATION_FILLER at c1.explanation: replace the empty praise or slogan quoted below '
-                      'with the concrete reason the unit teaches (the rule, criterion or step the option meets or '
-                      'breaks) (remove: "dũng cảm", "khác biệt tuyệt đối")', provider.calls[1]["prompt"])
+        self.assertIn('c1 IDM_W5_EXPLANATION_FILLER at c1.explanation: replace the empty praise, slogan or hype word '
+                      'quoted below (even when the source uses it) with the concrete reason the unit teaches (the '
+                      'rule, criterion or step the option meets or breaks) (remove: "dũng cảm", "khác biệt tuyệt '
+                      'đối")', provider.calls[1]["prompt"])
         note = data["unit"]["idm_quality"]["author_note"]
         self.assertIn("Đã tự sửa: lời giải dùng chữ sáo rỗng.", note)
         self.assertEqual(data["quality_state"], "validated")

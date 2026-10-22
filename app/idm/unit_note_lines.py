@@ -30,6 +30,15 @@ def callout_lines(vi: bool, *, to_prose: int, repeating: int) -> list[str]:
     return lines
 
 
+def supposition_line(count: int, vi: bool) -> str:
+    """The note of the drafted cases told as a real past event that now open with "Giả sử" (run 5496155c)."""
+
+    return (f"Đã thêm «Giả sử» trước {count} tình huống AI soạn được kể như chuyện đã xảy ra (như «Trong quý vừa "
+            "qua…») — tác giả nên đọc lại." if vi
+            else f"Added «Suppose that» before {count} AI-drafted case(s) told as a past event (such as «Last "
+                 "quarter…») — the author should read them again.")
+
+
 def worksheet_line(vi: bool, *, example_kept: bool) -> str:
     """The note of a worksheet the server shortened to fit its budget (QC run 8de1c76b, Q2; QLT-9)."""
 
@@ -118,4 +127,4 @@ def faq_inferred_line(inferred: Mapping[int, int], slot_types: Sequence[str], vi
 
 
 __all__ = ["SLOT_LABEL_EN", "SLOT_LABEL_VI", "SUGGESTED_CRITERIA_LINE", "callout_lines", "drafted_examples_line",
-           "dropped_faq_lines", "example_numbers_line", "faq_inferred_line", "worksheet_line"]
+           "dropped_faq_lines", "example_numbers_line", "faq_inferred_line", "supposition_line", "worksheet_line"]

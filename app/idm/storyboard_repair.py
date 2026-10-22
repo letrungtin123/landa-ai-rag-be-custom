@@ -23,6 +23,7 @@ from collections.abc import Sequence
 from typing import Final
 
 from app.idm.budget import repair_thinking_for
+from app.idm.faq_checks import FAQ_HYPE_CODE
 from app.idm.fidelity_checks import NEW_FACT_CODE
 from app.idm.policy import FAQ_COMPONENT_TYPE, IDM_REPAIR_RETRY_MIN_SECONDS
 from app.idm.qa import (
@@ -185,7 +186,8 @@ class IdmUnitRepairSteps(IdmUnitWriterSteps):
 
         faq = {index for _code, index in issues
                if 0 <= index < len(self.plans) and self.plans[index]["type"] == FAQ_COMPONENT_TYPE}
-        style_only = faq - {index for code, index in issues if code not in STYLE_CODES}
+        # Run 5496155c (owner decision 2026-10-22): hype words are repaired once, then noted.
+        style_only = faq - {index for code, index in issues if code not in STYLE_CODES or code == FAQ_HYPE_CODE}
         if style_only:
             self.runtime.adjustments["w5_faq_style_repair_skipped"] += len(style_only)
         return [(code, index) for code, index in issues if index not in style_only]

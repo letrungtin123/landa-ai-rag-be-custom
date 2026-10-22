@@ -44,6 +44,7 @@ PROMPT_TEMPLATE_SOURCES: Final = (
     "app.idm.faq_checks:faq_writer_rules",
     "app.idm.faq_checks:faq_prompt_material",
     "app.idm.faq_checks:FaqChecker.plan_hint",
+    "app.idm.faq_checks:FaqChecker.hype_hint",
     "app.idm.framework:framework_support_lines",
     "app.idm.quiz_text:quiz_hint",
     "app.idm.worksheet_input:input_hint",
@@ -61,6 +62,7 @@ PROMPT_TEMPLATE_SOURCES: Final = (
     "app.idm.storyboard:IdmUnitWriter.length_cue_line",
     "app.idm.storyboard:IdmUnitWriter.fact_hint",
     "app.idm.storyboard:IdmUnitWriter.acceptance_rule_lines",
+    "app.idm.storyboard_steps:IdmUnitWriterSteps.slot_hint",
 )
 UNAVAILABLE: Final = "unavailable"
 

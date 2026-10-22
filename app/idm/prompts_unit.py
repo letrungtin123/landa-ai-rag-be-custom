@@ -63,8 +63,10 @@ _QUIZ_TEXT_RULE: Final = f"""\
   because …"), one sentence of at most {IDM_MCQ_EXPLANATION_OPTION_MAX_WORDS} words giving the REASON from what this
   unit taught (the rule, criterion or step the option meets or breaks); it never repeats the option's own words and
   agrees with that option's text and with the answer key (never call a distractor that meets the criterion wrong, or
-  the reverse). No empty praise or slogan instead of a reason ("dũng cảm", "tuyệt đối", "vượt trội", "Say No",
-  "brave", "absolutely"); at most {IDM_MCQ_EXPLANATION_MAX_CHARS} characters in all. The shape, in JSON:
+  the reverse). No empty praise, slogan or hype word instead of a reason, even when the source uses it ("sinh tử",
+  "dũng cảm", "đập tan", "triệt để", "khổng lồ", "tuyệt đối", "vượt trội", "Say No", "brave", "absolutely"; only a
+  quoted name of a source concept keeps its words); at most {IDM_MCQ_EXPLANATION_MAX_CHARS} characters in all. The
+  shape, in JSON:
   "question": "Tại một doanh nghiệp, ba nhóm khách hàng như sau:\\n- Nhóm X: …\\n- Nhóm Y: …\\nBạn nên làm gì?"
   "explanation": "Nguyên tắc: …\\nA - Sai vì …\\nB - Đúng vì …\\nC - Sai vì …\""""
 # A worksheet slot (role practice). A5 (owner decision 2026-10-22): criteria the AI suggested because the source states
@@ -188,7 +190,8 @@ Writing rules (learner-facing, {locale_name(locale)}):
   ai_drafted, or a slot with "examples": "ai_drafted"); they never add rules, numbers or names, and their main person
   has the learner's own role (TARGET_AUDIENCE), never one of another level (no team lead in a course for executives).
   Vary how examples and cases open (not every one "Một CEO …": "Giả sử bạn …", "Tại một doanh nghiệp …", "Ban điều
-  hành của …"){opening_line}.
+  hành của …"){opening_line}. A drafted case is a supposition ("Giả sử …", "Hãy hình dung …"), never told as a real
+  past event ("Trong quý vừa qua …", "Năm ngoái, …"; the server writes "Giả sử" before such an opening).
 - The course is self-paced e-learning: no classroom instructions (no "trước khi rời lớp/học phần", "thảo luận nhóm
   tại lớp", "giảng viên sẽ …").
 - An abbreviation the learner may not know gets its full form in brackets the first time this unit uses it, only as
@@ -426,8 +429,12 @@ UNIT_RULE_TEXT: Final[dict[str, str]] = {
     "IDM_W5_EXPLANATION_VERDICT": "make the verdict of every option line match the answer key: only the correct "
                                   "option's line says Đúng / Correct, every other line Sai / Incorrect, each with the "
                                   "reason the unit teaches",
-    "IDM_W5_EXPLANATION_FILLER": "replace the empty praise or slogan quoted below with the concrete reason the unit "
-                                 "teaches (the rule, criterion or step the option meets or breaks)",
+    "IDM_W5_EXPLANATION_FILLER": "replace the empty praise, slogan or hype word quoted below (even when the source "
+                                 "uses it) with the concrete reason the unit teaches (the rule, criterion or step the "
+                                 "option meets or breaks)",
+    "IDM_W5_FAQ_HYPE": "the answers use the hype words quoted below, banned even when the source uses them: say the "
+                       "plain reason or consequence the facts give instead; keep the questions, their types and every "
+                       "fact",
     "IDM_W5_EXPLANATION_LENGTH": f"shorten the explanation: the principle line one sentence (two at most) of at most "
                                  f"{IDM_MCQ_EXPLANATION_PRINCIPLE_MAX_WORDS} words, each option line one sentence of "
                                  f"at most {IDM_MCQ_EXPLANATION_OPTION_MAX_WORDS} words, at most "

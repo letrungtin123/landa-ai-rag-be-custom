@@ -247,6 +247,13 @@ QUIZ_FILLER_EN: Final = (
     "brave", "bravely", "boldly", "absolutely", "breakthrough", "game-changer", "game changer", "perfectly",
     "amazing", "incredible", "obviously", "of course", "undeniably", "say no", "smart move", "wise choice",
 )
+# Run 5496155c (owner decision 2026-10-22): hype words are banned in quiz explanations and FAQ answers even when the
+# source uses them (one course repeated "vượt trội" 9 times, "tuyệt đối" 8, "dũng cảm" 6, "triệt để" 6, "sinh tử" 4,
+# "đập tan" 4). Only inside a quoted name of a source concept ("chiến lược “Say No”": at most
+# ``IDM_HYPE_NAME_MAX_WORDS`` words the facts write in that order) they stay.
+HYPE_VI: Final = ("sinh tử", "dũng cảm", "đập tan", "triệt để", "khổng lồ", "tuyệt đối", "vượt trội", "say no")
+HYPE_EN: Final = ("life-or-death", "brave", "bravely", "absolutely")
+IDM_HYPE_NAME_MAX_WORDS: Final = 6
 # QC feedback 2026-10-21 (A3): a callout (a "warning" block, shown as a quotation) adds a point; one that only repeats
 # the paragraphs before it in its section goes (``app.idm.qa_checks.repeated_callouts``). Review M3 (2026-10-22): a
 # callout is a repeat only when it states no number and no negation those paragraphs do not ("cấp 3 … 24 giờ" under

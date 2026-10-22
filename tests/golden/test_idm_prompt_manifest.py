@@ -140,12 +140,17 @@ HASH_HISTORY: tuple[tuple[str, str], ...] = (
     # rule asks for another noun.
     ("803bdc52ad4009760d352ce3677c15c7313cf38417ddd8161d85e59f317f3bfa",
      "Stem items never named like the options; one question, once"),
-    # Run 5496155c: the W5 practice rules say the case and its listed items never copy the worked example, a table row or
-    # a list item, the key repeats no figure of the example, distractors are plausible misapplications (never "chi phí
-    # cực cao"), and for a formula of required parts each distractor lacks one named part; the leak and contested repair
-    # rules say the same; the judge's Q5 checks every option against the taught definition.
+    # Run 5496155c: the W5 practice rules say the case and its listed items never copy the worked example, a table row
+    # or a list item, the key repeats no figure of the example, distractors are plausible misapplications (never "chi
+    # phí cực cao"), and for a formula of required parts each distractor lacks one named part; the leak and contested
+    # repair rules say the same; the judge's Q5 checks every option against the taught definition.
     ("a841942ec0efce3dfeaca11e3c367f3c2d75798c1fdd3a9fff79fc523ef53921",
      "No leak through the stem; plausible distractors; every option checked"),
+    # Run 5496155c (owner decision 2026-10-22): QUIZ TEXT and the FAQ writer rules ban hype words in explanations and
+    # FAQ answers even when the source uses them (a quoted name of a source concept keeps its words); a drafted case
+    # is a supposition ("Giả sử …"), never told as a real past event; the IDM_W5_FAQ_HYPE repair rule and its hint.
+    ("3ee3d4f13bd2dd1c027e69343066dd49971549913e53e5833b77a100b494e7bc",
+     "No hype words in explanations and FAQ answers; drafted cases as suppositions"),
 )
 PROMPT_NAME = re.compile(r"(prompt|_rules?$|_suffix$|rule_lines?$|_hint$|^rule_line$|_cue_line$)")
 

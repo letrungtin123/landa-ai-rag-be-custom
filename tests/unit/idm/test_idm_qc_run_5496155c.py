@@ -9,10 +9,13 @@ from __future__ import annotations
 import json
 import re
 import unittest
+from collections import Counter
 from typing import Any
 
 from app.idm.answer_checks import copies_example_measure, resolved_choices, stem_copies_answer, unit_teaching
 from app.idm.contracts import IdmIssueV1, brief_hash_of
+from app.idm.faq_checks import faq_writer_rules
+from app.idm.hypothetical import SUPPOSITION_ADDED, as_supposition, suppose_semantic
 from app.idm.notes import build_course_notes
 from app.idm.prompts_judge import judge_prompt
 from app.idm.prompts_module import module_prompt
@@ -22,6 +25,7 @@ from app.idm.quiz_text import (
     QUESTION_ITEM_NOUN_CODE,
     QUESTION_TWICE_CODE,
     explanation_report,
+    hype_phrases,
     lay_out_quiz,
     number_item_letters,
     question_report,
@@ -36,11 +40,12 @@ from app.idm.source_flags import (
     is_transition,
 )
 from app.idm.source_locked import render_idm_source_locked_html
-from app.idm.text import glued_words
+from app.idm.text import evidence_index, glued_words
 from app.idm.worksheet import plain_self_check
 from app.idm.worksheet_input import InputReference, input_hint, missing_input
 from tests.support.idm_test_support import rehash_contract
 from tests.unit.idm.test_idm_fallback_matrix import procedure_steps, unit_findings, with_fact_texts
+from tests.unit.idm.test_idm_faq import EXPLAINED, WHAT_IF, faq_writer
 from tests.unit.idm.test_idm_qc_feedback import (
     CONFLICT,
     LINES,
@@ -605,3 +610,110 @@ class LeakAndContestEndpointTests(StoryboardEndpointTestCase):
 PRACTICE_RULES = unit_writer_prompt(
     "vi", course_title="", audience="", lesson_title="", lesson_objective="", practice_sentences=[],
     previous_title=None, next_title=None, unit_brief={}, facts=[], context_facts=[])
+
+
+# The run's hype words, in synthetic sentences; the facts use two of them (the run's source did too).
+HYPE_FACTS = evidence_index(["Đây là cuộc chiến sinh tử của doanh nghiệp.",
+                             "Chiến lược Say No giúp đội ngũ tập trung nguồn lực."])
+
+
+class HypeWordTests(StoryboardEndpointTestCase):
+    """Item 8: hype words go from explanations and FAQ answers even when the source uses them; a quoted name of a
+    source concept keeps its words."""
+
+    def test_a_hype_word_counts_even_when_the_source_uses_it(self) -> None:
+        self.assertEqual(hype_phrases("A - Sai vì đây là vấn đề sinh tử.", HYPE_FACTS), ["sinh tử"])
+        self.assertEqual(hype_phrases("B - Đúng vì xử lý triệt để và vượt trội.", HYPE_FACTS),
+                         ["triệt để", "vượt trội"])
+        self.assertEqual(hype_phrases("Absolutely the right call.", HYPE_FACTS), ["absolutely"])
+        self.assertEqual(hype_phrases("B - Đúng vì phản hồi khách trong 24 giờ.", HYPE_FACTS), [])
+
+    def test_only_a_quoted_source_name_keeps_its_words(self) -> None:
+        quoted = "B - Đúng vì áp dụng chiến lược “Say No” với yêu cầu ngoài phạm vi."
+        self.assertEqual(hype_phrases(quoted, HYPE_FACTS), [])
+        # Not a name the facts write, not quoted, or a whole quoted sentence: the word counts.
+        self.assertEqual(hype_phrases(quoted), ["say no"])
+        self.assertEqual(hype_phrases("B - Đúng vì bạn dám Say No với khách.", HYPE_FACTS), ["say no"])
+        sentence = "C - Sai vì tài liệu ghi “đây là cuộc chiến sinh tử của doanh nghiệp”."
+        self.assertEqual(hype_phrases(sentence, HYPE_FACTS), ["sinh tử"])
+
+    async def test_an_faq_answer_with_hype_is_repaired_once_then_an_edit_note(self) -> None:
+        body = escalate_body()
+        hyped = EXPLAINED + " Đây là sai lầm sinh tử, cần xử lý triệt để."
+        writer = faq_writer(body, ("Vì sao không nên hứa hoàn tiền khi khách vừa gọi đến?", hyped),
+                            ("Điều gì xảy ra nếu xử lý khiếu nại mà bỏ qua yếu tố truyền thông?", WHAT_IF))
+        provider = FakeGenerate(**{WRITER: [writer], REPAIR: [slot_repair(writer, 1)], JUDGE: [judge()]})
+        status, data, _ = await self.post(body, provider)
+        self.assertEqual(status, 200)
+        self.assertEqual(provider.names, [WRITER, REPAIR, JUDGE])
+        self.assertIn("c1 IDM_W5_FAQ_HYPE at c1: the answers use the hype words quoted below, banned even when the "
+                      "source uses them", provider.calls[1]["prompt"])
+        self.assertIn('(remove: "sinh tử", "triệt để")', provider.calls[1]["prompt"])
+        self.assertEqual(provider.calls[1]["thinking_level"], "low")
+        # The item stays (a wording finding never drops it); the author polishes it.
+        self.assertEqual(data["unit"]["components"][1]["items"][0]["answer"], hyped)
+        self.assertEqual(data["quality_state"], "validated")
+        self.assertIn("Nên biên tập khối 2 (Hỏi đáp): câu trả lời hỏi đáp dùng chữ thổi phồng",
+                      data["unit"]["idm_quality"]["author_note"])
+
+    def test_the_prompts_ban_hype_in_explanations_and_faq_answers(self) -> None:
+        self.assertIn('No empty praise, slogan or hype word instead of a reason, even when the source uses it ("sinh '
+                      'tử",', PRACTICE_RULES)
+        self.assertIn('No hype word, even when the source uses it ("sinh tử", "dũng cảm", "đập tan", "triệt để", '
+                      '"khổng lồ", "tuyệt đối", "vượt trội", "Say No")', faq_writer_rules("explain"))
+
+
+class SuppositionTests(StoryboardEndpointTestCase):
+    """Item 8: a drafted case told as a real past event ("Trong quý vừa qua, …") opens with "Giả sử"."""
+
+    def test_only_a_past_time_opening_the_facts_do_not_use_is_supposed(self) -> None:
+        changed = {
+            "Trong quý vừa qua, bộ phận kinh doanh đã áp dụng quy trình bốn bước.":
+                "Giả sử trong quý vừa qua, bộ phận kinh doanh đã áp dụng quy trình bốn bước.",
+            "Khách hàng phàn nàn. Năm ngoái, công ty mất ba khách lớn.":
+                "Khách hàng phàn nàn. Giả sử năm ngoái, công ty mất ba khách lớn.",
+            "Trong năm qua bạn đã ký ba hợp đồng.": "Giả sử trong năm qua bạn đã ký ba hợp đồng.",
+        }
+        for text, expected in changed.items():
+            self.assertEqual(as_supposition(text, "vi", None), (expected, 1))
+        self.assertEqual(as_supposition("Last quarter, the team missed two deadlines.", "en", None),
+                         ("Suppose that last quarter, the team missed two deadlines.", 1))
+        for text in ("Tháng trước bạn nhận được đơn.", "Quý trước là quý tốt nhất.",
+                     "Giả sử trong quý vừa qua, khách chờ báo giá.", "Doanh số trong quý vừa qua tăng."):
+            self.assertEqual(as_supposition(text, "vi", None), (text, 0))
+        sourced = "Trong quý vừa qua, doanh số tăng 5%."
+        self.assertEqual(as_supposition(sourced, "vi", evidence_index([sourced])), (sourced, 0))
+
+    def test_texts_items_and_cells_change_never_headings_or_labels(self) -> None:
+        slot = html_slot(("Trong quý vừa qua", [
+            {"kind": "paragraph", "text": "Trong quý vừa qua, một chuyên viên đã hoàn thiện mẫu phân tích."},
+            {"kind": "bullets", "items": ["Năm ngoái, khách chờ duyệt hợp đồng nhiều ngày.", "Khách cần báo giá."]},
+            rows(("Trong quý vừa qua", "Trong quý vừa qua, khách hàng gặp nút thắt khi chờ phê duyệt."))]))
+        counts: Counter[str] = Counter()
+        semantic = suppose_semantic(slot["semantic_content"], "vi", None, counts)
+        self.assertEqual(counts[SUPPOSITION_ADDED], 3)
+        section = semantic["sections"][0]
+        self.assertEqual(section["heading"], "Trong quý vừa qua")
+        self.assertTrue(section["blocks"][0]["text"].startswith("Giả sử trong quý vừa qua, một chuyên viên"))
+        self.assertEqual(section["blocks"][1]["items"][1], "Khách cần báo giá.")
+        self.assertEqual(section["blocks"][2]["rows"][0]["label"], "Trong quý vừa qua")
+        self.assertTrue(section["blocks"][2]["rows"][0]["value"].startswith("Giả sử trong quý vừa qua, khách hàng"))
+        self.assertIs(suppose_semantic(semantic, "vi", None, counts), semantic)
+
+    async def test_the_unit_reads_as_a_supposition_and_the_author_is_told(self) -> None:
+        body = severity_body()
+        writer = severity_writer(body, explanation=LINES)
+        writer["components"]["c0"]["semantic_content"]["sections"][0]["blocks"][0]["text"] = (
+            "Trong quý vừa qua, một cửa hàng nhận nhiều khiếu nại về giao hàng. Mỗi khiếu nại thuộc một trong ba cấp "
+            "độ.")
+        writer["components"]["c1"]["question"] = (
+            "Trong quý vừa qua, một khách hàng gọi lần thứ hai vì đơn hàng giao trễ, chưa có thiệt hại tài chính.\n"
+            "Khiếu nại này thuộc cấp độ nào?")
+        provider = FakeGenerate(**{WRITER: [writer], JUDGE: [judge()]})
+        status, data, _ = await self.post(body, provider)
+        self.assertEqual(status, 200)
+        html, question = data["unit"]["components"][0], data["unit"]["components"][1]["question"]
+        self.assertIn("Giả sử trong quý vừa qua, một cửa hàng", json.dumps(html, ensure_ascii=False))
+        self.assertTrue(question.startswith("Giả sử trong quý vừa qua, một khách hàng"))
+        self.assertIn("Đã thêm «Giả sử» trước 2 tình huống AI soạn được kể như chuyện đã xảy ra",
+                      data["unit"]["idm_quality"]["author_note"])

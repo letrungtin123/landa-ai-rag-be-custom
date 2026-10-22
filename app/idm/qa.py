@@ -11,6 +11,7 @@ from collections.abc import Collection, Mapping, Sequence
 from typing import Any, Final
 
 from app.idm.faq_checks import (
+    FAQ_HYPE_CODE,
     FAQ_INVENTED_REASON_CODE,
     FAQ_NEW_FACT_CODE,
     FAQ_OPEN_QUESTION_CODE,
@@ -102,6 +103,7 @@ from app.idm.unit_note_lines import (
     dropped_faq_lines,
     example_numbers_line,
     faq_inferred_line,
+    supposition_line,
     worksheet_line,
 )
 from app.idm.worksheet_input import WORKSHEET_INPUT_CODE
@@ -166,6 +168,7 @@ _CODE_TEXT_VI: Final[dict[str, str]] = {
     FAQ_OPEN_QUESTION_CODE: "hỏi đáp trả lời điều tài liệu chưa chốt",
     FAQ_INVENTED_REASON_CODE: "hỏi đáp tự đặt lý do",
     FAQ_TITLE_MISMATCH_CODE: "tiêu đề hỏi đáp chưa khớp",
+    FAQ_HYPE_CODE: "hỏi đáp dùng chữ thổi phồng",
     FAQ_ITEMS_DROPPED_CODE: "bỏ bớt câu hỏi đáp",
     CALLOUT_UNGROUNDED_CODE: "khung trích dẫn không có trong tài liệu",
     CALLOUT_TO_PROSE_CODE: "đổi khung trích dẫn thành đoạn văn",
@@ -217,6 +220,7 @@ _CODE_TEXT_EN: Final[dict[str, str]] = {
     FAQ_OPEN_QUESTION_CODE: "FAQ answering a point the source has not settled",
     FAQ_INVENTED_REASON_CODE: "FAQ with its own reason",
     FAQ_TITLE_MISMATCH_CODE: "an FAQ title that does not match",
+    FAQ_HYPE_CODE: "FAQ answers with hype words",
     FAQ_ITEMS_DROPPED_CODE: "FAQ items removed",
     CALLOUT_UNGROUNDED_CODE: "a callout not in the source",
     CALLOUT_TO_PROSE_CODE: "a callout turned into a paragraph",
@@ -322,6 +326,7 @@ def build_unit_author_note(
     source_notes: Sequence[str] = (),
     placeholder_slots: Sequence[int] = (),
     glued: Sequence[str] = (),
+    suppositions: int = 0,
 ) -> str:
     """Template note for the unit ``implementation_notes``; no IDs, no ``<``/``>``.
 
@@ -348,7 +353,8 @@ def build_unit_author_note(
     ``source_flags`` (owner decision 2026-10-22): one sentence per contradictory or out-of-date point of the source,
     right after the review reasons; ``source_notes`` (run 5496155c): one per unclear point, an edit note after the
     notices. ``placeholder_slots`` (run 5496155c): the slots of a whole-unit fallback that only repeat sentences of the
-    lesson (no source structure rebuilt them); ``glued``: words the PDF glued together that a fallback slot shows.
+    lesson (no source structure rebuilt them); ``glued``: words the PDF glued together that a fallback slot shows;
+    ``suppositions``: drafted cases told as a real past event that now open with "Giả sử".
     """
 
     vi = locale == "vi"
@@ -388,6 +394,8 @@ def build_unit_author_note(
                                     copied=faq_items_copied, recall=faq_items_recall, unresolved=faq_items_open,
                                     invalid=faq_items_invalid))
     parts.extend(callout_lines(vi, to_prose=callouts_to_prose, repeating=callouts_repeating))
+    if suppositions:
+        parts.append(supposition_line(suppositions, vi))
     if framework_list_inserted:
         parts.append(f"Đã chèn danh sách {framework_list_inserted} thành phần của khung (tên lấy từ tài liệu) vào phần "
                      "lý thuyết — tác giả nên biên tập cho liền mạch." if vi
@@ -454,8 +462,10 @@ _PLAIN_HINT_VI: Final = {
     FAQ_INVENTED_REASON_CODE: "câu hỏi đáp tự đưa ra lý do cho một con số hoặc ngưỡng mà tài liệu không giải thích — "
                               "tác giả nên kiểm tra lại hoặc bỏ",
     # QC feedback 2026-10-21 (A1/A2): wording of the question and its feedback, to polish.
-    EXPLANATION_FILLER_CODE: "lời giải dùng chữ sáo rỗng (như «dũng cảm», «tuyệt đối») — nên thay bằng lý do cụ thể "
-                             "lấy từ bài học",
+    EXPLANATION_FILLER_CODE: "lời giải dùng chữ sáo rỗng hoặc thổi phồng (như «sinh tử», «triệt để», «tuyệt đối») — "
+                             "nên thay bằng lý do cụ thể lấy từ bài học",
+    FAQ_HYPE_CODE: "câu trả lời hỏi đáp dùng chữ thổi phồng (như «sinh tử», «triệt để», «vượt trội») — nên thay bằng "
+                   "lời giải thích cụ thể",
     EXPLANATION_LENGTH_CODE: "lời giải dài quá giới hạn — nên rút gọn: một câu nêu nguyên tắc, rồi mỗi phương án một "
                              "câu ngắn",
     QUESTION_LAYOUT_CODE: "đề câu hỏi còn dồn thành một khối — nên để một hai câu bối cảnh, mỗi ý của danh sách một "
@@ -486,8 +496,10 @@ _PLAIN_HINT_EN: Final = {
                             "has checked it",
     FAQ_INVENTED_REASON_CODE: "an FAQ item gives its own reason for a number or threshold the source does not "
                               "explain — the author should check it or remove it",
-    EXPLANATION_FILLER_CODE: "the feedback uses empty praise (such as «brave», «absolute») — replace it with a "
-                             "concrete reason taken from the lesson",
+    EXPLANATION_FILLER_CODE: "the feedback uses empty praise or hype (such as «brave», «absolute») — replace it "
+                             "with a concrete reason taken from the lesson",
+    FAQ_HYPE_CODE: "FAQ answers use hype words (such as «life-or-death», «absolutely») — replace them with a plain "
+                   "explanation",
     EXPLANATION_LENGTH_CODE: "the feedback is over its length — shorten it: one sentence with the principle, then one "
                              "short sentence per option",
     QUESTION_LAYOUT_CODE: "the question is still one block of text — keep one or two context sentences, each list item "
@@ -583,7 +595,7 @@ NOTICE_REASONS: Final = frozenset({REVIEW_REASON_EVIDENCE, REVIEW_REASON_STYLE, 
 STYLE_CODES: Final = frozenset({
     SENTENCE_COPY_CODE, SENTENCE_LENGTH_CODE, "IDM_W5_VERBATIM_COPY", EXPLANATION_MISSING_CODE, EXAMPLE_ROLE_CODE,
     FAQ_TITLE_MISMATCH_CODE, FAQ_TYPE_MIX_CODE, FAQ_RESTATES_HTML_CODE, FAQ_RESTATES_SOURCE_CODE,
-    ANSWER_LENGTH_CUE_CODE, *QUIZ_STYLE_CODES,
+    ANSWER_LENGTH_CUE_CODE, FAQ_HYPE_CODE, *QUIZ_STYLE_CODES,
 })
 _REVIEW_REASON_VI: Final = {
     REVIEW_REASON_FALLBACK: "có khối dùng bản dự phòng dựng từ tài liệu",

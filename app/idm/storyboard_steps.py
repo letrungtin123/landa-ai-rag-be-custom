@@ -19,7 +19,7 @@ from app.idm.answer_checks import fact_table_rows
 from app.idm.artifacts import clean_question, clean_semantic
 from app.idm.budget import writer_thinking
 from app.idm.contracts import IdmUnitBriefV1
-from app.idm.faq_checks import FaqChecker, extra_recall_items, question_types
+from app.idm.faq_checks import FAQ_HYPE_CODE, FaqChecker, extra_recall_items, question_types
 from app.idm.fidelity import brief_mode
 from app.idm.fidelity_checks import FidelityChecker
 from app.idm.framework import build_promise, framework_support_lines, is_framework_brief, with_framework_list
@@ -29,6 +29,7 @@ from app.idm.html_rules import (
     minimum_visible_chars,
     normalize_html_semantic,
 )
+from app.idm.hypothetical import SUPPOSITION_ADDED, as_supposition, suppose_semantic
 from app.idm.mcq import (
     free_key_letter,
     normalize_single_choice,
@@ -77,6 +78,7 @@ from app.idm.text import evidence_index, is_suggested_criteria
 from app.idm.titles import TitleCaser
 from app.idm.worksheet import COMPACTED_CODE as WORKSHEET_COMPACTED_CODE
 from app.idm.worksheet import compact_worksheet, plain_self_check, worksheet_fallback_html
+from app.idm.worksheet_input import WORKSHEET_INPUT_CODE, input_hint, missing_input
 
 
 class IdmUnitWriterSteps:
@@ -165,6 +167,9 @@ class IdmUnitWriterSteps:
         self.callouts_converted = 0
         # Review m11: slot -> callouts its latest accepted answer lost for repeating the text above them (A3).
         self.callout_drops: dict[int, int] = {}
+        # Run 5496155c: slot -> drafted cases of its latest answer that now open with "Giả sử" (they were told as a
+        # real past event, "Trong quý vừa qua, …").
+        self.supposed: dict[int, int] = {}
         # Slots whose source-locked FAQ repeats one sentence (logged once each).
         self.faq_fallback_repeated: set[int] = set()
         # Run 5496155c: the slots no source structure rebuilds; a whole-unit fallback repeats sentences of the lesson
@@ -222,6 +227,13 @@ class IdmUnitWriterSteps:
                 ordinal += practice_key_shift(slot.practice.practice_id)
             elif ordinal is not None:
                 ordinal = free_key_letter(self.contract.source_snapshot_hash, self.contract.unit_path)
+            # Run 5496155c: a drafted case is a supposition, never a real past event ("Giả sử trong quý vừa qua, …").
+            question, supposed = as_supposition(str(component.get("question") or ""), self.runtime.locale,
+                                                self.evidence)
+            self.supposed[index] = supposed
+            if supposed:
+                component = {**component, "question": question}
+                self.runtime.adjustments[f"w5_question_{SUPPOSITION_ADDED}"] += supposed
             # Owner decision 2026-10-22: stem items labelled A-D are numbered before the options are shuffled.
             component, numbered = number_item_letters(component)
             if numbered:
@@ -258,11 +270,34 @@ class IdmUnitWriterSteps:
                 plain := plain_self_check(component["semantic_content"], self.runtime.locale)) is not None:
             component = {**component, "semantic_content": plain}
             fixes["self_check_label_removed"] += 1
+        # Run 5496155c: so is a drafted case of an html slot (counted per slot for the author note).
+        supposed_cases: Counter[str] = Counter()
+        if isinstance(component.get("semantic_content"), dict):
+            semantic = suppose_semantic(component["semantic_content"], self.runtime.locale, self.evidence,
+                                        supposed_cases)
+            component = {**component, "semantic_content": semantic} if supposed_cases else component
+        self.supposed[index] = supposed_cases[SUPPOSITION_ADDED]
+        fixes.update(supposed_cases)
         if not fixes:
             return component
         self.html_fixes.update(fixes)
         self.runtime.adjustments.update({f"w5_html_{key}": count for key, count in fixes.items()})
         return component
+
+    def supposed_count(self, exempt: Sequence[int] = ()) -> int:
+        """The drafted cases that now open with "Giả sử" in the slots the unit returns (``exempt``: its fallbacks)."""
+
+        return sum(count for index, count in self.supposed.items() if index not in exempt)
+
+    def slot_hint(self, code: str, component: Any) -> str | None:
+        """The repair line's server-measured detail of a slot-wide finding (run 5496155c), ``None`` for another code:
+        the data a worksheet's task refers to, the hype words of the FAQ answers."""
+
+        if not isinstance(component, dict):
+            return None
+        if code == WORKSHEET_INPUT_CODE:
+            return input_hint(missing_input(component))
+        return self.faq.hype_hint(component) if code == FAQ_HYPE_CODE else None
 
     def count_artefacts(self, artefacts: Counter[str]) -> None:
         self.runtime.adjustments.update({f"w5_text_{key}": count for key, count in artefacts.items()})

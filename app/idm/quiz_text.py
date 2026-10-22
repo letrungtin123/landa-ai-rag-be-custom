@@ -29,6 +29,9 @@ from typing import Any, Final
 
 from app.idm.mcq import OPTION_LETTERS, question_complete, segment_starts
 from app.idm.policy import (
+    HYPE_EN,
+    HYPE_VI,
+    IDM_HYPE_NAME_MAX_WORDS,
     IDM_MCQ_EXPLANATION_MAX_CHARS,
     IDM_MCQ_EXPLANATION_OPTION_MAX_SENTENCES,
     IDM_MCQ_EXPLANATION_OPTION_MAX_WORDS,
@@ -334,19 +337,43 @@ def _choices(component: Mapping[str, Any]) -> list[dict[str, Any]]:
     return [choice for choice in component.get("choices") or [] if isinstance(choice, dict)]
 
 
+def _sourced(tokens: Sequence[str], evidence: EvidenceIndex | None) -> bool:
+    """Whether the facts write these folded words (each pair of words in that order, a single word as such)."""
+
+    return evidence is not None and bool(tokens) and (
+        all(pair in evidence.pairs for pair in pairwise(tokens)) if len(tokens) > 1 else tokens[0] in evidence.words)
+
+
+def _without_quoted_names(text: str, evidence: EvidenceIndex | None) -> str:
+    """``text`` without its quoted names of a source concept: a quotation of at most ``IDM_HYPE_NAME_MAX_WORDS``
+    words the facts write in that order ("chiến lược “Say No”")."""
+
+    def drop(match: re.Match[str]) -> str:
+        tokens = re.findall(r"\w+", idm_fold(match.group(0)))
+        return " " if len(tokens) <= IDM_HYPE_NAME_MAX_WORDS and _sourced(tokens, evidence) else match.group(0)
+
+    return _QUOTED_RE.sub(drop, text)
+
+
+def hype_phrases(text: str, evidence: EvidenceIndex | None = None) -> list[str]:
+    """The hype words of ``text`` (``HYPE_VI``/``HYPE_EN``, run 5496155c), even when the facts use them; only inside a
+    quoted name of a source concept they are allowed."""
+
+    lowered = _without_quoted_names(_normal(text), evidence).lower()
+    return [phrase for phrase in dict.fromkeys((*HYPE_VI, *HYPE_EN))
+            if re.search(rf"(?<!\w){re.escape(phrase)}(?!\w)", lowered)]
+
+
 def filler_phrases(text: str, evidence: EvidenceIndex | None = None) -> list[str]:
-    """The empty-praise phrases of ``text`` (``QUIZ_FILLER_VI``/``_EN``) its facts do not use themselves."""
+    """The empty-praise phrases of ``text``: its hype words (``hype_phrases``), and the other phrases of
+    ``QUIZ_FILLER_VI``/``_EN`` its facts do not use themselves."""
 
     lowered = _normal(text).lower()
-    found = []
+    found = hype_phrases(text, evidence)
     for phrase in (*QUIZ_FILLER_VI, *QUIZ_FILLER_EN):
-        if not re.search(rf"(?<!\w){re.escape(phrase)}(?!\w)", lowered):
+        if phrase in found or not re.search(rf"(?<!\w){re.escape(phrase)}(?!\w)", lowered):
             continue
-        tokens = idm_fold(phrase).split()
-        in_facts = evidence is not None and (
-            all(pair in evidence.pairs for pair in pairwise(tokens)) if len(tokens) > 1
-            else tokens[0] in evidence.words)
-        if not in_facts:
+        if not _sourced(idm_fold(phrase).split(), evidence):
             found.append(phrase)
     # "khác biệt tuyệt đối" also contains "tuyệt đối": name the longer phrase once (and "say no" is in both lists).
     unique = list(dict.fromkeys(found))
@@ -569,6 +596,7 @@ __all__ = [
     "QUIZ_STYLE_CODES",
     "explanation_report",
     "filler_phrases",
+    "hype_phrases",
     "lay_out_quiz",
     "layout_explanation",
     "layout_question",

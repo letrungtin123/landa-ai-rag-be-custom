@@ -52,6 +52,7 @@ from app.idm.policy import (
     IDM_FAQ_SOURCE_COPY_NGRAM,
     IDM_FAQ_SOURCE_COPY_NGRAM_SHARE,
 )
+from app.idm.quiz_text import hype_phrases
 from app.idm.text import EvidenceIndex, content_words, evidence_index, grounding_verdict, idm_fold, number_tokens
 
 FAQ_RESTATES_SOURCE_CODE: Final = "IDM_W5_FAQ_RESTATES_SOURCE"
@@ -61,6 +62,9 @@ FAQ_OPEN_QUESTION_CODE: Final = "IDM_W5_FAQ_OPEN_QUESTION"
 FAQ_INVENTED_REASON_CODE: Final = "IDM_W5_FAQ_INVENTED_REASON"
 FAQ_VALUE_CODES: Final = frozenset({FAQ_RESTATES_SOURCE_CODE, FAQ_TYPE_MIX_CODE, FAQ_NEW_FACT_CODE,
                                     FAQ_OPEN_QUESTION_CODE, FAQ_INVENTED_REASON_CODE})
+# Run 5496155c (owner decision 2026-10-22): answers with hype words ("sinh tử", "triệt để" …, even when the source uses
+# them) are repaired once, then an edit note; a wording finding, never a reason to drop an item.
+FAQ_HYPE_CODE: Final = "IDM_W5_FAQ_HYPE"
 RECALL: Final[FaqQuestionType] = "recall"
 
 # --- question types -------------------------------------------------------------------------------------------------
@@ -458,7 +462,22 @@ class FaqChecker:
             codes.append(FAQ_OPEN_QUESTION_CODE)
         if self.invented_reasons(index, component):
             codes.append(FAQ_INVENTED_REASON_CODE)
+        if self.hype(component):
+            codes.append(FAQ_HYPE_CODE)
         return codes
+
+    def hype(self, component: Mapping[str, Any]) -> list[str]:
+        """The hype words of the answers (``quiz_text.hype_phrases``; a quoted name of a source concept is allowed)."""
+
+        evidence = evidence_index(self.fact_text.values())
+        return list(dict.fromkeys(phrase for answer in _answers(component)
+                                  for phrase in hype_phrases(answer, evidence)))
+
+    def hype_hint(self, component: Mapping[str, Any]) -> str:
+        """The repair line's words to remove (from the fixed word list, never other provider text)."""
+
+        found = self.hype(component)
+        return " (remove: " + ", ".join(f'"{phrase}"' for phrase in found) + ")" if found else ""
 
     def plan_hint(self, index: int) -> str:
         """The planned type and anchor facts of each item, for a repair line (server values, never text)."""
@@ -514,7 +533,9 @@ def faq_writer_rules(mode: FidelityMode) -> str:
         "question.\n"
         "  * Each answer: 2-3 sentences (at most about 60 words) in your own words that explain (the reason, the "
         "consequence, what to do instead, how two cases differ). Never restate a fact sentence, a table row, a list "
-        "item or a paragraph of the html.\n"
+        "item or a paragraph of the html. No hype word, even when the source uses it (\"sinh tử\", \"dũng cảm\", "
+        "\"đập tan\", \"triệt để\", \"khổng lồ\", \"tuyệt đối\", \"vượt trội\", \"Say No\"): say the plain reason "
+        "or consequence; only a quoted name of a source concept keeps its words.\n"
         "  * Inference yes, new facts no: never a number, amount, date, threshold, deadline, rule, exception, person, "
         "company or product name that the item's anchor facts do not state. When the facts cannot answer a question, "
         "ask another one.\n"
@@ -534,8 +555,9 @@ def faq_writer_rules(mode: FidelityMode) -> str:
 
 
 __all__ = [
-    "FAQ_INVENTED_REASON_CODE", "FAQ_NEW_FACT_CODE", "FAQ_OPEN_QUESTION_CODE", "FAQ_RESTATES_SOURCE_CODE",
-    "FAQ_TYPE_MIX_CODE", "FAQ_VALUE_CODES", "RECALL", "FaqChecker", "asks_open_question", "copies_one_fact",
-    "extra_recall_items", "faq_prompt_material", "faq_writer_rules", "invents_reason", "lcs_length", "open_questions",
-    "question_type", "question_types", "reasoned", "threshold_numbers", "type_mix_ok", "unsupported_reasoning",
+    "FAQ_HYPE_CODE", "FAQ_INVENTED_REASON_CODE", "FAQ_NEW_FACT_CODE", "FAQ_OPEN_QUESTION_CODE",
+    "FAQ_RESTATES_SOURCE_CODE", "FAQ_TYPE_MIX_CODE", "FAQ_VALUE_CODES", "RECALL", "FaqChecker", "asks_open_question",
+    "copies_one_fact", "extra_recall_items", "faq_prompt_material", "faq_writer_rules", "invents_reason", "lcs_length",
+    "open_questions", "question_type", "question_types", "reasoned", "threshold_numbers", "type_mix_ok",
+    "unsupported_reasoning",
 ]

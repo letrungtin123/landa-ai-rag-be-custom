@@ -1,11 +1,12 @@
 {
  "prompt_policy_version": "idm-prompt-1",
- "prompt_templates_hash": "a841942ec0efce3dfeaca11e3c367f3c2d75798c1fdd3a9fff79fc523ef53921",
+ "prompt_templates_hash": "3ee3d4f13bd2dd1c027e69343066dd49971549913e53e5833b77a100b494e7bc",
  "sources": {
   "app.idm.example_roles:role_rule": "ade567182c9b222f982cc9e9c3371c58f59ae9cec5cab401dd514e800daa83c1",
+  "app.idm.faq_checks:FaqChecker.hype_hint": "494b8c595d66de2f5eaa07401276fdcbd08ea833c3e9395e4d1604b2377e18a7",
   "app.idm.faq_checks:FaqChecker.plan_hint": "a4bba0bf2bf5959893d32f5dce7ceb4172f67a822559e39bc64a827803aa8bae",
   "app.idm.faq_checks:faq_prompt_material": "0ddc218063e7be0ece9129cee3cd7f4909507319a301338e65abdad439a1a88e",
-  "app.idm.faq_checks:faq_writer_rules": "f1dd01e8fd1fa04b6ff3e7b70af4c9070c869ac97cc4ea3e8d3c7090bd717570",
+  "app.idm.faq_checks:faq_writer_rules": "31a17100198c06f9834f89e26af6d77a3a57268a7ad3523e6e66d8ec29878649",
   "app.idm.fidelity:module_fidelity_rules": "63f07bc558a2915926435e185fb11fe1eb952001743a8634c798aa261128dd99",
   "app.idm.fidelity:w2_treatment_rules": "3a100e76d29acd271c4b19e08258f98c867fe2ce2c703f3581ed4b1a327c78f8",
   "app.idm.fidelity:writer_fidelity_rules": "149b38991ee8e8042803bd7a87b98f9f91e448162197f453a60c7c4406f606dd",
@@ -19,7 +20,7 @@
   "app.idm.prompts_judge": "fc3b3319aea93ebf7b29a98fca6c6ca61770c93c168d67a76b071003231a9f83",
   "app.idm.prompts_module": "113fa2970a2afcdac611fa851a5c9c00c613a47d9c886dd6c04d4a72ddbdb8e2",
   "app.idm.prompts_org_distill": "f65cb5379ae298ba4a9ff8c5eb5254309e935442ad0b2e24b3701bf4fc0791f3",
-  "app.idm.prompts_unit": "ca6ec3b18d75c1791b94300c247abdbb4c51ae4dbc5b48b3f38e066a2ec8b238",
+  "app.idm.prompts_unit": "bf3c4ac78ae4e798e8255e7cfb0111a202e1681a807e0b9e2377b82ce1e0e860",
   "app.idm.purpose": "1b6fff70f99aeb0868c696f0a63324944de9dd0ddaf97326e9f9bf4478a357ff",
   "app.idm.quiz_text:quiz_hint": "deef82296106fad5fe4fb07dd30fbd30dcf5b6fa66344ed01ebc1be565c45739",
   "app.idm.storyboard:IdmUnitWriter.acceptance_rule_lines": "ae3dd87886fd4ccd5eb2cb9fcf7673e60ec7b6a0a4ba8105ddc37bf4b3792495",
@@ -30,8 +31,9 @@
   "app.idm.storyboard:IdmUnitWriter.fidelity_rule_line": "a0f002214c8ab19cc39a7fa9499677436cfaff501d1e5d31508e6010cc5017d5",
   "app.idm.storyboard:IdmUnitWriter.framework_rule_line": "fd4c9d6099dcd0762843902255affd569aeaeb81c2933b7c3e9ee0df1ab4639c",
   "app.idm.storyboard:IdmUnitWriter.length_cue_line": "78425e3c0043bd32eec8aadc44b5084603f6e6afbe217fbc4dc1b9216cbb8713",
-  "app.idm.storyboard:IdmUnitWriter.rule_lines": "638bb2b2ef1ab63f135b1f2a822d0f3c14071789eb674fef8f7f3d82ebab18d4",
+  "app.idm.storyboard:IdmUnitWriter.rule_lines": "cc1b3846d73a4f58591ae429c30d48ae1afde5a5fb47c28de31585c5da511310",
   "app.idm.storyboard:IdmUnitWriter.writer_prompt": "9123edf27215736c6b3194062f4956f5c5ee9b2fb2a75a86a9eaf4ea08a8c566",
+  "app.idm.storyboard_steps:IdmUnitWriterSteps.slot_hint": "ce702e47e4a6a36c5d35ec146b69c80531c6bbfe42de408bf3158870aaa8d46a",
   "app.idm.worksheet_input:input_hint": "46e80f5cde8ceddfb53c63e0f36dcf3e28d1c57def265d09b363442ec53a95be",
   "app.prompt_safety": "5f73b94e58312c214cb3817dd2134cc90984f6fd773073f5a2d91ea981f2c70b"
  }
