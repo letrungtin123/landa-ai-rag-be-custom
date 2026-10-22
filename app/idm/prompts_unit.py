@@ -450,7 +450,7 @@ UNIT_RULE_TEXT: Final[dict[str, str]] = {
     "IDM_W5_FAQ_NEW_FACT": "the listed items state a number, date, amount or a person, company or product name their "
                            "facts do not state (the words quoted after \"new:\", copied from your answer): remove each "
                            "of them or use what the facts say; explaining in your own words stays allowed",
-    "IDM_W5_FAQ_OPEN_QUESTION": "the listed items ask or answer a question the SME has not settled (OPEN_QUESTIONS): "
+    "IDM_W5_FAQ_OPEN_QUESTION": "the listed items ask or answer a point the source has not settled (OPEN_QUESTIONS): "
                                 "replace each with another why, what-if or common-mistake question the planned facts "
                                 "answer",
     "IDM_W5_FAQ_INVENTED_REASON": "the listed items give a reason for a number or threshold that their facts do not "

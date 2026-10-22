@@ -99,6 +99,11 @@ HASH_HISTORY: tuple[tuple[str, str], ...] = (
     # "SME flags", and the FAQ rules and material (``faq_checks.faq_prompt_material``) carry no open SME question.
     ("9040b3a024bd9e3583798225f49fb9c69ad6476ff37685bcaaf10ebe810bd370",
      "No question for an SME in any prompt"),
+    # Owner decision 2026-10-22 (plain words): the AI-drafted mark the module prompt asks for is addressed to the author
+    # ("[AI soạn — tác giả kiểm tra lại]" / "[AI-drafted — author to check]") and the FAQ open-question repair rule
+    # speaks of a point the source has not settled, no longer of the SME.
+    ("89b5aac5a6e2df0983c90b70a65c66cb74f4441db9a9a364ae690be8e64b8b89",
+     "No SME in the AI-drafted mark and repair rules"),
 )
 PROMPT_NAME = re.compile(r"(prompt|_rules?$|_suffix$|rule_lines?$|_hint$|^rule_line$|_cue_line$)")
 

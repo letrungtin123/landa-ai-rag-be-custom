@@ -450,8 +450,8 @@ class UnitFaqTests(StoryboardEndpointTestCase):
         status, data, _ = await self.post(body, provider)
         quality = self.assert_envelope(data, "provider_validated", "validated", "provider")
         self.assertEqual(provider.names, [WRITER, JUDGE])
-        self.assertIn("Câu trả lời hỏi đáp có phần AI suy luận từ tài liệu — SME cần kiểm tra không có quy định mới",
-                      quality.author_note)
+        self.assertIn("Câu trả lời hỏi đáp có phần AI suy luận từ tài liệu — tác giả nên kiểm tra không có quy định "
+                      "mới", quality.author_note)
 
     async def test_the_judge_faq_criterion_is_stored_under_not_copied(self) -> None:
         body = escalate_body()

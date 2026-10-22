@@ -302,7 +302,7 @@ class UnitEndpointTests(StoryboardEndpointTestCase):
         self.assertEqual((quality.judge_mode, quality.judge_status, quality.repair_applied),
                          ("observe", "pass", False))
         self.assertEqual(quality.author_note, "QA tự động: không phát hiện vấn đề lớn. Tình huống minh hoạ do AI "
-                                              "soạn, cần SME xác nhận tính thực tế.")
+                                              "soạn, tác giả nên kiểm tra lại tính thực tế.")
         plans = body["unit_contract"]["component_plan"]
         self.assertEqual([c["component_plan_id"] for c in data["unit"]["components"]],
                          [plan["component_plan_id"] for plan in plans])
@@ -606,8 +606,8 @@ class JudgeEndpointTests(StoryboardEndpointTestCase):
         self.assertEqual((provider.names, quality.judge_status, quality.judge_mode), ([WRITER], "not_run", "off"))
         # QLT-8: the note says why the unit needs review, first and in plain words.
         self.assertEqual(quality.author_note,
-                         "Cần tác giả xem lại vì: câu hỏi dùng tình huống do AI soạn, SME cần xác nhận tình huống và "
-                         "đáp án.")
+                         "Cần tác giả xem lại vì: câu hỏi dùng tình huống do AI soạn, tác giả nên kiểm tra lại tình "
+                         "huống và đáp án.")
         for answer, status_name in (("not json", "failed"), (judge(("Q5_grounded_criteria", "minor", 0)), "pass")):
             provider = FakeGenerate(**{WRITER: [escalate_writer(body)], JUDGE: [answer]})
             _, data, _ = await self.post(body, provider)

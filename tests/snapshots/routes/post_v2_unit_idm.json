@@ -430,7 +430,7 @@
      "deterministic_codes": [
       "IDM_W5_ANSWER_LENGTH_CUE"
      ],
-     "author_note": "QA tự động: không phát hiện vấn đề lớn. Đã tự sửa: đáp án đúng dài hơn hẳn. Tình huống minh hoạ do AI soạn, cần SME xác nhận tính thực tế."
+     "author_note": "QA tự động: không phát hiện vấn đề lớn. Đã tự sửa: đáp án đúng dài hơn hẳn. Tình huống minh hoạ do AI soạn, tác giả nên kiểm tra lại tính thực tế."
     }
    },
    "usage": {

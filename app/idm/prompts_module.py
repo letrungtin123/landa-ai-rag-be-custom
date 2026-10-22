@@ -136,7 +136,7 @@ Return the lessons in exactly the order and with exactly the lesson_key values o
    one.
 7. For every component write the storyboard development notes in {locale_name(locale)} (author_review):
    purpose (which Must Do / practice / support it serves - required), example_scenario (the example or situation
-   used; start with "[AI soạn — cần SME xác nhận]" / "[AI-drafted — SME to confirm]" when you drafted it),
+   used; start with "[AI soạn — tác giả kiểm tra lại]" / "[AI-drafted — author to check]" when you drafted it),
    visual_asset (suggested visual or null), user_behavior_navigation (what the learner does: read, choose, drag,
    retry once, continue, open the Job Aid).
 8. Lesson fields: objective = the main Must Do as an observable action; learning_objectives = the objective

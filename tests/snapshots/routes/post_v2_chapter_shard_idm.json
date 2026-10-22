@@ -532,7 +532,7 @@
           "rationale": "Chọn problem vì phù hợp mục đích practice.",
           "author_review": {
            "purpose": "Phục vụ practice cho Must Do của mục.",
-           "example_scenario": "[AI soạn — cần SME xác nhận] Một tình huống khiếu nại cụ thể",
+           "example_scenario": "[AI soạn — tác giả kiểm tra lại] Một tình huống khiếu nại cụ thể",
            "visual_asset": null,
            "user_behavior_navigation": "Đọc, chọn rồi xem phản hồi."
           },
@@ -652,7 +652,7 @@
            "support_items": [],
            "author_review": {
             "purpose": "Phục vụ practice cho Must Do của mục.",
-            "example_scenario": "[AI soạn — cần SME xác nhận] Một tình huống khiếu nại cụ thể",
+            "example_scenario": "[AI soạn — tác giả kiểm tra lại] Một tình huống khiếu nại cụ thể",
             "visual_asset": null,
             "user_behavior_navigation": "Đọc, chọn rồi xem phản hồi."
            },
@@ -711,7 +711,7 @@
      ],
      "lesson_index_offset": 2,
      "stage_origin": "provider",
-     "design_hash": "5378dda9e44cce4f1d4a79b291ac2df4aa3d192ebd4ee9c0850e8f67e1738f84"
+     "design_hash": "a3e5e660ea58276183e9af6af206e65472ee0482e21e436d5e79a221c175b45a"
     }
    },
    "usage": {
@@ -731,8 +731,8 @@
     "op": "generate",
     "model": "test-model",
     "schema": "IdmW3W4ModuleResponseV1",
-    "prompt_sha256": "4b9425e6c874d41882f0bf708448eb4fe8ad742caac6a786097c16ef0d317798",
-    "prompt_chars": 14419,
+    "prompt_sha256": "e66533bb0c2fed37a55fcd321ae064d66e620f8cd3e474f241874a7a52142b8e",
+    "prompt_chars": 14424,
     "config": {
      "max_output_tokens": 48000,
      "response_mime_type": "application/json",

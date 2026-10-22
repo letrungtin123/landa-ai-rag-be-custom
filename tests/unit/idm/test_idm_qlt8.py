@@ -203,9 +203,9 @@ class AuthorTextTests(unittest.TestCase):
                                       unexplained_acronyms=["BQS", "G8D"])
         self.assertTrue(note.startswith("Cần tác giả xem lại vì: tài liệu nguồn của phần này có hình ảnh hoặc bảng "
                                         "hệ thống chưa đọc chắc chắn"))
-        self.assertIn("câu hỏi dùng tình huống do AI soạn, SME cần xác nhận tình huống và đáp án.", note)
+        self.assertIn("câu hỏi dùng tình huống do AI soạn, tác giả nên kiểm tra lại tình huống và đáp án.", note)
         self.assertNotIn("Tình huống minh hoạ do AI soạn", note)
-        self.assertTrue(note.endswith("SME bổ sung nghĩa ở lần xuất hiện đầu: BQS, G8D."))
+        self.assertTrue(note.endswith("tác giả nên bổ sung nghĩa ở lần xuất hiện đầu: BQS, G8D."))
         english = build_unit_author_note(locale="en", judge=JudgeOutcome("pass"), deterministic_codes=[],
                                          fallback_slots=[], ai_drafted=False, review_reasons=[REVIEW_REASON_EVIDENCE])
         self.assertTrue(english.startswith("Needs the author's review because: the source of this section has images"))
@@ -324,7 +324,7 @@ class UnitFlowTests(StoryboardEndpointTestCase):
         self.assertIn("Cấp độ quyết định ai xử lý theo KPI (chỉ số đo lường hiệu quả) và BQS.",
                       " ".join(html_texts(data["unit"]["components"][0])))
         self.assertTrue(quality.author_note.endswith(
-            "Chữ viết tắt chưa có nghĩa đầy đủ trong tài liệu — SME bổ sung nghĩa ở lần xuất hiện đầu: BQS."))
+            "Chữ viết tắt chưa có nghĩa đầy đủ trong tài liệu — tác giả nên bổ sung nghĩa ở lần xuất hiện đầu: BQS."))
 
 
 if __name__ == "__main__":

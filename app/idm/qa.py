@@ -146,7 +146,7 @@ _CODE_TEXT_VI: Final[dict[str, str]] = {
     FAQ_RESTATES_SOURCE_CODE: "hỏi đáp chép tài liệu",
     FAQ_TYPE_MIX_CODE: "hỏi đáp chỉ hỏi lại kiến thức",
     FAQ_NEW_FACT_CODE: "hỏi đáp có số liệu hoặc tên ngoài tài liệu",
-    FAQ_OPEN_QUESTION_CODE: "hỏi đáp trả lời câu còn chờ SME",
+    FAQ_OPEN_QUESTION_CODE: "hỏi đáp trả lời điều tài liệu chưa chốt",
     FAQ_INVENTED_REASON_CODE: "hỏi đáp tự đặt lý do",
     FAQ_TITLE_MISMATCH_CODE: "tiêu đề hỏi đáp chưa khớp",
     FAQ_ITEMS_DROPPED_CODE: "bỏ bớt câu hỏi đáp",
@@ -191,7 +191,7 @@ _CODE_TEXT_EN: Final[dict[str, str]] = {
     FAQ_RESTATES_SOURCE_CODE: "FAQ that copies the source",
     FAQ_TYPE_MIX_CODE: "FAQ that only asks for facts",
     FAQ_NEW_FACT_CODE: "FAQ with a number or name outside the source",
-    FAQ_OPEN_QUESTION_CODE: "FAQ answering an open SME question",
+    FAQ_OPEN_QUESTION_CODE: "FAQ answering a point the source has not settled",
     FAQ_INVENTED_REASON_CODE: "FAQ with its own reason",
     FAQ_TITLE_MISMATCH_CODE: "an FAQ title that does not match",
     FAQ_ITEMS_DROPPED_CODE: "FAQ items removed",
@@ -380,8 +380,8 @@ def build_unit_author_note(
         parts.append(_faq_inferred_line(faq_inferred, slot_types, vi))
     # A source-locked unit carries no drafted scenario; the review reason already says it when it is one.
     if ai_drafted and not whole_fallback and REVIEW_REASON_SCENARIO not in review_reasons:
-        parts.append("Tình huống minh hoạ do AI soạn, cần SME xác nhận tính thực tế." if vi
-                     else "The illustrative scenario was drafted by AI; the SME should confirm it is realistic.")
+        parts.append("Tình huống minh hoạ do AI soạn, tác giả nên kiểm tra lại tính thực tế." if vi
+                     else "The illustrative scenario was drafted by AI; the author should check it is realistic.")
     if unexplained_acronyms and not whole_fallback:
         parts.append(_acronyms_line(unexplained_acronyms, vi))
     if suggested_criteria:
@@ -395,10 +395,10 @@ def _callout_lines(vi: bool, *, to_prose: int, repeating: int) -> list[str]:
 
     lines = []
     if to_prose:
-        lines.append(f"Đã chuyển {to_prose} khung trích dẫn/lưu ý không có trong tài liệu thành đoạn văn thường — cần "
-                     "SME xác nhận nội dung." if vi
-                     else f"{to_prose} callout(s) not found in the source were turned into plain paragraphs — the SME "
-                          "should confirm their content.")
+        lines.append(f"Đã chuyển {to_prose} khung trích dẫn/lưu ý không có trong tài liệu thành đoạn văn thường — tác "
+                     "giả nên kiểm tra lại nội dung." if vi
+                     else f"{to_prose} callout(s) not found in the source were turned into plain paragraphs — the "
+                          "author should check their content.")
     if repeating:
         lines.append(f"Đã bỏ {repeating} khung trích dẫn/lưu ý chỉ nhắc lại đoạn văn có sẵn trong bài." if vi
                      else f"{repeating} callout(s) that only repeated the text around them were removed.")
@@ -467,8 +467,8 @@ def _dropped_faq_lines(vi: bool, *, dropped: int, restated: int, copied: int, re
          else f"{copied} FAQ item(s) that nearly copied a source sentence were removed."),
         (recall, f"Đã bỏ {recall} câu hỏi đáp chỉ hỏi lại kiến thức đã học." if vi
          else f"{recall} FAQ item(s) that only asked for a fact again were removed."),
-        (unresolved, f"Đã bỏ {unresolved} câu hỏi đáp trả lời câu hỏi còn chờ SME xác nhận." if vi
-         else f"{unresolved} FAQ item(s) that answered a question still open for the SME were removed."),
+        (unresolved, f"Đã bỏ {unresolved} câu hỏi đáp trả lời điều tài liệu chưa chốt." if vi
+         else f"{unresolved} FAQ item(s) that answered a point the source has not settled were removed."),
         (invalid, f"Đã bỏ {invalid} câu hỏi đáp hệ thống không lưu được (ký tự góc nhọn, câu hỏi trùng)." if vi
          else f"{invalid} FAQ item(s) the course editor cannot store (angle brackets, repeated question) were "
               "removed."),
@@ -484,9 +484,10 @@ def _faq_inferred_line(inferred: Mapping[int, int], slot_types: Sequence[str], v
     where = ", ".join(f"{'khối' if vi else 'block'} {index + 1}"
                       + (f" ({labels[slot_types[index]]})" if index < len(slot_types) and slot_types[index] in labels
                          else "") for index in sorted(inferred))
-    return (f"Câu trả lời hỏi đáp có phần AI suy luận từ tài liệu — SME cần kiểm tra không có quy định mới: "
+    return (f"Câu trả lời hỏi đáp có phần AI suy luận từ tài liệu — tác giả nên kiểm tra không có quy định mới: "
             f"{total} câu ({where})." if vi
-            else f"FAQ answers with AI reasoning drawn from the source — the SME should check they add no new rule: "
+            else f"FAQ answers with AI reasoning drawn from the source — the author should check they add no new "
+                 "rule: "
                  f"{total} answer(s) ({where}).")
 
 
@@ -504,9 +505,9 @@ _PLAIN_HINT_VI: Final = {
     SENTENCE_LENGTH_CODE: "nhiều câu quá dài — nên tách thành các câu ngắn, mỗi câu một ý",
     EXAMPLE_ROLE_CODE: "ví dụ minh hoạ kể về một người không thuộc đối tượng học (ví dụ trưởng nhóm trong khoá học cho "
                        "lãnh đạo) — nên đổi thành người đúng vai trò của học viên",
-    FAQ_OPEN_QUESTION_CODE: "câu hỏi đáp trả lời một câu hỏi còn chờ SME xác nhận — chỉ giữ khi SME đã trả lời",
+    FAQ_OPEN_QUESTION_CODE: "câu hỏi đáp trả lời một điều tài liệu chưa chốt — chỉ giữ khi tác giả đã kiểm tra",
     FAQ_INVENTED_REASON_CODE: "câu hỏi đáp tự đưa ra lý do cho một con số hoặc ngưỡng mà tài liệu không giải thích — "
-                              "cần SME xác nhận hoặc bỏ",
+                              "tác giả nên kiểm tra lại hoặc bỏ",
     # QC feedback 2026-10-21 (A1/A2): wording of the question and its feedback, to polish.
     EXPLANATION_FILLER_CODE: "lời giải dùng chữ sáo rỗng (như «dũng cảm», «tuyệt đối») — nên thay bằng lý do cụ thể "
                              "lấy từ bài học",
@@ -528,10 +529,10 @@ _PLAIN_HINT_EN: Final = {
     SENTENCE_LENGTH_CODE: "many sentences are too long — split them into short sentences, one idea each",
     EXAMPLE_ROLE_CODE: "an illustrative example is about someone outside the audience (a team lead in a course for "
                        "executives) — give it a person in the learners' own role",
-    FAQ_OPEN_QUESTION_CODE: "an FAQ item answers a question the SME has not settled yet — keep it only once the SME "
-                            "answers it",
+    FAQ_OPEN_QUESTION_CODE: "an FAQ item answers a point the source has not settled — keep it only once the author "
+                            "has checked it",
     FAQ_INVENTED_REASON_CODE: "an FAQ item gives its own reason for a number or threshold the source does not "
-                              "explain — the SME should confirm it or remove it",
+                              "explain — the author should check it or remove it",
     EXPLANATION_FILLER_CODE: "the feedback uses empty praise (such as «brave», «absolute») — replace it with a "
                              "concrete reason taken from the lesson",
     EXPLANATION_LENGTH_CODE: "the feedback is over its length — shorten it: one sentence with the principle, then one "
@@ -548,8 +549,8 @@ _REVIEW_HINT_VI: Final = {
     ANSWER_LENGTH_CUE_CODE: "đáp án đúng dài hơn hẳn các phương án khác — người học có thể đoán theo độ dài",
     ANSWER_CONTESTED_CODE: "tình huống của câu hỏi cũng khớp tiêu chí mà bài học (bảng, danh sách hoặc phần hỏi đáp) "
                            "nêu cho một phương án khác — cần sửa tình huống để chỉ một phương án đúng",
-    CALLOUT_UNGROUNDED_CODE: "khung trích dẫn/lưu ý nêu điều không tìm thấy trong tài liệu — chỉ giữ khi SME xác "
-                             "nhận, hoặc đổi thành đoạn văn thường",
+    CALLOUT_UNGROUNDED_CODE: "khung trích dẫn/lưu ý nêu điều không tìm thấy trong tài liệu — chỉ giữ khi tác giả đã "
+                             "kiểm tra, hoặc đổi thành đoạn văn thường",
     FAQ_RESTATES_HTML_CODE: "câu hỏi đáp chỉ nhắc lại nội dung vừa học — nên thay bằng ngộ nhận, trường hợp đặc biệt "
                             "hoặc tình huống nếu… thì",
     FAQ_TITLE_MISMATCH_CODE: "tiêu đề phần hỏi đáp không khớp các câu hỏi bên trong",
@@ -571,8 +572,8 @@ _REVIEW_HINT_EN: Final = {
     ANSWER_LENGTH_CUE_CODE: "the correct option is much longer than the others — learners can guess it by length",
     ANSWER_CONTESTED_CODE: "the question's case also meets the criteria the unit (its table, list or FAQ) gives for "
                            "another option — change the case so only one option is correct",
-    CALLOUT_UNGROUNDED_CODE: "a quotation or callout states something not found in the source — keep it only if the "
-                             "SME confirms it, or turn it into a plain paragraph",
+    CALLOUT_UNGROUNDED_CODE: "a quotation or callout states something not found in the source — keep it only once "
+                             "the author has checked it, or turn it into a plain paragraph",
     FAQ_RESTATES_HTML_CODE: "FAQ items only repeat what was just taught — replace them with a misconception, an edge "
                             "case or a what-if",
     FAQ_TITLE_MISMATCH_CODE: "the FAQ title does not match its questions",
@@ -624,7 +625,7 @@ _REVIEW_REASON_VI: Final = {
     REVIEW_REASON_EVIDENCE: "tài liệu nguồn của phần này có hình ảnh hoặc bảng hệ thống chưa đọc chắc chắn — cần đối "
                             "chiếu với tài liệu gốc",
     REVIEW_REASON_JUDGE: "kiểm tra tự động phát hiện vấn đề lớn (chi tiết bên dưới)",
-    REVIEW_REASON_SCENARIO: "câu hỏi dùng tình huống do AI soạn, SME cần xác nhận tình huống và đáp án",
+    REVIEW_REASON_SCENARIO: "câu hỏi dùng tình huống do AI soạn, tác giả nên kiểm tra lại tình huống và đáp án",
     REVIEW_REASON_SOURCE: "tài liệu nguồn có chỗ ghi khác nhau, chưa rõ hoặc có thể đã cũ (chi tiết bên dưới)",
     REVIEW_REASON_STYLE: "có khối AI còn câu dài hoặc câu gần chép tài liệu, nên biên tập lại (chi tiết bên dưới)",
     REVIEW_REASON_EXAMPLE_NUMBERS: "ví dụ minh hoạ do AI soạn có số liệu không có trong tài liệu (chi tiết bên dưới)",
@@ -637,8 +638,8 @@ _REVIEW_REASON_EN: Final = {
     REVIEW_REASON_EVIDENCE: "the source of this section has images or tables the system could not read with "
                             "certainty — check them against the original document",
     REVIEW_REASON_JUDGE: "the automatic review found a major issue (details below)",
-    REVIEW_REASON_SCENARIO: "the question uses an AI-drafted scenario; the SME should confirm the scenario and the "
-                            "answer",
+    REVIEW_REASON_SCENARIO: "the question uses an AI-drafted scenario; the author should check the scenario and "
+                            "the answer",
     REVIEW_REASON_SOURCE: "the source differs, is unclear or may be out of date in places (details below)",
     REVIEW_REASON_STYLE: "some AI blocks keep long or copied sentences; polish them (details below)",
     REVIEW_REASON_EXAMPLE_NUMBERS: "AI-drafted illustrative examples state numbers that are not in the source (details "
@@ -663,8 +664,9 @@ def _notices_line(notices: Sequence[str], vi: bool) -> str:
 
 def _acronyms_line(acronyms: Sequence[str], vi: bool) -> str:
     listed = ", ".join(list(dict.fromkeys(acronyms))[:_MAX_NOTE_ACRONYMS])
-    return (f"Chữ viết tắt chưa có nghĩa đầy đủ trong tài liệu — SME bổ sung nghĩa ở lần xuất hiện đầu: {listed}." if vi
-            else f"Abbreviations without their full form in the source — the SME should add it where each first "
+    return (f"Chữ viết tắt chưa có nghĩa đầy đủ trong tài liệu — tác giả nên bổ sung nghĩa ở lần xuất hiện đầu: "
+            f"{listed}." if vi
+            else f"Abbreviations without their full form in the source — the author should add it where each first "
                  f"appears: {listed}.")
 
 

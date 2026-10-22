@@ -659,7 +659,7 @@ class FrameworkBriefTests(unittest.TestCase):
         self.assertTrue(is_framework_brief("Liệt kê đủ 5 chuyển dịch: SHIFT 1: THINK BIG"))
         self.assertTrue(is_framework_brief("Ý chính của từng chuyển dịch: (1) Từ tư duy tồn tại sang khát vọng lớn"))
         self.assertTrue(is_framework_brief("Main idea of each shift: (1) From surviving to ambition"))
-        self.assertFalse(is_framework_brief("[AI soạn — cần SME xác nhận] Ví dụ minh hoạ ngắn"))
+        self.assertFalse(is_framework_brief("[AI soạn — tác giả kiểm tra lại] Ví dụ minh hoạ ngắn"))
 
 
 

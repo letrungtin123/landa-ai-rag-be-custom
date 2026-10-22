@@ -427,8 +427,9 @@ UNMEASURABLE_VERBS: Final = frozenset({
 })
 MUST_DO_TOPIC_PREFIXES: Final = ("kien thuc ve", "tong quan", "gioi thieu", "overview of", "introduction to")
 CAPABILITY_LEAD_INS: Final = ("co the", "can", "will be able to", "be able to")
-AI_DRAFTED_MARKER_VI: Final = "[AI soạn — cần SME xác nhận]"
-AI_DRAFTED_MARKER_EN: Final = "[AI-drafted — SME to confirm]"
+# The mark of an AI-drafted scenario in the storyboard notes (owner decision 2026-10-22: addressed to the author).
+AI_DRAFTED_MARKER_VI: Final = "[AI soạn — tác giả kiểm tra lại]"
+AI_DRAFTED_MARKER_EN: Final = "[AI-drafted — author to check]"
 # No Hold (owner decision 2026-10-22, QC feedback A5, contract K2): the AI never holds a block or a practice for an SME.
 # A practice whose source states no grading criteria gets criteria drawn from what the lesson teaches, labelled so the
 # author and the learner read them as suggested: the module stage starts the practice's feedback_focus.criterion with

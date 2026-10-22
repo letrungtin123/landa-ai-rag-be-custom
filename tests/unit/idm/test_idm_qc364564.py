@@ -215,7 +215,7 @@ class FinalCodeTests(StoryboardEndpointTestCase):
         self.assertEqual(quality.deterministic_codes, ["HTML_SOURCE_LOCATOR", "IDM_W5_PRACTICE_INCOMPLETE"])
         self.assertEqual(quality.author_note, "QA tự động: không phát hiện vấn đề lớn. "
                                               "Đã tự sửa: lỗi định dạng phần lý thuyết, bài luyện tập thiếu phần. "
-                                              "Tình huống minh hoạ do AI soạn, cần SME xác nhận tính thực tế.")
+                                              "Tình huống minh hoạ do AI soạn, tác giả nên kiểm tra lại tính thực tế.")
 
     async def test_english_note_lists_fixed_codes(self) -> None:
         body = {**severity_body(), "locale": "en"}
@@ -419,8 +419,8 @@ class CalloutGroundingTests(StoryboardEndpointTestCase):
         blocks = data["unit"]["components"][0]["semantic_content"]["sections"][0]["blocks"]
         self.assertEqual((blocks[2]["kind"], blocks[2]["text"]), ("paragraph", INVENTED_CALLOUT))
         self.assertNotIn("source_locked_fallback", data["unit"]["components"][0])
-        self.assertIn("Đã chuyển 1 khung trích dẫn/lưu ý không có trong tài liệu thành đoạn văn thường — cần SME xác "
-                      "nhận nội dung.", quality.author_note)
+        self.assertIn("Đã chuyển 1 khung trích dẫn/lưu ý không có trong tài liệu thành đoạn văn thường — tác giả nên "
+                      "kiểm tra lại nội dung.", quality.author_note)
         self.assertNotIn("còn cảnh báo", quality.author_note)
         self.assertEqual(quality.deterministic_codes, ["IDM_W5_CALLOUT_TO_PROSE", "IDM_W5_CALLOUT_UNGROUNDED"])
 
@@ -430,8 +430,8 @@ class CalloutGroundingTests(StoryboardEndpointTestCase):
         provider = FakeGenerate(**{WRITER: [writer], REPAIR: [slot_repair(writer, 0)], JUDGE: [judge()]})
         _, data, _ = await self.post(body, provider)
         quality = self.assert_envelope(data, "provider_validated", "review_required", "provider")
-        self.assertIn("1 callout(s) not found in the source were turned into plain paragraphs — the SME should "
-                      "confirm their content.", quality.author_note)
+        self.assertIn("1 callout(s) not found in the source were turned into plain paragraphs — the author should "
+                      "check their content.", quality.author_note)
 
 
 # --- N11: FAQ items add value and the FAQ title matches them ----------------------------------------

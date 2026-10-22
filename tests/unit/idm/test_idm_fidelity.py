@@ -244,7 +244,7 @@ class ModuleSupportTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(module_fidelity_rules("keep", "vi"), "")
         rules = module_fidelity_rules("explain", "vi")
         self.assertIn("support item of kind example, worked_example, non_example", rules)
-        self.assertIn("[AI soạn — cần SME xác nhận]", rules)
+        self.assertIn("[AI soạn — tác giả kiểm tra lại]", rules)
         prompt = module_prompt("vi", module_plan={}, lesson_plans=[], audience="Nhân viên mới", objectives=[],
                                must_dos=[], course_blocks=[], facts=[], allowed_components=["html"],
                                fidelity_rules=rules)

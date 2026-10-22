@@ -376,11 +376,11 @@ class AuthorNoteAndQualityTests(unittest.TestCase):
         self.assertEqual(vi, "QA tự động: 1 vấn đề cần xem — phản hồi chưa giải thích từng lựa chọn. "
                              "1 khối dùng bản dự phòng dựng từ tài liệu — cần biên tập. "
                              "Kiểm tra tự động còn cảnh báo: một kiểm tra tự động khác. "
-                             "Tình huống minh hoạ do AI soạn, cần SME xác nhận tính thực tế.")
+                             "Tình huống minh hoạ do AI soạn, tác giả nên kiểm tra lại tính thực tế.")
         en = build_unit_author_note(locale="en", judge=review, deterministic_codes=[], fallback_slots=[],
                                     ai_drafted=True)
         self.assertEqual(en, "Automatic QA: 1 issue(s) to review — feedback does not explain each option. "
-                             "The illustrative scenario was drafted by AI; the SME should confirm it is realistic.")
+                             "The illustrative scenario was drafted by AI; the author should check it is realistic.")
         cases = {
             ("vi", "pass"): "QA tự động: không phát hiện vấn đề lớn.",
             ("en", "pass"): "Automatic QA: no major issue found.",

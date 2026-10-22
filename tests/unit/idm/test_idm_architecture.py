@@ -401,7 +401,8 @@ class SkeletonProjectionTests(unittest.TestCase):
         self.assertEqual(skeleton.chapters[1].learning_outcomes, [statements["lo_1"]])
         self.assertEqual([item.lo_id for item in design.learning_objectives], ["lo_1", "lo_2", "lo_3"])
         self.assertNotIn("Mục tiêu học tập chờ SME", design.notes.course)
-        self.assertIn("(chờ SME — chưa có bài dạy)", design.notes.modules["mod_02"])
+        self.assertIn("(chưa có bài dạy)", design.notes.modules["mod_02"])
+        self.assertNotIn("SME", design.notes.modules["mod_02"])
         # A partly held objective (lo_3: md_5 held, md_4 taught) stays a learner outcome.
         _design, golden = self.project()
         self.assertEqual(golden.learning_outcomes, list(statements.values()))

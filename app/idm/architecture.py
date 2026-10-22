@@ -89,8 +89,8 @@ from app.idm.validation import IdmIssue, errors
 
 _AI_SUFFIX_VI: Final = " (Đề xuất bởi AI — cần xác nhận)"
 _AI_SUFFIX_EN: Final = " (Proposed by AI — please confirm)"
-_PENDING_VI: Final = " (chờ SME — chưa có bài dạy)"
-_PENDING_EN: Final = " (awaiting the SME — not taught yet)"
+_PENDING_VI: Final = " (chưa có bài dạy)"
+_PENDING_EN: Final = " (not taught yet)"
 _MAX_CHAPTER_OUTCOMES: Final = 12
 _MAX_PREREQUISITES: Final = 10
 _MAX_SECONDARY_MUST_DOS: Final = 2
