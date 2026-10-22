@@ -225,6 +225,20 @@ def missing_input(component: Mapping[str, Any]) -> InputReference | None:
     return reference
 
 
+_ENTRY_SPLIT_RE: Final = re.compile(r"\s*(?:[,;]|\bvà\b|\band\b)\s*", re.IGNORECASE)
+
+
+def described_only(task: str, context: str) -> InputReference | None:
+    """The data a practice plan refers to (its task or its input) that its input only describes ("Danh sách 5 yêu cầu
+    phức tạp từ khách hàng" without the five requests; review of dfb6db2, item 5a), or ``None``."""
+
+    reference = input_reference([task, context])
+    if reference is None:
+        return None
+    entries = [part for part in _ENTRY_SPLIT_RE.split(context) if part.strip()]
+    return reference if len(entries) < max(_MIN_LIST_ENTRIES, reference.count or 0) else None
+
+
 def input_hint(reference: InputReference | None) -> str:
     """The repair line's server words for ``reference`` (never the writer's text); empty without one."""
 
@@ -241,6 +255,7 @@ def references_of(components: Sequence[Mapping[str, Any]]) -> list[InputReferenc
     return [missing_input(component) for component in components]
 
 
-__all__ = ["EXAMPLE_REUSE_CODE", "WORKSHEET_INPUT_CODE", "InputReference", "input_hint", "input_reference",
+__all__ = ["EXAMPLE_REUSE_CODE", "WORKSHEET_INPUT_CODE", "InputReference", "described_only", "input_hint",
+           "input_reference",
            "is_example_section", "is_input_section", "missing_input", "references_of", "reuse_hint",
            "reused_entries"]

@@ -397,6 +397,9 @@ IDM_WORKSHEET_REUSE_MIN_PAIRS: Final = 3
 # R3 (c2.l4.u2): a single-choice question has this many options; one whose options only name the case's listed items
 # and has fewer is an edit finding (the prompt still allows 3 when the criterion leaves two plausible mistakes).
 IDM_MCQ_OPTION_COUNT: Final = 4
+# Review of dfb6db2 (item 5c): a fallback worksheet built from its practice plan shows at most this many statements of
+# its facts under "Nội dung cần áp dụng" (one showed 18 lines).
+IDM_WORKSHEET_FALLBACK_MAX_STATEMENTS: Final = 6
 
 # --- FAQ value and callout grounding (QC course 364564, N9/N11) --------------------------------
 # 3 of 5 FAQs only repeated the table taught just above them. An FAQ answer restates the html before

@@ -214,8 +214,8 @@ class FinalCodeTests(StoryboardEndpointTestCase):
         quality = self.assert_envelope(data, "provider_validated", "validated", "provider")
         self.assertEqual(provider.names, [WRITER, REPAIR, JUDGE])
         self.assertEqual(quality.deterministic_codes, ["HTML_SOURCE_LOCATOR", "IDM_W5_PRACTICE_INCOMPLETE"])
-        self.assertEqual(quality.author_note, "Đã tự sửa: lỗi định dạng phần lý thuyết, bài luyện tập thiếu phần. "
-                                              "Tình huống minh hoạ do AI soạn, tác giả nên kiểm tra lại tính thực tế.")
+        self.assertEqual(quality.author_note, "Tình huống minh hoạ do AI soạn, tác giả nên kiểm tra lại tính thực tế. "
+                                              "Đã tự sửa: lỗi định dạng phần lý thuyết, bài luyện tập thiếu phần.")
 
     async def test_english_note_lists_fixed_codes(self) -> None:
         body = {**severity_body(), "locale": "en"}

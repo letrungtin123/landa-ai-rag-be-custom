@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import re
 from collections.abc import Collection, Mapping, Sequence
-from typing import Any, Final
+from typing import Any, Final, NamedTuple
 
 from app.idm.faq_checks import (
     FAQ_HYPE_CODE,
@@ -96,6 +96,7 @@ from app.idm.source_flags import fit_flags
 from app.idm.source_locked import FAQ_FALLBACK_REPEATED_CODE
 from app.idm.text import sanitize_author_text
 from app.idm.unit_note_lines import (
+    SCENARIO_LINE,
     SLOT_LABEL_EN,
     SLOT_LABEL_VI,
     SUGGESTED_CRITERIA_LINE,
@@ -103,7 +104,9 @@ from app.idm.unit_note_lines import (
     drafted_examples_line,
     dropped_faq_lines,
     example_numbers_line,
+    fallback_input_line,
     faq_inferred_line,
+    framework_line,
     supposition_line,
     worksheet_line,
 )
@@ -332,6 +335,7 @@ def build_unit_author_note(
     placeholder_slots: Sequence[int] = (),
     glued: Sequence[str] = (),
     suppositions: int = 0,
+    fallback_inputs: Sequence[int] = (),
 ) -> str:
     """Template note for the unit ``implementation_notes``; no IDs, no ``<``/``>``.
 
@@ -359,50 +363,21 @@ def build_unit_author_note(
     right after the review reasons; ``source_notes`` (run 5496155c): one per unclear point, an edit note after the
     notices. ``placeholder_slots`` (run 5496155c): the slots of a whole-unit fallback that only repeat sentences of the
     lesson (no source structure rebuilt them); ``glued``: words the PDF glued together that a fallback slot shows;
-    ``suppositions``: drafted cases told as a real past event that now open with "Giả sử".
+    ``suppositions``: drafted cases told as a real past event that now open with "Giả sử"; ``fallback_inputs``
+    (review of dfb6db2): fallback worksheets whose input data the practice plan only describes.
     """
 
     vi = locale == "vi"
     problems = [finding for finding in judge.findings if finding.severity in {"major", "critical"}]
     judged = _judge_line(judge, problems, _CRITERION_LABEL_VI if vi else _CRITERION_LABEL_EN, vi,
                          marked=bool(review_reasons))
-    parts = [judged] if judged else []
     slot_lines, named = _slot_lines(vi, slot_reasons or {}, slot_types, whole_fallback=whole_fallback,
                                     fallback_slots=fallback_slots, review_slots=review_slots,
                                     failure_codes=failure_codes, deterministic_codes=deterministic_codes,
-                                    placeholder_slots=placeholder_slots, remaining=remaining)
-    parts.extend(slot_lines)
-    parts.extend(dropped_faq_lines(vi, dropped=faq_items_dropped, restated=faq_items_restated,
-                                    copied=faq_items_copied, recall=faq_items_recall, unresolved=faq_items_open,
-                                    invalid=faq_items_invalid))
-    parts.extend(callout_lines(vi, to_prose=callouts_to_prose, repeating=callouts_repeating))
-    if suppositions:
-        parts.append(supposition_line(suppositions, vi))
-    if framework_list_inserted:
-        parts.append(f"Đã chèn danh sách {framework_list_inserted} thành phần của khung (tên lấy từ tài liệu) vào phần "
-                     "lý thuyết — tác giả nên biên tập cho liền mạch." if vi
-                     else f"A list of the framework's {framework_list_inserted} items (names from the source) was "
-                          "inserted into the theory block — edit it into the text.")
-    if worksheet_compacted:
-        parts.append(worksheet_line(vi, example_kept=worksheet_example_kept))
-    if not whole_fallback:
-        parts.extend(_check_lines(vi, deterministic_codes, remaining, fixed_codes, slot_types, named=named))
-    if drafted_examples and not whole_fallback:
-        parts.append(drafted_examples_line(drafted_examples, slot_types, vi))
-    if example_numbers and not whole_fallback:
-        parts.append(example_numbers_line(example_numbers, slot_types, vi))
-    if faq_inferred and not whole_fallback:
-        parts.append(faq_inferred_line(faq_inferred, slot_types, vi))
-    # A source-locked unit carries no drafted scenario; the review reason already says it when it is one.
-    if ai_drafted and not whole_fallback and REVIEW_REASON_SCENARIO not in review_reasons:
-        parts.append("Tình huống minh hoạ do AI soạn, tác giả nên kiểm tra lại tính thực tế." if vi
-                     else "The illustrative scenario was drafted by AI; the author should check it is realistic.")
-    if unexplained_acronyms and not whole_fallback:
-        parts.append(_acronyms_line(unexplained_acronyms, vi))
-    if suggested_criteria:
-        parts.append(SUGGESTED_CRITERIA_LINE[vi])
-    if glued:
-        parts.append(glued_line(glued, vi))
+                                    placeholder_slots=placeholder_slots, remaining=remaining,
+                                    fallback_inputs=fallback_inputs)
+    checks = _Checks("", [], []) if whole_fallback else _check_lines(
+        vi, deterministic_codes, remaining, fixed_codes, slot_types, named=named)
     # Run 5496155c: a reason says "chi tiết bên dưới" only when a line below gives the details.
     kept_line = bool(review_slots) and not whole_fallback
     detailed = {reason for reason, shown in (
@@ -410,21 +385,42 @@ def build_unit_author_note(
         (REVIEW_REASON_KEPT_SLOTS, kept_line), (REVIEW_REASON_STYLE, kept_line),
         (REVIEW_REASON_SERVER_EDIT, callouts_to_prose > 0 or framework_list_inserted > 0),
         (REVIEW_REASON_EXAMPLE_NUMBERS, bool(example_numbers) and not whole_fallback)) if shown}
-    head = [_reasons_line(review_reasons, vi, detailed, _REVIEW_LEAD[vi]),
-            *fit_flags(source_flags, IDM_UNIT_SOURCE_FLAGS_MAX_CHARS, locale),
-            _reasons_line(notices, vi, detailed, _NOTICE_LEAD[vi]),
-            *fit_flags(source_notes, IDM_UNIT_SOURCE_FLAGS_MAX_CHARS, locale, soft=True)]
+    content = not whole_fallback
+    ok = judged == _NO_ISSUE_LINE[vi]
+    # Review of dfb6db2: what the author must check first ("Cần xem"), then what to polish ("Lưu ý", "Nên biên tập"),
+    # then what was done; the note's character budget only ever cuts the end.
+    # The fallback and kept-slot lines lead a unit marked for review; a unit with notices only opens with them.
+    first = bool(review_reasons or fallback_slots or whole_fallback)
+    review = [_reasons_line(review_reasons, vi, detailed, _REVIEW_LEAD[vi]),
+              *fit_flags(source_flags, IDM_UNIT_SOURCE_FLAGS_MAX_CHARS, locale), "" if ok else judged,
+              *(slot_lines if first else ()), *checks.review]
+    edits = [_reasons_line(notices, vi, detailed, _NOTICE_LEAD[vi]),
+             *fit_flags(source_notes, IDM_UNIT_SOURCE_FLAGS_MAX_CHARS, locale, soft=True),
+             *(() if first else slot_lines), *checks.polish,
+             *dropped_faq_lines(vi, dropped=faq_items_dropped, restated=faq_items_restated, copied=faq_items_copied,
+                                recall=faq_items_recall, unresolved=faq_items_open, invalid=faq_items_invalid),
+             *callout_lines(vi, to_prose=callouts_to_prose, repeating=callouts_repeating),
+             supposition_line(suppositions, vi) if suppositions else "",
+             framework_line(framework_list_inserted, vi) if framework_list_inserted else "",
+             worksheet_line(vi, example_kept=worksheet_example_kept) if worksheet_compacted else "",
+             drafted_examples_line(drafted_examples, slot_types, vi) if drafted_examples and content else "",
+             example_numbers_line(example_numbers, slot_types, vi) if example_numbers and content else "",
+             faq_inferred_line(faq_inferred, slot_types, vi) if faq_inferred and content else "",
+             # A source-locked unit carries no drafted scenario; the review reason already says it when it is one.
+             SCENARIO_LINE[vi] if ai_drafted and content and REVIEW_REASON_SCENARIO not in review_reasons else "",
+             _acronyms_line(unexplained_acronyms, vi) if unexplained_acronyms and content else "",
+             SUGGESTED_CRITERIA_LINE[vi] if suggested_criteria else "", glued_line(glued, vi) if glued else ""]
     # Run 5496155c: "no major issue" only on a note that asks nothing else of the author ("Đã tự sửa" only informs).
-    if judged == _NO_ISSUE_LINE[vi] and any(part and not part.startswith(_FIXED_LEAD[vi])
-                                            for part in [*head, *parts[1:]]):
-        parts = parts[1:]
-    return sanitize_author_text(" ".join(part for part in [*head, *parts] if part), IDM_UNIT_AUTHOR_NOTE_MAX_CHARS)
+    done = [judged if ok and not any([*review, *edits]) else "", checks.fixed]
+    return sanitize_author_text(" ".join(part for part in [*review, *edits, *done] if part),
+                                IDM_UNIT_AUTHOR_NOTE_MAX_CHARS)
 
 
 def _slot_lines(vi: bool, reasons: Mapping[int, Sequence[str]], slot_types: Sequence[str], *, whole_fallback: bool,
                 fallback_slots: Sequence[int], review_slots: Sequence[int], failure_codes: Sequence[str],
                 deterministic_codes: Sequence[str], placeholder_slots: Sequence[int],
-                remaining: Sequence[SlotFinding] | None) -> tuple[list[str], set[str]]:
+                remaining: Sequence[SlotFinding] | None, fallback_inputs: Sequence[int] = (),
+                ) -> tuple[list[str], set[str]]:
     """The lines of the fallback and kept slots and why, and the plain words they name, which the "còn cảnh báo"
     line does not repeat. Run 5496155c: a kept slot's finding with its own "Cần xem"/"Nên biên tập" line below is not
     named twice."""
@@ -436,6 +432,8 @@ def _slot_lines(vi: bool, reasons: Mapping[int, Sequence[str]], slot_types: Sequ
                  + ((f" Lý do: {failures}." if vi else f" Reason: {failures}.") if failures else "")]
         if placeholder_slots:
             lines.append(placeholder_line(_slot_reasons(placeholder_slots, {}, slot_types, vi), vi))
+        if fallback_inputs:
+            lines.append(fallback_input_line(_slot_reasons(fallback_inputs, {}, slot_types, vi), vi))
         return lines, set()
     lines = []
     if fallback_slots:
@@ -444,6 +442,8 @@ def _slot_lines(vi: bool, reasons: Mapping[int, Sequence[str]], slot_types: Sequ
         explained = [index for index in fallback_slots if _codes(reasons.get(index, ()), vi)]
         if explained:
             lines.append(("Lý do: " if vi else "Reason: ") + _slot_reasons(explained, reasons, slot_types, vi) + ".")
+        if fallback_inputs:
+            lines.append(fallback_input_line(_slot_reasons(fallback_inputs, {}, slot_types, vi), vi))
     hinted = {(item.component_index, item.code) for item in remaining or ()
               if item.code in _REVIEW_HINT_VI or item.code in _PLAIN_HINT_VI}
     kept = {index: [code for code in reasons.get(index, ()) if (index, code) not in hinted] for index in review_slots}
@@ -696,15 +696,22 @@ def _acronyms_line(acronyms: Sequence[str], vi: bool) -> str:
                  f"appears: {listed}.")
 
 
+class _Checks(NamedTuple):
+    """The "Đã tự sửa" line, the lines to check ("Cần xem", "còn cảnh báo") and the lines to polish."""
+
+    fixed: str
+    review: list[str]
+    polish: list[str]
+
+
 def _check_lines(vi: bool, deterministic_codes: Sequence[str], remaining: Sequence[SlotFinding] | None,
-                 fixed_codes: Sequence[str], slot_types: Sequence[str], *, named: Collection[str] = ()) -> list[str]:
-    """The "Đã tự sửa" line (settled during generation), one review line per hinted finding, then what still
-    warns on the returned unit and no line above names (``named``: the plain words of the slot lines)."""
+                 fixed_codes: Sequence[str], slot_types: Sequence[str], *, named: Collection[str] = ()) -> _Checks:
+    """The "Đã tự sửa" line (settled during generation), one line per hinted finding (to check or to polish), then
+    what still warns on the returned unit and no line above names (``named``: the plain words of the slot lines)."""
 
     lines: list[str] = []
+    polish: list[str] = []
     fixed = _codes(sorted(set(fixed_codes)), vi)
-    if fixed:
-        lines.append(f"Đã tự sửa: {fixed}." if vi else f"Automatically fixed: {fixed}.")
     still = list(deterministic_codes) if remaining is None else [item.code for item in remaining]
     hints = _REVIEW_HINT_VI if vi else _REVIEW_HINT_EN
     labels = _SLOT_LABEL_VI if vi else _SLOT_LABEL_EN
@@ -718,14 +725,14 @@ def _check_lines(vi: bool, deterministic_codes: Sequence[str], remaining: Sequen
                              and slot_types[index] in labels else "") for index in slots)
         # QLT-9: plain words only, the code stays in ``deterministic_codes``; a wording finding is to polish.
         if code in STYLE_CODES:
-            lines.append(f"Nên biên tập {where}: {hint}." if vi else f"Polish {where}: {hint}.")
+            polish.append(f"Nên biên tập {where}: {hint}." if vi else f"Polish {where}: {hint}.")
         else:
             lines.append(f"Cần xem {where}: {hint}." if vi else f"Review {where}: {hint}.")
     warn = _codes(sorted({code for code in still if (remaining is None or (code not in hints and code not in plain))
                           and _code_text(code, vi) not in named}), vi)
     if warn:
         lines.append(f"Kiểm tra tự động còn cảnh báo: {warn}." if vi else f"Automatic checks still warn: {warn}.")
-    return lines
+    return _Checks((f"Đã tự sửa: {fixed}." if vi else f"Automatically fixed: {fixed}.") if fixed else "", lines, polish)
 
 
 def settled_codes(seen: Sequence[str], remaining: Sequence[SlotFinding],

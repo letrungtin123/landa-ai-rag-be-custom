@@ -438,21 +438,22 @@ class AuthorNoteAndQualityTests(unittest.TestCase):
         vi = build_unit_author_note(locale="vi", judge=JudgeOutcome("not_run"), deterministic_codes=[],
                                     fallback_slots=[], ai_drafted=False, slot_types=types, remaining=remaining,
                                     fixed_codes=["HTML_SOURCE_LOCATOR"])
-        self.assertEqual(vi, "Đã tự sửa: lỗi định dạng phần lý thuyết. "
-                             "Cần xem khối 2 (Quiz): một phương án gần như chép lại ví dụ hoặc "
+        # Review of dfb6db2: what to check first, then what to polish, then what was done.
+        self.assertEqual(vi, "Cần xem khối 2 (Quiz): một phương án gần như chép lại ví dụ hoặc "
                              "nội dung ngay trước câu hỏi — người học có thể chọn theo trí nhớ thay vì áp dụng tiêu "
-                             "chí. Nên biên tập khối 2 (Quiz): đáp án đúng dài hơn hẳn các "
+                             "chí. Kiểm tra tự động còn cảnh báo: phiếu thực hành thiếu phần. "
+                             "Nên biên tập khối 2 (Quiz): đáp án đúng dài hơn hẳn các "
                              "phương án khác — người học có thể đoán theo độ dài. "
-                             "Kiểm tra tự động còn cảnh báo: phiếu thực hành thiếu phần.")
+                             "Đã tự sửa: lỗi định dạng phần lý thuyết.")
         en = build_unit_author_note(locale="en", judge=JudgeOutcome("not_run"), deterministic_codes=[],
                                     fallback_slots=[], ai_drafted=False, slot_types=types, remaining=remaining,
                                     fixed_codes=["HTML_SOURCE_LOCATOR"])
-        self.assertEqual(en, "Automatically fixed: a theory format problem. "
-                             "Review block 2 (Quiz): an option nearly copies the example or "
+        self.assertEqual(en, "Review block 2 (Quiz): an option nearly copies the example or "
                              "text shown right before the question — learners can match it instead of applying the "
-                             "criterion. Polish block 2 (Quiz): the correct option is "
+                             "criterion. Automatic checks still warn: an incomplete worksheet. "
+                             "Polish block 2 (Quiz): the correct option is "
                              "much longer than the others — learners can guess it by length. "
-                             "Automatic checks still warn: an incomplete worksheet.")
+                             "Automatically fixed: a theory format problem.")
         whole = build_unit_author_note(locale="en", judge=JudgeOutcome("not_run"), deterministic_codes=["X_CODE"],
                                        fallback_slots=[0], ai_drafted=False, whole_fallback=True, remaining=[],
                                        fixed_codes=["X_CODE"])

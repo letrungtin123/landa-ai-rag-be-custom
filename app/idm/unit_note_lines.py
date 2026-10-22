@@ -30,6 +30,31 @@ def callout_lines(vi: bool, *, to_prose: int, repeating: int) -> list[str]:
     return lines
 
 
+SCENARIO_LINE: Final = {
+    True: "Tình huống minh hoạ do AI soạn, tác giả nên kiểm tra lại tính thực tế.",
+    False: "The illustrative scenario was drafted by AI; the author should check it is realistic.",
+}
+
+
+def framework_line(count: int, vi: bool) -> str:
+    """The note of the framework list the server inserted into the theory block (QC run 8de1c76b, Q3)."""
+
+    return (f"Đã chèn danh sách {count} thành phần của khung (tên lấy từ tài liệu) vào phần lý thuyết — tác giả nên "
+            "biên tập cho liền mạch." if vi
+            else f"A list of the framework's {count} items (names from the source) was inserted into the theory "
+                 "block — edit it into the text.")
+
+
+def fallback_input_line(where: str, vi: bool) -> str:
+    """Review of dfb6db2 (item 5a): the fallback worksheets (``where``) whose practice plan only describes the data
+    the learner works on ("Danh sách 5 yêu cầu …" without the five requests)."""
+
+    return (f"Phiếu thực hành dự phòng ở {where} chỉ mô tả dữ liệu đầu vào, chưa có dữ liệu để học viên làm bài — tác "
+            "giả cần bổ sung dữ liệu." if vi
+            else f"The fallback worksheet in {where} only describes its input data, without the data learners work "
+                 "on — the author must add it.")
+
+
 def supposition_line(count: int, vi: bool) -> str:
     """The note of the drafted cases told as a real past event that now open with "Giả sử" (run 5496155c)."""
 
@@ -126,5 +151,18 @@ def faq_inferred_line(inferred: Mapping[int, int], slot_types: Sequence[str], vi
                  f"{total} answer(s) ({where}).")
 
 
-__all__ = ["SLOT_LABEL_EN", "SLOT_LABEL_VI", "SUGGESTED_CRITERIA_LINE", "callout_lines", "drafted_examples_line",
-           "dropped_faq_lines", "example_numbers_line", "faq_inferred_line", "supposition_line", "worksheet_line"]
+__all__ = [
+    "SCENARIO_LINE",
+    "SLOT_LABEL_EN",
+    "SLOT_LABEL_VI",
+    "SUGGESTED_CRITERIA_LINE",
+    "callout_lines",
+    "drafted_examples_line",
+    "dropped_faq_lines",
+    "example_numbers_line",
+    "fallback_input_line",
+    "faq_inferred_line",
+    "framework_line",
+    "supposition_line",
+    "worksheet_line",
+]

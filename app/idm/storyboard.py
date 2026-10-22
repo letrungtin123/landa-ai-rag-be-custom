@@ -696,7 +696,7 @@ async def run_idm_unit(
         faq_items_recall=writer.faq_items_recall, faq_inferred=inferred, faq_items_open=writer.faq_items_open,
         review_reasons=review_reasons if reviewable and not whole_fallback else (),
         unexplained_acronyms=unexplained_acronyms, notices=() if whole_fallback else notices,
-        suggested_criteria=not whole_fallback and writer.suggested_criteria(draft.fallback_slots),
+        **writer.plan_worksheet_notes(components, draft.fallback_slots, whole_fallback=whole_fallback),
         placeholder_slots=writer.placeholder_slots if whole_fallback else (),
         glued=fallback_glued_words(components, draft.fallback_slots), source_flags=writer.source_flags,
         source_notes=writer.source_notes,

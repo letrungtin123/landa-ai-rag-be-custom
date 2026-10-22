@@ -82,6 +82,7 @@ from app.idm.worksheet import compact_worksheet, plain_self_check, plan_workshee
 from app.idm.worksheet_input import (
     EXAMPLE_REUSE_CODE,
     WORKSHEET_INPUT_CODE,
+    described_only,
     input_hint,
     missing_input,
     reuse_hint,
@@ -184,6 +185,8 @@ class IdmUnitWriterSteps:
         # there (the last resort, ``app.idm.source_fallback``).
         self.placeholder_slots = [index for index, slot in enumerate(deps.source_locked_components or ())
                                   if slot is None]
+        # Review of dfb6db2 (item 5): slot -> the worksheet built from its practice plan (a fallback without a form).
+        self.plan_worksheets: dict[int, str] = {}
         self.budget: dict[str, Any] = self.expected["instructional_output_budget"]
         self.min_html_chars = minimum_visible_chars(self.budget.get("source_content_chars"))
         # Deterministic html fixes applied before validation (counted, never content).
@@ -479,13 +482,27 @@ class IdmUnitWriterSteps:
                                              practice.sentence if practice else None, self.runtime.locale)
         # R1: without a form in the facts, the approved practice plan and the facts' complete statements, never the
         # loose source lines (headings, questions, cut lines).
-        if structured is None and practice is not None:
-            structured = plan_worksheet_html(title, {
+        if structured is None and practice is not None and (structured := plan_worksheet_html(title, {
                 "sentence": practice.sentence, "context_input": practice.context_input,
                 "learner_action": practice.learner_action, "result": practice.result,
                 "criterion": practice.feedback_focus.criterion}, self.runtime.locale,
-                lesson_statements([self.text_by_id[key] for key in keys if key in self.text_by_id]))
+                lesson_statements([self.text_by_id[key] for key in keys if key in self.text_by_id]))) is not None:
+            self.plan_worksheets[index] = structured
         return {**base, "html": structured} if structured else None
+
+    def plan_worksheet_notes(self, components: Sequence[Any], fallback_slots: Sequence[int], *,
+                             whole_fallback: bool) -> dict[str, Any]:
+        """Review of dfb6db2 (item 5): the note's facts of the worksheet slots. The self-check the learner sees has
+        AI-suggested criteria in a provider worksheet and in a fallback built from the practice plan (never in a form
+        or source fallback); and the plan worksheets whose input data the plan only describes."""
+
+        replaced = set(range(len(self.plans))) if whole_fallback else set(fallback_slots)
+        planned = {index for index in replaced if (built := self.plan_worksheets.get(index)) is not None
+                   and index < len(components) and isinstance(components[index], dict)
+                   and components[index].get("html") == built}
+        missing = [index for index in sorted(planned) if (practice := self.brief.components[index].practice)
+                   and described_only(practice.sentence, practice.context_input) is not None]
+        return {"suggested_criteria": self.suggested_criteria(sorted(replaced - planned)), "fallback_inputs": missing}
 
     def repeated_faq_fallback(self, index: int) -> list[str]:
         """``[FAQ_FALLBACK_REPEATED_CODE]`` when the source-locked FAQ of slot ``index`` says one sentence twice (its

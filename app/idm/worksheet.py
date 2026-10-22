@@ -36,6 +36,7 @@ from typing import Any, Final
 
 from app.content.instructional_quality import TABLE_ROW_RE
 from app.idm.acronyms import keeps_capitals
+from app.idm.policy import IDM_WORKSHEET_FALLBACK_MAX_STATEMENTS
 from app.idm.text import idm_fold, trim_at_boundary
 from app.idm.worksheet_input import is_input_section
 
@@ -271,6 +272,9 @@ def _form_rows(lines: list[str]) -> tuple[list[tuple[str, str, str]], set[int]]:
     return rows, used
 
 
+_CLASSROOM_RE: Final = re.compile(r"\b(?:cac (?:team|nhom|doi)|giang vien|tren lop|truoc lop|thao luan nhom"
+                                   r"|duoc phat|phat cho|chia nhom|trinh bay truoc|the (?:teams|groups)"
+                                   r"|in class|the trainer)\b")
 _SUGGESTED_LABEL_RE: Final = re.compile(r"^\s*(?:tiêu chí gợi ý|suggested criteria)\s*[:\-\N{EN DASH}]\s*",
                                         re.IGNORECASE)
 
@@ -292,7 +296,10 @@ def plan_worksheet_html(title: str, plan: Mapping[str, str], locale: str,
     parts = [f"<h2>{html.escape(title)}</h2>", f"<h3>{text['task']}</h3>", f"<p>{html.escape(task)}</p>"]
     if value := _clean(plan.get("context_input") or ""):
         parts.extend((f"<h3>{text['input']}</h3>", f"<p>{html.escape(value)}</p>"))
-    if statements := [_clean(line) for line in reference if _clean(line)]:
+    # Review of dfb6db2 (item 5c): at most ``IDM_WORKSHEET_FALLBACK_MAX_STATEMENTS`` of them, never a classroom
+    # instruction ("Các Team được phát …").
+    if statements := [line for line in (_clean(value) for value in reference)
+                      if line and not _CLASSROOM_RE.search(idm_fold(line))][:IDM_WORKSHEET_FALLBACK_MAX_STATEMENTS]:
         parts.extend((f"<h3>{text['use']}</h3>",
                       "<ul>" + "".join(f"<li>{html.escape(line)}</li>" for line in statements) + "</ul>"))
     for key, heading in (("learner_action", "do"), ("result", "result")):

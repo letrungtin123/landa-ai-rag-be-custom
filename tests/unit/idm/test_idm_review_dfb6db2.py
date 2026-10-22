@@ -14,13 +14,21 @@ from typing import Any
 from app.idm.answer_checks import copies_example_measure, stem_copies_answer, unit_teaching
 from app.idm.hypothetical import SUPPOSITION_ADDED, as_supposition, suppose_semantic
 from app.idm.prompts_unit import unit_writer_prompt
+from app.idm.qa import (
+    REVIEW_REASON_EVIDENCE,
+    REVIEW_REASON_KEPT_SLOTS,
+    JudgeOutcome,
+    SlotFinding,
+    build_unit_author_note,
+)
 from app.idm.quiz_text import lay_out_quiz
 from app.idm.source_locked import render_idm_source_locked_html
 from app.idm.text import evidence_index
-from app.idm.worksheet import compact_worksheet
+from app.idm.worksheet import compact_worksheet, plan_worksheet_html
 from app.idm.worksheet_input import is_example_section, is_input_section, missing_input, reused_entries
+from tests.unit.idm.test_idm_qc_feedback import SUGGESTED
 from tests.unit.idm.test_idm_qc_run_5496155c import facts_of
-from tests.unit.idm.test_idm_storyboard import StoryboardEndpointTestCase, severity_body
+from tests.unit.idm.test_idm_storyboard import StoryboardEndpointTestCase, rehashed_brief, severity_body, worksheet_body
 
 
 def flat(text: str) -> str:
@@ -231,3 +239,84 @@ class SourceLockedTextTests(StoryboardEndpointTestCase):
         status, data, provider = await self.post({**body, "fallback_only": True})
         self.assertEqual((status, provider.calls), (200, []), data.get("detail"))
         self.assertIn("- Khách hàng mục tiêu.", data["unit"]["components"][1]["question"])
+
+
+def plan_body(*, sentence: str, context: str, criterion: str | None = None, facts: dict[str, str] | None = None
+              ) -> dict[str, Any]:
+    """The worksheet unit (no form in its facts) with its practice plan changed; ``facts`` replace the first facts."""
+
+    body = facts_of(worksheet_body(), facts or {"a": "Câu hỏi thảo luận 5 phút: Nhóm bạn gặp khiếu nại nào khó nhất?"})
+    for slot in body["unit_contract"]["idm_unit_brief"]["components"]:
+        if slot.get("practice"):
+            slot["practice"].update(sentence=sentence, context_input=context)
+            if criterion is not None:
+                slot["practice"]["feedback_focus"]["criterion"] = criterion
+    return rehashed_brief(body)
+
+
+class PlanWorksheetTests(StoryboardEndpointTestCase):
+    """Item 5: the fallback worksheet built from the practice plan."""
+
+    async def fallback(self, body: dict[str, Any]) -> dict[str, Any]:
+        status, data, provider = await self.post({**body, "fallback_only": True})
+        self.assertEqual((status, provider.calls), (200, []), data.get("detail"))
+        self.assertEqual(data["quality_state"], "review_required")
+        return data
+
+    async def test_input_the_plan_only_describes_is_named_in_the_note(self) -> None:
+        data = await self.fallback(plan_body(sentence="Đánh giá 5 khiếu nại mẫu và xếp mỗi khiếu nại vào đúng cấp độ.",
+                                             context="Danh sách 5 khiếu nại mẫu của khách hàng doanh nghiệp."))
+        self.assertIn("Phiếu thực hành dự phòng ở khối 1 (Lý thuyết) chỉ mô tả dữ liệu đầu vào, chưa có dữ liệu để học "
+                      "viên làm bài — tác giả cần bổ sung dữ liệu.", data["unit"]["idm_quality"]["author_note"])
+        listed = await self.fallback(plan_body(
+            sentence="Đánh giá 3 khiếu nại mẫu và xếp mỗi khiếu nại vào đúng cấp độ.",
+            context="Ba khiếu nại: hàng trầy nhẹ, giao thiếu dưới 50 triệu đồng, thiết bị phát nhiệt."))
+        self.assertNotIn("chỉ mô tả dữ liệu đầu vào", listed["unit"]["idm_quality"]["author_note"])
+
+    async def test_suggested_criteria_stay_in_the_note_of_a_plan_fallback(self) -> None:
+        data = await self.fallback(plan_body(sentence="Đánh giá một khiếu nại mẫu và chọn cấp độ phù hợp.",
+                                             context="Một khiếu nại về hàng giao thiếu.",
+                                             criterion=SUGGESTED))
+        self.assertIn("Tự kiểm tra", data["unit"]["components"][0]["html"])
+        self.assertIn("tiêu chí AI gợi ý", data["unit"]["idm_quality"]["author_note"])
+
+    def test_statements_are_capped_and_never_classroom_instructions(self) -> None:
+        plan = {"sentence": "Đánh giá các yêu cầu của khách hàng.", "context_input": "Một danh sách yêu cầu."}
+        lines = [f"Quy định số {number} được áp dụng cho mọi yêu cầu của khách hàng doanh nghiệp." for number in
+                 range(1, 19)]
+        html_text = plan_worksheet_html("Phiếu", plan, "vi", ["Các Team được phát 5 yêu cầu và chọn 2 sáng kiến.",
+                                                             *lines]) or ""
+        self.assertNotIn("Các Team được phát", html_text)
+        self.assertEqual(html_text.count("<li>Quy định số"), 6)
+
+
+class NoteOrderTests(unittest.TestCase):
+    """The unit note: what to check first ("Cần xem"), then what to polish, then what was done; the budget cuts the
+    end."""
+
+    def test_checks_lead_and_edit_notes_follow(self) -> None:
+        note = build_unit_author_note(
+            locale="vi", judge=JudgeOutcome("pass"), deterministic_codes=[], fallback_slots=[], ai_drafted=True,
+            slot_types=["html", "problem"], review_slots=[1], slot_reasons={1: ["IDM_W5_ANSWER_LEAK"]},
+            review_reasons=[REVIEW_REASON_KEPT_SLOTS], notices=[REVIEW_REASON_EVIDENCE],
+            remaining=[SlotFinding("IDM_W5_ANSWER_LEAK", 1), SlotFinding("IDM_W5_SENTENCE_LENGTH", 0)],
+            fixed_codes=["HTML_SOURCE_LOCATOR"], unexplained_acronyms=["TNA"])
+        order = [note.index(part) for part in ("Cần tác giả xem lại vì", "Giữ bản AI", "Cần xem khối 2",
+                                               "Lưu ý:", "Nên biên tập khối 1", "Tình huống minh hoạ",
+                                               "Chữ viết tắt", "Đã tự sửa")]
+        self.assertEqual(order, sorted(order))
+
+    def test_the_budget_never_cuts_what_to_check(self) -> None:
+        note = build_unit_author_note(
+            locale="vi", judge=JudgeOutcome("pass"), deterministic_codes=[], fallback_slots=[], ai_drafted=True,
+            slot_types=["html", "problem"], review_slots=[1], slot_reasons={1: ["IDM_W5_ANSWER_LEAK"]},
+            review_reasons=[REVIEW_REASON_KEPT_SLOTS], remaining=[SlotFinding("IDM_W5_ANSWER_LEAK", 1)],
+            source_flags=["Tài liệu ghi khác nhau ở phần “Ba cấp độ”: “Cấp 2 được phản hồi trong 48 giờ” (trang 7) "
+                          "và “Cấp 2 được phản hồi trong 24 giờ” (trang 9). Hãy kiểm tra trước khi áp dụng."] * 3,
+            unexplained_acronyms=[f"AB{number}" for number in range(8)],
+            source_notes=["Tài liệu ghi chưa rõ ở phần “Ba cấp độ”: " + "rất dài " * 60 + "."] * 3,
+            glued=["bộchân", "khảthi"], notices=[REVIEW_REASON_EVIDENCE], faq_items_dropped=1, faq_items_restated=1,
+            faq_items_copied=1, faq_items_recall=1, faq_items_open=1, faq_items_invalid=1, callouts_to_prose=1,
+            callouts_repeating=1, suppositions=2, framework_list_inserted=5, worksheet_compacted=True)
+        self.assertLessEqual(len(note), 1500)
+        self.assertIn("Cần xem khối 2 (Quiz)", note)
