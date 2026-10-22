@@ -16,6 +16,7 @@ from app.idm.policy import (
     IDM_NOTES_MAX_HOLD_ITEMS,
     IDM_NOTES_MAX_REMOVED,
     IDM_NOTES_MODULE_MAX_CHARS,
+    IDM_NOTES_SOURCE_CHECKS_MAX_CHARS,
     IDM_NOTES_SUMMARY_CHARS,
     IDM_PIPELINE_VERSION,
 )
@@ -80,15 +81,18 @@ class _Budget:
         self.body: list[str] = []
         self.left = limit - len("\n".join([*head, *tail]))
 
-    def section(self, title: str, items: Sequence[str], more: Callable[[int], str], cap: int) -> None:
-        """Add ``title`` and as many ``items`` as fit (at most ``cap``); the rest become one ``more`` line."""
+    def section(self, title: str, items: Sequence[str], more: Callable[[int], str], cap: int,
+                room: int | None = None) -> None:
+        """Add ``title`` and as many ``items`` as fit (at most ``cap``, within ``room`` characters when given, so the
+        sections after it keep theirs); the rest become one ``more`` line."""
 
         shown: list[str] = []
         cost = len(title) + 1
+        left = self.left if room is None else min(self.left, room)
         for position, item in enumerate(items[:cap]):
             rest = len(items) - position - 1
             reserve = len(more(rest)) + 1 if rest else 0
-            if cost + len(item) + 1 + reserve > self.left:
+            if cost + len(item) + 1 + reserve > left:
                 break
             shown.append(item)
             cost += len(item) + 1
@@ -184,7 +188,7 @@ def build_course_notes(
 
     checks = [item for item in dict.fromkeys(source_checks) if item.strip()]
     budget.section("• Chỗ tài liệu cần kiểm tra trước khi áp dụng:" if vi else "• Points to check in the source:",
-                   [f"  - {item}" for item in checks], more, len(checks))
+                   [f"  - {item}" for item in checks], more, len(checks), IDM_NOTES_SOURCE_CHECKS_MAX_CHARS)
     gaps = [item for item in dict.fromkeys(template_gaps) if item.strip()]
     budget.section(
         f"• Khung khoá học ({pattern_label}): tài liệu còn thiếu {len(gaps)} phần — AI không tự viết nội dung cho "

@@ -8,7 +8,10 @@ from __future__ import annotations
 
 import unittest
 
+from app.idm.contracts import IdmIssueV1
 from app.idm.mcq import normalize_single_choice
+from app.idm.notes import SkippedBlockNote, build_course_notes
+from app.idm.qa import JudgeOutcome, build_unit_author_note
 from app.idm.qa_checks import repeated_callouts
 from app.idm.quiz_text import (
     QUESTION_LAYOUT_CODE,
@@ -18,6 +21,7 @@ from app.idm.quiz_text import (
     question_report,
     quiz_findings,
 )
+from app.idm.source_flags import SourceFact, flag_sentence, flag_sentences
 from tests.unit.idm.test_idm_storyboard import (
     JUDGE,
     REPAIR,
@@ -211,3 +215,60 @@ class CalloutRepeatTests(StoryboardEndpointTestCase):
         self.assertEqual(provider.names, [WRITER, REPAIR, JUDGE])
         note = data["unit"]["idm_quality"]["author_note"]
         self.assertIn("Đã bỏ 1 khung trích dẫn/lưu ý chỉ nhắc lại đoạn văn có sẵn trong bài.", note)
+
+
+LONG_NAME = ("Quy trình tiếp nhận và phân loại khiếu nại của khách hàng theo mức độ nghiêm trọng (cấp 1, cấp 2, "
+             "cấp 3)")
+LONG_FACTS = {
+    "f1": SourceFact("Row 3: Thời hạn phản hồi khiếu nại cấp 2 là 24 giờ kể từ khi bộ phận chăm sóc khách hàng tiếp "
+                     "nhận thông tin từ khách hàng qua hotline.", 12),
+    "f2": SourceFact("Theo quy định năm 2019, thời hạn phản hồi khiếu nại cấp 2 là 48 giờ làm việc, không tính ngày "
+                     "nghỉ lễ và cuối tuần theo lịch công ty.", 37),
+    "f3": SourceFact("Khiếu nại cấp 3 phải báo cáo cho Ban Giám đốc và bộ phận Pháp chế ngay trong ngày, kèm biên bản "
+                     "làm việc với khách hàng.", 40),
+}
+CONFLICT3 = IdmIssueV1(type="conflict", note="x", fact_keys=["f1", "f2", "f3"])
+
+
+class SourceFlagSizeTests(unittest.TestCase):
+    """m6 / m12: the points to check are short, capped in the unit and course notes, and a conflict between two
+    sections without facts names both sections."""
+
+    def test_a_sentence_quotes_less_and_keeps_its_pages(self) -> None:
+        sentence = str(flag_sentence(LONG_NAME, CONFLICT3, LONG_FACTS, "vi"))
+        self.assertLessEqual(len(sentence), 300)
+        self.assertEqual(sentence.count("“") - 1, 2)  # the block name and two quotes
+        self.assertIn("(trang 12)", sentence)
+        self.assertIn("(trang 37)", sentence)
+
+    def test_the_unit_note_keeps_its_other_lines(self) -> None:
+        flags = flag_sentences([(f"Phần {n}: {LONG_NAME}", [CONFLICT3]) for n in range(3)], LONG_FACTS, "vi")
+        note = build_unit_author_note(
+            locale="vi", judge=JudgeOutcome("pass"), deterministic_codes=[], fallback_slots=[1], ai_drafted=False,
+            slot_types=["html", "problem"], review_reasons=["source_check", "fallback"], source_flags=flags,
+            suggested_criteria=True)
+        self.assertLessEqual(len(note), 1500)
+        self.assertIn("1 khối dùng bản dự phòng dựng từ tài liệu", note)
+        self.assertIn("AI gợi ý tiêu chí từ nội dung đã dạy", note)
+        self.assertIn("chỗ khác cần kiểm tra", note)
+
+    def test_the_course_note_keeps_its_other_sections(self) -> None:
+        checks = flag_sentences([(f"Phần {n}: {LONG_NAME}", [CONFLICT3]) for n in range(30)], LONG_FACTS, "vi")
+        removed = [SkippedBlockNote(f"Khối đã loại {n}", "Không phục vụ Must Do.") for n in range(3)]
+        note = build_course_notes(locale="vi", ai_proposed=False, total_minutes=30, lesson_count=3, module_count=1,
+                                  reference_block_count=0, excluded_block_count=3, fallback_stages=[],
+                                  removed=removed, source_checks=checks)
+        self.assertIn("• Nội dung đã loại khỏi khoá (Remove) — 3 khối, kèm lý do:", note)
+        self.assertEqual(note.count("Khối đã loại"), 3)
+        checks_part = note.split("• Chỗ tài liệu cần kiểm tra trước khi áp dụng:\n", 1)[1].split("\n• ")[0]
+        self.assertLessEqual(len(checks_part), 1600)
+
+    def test_a_conflict_between_two_sections_names_both(self) -> None:
+        note = "Hai mục nêu thời hạn khác nhau."
+        conflict = IdmIssueV1(type="conflict", note=note, fact_keys=[])
+        sentences = flag_sentences([("Thời hạn phản hồi", [conflict]), ("Escalate khiếu nại", [conflict])], {}, "vi")
+        self.assertEqual(sentences, ["Tài liệu ghi khác nhau giữa phần “Thời hạn phản hồi” và phần “Escalate khiếu "
+                                     "nại”. Hãy kiểm tra trước khi áp dụng."])
+        alone = flag_sentences([("Thời hạn phản hồi", [conflict])], {}, "en")
+        self.assertEqual(alone, ["The source differs between “Thời hạn phản hồi” and another part of the source. "
+                                 "Check this before applying it."])

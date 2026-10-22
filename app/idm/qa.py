@@ -25,7 +25,7 @@ from app.idm.fidelity_checks import (
     SENTENCE_LENGTH_CODE,
 )
 from app.idm.mcq import ANSWER_LENGTH_CUE_CODE, QUESTION_INCOMPLETE_CODE
-from app.idm.policy import IDM_UNIT_AUTHOR_NOTE_MAX_CHARS
+from app.idm.policy import IDM_UNIT_AUTHOR_NOTE_MAX_CHARS, IDM_UNIT_SOURCE_FLAGS_MAX_CHARS
 from app.idm.qa_checks import (
     ANSWER_CONTESTED_CODE,
     ANSWER_LEAK_CODE,
@@ -84,6 +84,7 @@ from app.idm.quiz_text import (
     QUESTION_LENGTH_CODE,
     QUIZ_STYLE_CODES,
 )
+from app.idm.source_flags import fit_flags
 from app.idm.source_locked import FAQ_FALLBACK_REPEATED_CODE
 from app.idm.text import sanitize_author_text
 
@@ -324,7 +325,7 @@ def build_unit_author_note(
     parts: list[str] = []
     if line := _review_reasons_line(review_reasons, vi):
         parts.append(line)
-    parts.extend(source_flags)
+    parts.extend(fit_flags(source_flags, IDM_UNIT_SOURCE_FLAGS_MAX_CHARS, locale))
     if line := _notices_line(notices, vi):
         parts.append(line)
     if judge.status in {"pass", "review_required", "reject"}:

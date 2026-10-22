@@ -157,6 +157,10 @@ IDM_NOTES_MAX_HOLD_ITEMS: Final = 15
 # One-line summary of a removed block in the course note. The Nice to Know list (QC course 234653, R4) is gone since the
 # QC feedback of 2026-10-21 (A6): such blocks are stored and listed as Remove.
 IDM_NOTES_SUMMARY_CHARS: Final = 160
+# Review m6: the points to check in the source (owner decision 2026-10-22) take at most this much of the course note
+# and of the unit note, so the sections and lines after them keep their room.
+IDM_NOTES_SOURCE_CHECKS_MAX_CHARS: Final = 1_500
+IDM_UNIT_SOURCE_FLAGS_MAX_CHARS: Final = 400
 # Removed blocks with the W2 reason, and definition blocks kept against the W2 proposal (QC course 364564, N4).
 IDM_NOTES_MAX_REMOVED: Final = 12
 IDM_UNIT_AUTHOR_NOTE_MAX_CHARS: Final = 1_500

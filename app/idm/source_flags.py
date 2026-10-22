@@ -24,11 +24,12 @@ from app.idm.contracts import IdmIssueV1, IdmUnitBriefV1
 from app.idm.text import single_line
 
 FLAG_ISSUE_TYPES: Final = frozenset({"conflict", "unclear", "outdated"})
-_MAX_QUOTES: Final = 3
+# Review m6: a sentence quotes at most two facts of 60 characters (with their page) and a block name of 70.
+_MAX_QUOTES: Final = 2
+_QUOTE_CHARS: Final = 60
+_NAME_CHARS: Final = 70
 # A unit note names at most this many points (the note has 1,500 characters).
 MAX_UNIT_FLAGS: Final = 3
-_QUOTE_CHARS: Final = 90
-_NAME_CHARS: Final = 120
 _LEAD_VI: Final = {"conflict": "Tài liệu ghi khác nhau", "unclear": "Tài liệu ghi chưa rõ",
                    "outdated": "Tài liệu có thể đã cũ"}
 _LEAD_EN: Final = {"conflict": "The source differs", "unclear": "The source is unclear",
@@ -49,27 +50,75 @@ def _quote(fact: SourceFact, vi: bool) -> str:
     return f"“{single_line(ROW_LABEL_ANY_RE.sub('', fact.text), _QUOTE_CHARS)}”{where}"
 
 
-def flag_sentence(block_name: str, issue: IdmIssueV1, facts: Mapping[str, SourceFact], locale: str) -> str | None:
+def _end(vi: bool) -> str:
+    return ". Hãy kiểm tra trước khi áp dụng." if vi else ". Check this before applying it."
+
+
+def flag_sentence(block_name: str, issue: IdmIssueV1, facts: Mapping[str, SourceFact], locale: str,
+                  partners: Sequence[str] = ()) -> str | None:
     """One plain sentence for a contradictory, unclear or out-of-date point of a block (``None`` for another issue):
-    what kind of point, the block it is in, and the facts the issue names, quoted with their page."""
+    what kind of point, the block it is in, and the facts the issue names, quoted with their page. A conflict between
+    sections carries no fact (W1-reduce, review m12): the sentence names the block and ``partners``, the other blocks
+    of the same conflict, or "another part of the source"."""
 
     if issue.type not in FLAG_ISSUE_TYPES:
         return None
     vi = locale != "en"
     quoted = list(dict.fromkeys(_quote(facts[key], vi) for key in issue.fact_keys if key in facts))[:_MAX_QUOTES]
     name = single_line(block_name, _NAME_CHARS)
+    if issue.type == "conflict" and not quoted:
+        others = [f"“{single_line(other, _NAME_CHARS)}”" for other in dict.fromkeys(partners) if other != block_name]
+        between = (" và ".join(f"phần {other}" for other in others) if others else "một phần khác của tài liệu"
+                   ) if vi else (" and ".join(others) if others else "another part of the source")
+        return (f"Tài liệu ghi khác nhau giữa phần “{name}” và {between}" if vi
+                else f"The source differs between “{name}” and {between}") + _end(vi)
     head = (f"{_LEAD_VI[issue.type]} ở phần “{name}”" if vi else f"{_LEAD_EN[issue.type]} in “{name}”")
     joiner = " và " if vi else " and "
-    body = f"{head}: {joiner.join(quoted)}" if quoted else head
-    return body + (". Hãy kiểm tra trước khi áp dụng." if vi else ". Check this before applying it.")
+    return (f"{head}: {joiner.join(quoted)}" if quoted else head) + _end(vi)
 
 
 def flag_sentences(blocks: Iterable[tuple[str, Sequence[IdmIssueV1]]], facts: Mapping[str, SourceFact],
                    locale: str) -> list[str]:
-    """The sentences of every flagged issue of ``blocks`` ((name, issues) pairs), in order, without repeats."""
+    """The sentences of every flagged issue of ``blocks`` ((name, issues) pairs), in order, without repeats. The
+    blocks that share one fact-less conflict (same note) are named in one sentence (review m12)."""
 
-    sentences = (flag_sentence(name, issue, facts, locale) for name, issues in blocks for issue in issues)
-    return list(dict.fromkeys(sentence for sentence in sentences if sentence))
+    pairs = list(blocks)
+    shared: dict[str, list[str]] = {}
+    for name, issues in pairs:
+        for issue in issues:
+            if issue.type == "conflict" and not issue.fact_keys:
+                shared.setdefault(issue.note, []).append(name)
+    sentences: list[str] = []
+    told: set[frozenset[str]] = set()
+    for name, issues in pairs:
+        for issue in issues:
+            group = shared.get(issue.note, []) if issue.type == "conflict" and not issue.fact_keys else []
+            if group:
+                if frozenset(group) in told:
+                    continue
+                told.add(frozenset(group))
+            if sentence := flag_sentence(name, issue, facts, locale, partners=group):
+                sentences.append(sentence)
+    return list(dict.fromkeys(sentences))
+
+
+def fit_flags(sentences: Sequence[str], budget: int, locale: str) -> list[str]:
+    """The sentences that fit ``budget`` characters in order (review m6: the unit note keeps room for its other
+    lines), then one line counting the rest, which the course note lists."""
+
+    vi = locale != "en"
+    shown: list[str] = []
+    used = 0
+    for sentence in sentences:
+        if used + len(sentence) + 1 > budget:
+            break
+        shown.append(sentence)
+        used += len(sentence) + 1
+    rest = len(sentences) - len(shown)
+    if rest:
+        shown.append(f"Còn {rest} chỗ khác cần kiểm tra trong tài liệu (xem ghi chú khoá học)." if vi
+                     else f"{rest} more point(s) to check in the source (see the course notes).")
+    return shown
 
 
 def unit_flags(brief: IdmUnitBriefV1, source_facts: Iterable[SourceSnapshotFactV2], locale: str) -> list[str]:
@@ -85,4 +134,5 @@ def unit_flags(brief: IdmUnitBriefV1, source_facts: Iterable[SourceSnapshotFactV
     return flag_sentences(((block.name, block.issues) for block in material.blocks), facts, locale)[:MAX_UNIT_FLAGS]
 
 
-__all__ = ["FLAG_ISSUE_TYPES", "MAX_UNIT_FLAGS", "SourceFact", "flag_sentence", "flag_sentences", "unit_flags"]
+__all__ = ["FLAG_ISSUE_TYPES", "MAX_UNIT_FLAGS", "SourceFact", "fit_flags", "flag_sentence", "flag_sentences",
+           "unit_flags"]
