@@ -1,71 +1,71 @@
 {
- "_source": "AI ID run dfe78482 (AI d812b90), 2026-10-22: AI-written quiz stems (the three review marks of a long stem; letter-labelled items in chapter_3.lesson_1.unit_3) and the AI text of the four media briefs, before the server's completion",
+ "_source": "Synthetic data with the failure shapes of AI ID run dfe78482 (2026-10-22): a stem whose items are labelled with option letters (chapter_3.lesson_1.unit_3), three readable stems of a short context, 4-5 listed items and the question, and four detailed media briefs that number their frames, rows or scenes. No course text of the run.",
  "problems": {
   "chapter_2.lesson_2.unit_3.component_2": {
-   "question": "Ban điều hành của một công ty dịch vụ đào tạo nhận được 4 phương án tuyên ngôn đề xuất giá trị cho nhóm khách hàng doanh nghiệp bán lẻ:\n- Phương án 1: Cung cấp kho bài giảng điện tử chuẩn quốc tế với chi phí tối ưu nhất thị trường.\n- Phương án 2: Dành cho chuỗi bán lẻ muốn nhân viên học nhanh, nền tảng số hóa nghiệp vụ micro-learning theo ca làm giúp rút ngắn 50% thời gian đào tạo.\n- Phương án 3: Hỗ trợ doanh nghiệp nâng cao chất lượng nguồn nhân lực và tối ưu chi phí vận hành thông qua các khóa học thực chiến chuyên sâu.\n- Phương án 4: Dành cho giám đốc nhân sự ngành bán lẻ, mang đến giải pháp đào tạo toàn diện bằng công nghệ AI Companion độc quyền.\nTuyên ngôn nào đáp ứng chuẩn xác và đầy đủ nhất cấu trúc 3 thành tố?",
+   "question": "Ban điều hành của một chuỗi siêu thị nhận được 4 phương án lời cam kết dịch vụ dành cho khách hàng mua hàng trực tuyến tại các thành phố lớn trong năm nay:\n- Lời cam kết 1: Giao hàng nhanh với chi phí thấp nhất thị trường cho mọi đơn hàng trong nội thành.\n- Lời cam kết 2: Dành cho gia đình bận rộn muốn đi chợ nhanh, giao hàng tươi trong 2 giờ bằng xe lạnh riêng giúp giữ trọn chất lượng thực phẩm.\n- Lời cam kết 3: Hỗ trợ khách hàng mua sắm thuận tiện hơn và tiết kiệm chi phí thông qua nhiều chương trình khuyến mãi hấp dẫn.\n- Lời cam kết 4: Dành cho khách hàng thành viên, mang đến trải nghiệm mua sắm toàn diện bằng ứng dụng gợi ý món ăn độc quyền.\nLời cam kết nào đáp ứng đầy đủ nhất cấu trúc ba thành tố đã học?",
    "choices": [
     {
-     "text": "Phương án 3",
+     "text": "Lời cam kết 3",
      "correct": false
     },
     {
-     "text": "Phương án 1",
+     "text": "Lời cam kết 1",
      "correct": false
     },
     {
-     "text": "Phương án 2",
+     "text": "Lời cam kết 2",
      "correct": true
     },
     {
-     "text": "Phương án 4",
+     "text": "Lời cam kết 4",
      "correct": false
     }
    ],
-   "explanation": "Tuyên ngôn chuẩn phải đủ 3 thành tố: Khách hàng mục tiêu, Lợi ích cốt lõi hóa giải điểm đau, và Nhân tố khác biệt độc đáo.\nA - Sai vì lợi ích nêu chung chung và không nêu rõ khách hàng mục tiêu cụ thể là ai.\nB - Sai vì thiếu khách hàng mục tiêu cụ thể và không chỉ rõ cách thức giải quyết nỗi đau của họ.\nC - Đúng vì xác định rõ đối tượng chuỗi bán lẻ, giải quyết việc học nhanh và nêu rõ công nghệ micro-learning theo ca.\nD - Sai vì chỉ nêu công nghệ mà chưa chỉ rõ lợi ích cốt lõi giải quyết nỗi đau nào của khách hàng."
+   "explanation": "Nguyên tắc: Lời cam kết đủ ba thành tố nêu rõ khách hàng, lợi ích giải quyết nỗi lo và cách làm khác biệt.\nA - Sai vì lợi ích nêu chung chung và không rõ khách hàng là ai.\nB - Sai vì thiếu khách hàng cụ thể và không nói cách giải quyết nỗi lo.\nC - Đúng vì nêu rõ gia đình bận rộn, giao trong 2 giờ và cách giữ hàng tươi bằng xe lạnh.\nD - Sai vì chỉ nêu công cụ mà chưa nói lợi ích giải quyết nỗi lo nào."
   },
   "chapter_3.lesson_1.unit_3.component_2": {
-   "question": "Giả sử bạn phụ trách kinh doanh phần mềm B2B đang đánh giá các đề xuất tối ưu hành trình trải nghiệm ở giai đoạn Cân nhắc và Đàm phán hợp đồng. Nhóm dự án đưa ra bốn phương án điểm chạm sau:\n- Phương án A: Tặng quà lưu niệm in logo công ty và gửi thư cảm ơn tự động sau mỗi lần khách hàng hoàn thành phiên họp trao đổi.\n- Phương án B: Thiết kế tài liệu tóm tắt đề xuất trên một trang giải quyết đúng rủi ro lo ngại về chi phí ẩn và cam kết hoàn vốn tại buổi bảo vệ hợp đồng.\n- Phương án C: Tăng số lượng thư điện tử giới thiệu toàn bộ tính năng kỹ thuật chi tiết của hệ thống gửi định kỳ mỗi tuần một lần.\n- Phương án D: Tổ chức đón tiếp khách hàng tại văn phòng công ty với quy trình hướng dẫn gửi xe và phát thẻ khách chuyên nghiệp.\nPhương án nào là giải pháp điểm chạm Wow giải quyết đúng điểm đau trọng yếu tại khoảnh khắc sự thật?",
+   "question": "Giả sử bạn phụ trách chăm sóc khách hàng của một chuỗi cửa hàng điện máy và đang chọn cách xử lý tốt nhất ở bước tiếp nhận khiếu nại qua tổng đài. Nhóm dự án đưa ra bốn phương án điểm chạm sau:\n- Phương án A: Gửi tin nhắn cảm ơn tự động kèm phiếu giảm giá nhỏ ngay sau mỗi cuộc gọi phàn nàn của khách hàng tới tổng đài.\n- Phương án B: Thiết kế tài liệu tóm tắt một trang ghi rõ cấp độ khiếu nại, người phụ trách và thời hạn phản hồi, gửi cho khách hàng ngay khi tiếp nhận.\n- Phương án C: Tăng số lượng thư điện tử giới thiệu toàn bộ chính sách bảo hành chi tiết của cửa hàng gửi định kỳ mỗi tuần một lần.\n- Phương án D: Bố trí khu vực chờ có nước uống và ghế ngồi thoải mái tại quầy dịch vụ khách hàng của mỗi cửa hàng trong chuỗi.\nPhương án nào là điểm chạm giải quyết đúng điểm đau lớn nhất của khách hàng tại khoảnh khắc tiếp nhận?",
    "choices": [
     {
-     "text": "Phương án C: Tăng số lượng thư điện tử giới thiệu chi tiết tính năng kỹ thuật gửi định kỳ hàng tuần.",
+     "text": "Phương án C: Tăng số lượng thư điện tử giới thiệu chính sách bảo hành gửi định kỳ mỗi tuần.",
      "correct": false
     },
     {
-     "text": "Phương án A: Tặng quà lưu niệm in logo công ty và gửi thư cảm ơn tự động sau mỗi lần họp trao đổi.",
+     "text": "Phương án A: Gửi tin nhắn cảm ơn tự động kèm phiếu giảm giá sau mỗi cuộc gọi phàn nàn.",
      "correct": false
     },
     {
-     "text": "Phương án B: Thiết kế tài liệu tóm tắt một trang giải quyết rủi ro chi phí ẩn và cam kết hoàn vốn tại buổi bảo vệ hợp đồng.",
+     "text": "Phương án B: Thiết kế tài liệu tóm tắt một trang ghi rõ cấp độ, người phụ trách và thời hạn phản hồi.",
      "correct": true
     },
     {
-     "text": "Phương án D: Tổ chức đón tiếp tại văn phòng với quy trình hướng dẫn gửi xe và phát thẻ khách chuyên nghiệp.",
+     "text": "Phương án D: Bố trí khu vực chờ có nước uống và ghế ngồi tại quầy dịch vụ khách hàng.",
      "correct": false
     }
    ],
-   "explanation": "Nguyên tắc: Giải pháp điểm chạm Wow phải đặt đúng tại khoảnh khắc sự thật sinh tử để tháo gỡ điểm đau trọng yếu khiến khách hàng dễ rời bỏ thương hiệu.\nA - Sai vì việc tăng cường gửi thông tin kỹ thuật chỉ làm tăng số lượng điểm chạm thông thường và có nguy cơ gây quá tải nhận thức cho khách hàng.\nB - Sai vì đây chỉ là tương tác chăm sóc xã giao bề nổi, không tác động đến nút thắt hay rủi ro then chốt khi khách hàng ra quyết định mua.\nC - Đúng vì phương án này tập trung tái thiết kế nội dung tại thời điểm quyết định gắn bó hay rời bỏ nhằm đập tan rủi ro lớn nhất về tài chính.\nD - Sai vì khâu tiếp đón tại sảnh chỉ là điểm chạm tiện ích cơ bản, không phải là khoảnh khắc quyết định sống còn để thuyết phục chốt hợp đồng."
+   "explanation": "Nguyên tắc: Điểm chạm tốt nhất tháo gỡ đúng nỗi lo lớn nhất của khách hàng ở khoảnh khắc họ quyết định tin hay bỏ đi.\nA - Sai vì gửi thêm thông tin chính sách chỉ tăng số điểm chạm thông thường, không trả lời nỗi lo của khách.\nB - Sai vì lời cảm ơn kèm ưu đãi nhỏ là chăm sóc bề nổi, không cho khách biết khiếu nại sẽ được xử lý ra sao.\nC - Đúng vì tài liệu một trang cho khách biết ngay ai xử lý và khi nào có phản hồi, đúng nỗi lo lúc tiếp nhận.\nD - Sai vì khu vực chờ thoải mái là tiện ích cơ bản, không giải quyết điều khách lo nhất về khiếu nại."
   },
   "chapter_3.lesson_2.unit_1.component_2": {
-   "question": "Hãy hình dung bạn nhận được danh sách 5 yêu cầu cải tiến điểm chạm từ khách hàng B2B:\n- Yêu cầu 1: Tuỳ biến tính năng theo quy trình riêng biệt, tốn 6 tháng phát triển.\n- Yêu cầu 2: Chuẩn hoá mẫu báo cáo tiến độ định kỳ gửi tự động hàng tuần.\n- Yêu cầu 3: Cam kết phản hồi hỗ trợ kỹ thuật khẩn cấp trong vòng 2 giờ.\n- Yêu cầu 4: Cung cấp nhân sự trực hỗ trợ tại chỗ 24/7 không tính thêm phí.\n- Yêu cầu 5: Tái thiết kế toàn bộ kiến trúc hệ thống theo chuẩn riêng của đối tác.\nÁp dụng quy tắc bộ lọc dự án, bạn nên chọn đúng 2 sáng kiến nào để lập danh mục dự án?",
+   "question": "Hãy hình dung bạn nhận được danh sách 5 đề xuất cải tiến quy trình xử lý khiếu nại từ các cửa hàng:\n- Đề xuất 1: Xây mới hệ thống quản lý khiếu nại riêng, cần 8 tháng.\n- Đề xuất 2: Chuẩn hoá mẫu phiếu tiếp nhận và gửi tự động mỗi ngày.\n- Đề xuất 3: Cam kết gọi lại khách hàng có khiếu nại cấp 2 trong vòng 4 giờ làm việc.\n- Đề xuất 4: Trực tổng đài 24/7 tại mọi cửa hàng, không tăng ngân sách.\n- Đề xuất 5: Thay toàn bộ phần mềm bán hàng theo chuẩn của một đối tác.\nÁp dụng quy tắc bộ lọc dự án đã học, bạn nên chọn đúng 2 đề xuất nào để đưa vào kế hoạch quý tới?",
    "choices": [
     {
-     "text": "Chọn Yêu cầu 2 và Yêu cầu 3.",
+     "text": "Chọn Đề xuất 2 và Đề xuất 3.",
      "correct": true
     },
     {
-     "text": "Chọn Yêu cầu 1, Yêu cầu 2 và Yêu cầu 3.",
+     "text": "Chọn Đề xuất 1, Đề xuất 2 và Đề xuất 3.",
      "correct": false
     },
     {
-     "text": "Chọn Yêu cầu 3 và Yêu cầu 4.",
+     "text": "Chọn Đề xuất 3 và Đề xuất 4.",
      "correct": false
     },
     {
-     "text": "Chọn Yêu cầu 1 và Yêu cầu 5.",
+     "text": "Chọn Đề xuất 1 và Đề xuất 5.",
      "correct": false
     }
    ],
-   "explanation": "Nguyên tắc: Đội ngũ phải thảo luận, phản biện và chỉ chọn đúng 2 sáng kiến khả thi nhất để lập dự án triển khai.\nA - Đúng vì đây là 2 sáng kiến có tính khả thi cao, triển khai nhanh và giải quyết đúng điểm chạm thiết thực của khách hàng.\nB - Sai vì vi phạm quy tắc chỉ chọn đúng 2 sáng kiến khả thi nhất khi áp dụng bộ lọc dự án.\nC - Sai vì yêu cầu bố trí nhân sự 24/7 không tính phí là phi thực tế và gây quá tải nguồn lực doanh nghiệp.\nD - Sai vì cả hai yêu cầu đều vượt quá nguồn lực, thời gian kéo dài và thiếu tính khả thi để cam kết ngay."
+   "explanation": "Nguyên tắc: Chỉ chọn đúng 2 đề xuất khả thi nhất, triển khai nhanh và giải quyết đúng nỗi lo của khách.\nA - Đúng vì hai đề xuất này làm được ngay với nguồn lực hiện có và rút ngắn thời gian phản hồi.\nB - Sai vì quy tắc chỉ cho chọn đúng 2 đề xuất khả thi nhất.\nC - Sai vì trực 24/7 không tăng ngân sách là không khả thi với nguồn lực hiện có.\nD - Sai vì cả hai đề xuất đều cần nhiều tháng và vượt nguồn lực của quý."
   }
  },
  "media_briefs": [
@@ -73,59 +73,59 @@
    "lesson_key": "lsn_003",
    "unit_index": 2,
    "type": "static_infographic",
-   "title": "Infographic nguyên lý đường cong giá trị và 4 câu hỏi tìm Value Drivers",
-   "rationale": "Giúp người học ghi nhớ trực quan mối liên hệ giữa tư duy Say No trên đường cong giá trị và 4 câu hỏi rà soát thực tế.",
+   "title": "Bốn câu hỏi chọn yếu tố cốt lõi",
+   "rationale": "Giúp người học đối chiếu bốn câu hỏi khi chọn yếu tố cốt lõi.",
    "content_points": [
-    "Nguyên tắc cốt lõi: Dũng cảm Say No với yếu tố thừa để dồn lực tạo khác biệt tuyệt đối",
-    "Câu hỏi 1: Ngành thường cạnh tranh bằng tiêu chí nào?",
-    "Câu hỏi 2: Đâu là giá trị tác động lớn đến quyết định mua và là thế mạnh nội tại?",
-    "Câu hỏi 3: Khách hàng phản hồi lý do thực sự họ chọn mua là gì?",
-    "Câu hỏi 4: Yếu tố nào doanh nghiệp đang nỗ lực làm nhưng khách hàng không quan tâm?"
+    "Nguyên tắc: dồn nguồn lực cho yếu tố khách hàng thật sự cần",
+    "Câu hỏi 1: Cửa hàng thường cạnh tranh bằng tiêu chí nào?",
+    "Câu hỏi 2: Yếu tố nào tác động lớn đến quyết định mua?",
+    "Câu hỏi 3: Khách hàng nói lý do thật sự họ chọn mua là gì?",
+    "Câu hỏi 4: Việc nào cửa hàng đang làm nhưng khách không quan tâm?"
    ],
-   "context_description": "Đồ thị trực quan chia làm hai phần chính theo chiều dọc. Nửa trên là đồ thị Value Curve với 2 đường biểu diễn: đường nét đứt màu xám thể hiện mức trung bình ngành dàn trải và đường nét liền màu xanh nổi bật thể hiện chiến lược vượt trội tại các điểm cốt lõi. Nửa dưới gồm 4 cột tương ứng với 4 câu hỏi khảo sát từ Khung 1 đến Khung 4, mỗi khung có biểu tượng icon và câu hỏi định hướng rõ ràng giúp người học dễ dàng đối chiếu khi phân tích thực tế."
+   "context_description": "Đồ thị trực quan chia làm hai phần chính theo chiều dọc. Nửa trên là đường cong giá trị với hai đường: đường nét đứt màu xám thể hiện mức trung bình của các cửa hàng và đường nét liền màu xanh nổi bật thể hiện chiến lược dồn lực vào các yếu tố cốt lõi. Nửa dưới gồm 4 cột tương ứng với 4 câu hỏi khảo sát từ Khung 1 đến Khung 4, mỗi khung có một biểu tượng và câu hỏi định hướng rõ ràng giúp người học dễ dàng đối chiếu khi phân tích tình huống thực tế tại cửa hàng của mình hằng ngày."
   },
   {
    "lesson_key": "lsn_004",
    "unit_index": 3,
    "type": "video",
-   "title": "Video hướng dẫn từng bước hoàn thiện Value Proposition Canvas",
-   "rationale": "Cung cấp hướng dẫn trực quan sinh động giúp học viên nắm chắc trình tự thực hiện bài tập Value Proposition Canvas.",
+   "title": "Bốn bước xây lời cam kết dịch vụ",
+   "rationale": "Cho người học thấy trình tự bốn bước.",
    "content_points": [
-    "Bước 1: Liệt kê công việc, điểm đau và kỳ vọng trong Customer Profile",
-    "Bước 2: Sử dụng tư duy phản biện để đóng gói sản phẩm và tính năng giảm đau, tạo niềm vui",
-    "Bước 3: Kiểm tra mức độ khớp nối 1-1 giữa hai mảnh ghép",
-    "Bước 4: Viết tuyên ngôn theo công thức: Khách hàng + Lợi ích giải quyết nỗi đau + Cách thức độc đáo"
+    "Bước 1: Liệt kê việc khách cần làm, nỗi lo và mong đợi",
+    "Bước 2: Chọn dịch vụ giúp giảm nỗi lo và tạo niềm vui",
+    "Bước 3: Kiểm tra từng nỗi lo đã có cách giải quyết",
+    "Bước 4: Viết lời cam kết theo ba thành tố"
    ],
-   "context_description": "Video motion graphic thời lượng 90 giây được chia thành 4 phân cảnh rõ ràng theo thứ tự từ Cảnh 1 đến Cảnh 4. Cảnh 1 hiển thị hình tròn Customer Profile với các nhãn dán điểm đau màu đỏ và kỳ vọng màu xanh. Cảnh 2 mở ra hình vuông Value Map bên trái với các hộp giải pháp đóng gói. Cảnh 3 mô tả hiệu ứng hai khối hình ghép lại với nhau, các đường nối sáng đèn thể hiện sự khớp nối chính xác. Cảnh 4 chuyển sang khung hiển thị văn bản công thức tuyên ngôn 3 thành tố với các từ khóa nổi bật được tô màu tương ứng."
+   "context_description": "Video hoạt hoạ thời lượng 90 giây được chia thành 4 phân cảnh rõ ràng theo thứ tự từ Cảnh 1 đến Cảnh 4. Cảnh 1 hiển thị hình tròn hồ sơ khách hàng với các nhãn nỗi lo màu đỏ và mong đợi màu xanh. Cảnh 2 mở ra hình vuông dịch vụ bên trái với các hộp giải pháp được đóng gói gọn gàng. Cảnh 3 mô tả hiệu ứng hai khối hình ghép lại với nhau, các đường nối sáng đèn thể hiện sự khớp nối chính xác. Cảnh 4 chuyển sang khung hiển thị văn bản lời cam kết ba thành tố với các từ khoá nổi bật được tô màu tương ứng cho người xem dễ nhớ."
   },
   {
    "lesson_key": "lsn_005",
    "unit_index": 2,
    "type": "static_infographic",
-   "title": "Infographic cấu trúc 4 tầng lộ trình trải nghiệm khách hàng",
-   "rationale": "Cung cấp khung nhìn trực quan chuẩn xác 4 tầng giúp học viên dễ dàng ghi nhớ và đối chiếu khi thực hành lập lộ trình.",
+   "title": "Bản đồ hành trình bốn tầng",
+   "rationale": "Giúp người học nhìn cả hành trình khách hàng trên một hình.",
    "content_points": [
-    "Tầng 1: Cột mốc Hành trình (Milestones) chia theo các giai đoạn lớn từ Nhận biết đến Lan tỏa.",
-    "Tầng 2: Tâm thế & Kỳ vọng (Customer Mindset/Insight) thể hiện khách hàng nghĩ gì, nghe gì và khao khát điều gì.",
-    "Tầng 3: Điểm đau Trọng yếu (Pain Points) là những nút thắt rủi ro hoặc sự thất vọng lớn nhất.",
-    "Tầng 4: Điểm chạm và Giải pháp (Touchpoints & Wow Moments) tái thiết kế hành động để tạo cảm xúc Wow."
+    "Tầng 1: Các giai đoạn của hành trình từ biết đến cửa hàng đến giới thiệu cho người khác.",
+    "Tầng 2: Khách hàng nghĩ gì, nghe gì và mong đợi điều gì.",
+    "Tầng 3: Nỗi lo lớn nhất khiến khách muốn bỏ đi.",
+    "Tầng 4: Điểm chạm và cách làm mới để tạo ấn tượng tốt."
    ],
-   "context_description": "Đồ họa dạng biểu đồ ma trận 4 hàng ngang rõ nét theo chiều đọc từ trên xuống dưới. Hàng 1 (Tầng 1) thể hiện trục thời gian tuyến tính gồm 5 khối hộp nối nhau bằng mũi tên từ Nhận biết, Cân nhắc, Mua/Gia nhập, Gắn kết đến Phụng sự/Lan tỏa. Hàng 2 (Tầng 2) là dải màu xanh dương nhạt ghi chú các câu hỏi tư duy Empathy Map về suy nghĩ và khao khát sâu kín của khách hàng. Hàng 3 (Tầng 3) là dải màu cam cảnh báo với các biểu tượng nút thắt rủi ro và điểm thất vọng lớn khiến khách hàng muốn bỏ cuộc. Hàng 4 (Tầng 4) là dải màu xanh lá cây đậm làm nổi bật các khối giải pháp đột phá và biểu tượng ngôi sao Wow Moments để xóa tan điểm đau ở hàng trên."
+   "context_description": "Đồ hoạ dạng ma trận 4 hàng ngang rõ nét theo chiều đọc từ trên xuống dưới. Hàng 1 (Tầng 1) thể hiện trục thời gian gồm 5 khối hộp nối nhau bằng mũi tên từ Biết đến, Cân nhắc, Mua hàng, Gắn bó đến Giới thiệu. Hàng 2 (Tầng 2) là dải màu xanh dương nhạt ghi các câu hỏi về suy nghĩ và mong đợi sâu kín của khách hàng khi mua sắm. Hàng 3 (Tầng 3) là dải màu cam cảnh báo với các biểu tượng nút thắt và điểm thất vọng lớn khiến khách hàng muốn bỏ đi. Hàng 4 (Tầng 4) là dải màu xanh lá cây đậm làm nổi bật các khối giải pháp mới và biểu tượng ngôi sao ấn tượng để xoá tan nỗi lo ở hàng phía trên của bản đồ."
   },
   {
    "lesson_key": "lsn_001",
    "unit_index": 1,
    "type": "static_infographic",
-   "title": "Sơ đồ 7 vai trò trong Hội đồng mua hàng B2B",
-   "rationale": "Giúp người học có ngay bức tranh trực quan toàn cảnh về 7 vai trò trong hội đồng mua sắm trước khi đi vào phân tích chi tiết.",
+   "title": "Năm vai trò khi mua hàng",
+   "rationale": "Tổng hợp năm vai trò trên một hình.",
    "content_points": [
-    "1. Người gác cổng: Thư ký, bảo vệ, IT hệ thống, trợ lý.",
-    "2. Người quyết định: Chủ doanh nghiệp, CEO, Hội đồng quản trị.",
-    "3. Người thụ hưởng: Nhân viên ca máy, kỹ sư vận hành.",
-    "4. Tài chính - Kế toán & Phòng mua hàng: Kiểm soát ngân sách và quy trình.",
-    "5. Kho vận & Người ảnh hưởng: Vận hành và tư vấn kỹ thuật."
+    "1. Người gác cổng: thư ký, bảo vệ, bộ phận công nghệ.",
+    "2. Người quyết định: chủ cửa hàng, giám đốc.",
+    "3. Người dùng: nhân viên bán hàng, nhân viên kho.",
+    "4. Tài chính và mua hàng: kiểm soát ngân sách và quy trình.",
+    "5. Người ảnh hưởng: tư vấn kỹ thuật, đối tác."
    ],
-   "context_description": "Bản thiết kế đồ họa tĩnh dạng bảng tổng hợp trực quan gồm 5 khung hình chữ nhật xếp thành lưới 2 hàng từ trên xuống dưới và đọc từ trái sang phải. Khung 1 thể hiện vai trò Người gác cổng với mô tả Thư ký, bảo vệ, IT hệ thống, trợ lý. Khung 2 thể hiện Người quyết định gồm Chủ doanh nghiệp, CEO, Hội đồng quản trị. Khung 3 thể hiện Người thụ hưởng gồm Nhân viên ca máy, kỹ sư vận hành. Khung 4 thể hiện khối Tài chính - Kế toán và Phòng mua hàng kiểm soát ngân sách. Khung 5 thể hiện Bộ phận Kho vận và Người ảnh hưởng tư vấn kỹ thuật."
+   "context_description": "Bản thiết kế đồ hoạ tĩnh dạng bảng tổng hợp trực quan gồm 5 khung hình chữ nhật xếp thành lưới 2 hàng từ trên xuống dưới và đọc từ trái sang phải. Khung 1 thể hiện vai trò Người gác cổng với mô tả thư ký, bảo vệ và bộ phận công nghệ. Khung 2 thể hiện Người quyết định gồm chủ cửa hàng và giám đốc. Khung 3 thể hiện Người dùng gồm nhân viên bán hàng và nhân viên kho. Khung 4 thể hiện khối Tài chính và mua hàng kiểm soát ngân sách. Khung 5 thể hiện Người ảnh hưởng gồm tư vấn kỹ thuật và các đối tác."
   }
  ]
 }

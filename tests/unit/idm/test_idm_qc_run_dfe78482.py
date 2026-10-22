@@ -1,8 +1,10 @@
 """Owner-approved fixes from the real AI ID run dfe78482 (AI d812b90, 2026-10-22).
 
-The fixture ``tests/fixtures/qc_run_dfe78482.json`` holds the AI-written cases of that run: the quiz of
-chapter_3.lesson_1.unit_3 (stem items labelled "Phương án A … D"), the three stems that were marked "Cần xem" only for
-their length, and the AI text of the four media briefs before the server's completion. Every provider is a local fake.
+The fixture ``tests/fixtures/qc_run_dfe78482.json`` is synthetic data with the failure shapes of that run (no course
+text of the run): a quiz whose stem items are labelled "Phương án A … D" and whose choices repeat them, three readable
+stems of about 130, 160 and 190 words (a short context, 4-5 listed items, the question) that were marked "Cần xem" only
+for their length, and four detailed media briefs that number their frames, rows or scenes. Every provider is a local
+fake.
 """
 
 from __future__ import annotations
