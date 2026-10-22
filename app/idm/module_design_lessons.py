@@ -10,7 +10,7 @@ from typing import Final
 from app.contracts.orchestration_v2.blueprint import ArchitectureComponentAuthorReviewV2
 from app.idm.artifacts import ROW_LABEL_ANY_RE, plain_row_refs
 from app.idm.contracts import IdmLessonDesignV1, IdmLessonPlanV1, IdmUnitDesignV1
-from app.idm.media_detail import MEDIA_BRIEF_THIN_CODE, complete_media_brief, media_brief_gaps
+from app.idm.media_detail import MEDIA_BRIEF_THIN_CODE, complete_media_brief, media_brief_completed
 from app.idm.module_autofix import format_has_evidence
 from app.idm.module_layout import ModuleScope, clean_feedback, clean_media_brief
 from app.idm.policy import (
@@ -143,17 +143,19 @@ def validate_lesson(
             unit_of_fact.get(key, -1) > practice_unit[practice.practice_id] for key in practice.criteria_fact_keys
         ):
             issues.append(IdmIssue("IDM_W4_PRACTICE_BEFORE_SUPPORT", f"{path}.practice_tasks[{index}]"))
-    issues.extend(media_brief_issues(lesson.units, path))
+    issues.extend(media_brief_issues(lesson.units, path, scope.locale))
     return list(dict.fromkeys(issues))
 
 
-def media_brief_issues(units: Sequence[IdmUnitDesignV1], path: str) -> list[IdmIssue]:
+def media_brief_issues(units: Sequence[IdmUnitDesignV1], path: str, locale: str) -> list[IdmIssue]:
     """A4: a media brief whose description a designer cannot draw from (a warning: the server completes it, and a
-    repair the module answer gets anyway lists it)."""
+    repair the module answer gets anyway lists it). Review 2: only a brief the completion really changes (as
+    ``normalize_lesson`` cleans and completes it), so the "the system added a layout" note and the count never claim a
+    completion that did not happen."""
 
     return [IdmIssue(MEDIA_BRIEF_THIN_CODE, f"{path}.units[{position}].media_brief.context_description", "warning")
             for position, unit in enumerate(units)
-            if unit.media_brief is not None and media_brief_gaps(unit.media_brief)]
+            if unit.media_brief is not None and media_brief_completed(clean_media_brief(unit.media_brief), locale)]
 
 
 # --- normalisation, fallback and holds -----------------------------------------------------
