@@ -70,6 +70,8 @@ _SINGLE_CHOICE_TYPES: Final = frozenset({"multiple_choice", "single_choice"})
 # An inline list item: a marker between spaces before an item that starts with a capital letter or a digit.
 _INLINE_MARKER_RE: Final = re.compile(r"[ \t]+[-–•][ \t]+(?=\S)")  # noqa: RUF001 - the en dash is a marker
 _MIN_INLINE_ITEMS: Final = 2
+# The label an inline list item starts with: one to four words and a colon ("Mức 1:", "Phân khúc X:", "KPI 2:").
+_ITEM_LABEL_RE: Final = re.compile(r"([^\s:–—-][^\s:]*)(?:[ \t]+[^\s:]+){0,3}:[ \t]")  # noqa: RUF001 - dashes
 # A list item written with another marker at a line start (a bullet, a star or an en dash).
 _OTHER_MARKER_RE: Final = re.compile(r"^[•*–][ \t]+(?=\S)")  # noqa: RUF001 - the en dash is a marker
 # An option label at a line start: "A - ", "A: ", "A. ", "A) " or a dash other than the hyphen.
@@ -121,19 +123,60 @@ def _lines(text: str) -> list[str]:
 
 
 # --- layout -------------------------------------------------------------------------------------------------------
-def _split_inline_list(line: str) -> list[str]:
-    """A line with a list introduced by a colon written inline (": - X … - Y …") as the lead and one "- " line per
-    item; the line unchanged otherwise."""
+def _list_markers(line: str) -> list[re.Match[str]]:
+    """The inline item markers of ``line`` (" - " before an item that starts with a capital letter or a digit), never
+    one between two numbers or times: "10 - 20 triệu", "8:00 - 12:00" are ranges (review M1)."""
 
-    markers = [match for match in _INLINE_MARKER_RE.finditer(line)
-               if line[match.end()].isupper() or line[match.end()].isdigit()]
-    lead = line[:markers[0].start()].rstrip() if markers else ""
-    if len(markers) < _MIN_INLINE_ITEMS or not lead.endswith(":"):
+    markers = []
+    for match in _INLINE_MARKER_RE.finditer(line):
+        before, after = line[:match.start()].rstrip()[-1:], line[match.end():match.end() + 1]
+        if before.isdigit() and after.isdigit():
+            continue
+        if after.isupper() or after.isdigit():
+            markers.append(match)
+    return markers
+
+
+def _item_label(line: str, match: re.Match[str]) -> str | None:
+    """The first word of the "Label:" an item starts with ("Mức 1: …" -> "mức"), or ``None``."""
+
+    label = _ITEM_LABEL_RE.match(line, match.end())
+    return label.group(1).casefold() if label else None
+
+
+def _split_inline_list(line: str) -> list[str]:
+    """A line with a list written inline after an intro that ends with ":" ("như sau: - Mức 1: … - Mức 2: …") as the
+    intro and one "- " line per item; the line unchanged otherwise (review M1).
+
+    Items are cut only at markers whose items start alike: a "Label:" with the same first word ("Mức 1:", "Mức 2:");
+    a range ("10 - 20"), a time ("8:00 - 12:00") or a pair of names ("Hà Nội - Hải Phòng") inside an item stays as
+    written. When every other item is one sentence, the sentences after the last item's first one (more context)
+    get their own line. Only whitespace and the item markers change, never a word."""
+
+    labelled = [(match, label) for match in _list_markers(line) if (label := _item_label(line, match))]
+    if len(labelled) < _MIN_INLINE_ITEMS or len({label for _match, label in labelled}) != 1:
         return [line]
-    bounds = [match.end() for match in markers] + [len(line)]
-    items = [line[bounds[index]:markers[index + 1].start() if index + 1 < len(markers) else len(line)].strip()
-             for index in range(len(markers))]
-    return [lead, *(LIST_MARKER + item for item in items if item)]
+    markers = [match for match, _label in labelled]
+    lead = line[:markers[0].start()].rstrip()
+    if not lead.endswith(":"):
+        return [line]
+    items = [line[match.end():markers[index + 1].start() if index + 1 < len(markers) else len(line)].strip()
+             for index, match in enumerate(markers)]
+    tail = ""
+    if all(len(sentence_spans(item)) == 1 for item in items[:-1]) and len(parts := sentence_spans(items[-1])) > 1:
+        tail = items[-1][len(parts[0]):].strip()
+        items[-1] = parts[0]
+    return [lead, *(LIST_MARKER + item for item in items if item), *([tail] if tail else [])]
+
+
+def _inline_list_left(line: str) -> bool:
+    """A list still written inside one line after a colon, the intro or an item's label (the layout was not sure how
+    to cut it): two markers or more after it; a single pair ("Hà Nội - Hải Phòng") is no list."""
+
+    colon = line.find(":")
+    if colon < 0:
+        return False
+    return len([match for match in _list_markers(line) if match.start() > colon]) >= _MIN_INLINE_ITEMS
 
 
 def _question_alone(lines: list[str]) -> list[str]:
@@ -330,7 +373,7 @@ def question_report(component: Mapping[str, Any]) -> dict[str, list[str]]:
     lines = _lines(str(component.get("question") or ""))
     report: dict[str, list[str]] = {}
     layout: list[str] = []
-    if any(len(_split_inline_list(line)) > 1 for line in lines):
+    if any(_inline_list_left(line) for line in lines):
         layout.append("a list written inside one line")
     if lines and len(sentence_spans(lines[-1])) > 1:
         layout.append("the question sentence is not alone on the last line")
