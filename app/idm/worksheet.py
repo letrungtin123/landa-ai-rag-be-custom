@@ -157,12 +157,13 @@ def compact_worksheet(component: dict[str, Any], fits: Callable[[dict[str, Any]]
     sections = [section for section in sections if isinstance(section, dict)]
     keep = _essential(sections)
     example = {index for index, section in enumerate(sections) if index not in keep and _is_example(section)}
-    short = [_short_rows(section) for section in sections]
+    # Review 4 (L8): the input data's rows keep every sentence (a later one holds the figures).
+    short = [section if is_input_section(section) else _short_rows(section) for section in sections]
     trimmed = [_two_entries(section) if index in example else section for index, section in enumerate(short)]
     with_example = [section for index, section in enumerate(trimmed) if index in keep or index in example]
     kept = [section for index, section in enumerate(sections) if index in keep]
     candidates = [(short, True), (trimmed, True), (with_example, True), (kept, False),
-                  ([_short_rows(section) for section in kept], False)]
+                  ([section if is_input_section(section) else _short_rows(section) for section in kept], False)]
     for candidate, keeps_example in candidates:
         if not candidate or candidate == sections or (keeps_example and not example):
             continue

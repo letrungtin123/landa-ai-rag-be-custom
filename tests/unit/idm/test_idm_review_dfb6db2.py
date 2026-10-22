@@ -11,7 +11,7 @@ import unittest
 from collections import Counter
 from typing import Any
 
-from app.idm.answer_checks import copies_example_measure, stem_copies_answer, unit_teaching
+from app.idm.answer_checks import copies_example_measure, quoted_key, stem_copies_answer, unit_teaching
 from app.idm.hypothetical import SUPPOSITION_ADDED, as_supposition, suppose_semantic
 from app.idm.prompts_course import w1_section_prompt
 from app.idm.prompts_unit import unit_writer_prompt
@@ -506,3 +506,40 @@ class Review4GivenDataTests(OwnDataTests):
                      "Đọc danh sách dưới đây mà bạn đã nhận từ phòng kinh doanh và phân loại theo mức ưu tiên."):
             with self.subTest(task=task):
                 self.assertIsNotNone(missing_input(self.worksheet(task)))
+
+
+class Review4TaughtDataTests(unittest.TestCase):
+    """Review 4, M4 and L8: only a worksheet's input data is no taught content, and compaction keeps its rows whole."""
+
+    BEHAVIOUR = ("Dữ liệu hành vi cho biết khách hàng đã mua gì, mua khi nào và mua qua kênh nào trong sáu tháng gần "
+                 "nhất.")
+
+    def test_a_theory_section_about_data_is_still_taught(self) -> None:
+        theory = html(section("Các loại dữ liệu khách hàng", {"kind": "bullets", "items": [
+            self.BEHAVIOUR, "Dữ liệu nhân khẩu học cho biết tuổi và thu nhập của người mua."]}))
+        question = quiz("Giả sử bạn cần biết khách mua qua kênh nào.\nLoại dữ liệu nào phù hợp?",
+                        [(self.BEHAVIOUR, True), ("Số nhân viên và chi nhánh của công ty đối tác.", False),
+                         ("Bảng giá niêm yết của đối thủ trong năm nay.", False),
+                         ("Kế hoạch tuyển dụng của phòng nhân sự.", False)])
+        self.assertTrue(quoted_key(question, unit_teaching([theory], [])))
+
+    def test_an_example_about_data_outside_a_worksheet_is_still_an_example(self) -> None:
+        rule = section("Quy định giao hàng", {"kind": "paragraph", "text": "Đơn hàng gấp được ưu tiên giao trước."})
+        example = section("Ví dụ minh họa với dữ liệu đơn hàng", {"kind": "paragraph", "text": (
+            "Chị Lan nhận một đơn gấp lúc 8 giờ và giao xong trong 3 giờ cho khách hàng ở quận 1.")})
+        question = quiz("Anh Nam nhận một đơn gấp của khách hàng ở quận 7. Anh nên giao trong bao lâu?",
+                        [("Giao trong 3 giờ", True), ("Giao trong 24 giờ", False), ("Giao trong 48 giờ", False),
+                         ("Giao trong tuần", False)])
+        self.assertTrue(copies_example_measure(question, unit_teaching([html(rule, example)], [])))
+
+    def test_compaction_keeps_the_input_rows_whole(self) -> None:
+        rows = [{"label": "Yêu cầu 1", "value": "Giao hàng trong ngày. Chi phí tăng 12% mỗi đơn."},
+                {"label": "Yêu cầu 2", "value": "Bảo hành mở rộng. Chi phí tăng 5% mỗi năm."}]
+        worksheet = html(WORKSHEET["semantic_content"]["sections"][0],
+                         section("Dữ liệu đầu vào", {"kind": "table", "rows": rows}),
+                         *WORKSHEET["semantic_content"]["sections"][2:])
+        compacted = compact_worksheet(worksheet, lambda value: True)
+        assert compacted is not None
+        data = next(item for item in compacted[0]["semantic_content"]["sections"]
+                    if item["heading"] == "Dữ liệu đầu vào")
+        self.assertEqual(data["blocks"][0]["rows"], rows)

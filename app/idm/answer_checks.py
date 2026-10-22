@@ -144,6 +144,13 @@ def _blocks(component: Mapping[str, Any]) -> Iterable[Mapping[str, Any]]:
                 yield block
 
 
+def _worksheet(component: Mapping[str, Any]) -> bool:
+    """A worksheet html slot (it states a task): only its input data is no taught content (review 4: a theory section
+    "Các loại dữ liệu khách hàng" or an example "Ví dụ minh họa với dữ liệu đơn hàng" is taught)."""
+
+    return any(block.get("kind") == "task" for block in _blocks(component))
+
+
 def _block_texts(block: Mapping[str, Any]) -> list[str]:
     """The learner texts of a block: its sentences, list items or table values (a row's value is the filled entry)."""
 
@@ -164,8 +171,9 @@ def example_passages(html_before: Sequence[Mapping[str, Any]]) -> list[str]:
 
     passages: list[str] = []
     for component in html_before:
+        worksheet = _worksheet(component)
         for section in _sections(component):
-            if is_input_section(section):
+            if worksheet and is_input_section(section):
                 continue
             inside = any(word in idm_fold(str(section.get("heading") or "")) for word in _EXAMPLE_HEADING_WORDS)
             for block in section.get("blocks") or []:
@@ -209,7 +217,8 @@ def unit_teaching(html_before: Sequence[Mapping[str, Any]], faq: Sequence[Mappin
     rows: list[tuple[str, str]] = []
     lists: list[tuple[str, ...]] = []
     for component in html_before:
-        for block in (block for section in _sections(component) if not is_input_section(section)
+        worksheet = _worksheet(component)
+        for block in (block for section in _sections(component) if not (worksheet and is_input_section(section))
                       for block in section.get("blocks") or [] if isinstance(block, dict)):
             kind = block.get("kind")
             if kind in _TEXT_KINDS:
