@@ -9,8 +9,8 @@
   a thin one is completed from the content points and noted.
 * Owner decisions 2026-10-22: no question for an SME; a contradictory, unclear or out-of-date source point marks its
   unit "Cần xem" with a sentence quoting the facts; the fallback question explains itself line by line.
-* A5 (no Hold): a worksheet whose practice criteria the AI suggested from what the lesson teaches heads its self-check
-  as suggested criteria, and the unit note says so.
+* A5 (no Hold): a worksheet whose practice criteria the AI suggested from what the lesson teaches says so in the unit
+  note; since run 5496155c its self-check reads "Tự kiểm tra" for the learner, never "(tiêu chí gợi ý)".
 
 Every provider is a local fake.
 """
@@ -47,7 +47,7 @@ from app.idm.quiz_text import (
 )
 from app.idm.source_flags import SourceFact, flag_sentence, flag_sentences
 from app.idm.text import evidence_index
-from app.idm.worksheet import label_suggested_self_check
+from app.idm.worksheet import plain_self_check
 from tests.idm_golden import key
 from tests.support.idm_test_support import rehash_contract
 from tests.unit.idm.test_idm_module_design import design_module, edited
@@ -273,16 +273,16 @@ def suggested_worksheet_body() -> dict[str, Any]:
 
 
 class SuggestedCriteriaTests(StoryboardEndpointTestCase):
-    async def test_the_self_check_of_suggested_criteria_says_so(self) -> None:
+    async def test_suggested_criteria_are_said_in_the_note_only(self) -> None:
         body = suggested_worksheet_body()
         provider = FakeGenerate(**{WRITER: [worksheet_writer(body)], JUDGE: [judge()]})
         status, data, _ = await self.post(body, provider)
         self.assertEqual(status, 200)
         sections = data["unit"]["components"][0]["semantic_content"]["sections"]
-        self.assertEqual(sections[-1]["heading"], "Tự kiểm tra bảng của bạn (tiêu chí gợi ý)")
-        self.assertIn('"Tự kiểm tra (tiêu chí gợi ý)" / "Self-check (suggested criteria)"', provider.calls[0]["prompt"])
+        self.assertEqual(sections[-1]["heading"], "Tự kiểm tra bảng của bạn")
+        self.assertIn('the heading stays "Tự kiểm tra" / "Self-check"', provider.calls[0]["prompt"])
         note = data["unit"]["idm_quality"]["author_note"]
-        self.assertIn("AI gợi ý tiêu chí từ nội dung đã dạy (ghi là tiêu chí gợi ý)", note)
+        self.assertIn("phần Tự kiểm tra dùng tiêu chí AI gợi ý từ nội dung đã dạy — tác giả nên xem lại.", note)
 
     async def test_source_criteria_keep_their_heading_and_note(self) -> None:
         body = worksheet_body()
@@ -292,18 +292,11 @@ class SuggestedCriteriaTests(StoryboardEndpointTestCase):
         self.assertEqual(sections[-1]["heading"], "Tự kiểm tra bảng của bạn")
         self.assertNotIn("tiêu chí gợi ý", data["unit"]["idm_quality"]["author_note"])
 
-    def test_the_label_is_added_once_and_fits_the_heading_bound(self) -> None:
+    def test_a_plain_self_check_is_left_alone(self) -> None:
         semantic = {"sections": [{"heading": "Nhiệm vụ", "blocks": [{"kind": "task", "text": "Làm."}]},
                                  {"heading": "Tự kiểm tra", "blocks": [{"kind": "bullets", "items": ["a", "b"]}]}]}
-        labelled = label_suggested_self_check(semantic, "vi", 120)
-        assert labelled is not None
-        self.assertEqual(labelled["sections"][1]["heading"], "Tự kiểm tra (tiêu chí gợi ý)")
-        self.assertEqual(labelled["sections"][0], semantic["sections"][0])
-        self.assertIsNone(label_suggested_self_check(labelled, "vi", 120))
-        long = {"sections": [{"heading": "x" * 110, "blocks": [{"kind": "bullets", "items": ["a"]}]}]}
-        english = label_suggested_self_check(long, "en", 120)
-        self.assertEqual(english["sections"][0]["heading"] if english else None, "Self-check (suggested criteria)")
-        self.assertIsNone(label_suggested_self_check({"sections": [{"heading": "a", "blocks": []}]}, "vi", 120))
+        self.assertIsNone(plain_self_check(semantic, "vi"))
+        self.assertIsNone(plain_self_check({"sections": [{"heading": "a", "blocks": []}]}, "vi"))
 
 
 def section(*blocks: dict[str, Any], heading: str = "Khiếu nại thuộc cấp độ nào?") -> dict[str, Any]:

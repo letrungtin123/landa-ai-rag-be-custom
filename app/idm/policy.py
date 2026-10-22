@@ -445,8 +445,8 @@ AI_DRAFTED_MARKER_VI: Final = "[AI soạn — tác giả kiểm tra lại]"
 AI_DRAFTED_MARKER_EN: Final = "[AI-drafted — author to check]"
 # No Hold (owner decision 2026-10-22, QC feedback A5, contract K2): the AI never holds a block or a practice for an SME.
 # A practice whose source states no grading criteria gets criteria drawn from what the lesson teaches, labelled so the
-# author and the learner read them as suggested: the module stage starts the practice's feedback_focus.criterion with
-# the label (``text.is_suggested_criteria``), and the W5 worksheet heads its self-check with it.
+# author reads them as suggested: the module stage starts the practice's feedback_focus.criterion with the label
+# (``text.is_suggested_criteria``) and the unit note says so; since run 5496155c the learner reads "Tự kiểm tra" only.
 SUGGESTED_CRITERIA_LABEL_VI: Final = "Tiêu chí gợi ý"
 SUGGESTED_CRITERIA_LABEL_EN: Final = "Suggested criteria"
 

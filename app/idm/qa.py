@@ -320,7 +320,7 @@ def build_unit_author_note(
     short list give, for the SME to spell out. ``notices`` (QLT-9): what the author should know about a unit that is
     not marked for review (``NOTICE_REASONS``), stated as "Lưu ý".
 
-    ``suggested_criteria`` (A5): the unit's practice has criteria the AI suggested from what the lesson teaches.
+    ``suggested_criteria`` (A5): the unit's worksheet has criteria the AI suggested from what the lesson teaches.
     ``source_flags`` (owner decision 2026-10-22): one sentence per contradictory or out-of-date point of the source,
     right after the review reasons; ``source_notes`` (run 5496155c): one per unclear point, an edit note after the
     notices.
@@ -437,12 +437,13 @@ def _worksheet_line(vi: bool, *, example_kept: bool) -> str:
                  "was left out — the author may add a short example back.")
 
 
-# A5 (owner decision 2026-10-22): the practice of the unit has criteria the AI suggested; keyed by "Vietnamese".
+# A5 (owner decision 2026-10-22): the worksheet of the unit has criteria the AI suggested; keyed by "Vietnamese". Run
+# 5496155c: the learner reads "Tự kiểm tra" only, so this line is where the author learns it.
 _SUGGESTED_CRITERIA_LINE: Final = {
-    True: "Tài liệu không nêu tiêu chí chấm cho bài thực hành này: AI gợi ý tiêu chí từ nội dung đã dạy (ghi là tiêu "
-          "chí gợi ý) — tác giả nên xem lại.",
-    False: "The source states no grading criteria for this practice: the AI suggested criteria from what the lesson "
-           "teaches (marked as suggested criteria) — the author should check them.",
+    True: "Tài liệu không nêu tiêu chí chấm cho phiếu thực hành của bài này: phần Tự kiểm tra dùng tiêu chí AI gợi ý "
+          "từ nội dung đã dạy — tác giả nên xem lại.",
+    False: "The source states no grading criteria for this unit's worksheet: its Self-check uses criteria the AI "
+           "suggested from what the lesson teaches — the author should check them.",
 }
 
 

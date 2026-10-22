@@ -122,6 +122,11 @@ HASH_HISTORY: tuple[tuple[str, str], ...] = (
     # issue.
     ("1680497c915930bcf9cd58459634f8345264b12bd88329bb2accec7268119ed7",
      "W1: what an unclear source point is"),
+    # Run 5496155c: learners read "Tự kiểm tra" / "Self-check" only. The preamble says the design marks suggested
+    # criteria and learner text never shows the mark; the W5 worksheet rule keeps the plain heading and no label (the
+    # server removes one still written, ``worksheet.plain_self_check``).
+    ("5a596ada1012dc60e714976880d8c2c25ad9a5822ad9547aa3ce889547c2c1a4",
+     "Self-check heading without the suggested-criteria label"),
 )
 PROMPT_NAME = re.compile(r"(prompt|_rules?$|_suffix$|rule_lines?$|_hint$|^rule_line$|_cue_line$)")
 

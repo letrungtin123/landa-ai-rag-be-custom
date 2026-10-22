@@ -6,9 +6,11 @@ is a local fake.
 
 from __future__ import annotations
 
+import json
 import unittest
+from typing import Any
 
-from app.idm.contracts import IdmIssueV1
+from app.idm.contracts import IdmIssueV1, brief_hash_of
 from app.idm.notes import build_course_notes
 from app.idm.source_flags import (
     REVIEW_FLAG_TYPES,
@@ -20,7 +22,15 @@ from app.idm.source_flags import (
     is_transition,
 )
 from app.idm.text import glued_words
-from tests.unit.idm.test_idm_qc_feedback import CONFLICT, flagged_escalate_body
+from app.idm.worksheet import plain_self_check
+from tests.support.idm_test_support import rehash_contract
+from tests.unit.idm.test_idm_qc_feedback import (
+    CONFLICT,
+    LINES,
+    SUGGESTED,
+    flagged_escalate_body,
+    suggested_worksheet_body,
+)
 from tests.unit.idm.test_idm_storyboard import (
     JUDGE,
     WRITER,
@@ -28,6 +38,9 @@ from tests.unit.idm.test_idm_storyboard import (
     StoryboardEndpointTestCase,
     escalate_writer,
     judge,
+    severity_body,
+    severity_writer,
+    worksheet_writer,
 )
 
 # The shapes of the run's flags: a cut bracket and a lone letter of one slide (p.43), a line the PDF glued and cut
@@ -130,3 +143,57 @@ class SourceFlagUnitTests(StoryboardEndpointTestCase):
         self.assertEqual(status, 200)
         self.assertEqual(data["quality_state"], "review_required")
         self.assertIn("Hãy kiểm tra trước khi áp dụng.", data["unit"]["idm_quality"]["author_note"])
+
+
+def self_check(heading: str, *items: str) -> dict[str, Any]:
+    return {"sections": [{"heading": "Nhiệm vụ", "blocks": [{"kind": "task", "text": "Làm phiếu."}]},
+                         {"heading": heading, "blocks": [{"kind": "bullets", "items": list(items)}]}]}
+
+
+class SelfCheckHeadingTests(StoryboardEndpointTestCase):
+    """Item 2: learners read "Tự kiểm tra" ("Self-check"); that the AI suggested the criteria is said in the author
+    note only, and only on a unit with a worksheet whose criteria the AI suggested."""
+
+    def test_the_label_goes_from_the_heading_and_the_items(self) -> None:
+        for heading, plain in (("Tự kiểm tra (tiêu chí gợi ý)", "Tự kiểm tra"),
+                               ("Tự kiểm tra bảng của bạn (Tiêu chí gợi ý)", "Tự kiểm tra bảng của bạn"),
+                               ("Tự kiểm tra – tiêu chí gợi ý", "Tự kiểm tra"),  # noqa: RUF001 - an en dash
+                               ("Tiêu chí gợi ý", "Tự kiểm tra")):
+            result = plain_self_check(self_check(heading, "Tiêu chí gợi ý: Chọn đúng 2 sáng kiến khả thi.", "Rõ ràng"),
+                                      "vi")
+            assert result is not None
+            self.assertEqual(result["sections"][1]["heading"], plain, heading)
+            self.assertEqual(result["sections"][1]["blocks"][0]["items"], ["Chọn đúng 2 sáng kiến khả thi.", "Rõ ràng"])
+            self.assertEqual(result["sections"][0], self_check(heading)["sections"][0])
+        english = plain_self_check(self_check("Self-check (suggested criteria)", "a"), "en")
+        self.assertEqual(english["sections"][1]["heading"] if english else None, "Self-check")
+        # Other words that mention criteria stay as written.
+        kept = self_check("Tiêu chí tự kiểm tra bảng của bạn", "Tiêu chí chấm: đủ ba cột.")
+        self.assertIsNone(plain_self_check(kept, "vi"))
+
+    async def test_a_labelled_self_check_reaches_the_learner_plain(self) -> None:
+        body = suggested_worksheet_body()
+        writer = worksheet_writer(body)
+        sections = writer["components"]["c0"]["semantic_content"]["sections"]
+        sections[-1]["heading"] = "Tự kiểm tra (tiêu chí gợi ý)"
+        items = sections[-1]["blocks"][0]["items"]
+        sections[-1]["blocks"][0]["items"] = [f"Tiêu chí gợi ý: {item}" for item in items]
+        status, data, _ = await self.post(body, FakeGenerate(**{WRITER: [writer], JUDGE: [judge()]}))
+        self.assertEqual(status, 200)
+        served = data["unit"]["components"][0]["semantic_content"]["sections"][-1]
+        self.assertEqual(served["heading"], "Tự kiểm tra")
+        self.assertEqual(served["blocks"][0]["items"], items)
+        self.assertNotIn("gợi ý", json.dumps(data["unit"]["components"], ensure_ascii=False))
+        self.assertIn("phần Tự kiểm tra dùng tiêu chí AI gợi ý", data["unit"]["idm_quality"]["author_note"])
+
+    async def test_a_unit_without_a_worksheet_gets_no_criteria_line(self) -> None:
+        # The shape of c1.l1.u3: a question whose practice has suggested criteria, no worksheet in the unit.
+        body = severity_body()
+        brief = body["unit_contract"]["idm_unit_brief"]
+        brief["components"][1]["practice"]["feedback_focus"]["criterion"] = SUGGESTED
+        brief["brief_hash"] = brief_hash_of(brief)
+        rehash_contract(body["unit_contract"])
+        writer = severity_writer(body, explanation=LINES)
+        status, data, _ = await self.post(body, FakeGenerate(**{WRITER: [writer], JUDGE: [judge()]}))
+        self.assertEqual(status, 200)
+        self.assertNotIn("tiêu chí", data["unit"]["idm_quality"]["author_note"].lower())

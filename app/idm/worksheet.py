@@ -297,16 +297,22 @@ def worksheet_fallback_html(title: str, fact_texts: Sequence[str], task: str | N
     return "".join(parts)
 
 
-# A5 (owner decision 2026-10-22): the self-check of a worksheet whose practice has suggested criteria says so.
-_SUGGESTED_HEADING: Final = {"vi": "Tự kiểm tra (tiêu chí gợi ý)", "en": "Self-check (suggested criteria)"}
-_SUGGESTED_SUFFIX: Final = {"vi": " (tiêu chí gợi ý)", "en": " (suggested criteria)"}
-_SUGGESTED_WORDS: Final = ("tieu chi goi y", "suggested criteria")
+# Run 5496155c (owner decision 2026-10-22): learners read "Tự kiểm tra" / "Self-check", never "(tiêu chí gợi ý)";
+# that the AI suggested the criteria is said in the author note only. The label is removed wherever the AI still wrote
+# it: after the heading (in brackets or after a dash or colon), as the whole heading, before an item.
+_SELF_CHECK: Final = {"vi": "Tự kiểm tra", "en": "Self-check"}
+_LABEL: Final = r"(?:tiêu chí gợi ý|suggested criteria|suggested criterion)"
+_DASHES: Final = "-" + "".join(map(chr, (0x2013, 0x2014)))
+_HEADING_LABEL_RE: Final = re.compile(rf"\s*(?:[(\[]\s*{_LABEL}\s*[)\]]|[{_DASHES}:]\s*{_LABEL})\s*$", re.IGNORECASE)
+_WHOLE_LABEL_RE: Final = re.compile(rf"^\s*{_LABEL}\s*$", re.IGNORECASE)
+_ITEM_LABEL_RE: Final = re.compile(rf"^\s*{_LABEL}\s*[:{_DASHES}]\s*(?=\S)", re.IGNORECASE)
 
 
-def label_suggested_self_check(semantic: dict[str, Any], locale: str, max_heading_chars: int) -> dict[str, Any] | None:
-    """``semantic`` with its self-check section (the last section holding a bullets list) headed as suggested
-    criteria, or ``None`` when it already is or has none. The heading keeps its words and gains the label when it
-    fits the heading bound, else it becomes the plain suggested-criteria heading. No other text changes."""
+def plain_self_check(semantic: dict[str, Any], locale: str) -> dict[str, Any] | None:
+    """``semantic`` with its self-check section (the last section holding a bullets list) free of the suggested-criteria
+    label, or ``None`` when it has none: a heading "Tự kiểm tra bảng của bạn (tiêu chí gợi ý)" becomes "Tự kiểm tra
+    bảng của bạn", a heading that is only the label becomes "Tự kiểm tra", an item "Tiêu chí gợi ý: Chọn …" becomes
+    "Chọn …". Only that fixed label goes; every other word stays."""
 
     sections = semantic.get("sections")
     if not isinstance(sections, list):
@@ -316,14 +322,22 @@ def label_suggested_self_check(semantic: dict[str, Any], locale: str, max_headin
     if not positions:
         return None
     section = sections[positions[-1]]
-    heading = str(section.get("heading") or "").strip()
-    if any(words in idm_fold(heading) for words in _SUGGESTED_WORDS):
+    heading = unicodedata.normalize("NFC", str(section.get("heading") or ""))
+    plain = _HEADING_LABEL_RE.sub("", heading).strip()
+    if _WHOLE_LABEL_RE.match(plain) or (heading.strip() and not plain):
+        plain = _SELF_CHECK["vi" if locale == "vi" else "en"]
+    blocks = []
+    for block in section.get("blocks") or []:
+        items = block.get("items") if isinstance(block, dict) else None
+        blocks.append({**block, "items": [_ITEM_LABEL_RE.sub("", unicodedata.normalize("NFC", item))
+                                          if isinstance(item, str) else item for item in items]}
+                      if isinstance(block, dict) and block.get("kind") == "bullets" and isinstance(items, list)
+                      else block)
+    if plain == heading and blocks == section.get("blocks"):
         return None
-    key = "vi" if locale == "vi" else "en"
-    labelled = heading + _SUGGESTED_SUFFIX[key]
-    new_heading = labelled if heading and len(labelled) <= max_heading_chars else _SUGGESTED_HEADING[key]
-    updated = [*sections[:positions[-1]], {**section, "heading": new_heading}, *sections[positions[-1] + 1:]]
+    updated = [*sections[:positions[-1]], {**section, "heading": plain, "blocks": blocks},
+               *sections[positions[-1] + 1:]]
     return {**semantic, "sections": updated}
 
 
-__all__ = ["COMPACTED_CODE", "compact_worksheet", "label_suggested_self_check", "worksheet_fallback_html"]
+__all__ = ["COMPACTED_CODE", "compact_worksheet", "plain_self_check", "worksheet_fallback_html"]

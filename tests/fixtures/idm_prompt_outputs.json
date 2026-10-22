@@ -2,45 +2,45 @@
  "course_design": [
   {
    "schema": "IdmW1ReduceResponseV1",
-   "sha256": "da3884c5903d5248870be23bdf56f3c999a004f563b88952065fd3ecb35fa56f",
-   "chars": 14131
+   "sha256": "f8c8837e06b4ca77f1db1bdfe7e5600a63fc4a102eaa680d27431011db4ab1e1",
+   "chars": 14182
   },
   {
    "schema": "IdmW1SectionResponseV1",
-   "sha256": "7376ed6ba9d969ab4a31d160f6002cce5f351b5a15409171efea3a9ca4cde8cf",
-   "chars": 11298
+   "sha256": "51b663d0cc4db90dac76f204b34b7e9945ca6ed81014279c0a709e3dd45ab9d0",
+   "chars": 11349
   },
   {
    "schema": "IdmW2BlueprintResponseV1",
-   "sha256": "1d76fa8dd1974b8f2cb560d66ca2296d302a9aa20371af3766ea2979f3210b85",
-   "chars": 13296
+   "sha256": "8d41bd3904a01a5fd99ad0dbcc091a4373b7decc5cea8737e3ba8e3656dec338",
+   "chars": 13347
   },
   {
    "schema": "IdmW4CourseResponseV1",
-   "sha256": "24825381bd5b8cbb8512ffbad78c5569b3a4c2ea58cd8252a17bbe24cf7d9769",
-   "chars": 11444
+   "sha256": "c8e489082a4dc1fafc15b2ceb32c8cc8a83145ccb2d89458f5d8687e20888896",
+   "chars": 11495
   }
  ],
  "modules": {
   "mod_01": [
    {
     "schema": "IdmW3W4ModuleResponseV1",
-    "sha256": "6bacfc2226cb4dca0e4008016090533cb9d8ac32ea712a9b78cf8d12b7c8a9d5",
-    "chars": 15902
+    "sha256": "6a9658bed778fb30e114522f16c2a171fae15b1758e6879a944163e9fa155acf",
+    "chars": 15953
    }
   ],
   "mod_02": [
    {
     "schema": "IdmW3W4ModuleResponseV1",
-    "sha256": "3311cc0c85dcdb3bbbb6b5884f4fbbadccb05031d73a3e740cd11faf725aab53",
-    "chars": 15017
+    "sha256": "c35194b684b12fb6f7b64c11aa06f3aa199bda557543b7d127eff64baebfacfa",
+    "chars": 15068
    }
   ],
   "mod_03": [
    {
     "schema": "IdmW3W4ModuleResponseV1",
-    "sha256": "64387287b33a90da153b053c2bfab54bb8ead608fa6d4565f45b5ebce8b5043f",
-    "chars": 18141
+    "sha256": "f0dd8b1e163e4468e60d38b1889eca18774a6ddde0957c13170b04f0d8e24bd7",
+    "chars": 18192
    }
   ]
  },
@@ -48,61 +48,61 @@
   "escalate": [
    {
     "schema": "StagedInstancePayloadUnitIdmWire",
-    "sha256": "bc36002f4774ef42597bbeb947343c07495ac0971ddab20084260360ba8a48f4",
-    "chars": 18464
+    "sha256": "87e47ae2a95081bfc552970ab2398693db94edc53815f7f0e27003f306acf4cc",
+    "chars": 18566
    },
    {
     "schema": "IdmJudgeResponseV1IdmWire",
-    "sha256": "40a3a5f2b26f526fc550f2654723aa83db2bc296c791b569703b3317d1e8b24f",
-    "chars": 10025
+    "sha256": "e4ddfb7ed603ba331b1043121cb8796d33edffa46b51bbbab22f353850fda023",
+    "chars": 10076
    }
   ],
   "severity": [
    {
     "schema": "StagedInstancePayloadUnitIdmWire",
-    "sha256": "2a0fff079bf1e6466af2627ada1833e81a9927ad217216960d4f24f71a8ca143",
-    "chars": 16496
+    "sha256": "a506758503b125b8b23bcdfc857dfc38bce9ad4626011c24543a98147b82f05a",
+    "chars": 16598
    },
    {
     "schema": "IdmJudgeResponseV1IdmWire",
-    "sha256": "b343540169bc964ec26ff310bf6a0588d40c52a8fa5cc34c6c7d24009467c418",
-    "chars": 9533
+    "sha256": "c9e1ab2687008e300e32fd6cc5064964b2a90f693a7117834b85596fe28381f0",
+    "chars": 9584
    }
   ],
   "writer_unavailable": [
    {
     "schema": "StagedInstancePayloadUnitIdmWire",
-    "sha256": "2a0fff079bf1e6466af2627ada1833e81a9927ad217216960d4f24f71a8ca143",
-    "chars": 16496
+    "sha256": "a506758503b125b8b23bcdfc857dfc38bce9ad4626011c24543a98147b82f05a",
+    "chars": 16598
    }
   ],
   "missing_slot": [
    {
     "schema": "StagedInstancePayloadUnitIdmWire",
-    "sha256": "2a0fff079bf1e6466af2627ada1833e81a9927ad217216960d4f24f71a8ca143",
-    "chars": 16496
+    "sha256": "a506758503b125b8b23bcdfc857dfc38bce9ad4626011c24543a98147b82f05a",
+    "chars": 16598
    },
    {
     "schema": "StagedInstancePayloadUnitIdmWire",
-    "sha256": "ce726da3bfb0e2dc2eb87fce2710268931a7893bc6356136d3795373c48b93b4",
-    "chars": 16823
+    "sha256": "4ea02837f9752c91b02200983d529c78a3212665d2748e84860ed04e41bcbb50",
+    "chars": 16925
    }
   ],
   "semantic_null": [
    {
     "schema": "StagedInstancePayloadUnitIdmWire",
-    "sha256": "2a0fff079bf1e6466af2627ada1833e81a9927ad217216960d4f24f71a8ca143",
-    "chars": 16496
+    "sha256": "a506758503b125b8b23bcdfc857dfc38bce9ad4626011c24543a98147b82f05a",
+    "chars": 16598
    },
    {
     "schema": "StagedMultiRepairIdmWire",
-    "sha256": "292299482e119aee957470daa9f8873b5020408e2aa05a72c5a2b5456899f211",
-    "chars": 17489
+    "sha256": "a4fb57e9a5c454e577b31c4815b3c95a59092d8b42014257e6cad63f9e5904c3",
+    "chars": 17591
    },
    {
     "schema": "StagedMultiRepairIdmWire",
-    "sha256": "292299482e119aee957470daa9f8873b5020408e2aa05a72c5a2b5456899f211",
-    "chars": 17489
+    "sha256": "a4fb57e9a5c454e577b31c4815b3c95a59092d8b42014257e6cad63f9e5904c3",
+    "chars": 17591
    }
   ]
  },
@@ -112,8 +112,8 @@
    "chars": 33
   },
   "preamble/vi": {
-   "sha256": "9478dfbc51e3933898f060e5e2cc2eb2542b2c15b6fb092c80dfd3117a8dd0cc",
-   "chars": 2010
+   "sha256": "cbe56d5d92e53001bc3ccc48005a471dd782e2842858d1fb81640be7427336f0",
+   "chars": 2061
   },
   "example_opening/vi/chapter_1.lesson_1.unit_1": {
    "sha256": "63b12301cf09e7da3524c880c5a746374605ad14ff626eda9b978ea253cf61dd",
@@ -132,8 +132,8 @@
    "chars": 7
   },
   "preamble/en": {
-   "sha256": "e910ad2b7ff19750eb9247134e7bce35171200cc1100506bcdb92e16732d856d",
-   "chars": 1984
+   "sha256": "0bd73bc897a0fd1e3add7a81d9e62ac968d5aa6f46457c118b453bd2ca03c4ce",
+   "chars": 2035
   },
   "example_opening/en/chapter_1.lesson_1.unit_1": {
    "sha256": "b96fa192b05e2aedbe76c581c3753bdb13588fb40d2747be0bd0e8b629c11339",
@@ -300,45 +300,45 @@
   "course_design": [
    {
     "schema": "IdmW1ReduceResponseV1",
-    "sha256": "0c87d4397e7e6769b763563e05aa6bc06c14eda6be499c6b8f9942c7bb5d5188",
-    "chars": 15828
+    "sha256": "0e9b339ba4571edb3a8234f03793bcba5b4e87f5e415bb9a46527660dee1690b",
+    "chars": 15879
    },
    {
     "schema": "IdmW1SectionResponseV1",
-    "sha256": "7376ed6ba9d969ab4a31d160f6002cce5f351b5a15409171efea3a9ca4cde8cf",
-    "chars": 11298
+    "sha256": "51b663d0cc4db90dac76f204b34b7e9945ca6ed81014279c0a709e3dd45ab9d0",
+    "chars": 11349
    },
    {
     "schema": "IdmW2BlueprintResponseV1",
-    "sha256": "32518b010fa0db04203606f26edb4aa1ae7a46b432675c6ac02b082cc4cbdcaa",
-    "chars": 14993
+    "sha256": "4272cf6ce6b58aa79cdd711f78d86ebb5a9a90e8c5b8dfc9a7a05c94c0a90314",
+    "chars": 15044
    },
    {
     "schema": "IdmW4CourseResponseV1",
-    "sha256": "d9e876c0950b75d6acb60a9acacd4a9f534288fc5dc3ec1a1234d10c2341f5e5",
-    "chars": 13141
+    "sha256": "2d8817c18d14e9ec9f14b375bdfaeebe90de4eadc4f31cbc3c58641bad10b50f",
+    "chars": 13192
    }
   ],
   "modules": {
    "mod_01": [
     {
      "schema": "IdmW3W4ModuleResponseV1",
-     "sha256": "09d2c182e6b3ea62cd35ca0a5aec212a95774eea744aef4b8a188478a954e7f3",
-     "chars": 17599
+     "sha256": "04b2e38e313dcbb4a62e246312fea77d707eb41530bf20b65ebef8d3874b4597",
+     "chars": 17650
     }
    ],
    "mod_02": [
     {
      "schema": "IdmW3W4ModuleResponseV1",
-     "sha256": "4c7f12e195025e2c82501d24983a60c93c27491206eca3e302b867ddfdd37f15",
-     "chars": 16714
+     "sha256": "365053f3c904ca8047700d21bf51b22296293e3492e878d2ad5da4eed23ef4ec",
+     "chars": 16765
     }
    ],
    "mod_03": [
     {
      "schema": "IdmW3W4ModuleResponseV1",
-     "sha256": "20137928ed67472edf1802d7317b1e08b86117d6cee5909ed1ec4b1c1d0fda4c",
-     "chars": 19838
+     "sha256": "b060753f415b7a4b65eb185e54cae16fcaee8a219b5240003ede0bbb89329118",
+     "chars": 19889
     }
    ]
   },
@@ -346,25 +346,25 @@
    "escalate": [
     {
      "schema": "StagedInstancePayloadUnitIdmWire",
-     "sha256": "3708c7087fa729c29bb895a1edc6c866892f327b19de092f35f94a4966b28414",
-     "chars": 19614
+     "sha256": "9f0e0e2db24294e303a988de90162843ce8b8b924ea67d373214cd9b89ec9de6",
+     "chars": 19716
     },
     {
      "schema": "IdmJudgeResponseV1IdmWire",
-     "sha256": "b3b8559d4943e9d45f5f213866a52a9a5716c955beef69d4215ff57fb9ce9e61",
-     "chars": 10681
+     "sha256": "ffb352f756969c959233afa9463315cd9b707366fe3146a98b5654d90b0ab372",
+     "chars": 10732
     }
    ],
    "severity": [
     {
      "schema": "StagedInstancePayloadUnitIdmWire",
-     "sha256": "5b69e2921fbcec3038c167bf86fa7c9a5e9de8e26f66cd7584977eb418755316",
-     "chars": 17646
+     "sha256": "8acc37089f07e58df1db8fef4e6429ea3a494cc10d5f611ea514df697906cccc",
+     "chars": 17748
     },
     {
      "schema": "IdmJudgeResponseV1IdmWire",
-     "sha256": "61cd7583e6e65a2774c117e6853d73b1f6c35a53b052a282642b82219542a682",
-     "chars": 10189
+     "sha256": "3f815cec6efe4dfdf227d6a0619683cb88696ce6e62f028386a7fa3814fc9916",
+     "chars": 10240
     }
    ]
   },

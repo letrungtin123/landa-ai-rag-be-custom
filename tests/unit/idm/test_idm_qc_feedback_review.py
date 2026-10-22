@@ -277,7 +277,7 @@ class SourceFlagSizeTests(unittest.TestCase):
             suggested_criteria=True)
         self.assertLessEqual(len(note), 1500)
         self.assertIn("1 khối dùng bản dự phòng dựng từ tài liệu", note)
-        self.assertIn("AI gợi ý tiêu chí từ nội dung đã dạy", note)
+        self.assertIn("tiêu chí AI gợi ý từ nội dung đã dạy", note)
         self.assertIn("chỗ khác cần kiểm tra", note)
 
     def test_the_course_note_keeps_its_other_sections(self) -> None:
