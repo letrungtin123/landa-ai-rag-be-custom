@@ -402,6 +402,12 @@ def _verdicts(options: Sequence[tuple[str, str]], choices: Sequence[dict[str, An
     return missing, wrong
 
 
+def named_items(question: str) -> dict[str, str]:
+    """Folded item name -> its text, of the stem lines of ``question`` that name an item ("- Nhận định 2: …")."""
+
+    return _named_items(_lines(question))
+
+
 def _named_items(lines: Sequence[str]) -> dict[str, str]:
     """Folded item name -> its text, of the stem lines that name an item ("- Nhận định 2: …")."""
 
@@ -566,6 +572,7 @@ __all__ = [
     "lay_out_quiz",
     "layout_explanation",
     "layout_question",
+    "named_items",
     "number_item_letters",
     "question_report",
     "quiz_findings",

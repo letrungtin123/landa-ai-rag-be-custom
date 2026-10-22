@@ -11,10 +11,12 @@ import re
 import unittest
 from typing import Any
 
+from app.idm.answer_checks import copies_example_measure, resolved_choices, stem_copies_answer, unit_teaching
 from app.idm.contracts import IdmIssueV1, brief_hash_of
 from app.idm.notes import build_course_notes
+from app.idm.prompts_judge import judge_prompt
 from app.idm.prompts_module import module_prompt
-from app.idm.prompts_unit import _WORKSHEET_RULE
+from app.idm.prompts_unit import _WORKSHEET_RULE, unit_writer_prompt
 from app.idm.quiz_text import (
     EXPLANATION_NAMES_ONLY_CODE,
     QUESTION_ITEM_NOUN_CODE,
@@ -488,9 +490,9 @@ class StemNamingTests(StoryboardEndpointTestCase):
         body = severity_body()
         writer = severity_writer(body, explanation=LINES)
         writer["components"]["c1"]["question"] = (
-            "Khách hàng gọi lần thứ hai vì đơn giao trễ, chưa có thiệt hại tài chính. Bạn xếp cấp nào?\n- Phương án 1: "
-            "Xếp cấp 1 vì chưa có thiệt hại.\n- Phương án 2: Xếp cấp 2 vì khách phàn nàn lần thứ hai.\n- Phương án 3: "
-            "Xếp cấp 3 và escalate ngay.\nKhiếu nại này thuộc cấp nào?")
+            "Khách hàng gọi lần thứ hai vì đơn giao trễ, chưa có thiệt hại tài chính. Nhóm bạn bàn cách nào?\n- "
+            "Phương án 1: Gọi lại khách ngay trong ngày.\n- Phương án 2: Gửi thư xin lỗi kèm mã giảm giá.\n- Phương "
+            "án 3: Chờ khách gọi thêm một lần nữa.\nKhiếu nại này thuộc cấp nào?")
         provider = FakeGenerate(**{WRITER: [writer], REPAIR: [slot_repair(writer, 1)], JUDGE: [judge()]})
         status, data, _ = await self.post(body, provider)
         self.assertEqual(status, 200)
@@ -502,3 +504,104 @@ class StemNamingTests(StoryboardEndpointTestCase):
         note = data["unit"]["idm_quality"]["author_note"]
         self.assertIn("Nên biên tập khối 2 (Quiz): các ý trong đề được gọi là «Phương án 1, 2…»", note)
         self.assertIn("đề hỏi hai lần", note)
+
+
+def html_slot(*sections: tuple[str, list[dict[str, Any]]]) -> dict[str, Any]:
+    return {"type": "html", "semantic_content": {"sections": [
+        {"heading": heading, "blocks": [{"text": None, "items": [], "rows": [], **block} for block in blocks]}
+        for heading, blocks in sections]}}
+
+
+def rows(*pairs: tuple[str, str]) -> dict[str, Any]:
+    return {"kind": "table", "rows": [{"label": label, "value": value} for label, value in pairs]}
+
+
+# c1.l2.u2: the worked example right above the question, whose answer is a role.
+ROLE_EXAMPLE = html_slot(("Ví dụ phân loại một nhân sự", [rows(
+    ("Nhân sự và chức danh", "Chị Hoa - Thư ký Giám đốc"), ("Việc làm", "Sàng lọc thư mời và đặt lịch gặp đối tác"),
+    ("Vai trò", "Người gác cổng (Gatekeeper)"))]))
+ROLE_QUIZ = stem_quiz(
+    "Một dự án ghi nhận ba nhân sự:\n- Nhân sự 1: Thư ký Giám đốc sàng lọc thư mời và đặt lịch gặp đối tác.\n- Nhân "
+    "sự 2: Kỹ sư vận hành máy hằng ngày.\n- Nhân sự 3: Chuyên gia độc lập đánh giá thiết bị.\nCách xếp nào đúng?",
+    [("Nhân sự 1 là Người gác cổng, Nhân sự 2 là Người sử dụng, Nhân sự 3 là Người ảnh hưởng", True),
+     ("Nhân sự 1 là Người quyết định, Nhân sự 2 là Người sử dụng, Nhân sự 3 là Phòng mua hàng", False),
+     ("Nhân sự 1 là Người ảnh hưởng, Nhân sự 2 là Kho vận, Nhân sự 3 là Người quyết định", False)], "")
+# c1.l3.u2: a listed item copies the cell of the row whose layer the key names.
+LAYER_TABLE = html_slot(("Ba tầng góc nhìn", [rows(
+    ("Tầng Chức năng", "Lợi ích là xong việc nhanh, tiết kiệm và chính xác."),
+    ("Tầng Ý nghĩa", "Lợi ích là được ghi nhận, được tôn vinh trước tập thể và để lại dấu ấn."))]))
+LAYER_QUIZ = stem_quiz(
+    "Một trưởng phòng chia sẻ:\n- Phản hồi 1: Lo bị chậm tiến độ.\n- Phản hồi 2: Mong được ghi nhận, tôn vinh trước "
+    "tập thể và để lại dấu ấn.\nPhản hồi 2 thuộc tầng nào?",
+    [("Lợi ích ở tầng Chức năng", False), ("Lợi ích ở tầng Ý nghĩa", True), ("Nỗi đau ở tầng Chức năng", False)], "")
+# c2.l4.u2: the key's item repeats the worked example's figure.
+FIGURE_EXAMPLE = html_slot(("Ví dụ mẫu tại một cột mốc", [rows(
+    ("Điểm đau", "Hồ sơ hợp đồng chờ duyệt nhiều ngày."),
+    ("Giải pháp", "Duyệt hồ sơ mẫu trực tuyến và trả kết quả trong 3 giờ làm việc."))]))
+FIGURE_QUIZ = stem_quiz(
+    "Khách hàng chờ báo giá 5 ngày.\n- Cách 1: Gọi điện xin lỗi khi báo giá trễ.\n- Cách 2: Tạo và duyệt báo giá trên "
+    "cổng trực tuyến dưới 3 giờ.\n- Cách 3: Gửi thêm hồ sơ năng lực khi khách chờ.\nCách nào xử lý tận gốc điểm đau?",
+    [("Cách 1", False), ("Cách 2", True), ("Cách 3", False)], "")
+
+
+class LeakThroughTheStemTests(unittest.TestCase):
+    """Item 6: the give-away sat in the stem's listed items, or behind a key that only names an item."""
+
+    def test_an_item_copying_the_example_or_a_row_gives_the_answer(self) -> None:
+        for html, quiz in ((ROLE_EXAMPLE, ROLE_QUIZ), (LAYER_TABLE, LAYER_QUIZ)):
+            teaching = unit_teaching([html], [])
+            laid = lay_out_quiz(quiz)[0]
+            self.assertTrue(stem_copies_answer(resolved_choices(laid), teaching, laid), quiz["question"])
+
+    def test_a_key_that_only_names_an_item_is_read_as_the_item(self) -> None:
+        laid = lay_out_quiz(FIGURE_QUIZ)[0]
+        read = resolved_choices(laid)
+        self.assertTrue(next(choice["text"] for choice in read["choices"] if choice["correct"]).startswith("Tạo và"))
+        self.assertEqual([choice["text"] for choice in laid["choices"]], ["Cách 1", "Cách 2", "Cách 3"])
+        teaching = unit_teaching([FIGURE_EXAMPLE], [])
+        self.assertTrue(copies_example_measure(read, teaching))
+        self.assertFalse(copies_example_measure(laid, teaching))
+
+    def test_a_case_in_its_own_words_is_no_leak(self) -> None:
+        own = stem_quiz(
+            "Một dự án ghi nhận ba nhân sự:\n- Nhân sự 1: Người nhận cuộc gọi đầu tiên và chọn cuộc hẹn nào chuyển "
+            "lên.\n"
+            "- Nhân sự 2: Kỹ sư vận hành máy hằng ngày.\n- Nhân sự 3: Chuyên gia độc lập đánh giá thiết bị.\nCách xếp "
+            "nào đúng?", [(text, correct) for text, correct in
+                          ((choice["text"], choice["correct"]) for choice in ROLE_QUIZ["choices"])], "")
+        laid = lay_out_quiz(own)[0]
+        self.assertFalse(stem_copies_answer(resolved_choices(laid), unit_teaching([ROLE_EXAMPLE], []), laid))
+        other_figure = json.loads(json.dumps(FIGURE_QUIZ, ensure_ascii=False).replace("dưới 3 giờ", "trong ngày"))
+        laid = lay_out_quiz(other_figure)[0]
+        self.assertFalse(copies_example_measure(resolved_choices(laid), unit_teaching([FIGURE_EXAMPLE], [])))
+
+
+class LeakAndContestEndpointTests(StoryboardEndpointTestCase):
+    """Items 6 and 7 through the unit: a stem item copying the taught table is repaired as a leak; the writer and the
+    judge are told to check every option of a formula question."""
+
+    async def test_an_item_copying_the_taught_row_gets_the_leak_repair(self) -> None:
+        body = severity_body()
+        writer = severity_writer(body, explanation=LINES)
+        writer["components"]["c1"]["question"] = (
+            "Bối cảnh:\n- Khiếu nại 1: Thiệt hại tài chính dưới 50 triệu đồng hoặc khách hàng phàn nàn lần thứ hai.\n"
+            "- Khiếu nại 2: Khách hàng hỏi giờ mở cửa của cửa hàng.\nKhiếu nại 1 thuộc cấp độ nào?")
+        provider = FakeGenerate(**{WRITER: [writer], REPAIR: [slot_repair(writer, 1)] * 2, JUDGE: [judge()]})
+        status, _data, _ = await self.post(body, provider)
+        self.assertEqual(status, 200)
+        self.assertIn("c1 IDM_W5_ANSWER_LEAK at c1", provider.calls[1]["prompt"])
+        self.assertIn("a listed item of the question copies the worked example, a table row",
+                      provider.calls[1]["prompt"])
+
+    def test_the_writer_and_the_judge_check_every_option_of_a_formula(self) -> None:
+        self.assertIn("each\n  distractor visibly lacks or misuses ONE named part", PRACTICE_RULES)
+        self.assertIn('no "chi phí cực cao", "vượt ngân sách"', PRACTICE_RULES)
+        judge_text = judge_prompt("vi", plan_summary={}, facts=[], unit_content=[])
+        self.assertIn("Check EVERY\n   option against the definition, formula or criterion the unit teaches",
+                      judge_text)
+        self.assertIn("it has every part, as the key does", judge_text)
+
+
+PRACTICE_RULES = unit_writer_prompt(
+    "vi", course_title="", audience="", lesson_title="", lesson_objective="", practice_sentences=[],
+    previous_title=None, next_title=None, unit_brief={}, facts=[], context_facts=[])

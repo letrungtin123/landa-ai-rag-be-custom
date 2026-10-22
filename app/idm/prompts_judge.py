@@ -50,7 +50,10 @@ another unit of the lesson is never a finding here.
    unit teaches: a question whose case also meets the criteria the unit's tables, lists or FAQ answers give for
    another option, or whose key contradicts an FAQ answer of this unit, is major; so is a correct option that
    restates the example, quotation or template shown right before the question, or strings together the items of a
-   list shown before it, and a case that repeats the worked example so its answer is the example's answer.
+   list shown before it, and a case that repeats the worked example so its answer is the example's answer. Check EVERY
+   option against the definition, formula or criterion the unit teaches, one by one: a distractor that also meets it
+   (for a formula or framework of required parts: it has every part, as the key does) or a key that misses a part
+   makes more than one option defensible: major, with the option named in the witness.
  Q6_alignment: the practice matches the Must Do action type and Bloom level in the plan.
  Q3, Q4 and Q6 grade this unit's own practice: when PLAN.has_practice_slot is false return not_applicable for
    them. not_applicable is never allowed for any other criterion except Q11, Q12 and Q13 as stated below.

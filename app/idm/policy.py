@@ -361,6 +361,20 @@ IDM_ANSWER_JOINED_MIN_KEY_PAIRS: Final = 4
 IDM_ANSWER_EXAMPLE_WORDS_MIN_SHARE: Final = 0.5
 IDM_ANSWER_EXAMPLE_WORDS_MIN_MARGIN: Final = 0.15
 IDM_ANSWER_EXAMPLE_WORDS_MIN_KEY_WORDS: Final = 8
+# Run 5496155c (QC 2026-10-22): the give-away sat in the stem's listed items, which the key-only measures above never
+# read. c1.l2.u2's "Nhân sự 1: Trợ lý Tổng giám đốc tiếp nhận lịch hẹn và lọc hồ sơ dự thầu" holds 0.75 of its content
+# words from the worked example right above it (whose answer, "Người gác cổng", the key names); c1.l3.u2's "Phản hồi 2:
+# Mong muốn được vinh danh đúng tầm và kiến tạo di sản …" 0.55 of its content-word pairs from the table row whose label
+# the key names; c3.l1.u2's key "Phương án 1" points to an item holding 0.62 of the example's pairs against 0.5 for the
+# best other item. On the run's 14 questions (36 listed items) an item copies a passage when it holds at least the pair
+# share (of at least this many pairs) or the word share (of at least this many words); the best other copy held 0.38 of
+# the pairs and 0.58 of the words (c1.l3.u4, which the QC called a good question, 0.38 and 0.46). A key that is only an
+# item's name is measured by its item's pairs, with the margin over every other item.
+IDM_ANSWER_STEM_ITEM_MIN_PAIRS: Final = 3
+IDM_ANSWER_STEM_ITEM_COPY_SHARE: Final = 0.5
+IDM_ANSWER_STEM_ITEM_MIN_WORDS: Final = 4
+IDM_ANSWER_STEM_ITEM_WORD_SHARE: Final = 0.7
+IDM_ANSWER_STEM_ITEM_MARGIN: Final = 0.1
 
 # --- FAQ value and callout grounding (QC course 364564, N9/N11) --------------------------------
 # 3 of 5 FAQs only repeated the table taught just above them. An FAQ answer restates the html before

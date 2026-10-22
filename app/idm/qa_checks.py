@@ -15,10 +15,13 @@ from typing import Any, Final
 from app.content.learner_content_purity import component_learner_text
 from app.idm.answer_checks import (
     contested_option,
+    copies_example_measure,
     quoted_key,
+    resolved_choices,
     restates_example,
     restates_joined_example,
     restates_list,
+    stem_copies_answer,
     unit_teaching,
 )
 from app.idm.artifacts import cut_fragments
@@ -397,10 +400,13 @@ def deterministic_slot_findings(
                 html = idm_fold(preceding_html)
                 teaching = unit_teaching([item for item in components[:index] if item.get("type") == "html"], faq,
                                          fact_rows)
+                # Run 5496155c: an option that is only a listed item's name is measured by that item's text.
+                read = resolved_choices(component)
                 if ((len(answer) >= ANSWER_LEAK_MIN_CHARS and answer in html and ("dap an" in html or "answer" in html))
-                        or copied_options(component, preceding_html) or reworded_key(component, preceding_html)
-                        or quoted_key(component, teaching) or restates_example(component, teaching)
-                        or restates_list(component, teaching) or restates_joined_example(component, teaching)):
+                        or copied_options(read, preceding_html) or reworded_key(read, preceding_html)
+                        or quoted_key(read, teaching) or restates_example(read, teaching)
+                        or restates_list(read, teaching) or restates_joined_example(read, teaching)
+                        or stem_copies_answer(read, teaching, component) or copies_example_measure(read, teaching)):
                     findings.append(SlotFinding(ANSWER_LEAK_CODE, index))
                 if contested_option(component, teaching) is not None:
                     findings.append(SlotFinding(ANSWER_CONTESTED_CODE, index))

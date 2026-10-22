@@ -27,6 +27,16 @@ QC run 0a11aa9e (QLT-8) added the keys that join several shown items, which the 
 * a key that joins several passages of the worked example (c2.l5.u1: three rows of the worksheet example,
   ``restates_joined_example``).
 
+Run 5496155c (QC 2026-10-22) found the give-away in the stem itself, which the key-only measures never read:
+
+* ``resolved_choices``: an option that is only a listed item's name ("Phương án 2") is measured by that item's text, so
+  every measure above reads what the key really says (c3.l1.u2: "Phương án 1" pointed to the worked example's rows);
+* ``stem_copies_answer``: a listed item copies the worked example or a table row right above the question and the key
+  names that example's answer or that row's label (c1.l2.u2: "Trợ lý Tổng giám đốc … lọc hồ sơ" from the example whose
+  answer was "Người gác cổng"; c1.l3.u2: "vinh danh đúng tầm … kiến tạo di sản" from the row of the key's layer);
+* ``copies_example_measure``: the key states a number with its unit from the worked example ("2 giờ") that neither the
+  case nor any distractor states (c2.l4.u2).
+
 Pure functions on the writer's payload; thresholds and their calibration live in ``app.idm.policy``.
 """
 
@@ -59,9 +69,15 @@ from app.idm.policy import (
     IDM_ANSWER_SHORT_DISTRACTOR_MAX_SHARE,
     IDM_ANSWER_SHORT_KEY_MAX_WORDS,
     IDM_ANSWER_STEM_COPY_MIN_SHARE,
+    IDM_ANSWER_STEM_ITEM_COPY_SHARE,
+    IDM_ANSWER_STEM_ITEM_MARGIN,
+    IDM_ANSWER_STEM_ITEM_MIN_PAIRS,
+    IDM_ANSWER_STEM_ITEM_MIN_WORDS,
+    IDM_ANSWER_STEM_ITEM_WORD_SHARE,
     IDM_ANSWER_STEM_PASSAGE_MIN_WORDS,
 )
-from app.idm.text import content_pairs, content_words, idm_fold
+from app.idm.quiz_text import named_items
+from app.idm.text import content_pairs, content_words, idm_fold, number_spans
 
 _WORD_RE: Final = re.compile(r"\w+", re.UNICODE)
 # A worked example in the html: a text that opens with an example label, the blocks after it in its section, and every
@@ -481,7 +497,103 @@ def contested_option(component: Mapping[str, Any], teaching: UnitTeaching) -> in
     return _literal_rival(component, mapped, key, rows)
 
 
+# A number and the word after it ("2 giờ", "50 triệu"): what an example states, measured.
+_MEASURE_UNIT_RE: Final = re.compile(r"[ \t]*([^\W\d_]+)")
+
+
+def resolved_choices(component: Mapping[str, Any]) -> dict[str, Any]:
+    """``component`` with every option that is only a listed item's name ("Phương án 2", "Cách 2") read as that item's
+    text, for the measures (the served options never change)."""
+
+    items = named_items(str(component.get("question") or ""))
+    choices = component.get("choices")
+    if len(items) < _MIN_OPTIONS or not isinstance(choices, list):
+        return dict(component)
+    resolved = [{**choice, "text": items.get(idm_fold(str(choice.get("text") or "")).strip(" .:;,"),
+                                             choice.get("text"))} if isinstance(choice, dict) else choice
+                for choice in choices]
+    return {**component, "choices": resolved}
+
+
+def _measures(text: str) -> set[tuple[str, str]]:
+    found = set()
+    for _raw, normal, _start, end in number_spans(text):
+        if unit := _MEASURE_UNIT_RE.match(text, end):
+            found.add((normal, idm_fold(unit.group(1))))
+    return found
+
+
+def _case_lines(question: str) -> str:
+    """The stem without its listed items: the case the question gives."""
+
+    return " ".join(line for line in question.splitlines() if not line.strip().startswith("-"))
+
+
+def copies_example_measure(component: Mapping[str, Any], teaching: UnitTeaching) -> bool:
+    """The key states a number with its unit from the worked example ("2 giờ") that neither the case nor any
+    distractor states (run 5496155c, c2.l4.u2): the learner picks the example's figure."""
+
+    texts, key = _choices(component)
+    if key is None or len(texts) < _MIN_OPTIONS or not teaching.examples:
+        return False
+    shown = set().union(*(_measures(passage) for passage in teaching.examples))
+    others = set().union(*(_measures(text) for index, text in enumerate(texts) if index != key))
+    return bool((_measures(texts[key]) & shown) - _measures(_case_lines(str(component.get("question") or "")))
+                - others)
+
+
+def _item_share(text: str, passage: str) -> float:
+    pairs = content_pairs(text)
+    return len(pairs & content_pairs(passage)) / len(pairs) if len(pairs) >= IDM_ANSWER_STEM_ITEM_MIN_PAIRS else 0.0
+
+
+def _copies(text: str, passage: str) -> bool:
+    """``text`` (a listed item) copies ``passage``: most of its content-word pairs, or nearly all its content words."""
+
+    words = set(content_words(text))
+    return _item_share(text, passage) >= IDM_ANSWER_STEM_ITEM_COPY_SHARE or (
+        len(words) >= IDM_ANSWER_STEM_ITEM_MIN_WORDS
+        and len(words & set(content_words(passage))) / len(words) >= IDM_ANSWER_STEM_ITEM_WORD_SHARE)
+
+
+def stem_copies_answer(component: Mapping[str, Any], teaching: UnitTeaching, original: Mapping[str, Any]) -> bool:
+    """A listed item of the stem copies the worked example or a table row shown before the question, and the key gives
+    the answer that copy points to (run 5496155c): it names the row's label, or a pair of the example's words the case
+    does not use and some distractor lacks; or the key is only that item's name (``original``, the served options) and
+    its item copies more than every other item."""
+
+    texts, key = _choices(component)
+    items = named_items(str(component.get("question") or ""))
+    if key is None or len(texts) < _MIN_OPTIONS or not items:
+        return False
+    case = content_pairs(str(component.get("question") or ""))
+    example = " ".join(teaching.examples)
+    groups = [(_head(label), value) for label, value in teaching.rows if len(_head(label)) >= _MIN_HEAD_CHARS]
+    folded = [idm_fold(text) for text in texts]
+    key_pairs = content_pairs(texts[key])
+    for name, item in items.items():
+        if example and _copies(item, example):
+            # The example's words the key adds to the case: its answer, unless every distractor says it too.
+            answer = (key_pairs & content_pairs(example)) - case
+            if any(pair not in content_pairs(text) for pair in answer
+                   for index, text in enumerate(texts) if index != key):
+                return True
+        for head, value in groups:
+            if (_copies(item, value) and _names(folded[key], head)
+                    and not all(_names(text, head) for text in folded)):
+                return True
+        served = idm_fold(str((original.get("choices") or [{}])[key].get("text") or "")).strip(" .:;,")
+        if served == name and example:
+            share = _item_share(item, example)
+            rest = [_item_share(other, example) for other_name, other in items.items() if other_name != name]
+            if (share >= IDM_ANSWER_STEM_ITEM_COPY_SHARE
+                    and share - max(rest, default=0.0) >= IDM_ANSWER_STEM_ITEM_MARGIN):
+                return True
+    return False
+
+
 __all__ = [
-    "UnitTeaching", "contested_option", "example_passages", "fact_table_rows", "labelled_options", "quoted_key",
-    "restates_example", "restates_joined_example", "restates_list", "unit_teaching",
+    "UnitTeaching", "contested_option", "copies_example_measure", "example_passages", "fact_table_rows",
+    "labelled_options", "quoted_key", "resolved_choices", "restates_example", "restates_joined_example",
+    "restates_list", "stem_copies_answer", "unit_teaching",
 ]

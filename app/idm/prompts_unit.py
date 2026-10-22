@@ -151,16 +151,23 @@ Writing rules (learner-facing, {locale_name(locale)}):
   leaves just two plausible mistakes); each distractor is a
   plausible near-miss a learner of TARGET_AUDIENCE could choose, wrong by the stated criterion: a common mistake,
   the old practice the facts reject, a criterion only half met or a step in the wrong order (never an obviously wrong,
-  extreme or absurd option); no "all/none of the above", correct option not always first, every option of comparable
+  extreme or absurd option: no "chi phí cực cao", "vượt ngân sách", "gửi email nhắc khách kiên nhẫn chờ"; each one is a
+  reasonable choice that applies the taught criterion wrongly); no "all/none of the above", correct option not always
+  first, every option of comparable
   length and detail (the correct one is not the longest option: at least one distractor is as long or longer), and the
   correct option never reuses the wording of the example, quotation, worked example or template shown before the
   question, nor strings together the items of a list or table shown before it (it applies the criterion to the
   question's own case); the question's case is not the worked example's case: other facts decide it and its answer
-  is not the worked example's answer; the case never names the cause, rule or criterion the key is about (the
-  learner finds it from the case's facts). The question and the explanation follow QUIZ TEXT below. Never reveal the
-  answer before the question. A question tests only what the html slots before it teach: every fact its key or
-  explanation relies on is stated in that html first (the explanation recalls it, it never teaches it for the first
-  time). A classification question (options naming taught labels, rows or stages) describes a case that meets the
+  is not the worked example's answer; the case and its listed items never copy the words of the worked example, a
+  table row or a list item shown before it (the learner applies the criterion, never matches words), and the key never
+  repeats a number or detail of the worked example the case does not give; the case never names the cause, rule or
+  criterion the key is about (the learner finds it from the case's facts). A question on a formula, definition or
+  framework of several required parts ("đối tượng + lợi ích + cách làm khác biệt"): the key has every part; each
+  distractor visibly lacks or misuses ONE named part (a different one each) and its explanation line names that
+  part; never a distractor that also has every part. The question and the explanation follow QUIZ TEXT below. Never
+  reveal the answer before the question. A question tests only what the html slots before it teach: every fact its
+  key or explanation relies on is stated in that html first (the explanation recalls it, it never teaches it for the
+  first time). A classification question (options naming taught labels, rows or stages) describes a case that meets the
   criteria of exactly one option and contradicts no FAQ answer of the unit; no option copies a table row or list item.
 {_QUIZ_TEXT_RULE}
 {_WORKSHEET_RULE}
@@ -395,15 +402,18 @@ UNIT_RULE_TEXT: Final[dict[str, str]] = {
     "IDM_W5_ANSWER_LEAK": "an option of this question copies or restates the example, worked example, quotation, "
                           "list item, table row or template shown before it, or strings several items of one list, "
                           "table or worked example together (or the question's case copies the example that names "
-                          "the answer): rewrite THAT option (and its part of the explanation) in new words or about a "
-                          "different case so the learner must apply the criterion, and give every distractor the same "
-                          "footing in what was taught; keep the earlier html as it is",
+                          "the answer), or a listed item of the question copies the worked example, a table row or "
+                          "a number of the example the key repeats: rewrite THAT option or item (and its part of the "
+                          "explanation) in new words or about a different case so the learner must apply the "
+                          "criterion, and give every distractor the same footing in what was taught; keep the earlier "
+                          "html as it is",
     "IDM_W5_ANSWER_CONTESTED": "the question's case also meets the criteria this unit's html table, list, FAQ "
                                "answers or the table rows of SOURCE_FACTS give for another option (for example a code "
                                "or condition only that option's row states), so more than one option is defensible: "
                                "rewrite the case itself (its facts, not only its wording) so it meets the criteria of "
                                "exactly one option and contradicts no FAQ answer of this unit, keep the whole question "
-                               "ending with its question sentence, and keep the explanation's reason for every option",
+                               "ending with its question sentence, and keep the explanation's reason for every option; "
+                               "for a formula or framework of required parts, each distractor lacks one named part",
     "IDM_W5_QUESTION_INCOMPLETE": "the question stops before it asks anything: write the whole case and end the "
                                   "question with the question sentence itself (ending with \"?\"); keep the options, "
                                   "the answer key and the explanation consistent with it",
