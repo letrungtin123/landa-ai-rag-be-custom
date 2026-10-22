@@ -147,7 +147,7 @@ async def run_idm_course_design(
         fact_source_ref={fact.fact_key: fact.source_ref for fact in facts},
         audience=reduce_response.target_audience, objectives=objectives, must_dos=must_dos,
         blocks=blueprint.blocks, links=blueprint.links, rows=blueprint.rows, blocked=blocked, holds=holds,
-        plan=architecture.plan, dispositions=dispositions, stage_origins=stage_origins,
+        plan=architecture.plan, dispositions=dispositions, stage_origins=stage_origins, loose=blueprint.loose_must_dos,
         kept_definitions=blueprint.kept_definitions, purpose=purpose, kept_background=blueprint.kept_background,
     ))
     skeleton = await runtime.run_cpu(project_course_skeleton, design, architecture.plan)

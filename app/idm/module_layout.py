@@ -255,10 +255,11 @@ def fallback_lesson(
                            "The AI practice is kept as a scenario question (single choice) in the Must Do unit.")
     if kept is not None and len(provider_practices) > len(practices):
         left = len(provider_practices) - len(practices)
-        notes += " " + _vi(locale, f"{left} bài luyện tập khác của AI không đưa được vào bố cục dự phòng — tác giả có "
-                                   "thể bổ sung thủ công.",
-                           f"{left} other AI practice(s) did not fit the fallback layout — the author may add them "
-                           "by hand.")
+        # Review m19: never silent, a "Cần xem" line of the lesson note.
+        notes += " " + _vi(locale, f"Cần xem: {left} bài luyện tập khác của AI không đưa được vào bố cục dự phòng — "
+                                   "tác giả có thể bổ sung thủ công.",
+                           f"Review needed: {left} other AI practice(s) did not fit the fallback layout — the author "
+                           "may add them by hand.")
     if kept != WORKSHEET_KEPT and plan.kind == "learning" and scope.doing_must_do(plan.primary_must_do_id):
         notes += " " + _vi(locale, "Must Do loại làm: cần bổ sung phiếu thực hành (worksheet) để người học tự làm.",
                            "A doing Must Do: add a worksheet practice so the learner produces the output.")

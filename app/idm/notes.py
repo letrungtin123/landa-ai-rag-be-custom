@@ -133,6 +133,8 @@ def build_course_notes(
     brief_lines: Sequence[str] = (),
     audience_entered: bool = False,
     source_checks: Sequence[str] = (),
+    loose_must_dos: Sequence[str] = (),
+    unserved_must_dos: Sequence[str] = (),
 ) -> str:
     """Course ``implementation_notes`` (spec §8.4).
 
@@ -151,7 +153,9 @@ def build_course_notes(
     objectives are marked as proposed by AI.
 
     ``source_checks`` (owner decision 2026-10-22): one plain sentence per contradictory, unclear or out-of-date point of
-    a taught block (``app.idm.source_flags``), the first section after the head.
+    a taught block (``app.idm.source_flags``), the first section after the head. Review m20: then the Must Dos attached
+    to a block without a relation ("statement → “block”", ``loose_must_dos``) and those with nothing to teach in the
+    course (``unserved_must_dos``; the design never blocks a Must Do, contract K2).
     """
 
     vi = locale == "vi"
@@ -189,6 +193,12 @@ def build_course_notes(
     checks = [item for item in dict.fromkeys(source_checks) if item.strip()]
     budget.section("• Chỗ tài liệu cần kiểm tra trước khi áp dụng:" if vi else "• Points to check in the source:",
                    [f"  - {item}" for item in checks], more, len(checks), IDM_NOTES_SOURCE_CHECKS_MAX_CHARS)
+    budget.section("• Cần xem — Must Do chưa có phần riêng trong tài liệu, đã gắn vào phần gần nhất:" if vi
+                   else "• Review needed — Must Dos without content of their own, attached to the closest part:",
+                   [f"  - {item}" for item in loose_must_dos], more, len(loose_must_dos))
+    budget.section("• Cần xem — Must Do chưa có nội dung nào để dạy trong khoá:" if vi
+                   else "• Review needed — Must Dos with nothing to teach in the course:",
+                   [f"  - {item}" for item in unserved_must_dos], more, len(unserved_must_dos))
     gaps = [item for item in dict.fromkeys(template_gaps) if item.strip()]
     budget.section(
         f"• Khung khoá học ({pattern_label}): tài liệu còn thiếu {len(gaps)} phần — AI không tự viết nội dung cho "

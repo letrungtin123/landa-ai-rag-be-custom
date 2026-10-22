@@ -26,9 +26,11 @@ from typing import Any, Final
 
 from pydantic import ValidationError
 
-from app.idm.contracts import IdmComponentDesignV1, IdmLessonDesignV1, IdmLessonPlanV1
-from app.idm.module_layout import ModuleScope, worksheet_check_texts
+from app.idm.contracts import IdmComponentDesignV1, IdmLessonDesignV1, IdmLessonPlanV1, IdmUnitDesignV1
+from app.idm.module_layout import ModuleScope, must_do_unit_position, worksheet_check_texts
 from app.idm.policy import (
+    AI_DRAFTED_MARKER_EN,
+    AI_DRAFTED_MARKER_VI,
     CASE_DECISION_VERBS,
     IDM_COMPONENT_MAX_BLOCKS,
     IDM_CRITERIA_LABEL_MAX_WORDS,
@@ -52,6 +54,10 @@ BLOCK_ATTACHED_CODE: Final = "IDM_W4_AUTOFIX_BLOCK_ATTACHED"
 BLOCK_COVERED_CODE: Final = "IDM_W4_AUTOFIX_BLOCK_COVERED"
 FORMAT_TO_HTML_CODE: Final = "IDM_W4_AUTOFIX_FORMAT_TO_HTML"
 PRACTICE_FORMAT_CODE: Final = "IDM_W4_AUTOFIX_PRACTICE_FORMAT"
+# Review m19: a practice without its component (a released hold, or one the answer left out) gets its question after
+# the content it needs, or is dropped and named in the lesson note.
+PRACTICE_PLACED_CODE: Final = "IDM_W4_AUTOFIX_PRACTICE_PLACED"
+PRACTICE_DROPPED_CODE: Final = "IDM_W4_AUTOFIX_PRACTICE_DROPPED"
 COMPONENT_ORDER_CODE: Final = "IDM_W4_AUTOFIX_COMPONENT_ORDER"
 _MIN_TERM_DEFINITIONS: Final = 3
 _EVIDENCE_TYPES: Final = frozenset({"la_sortable", "la_crossword", "la_diagram"})
@@ -375,6 +381,73 @@ def _worksheet_check(component: dict[str, Any], locale: str) -> dict[str, Any]:
                               "visual_asset": None, "user_behavior_navigation": navigation}}
 
 
+def _has_room(unit: dict[str, Any], allowed: set[str]) -> bool:
+    types = [component["type"] for component in unit["components"]]
+    return (unit["segment"] != "job_aid" and _QUESTION_TYPE in allowed and _QUESTION_TYPE not in types
+            and len(types) < MAX_COMPONENTS_PER_UNIT)
+
+
+def _placed_question(unit: dict[str, Any], practice: dict[str, Any], locale: str) -> dict[str, Any]:
+    """The single-choice question of a practice placed by the server (renumbered with its unit)."""
+
+    vi = locale == "vi"
+    marker = AI_DRAFTED_MARKER_VI if vi else AI_DRAFTED_MARKER_EN
+    scenario = (single_line(f"{marker} {practice.get('context_input') or ''}", 2000)
+                if practice.get("scenario_origin") == "ai_drafted" else None)
+    action = single_line(str(practice.get("learner_action") or practice.get("sentence") or ""), 160)
+    return {"component_index": 1, "type": _QUESTION_TYPE, "role": "practice",
+            "title": single_line(f"{'Luyện tập' if vi else 'Practice'}: {action}", 180).ljust(3, "."),
+            "rationale": ("Câu hỏi luyện tập do hệ thống đặt sau phần dạy liên quan." if vi
+                          else "Practice question placed by the system after the content it needs."),
+            "block_ids": list(unit["block_ids"])[:IDM_COMPONENT_MAX_BLOCKS],
+            "practice_id": practice["practice_id"], "support_items": [],
+            "author_review": {"purpose": single_line(f"{'Luyện tập' if vi else 'Practice'}: "
+                                                     f"{practice.get('sentence') or action}", 1200),
+                              "example_scenario": scenario, "visual_asset": None,
+                              "user_behavior_navigation": worksheet_check_texts(locale)[2]}}
+
+
+def _dropped_note(practice: dict[str, Any], locale: str) -> str:
+    sentence = single_line(str(practice.get("sentence") or practice.get("practice_id")), 120)
+    return (f"Cần xem: bài luyện tập “{sentence}” không đặt được vào bài (không còn chỗ sau phần dạy liên quan) — tác "
+            "giả nên thêm một câu hỏi cho bài luyện tập này." if locale == "vi"
+            else f"Review needed: the practice “{sentence}” could not be placed in the lesson (no room after the "
+                 "content it needs) — add a question for it.")
+
+
+def _place_practices(data: dict[str, Any], plan: IdmLessonPlanV1, scope: ModuleScope,
+                     allowed: set[str]) -> tuple[int, int]:
+    """Review m19: a practice without a component (a released hold, or one the answer left out) gets its single-choice
+    question in the first unit, at or after the unit that teaches its criteria (``must_do_unit_position``), that has
+    room for one (before its FAQ); a practice that fits nowhere is dropped and named in the lesson note ("Cần xem"),
+    never silently. Returns (placed, dropped)."""
+
+    units = data["units"]
+    linked = {component.get("practice_id") for unit in units for component in unit["components"]}
+    missing = [practice for practice in data["practice_tasks"] if practice["practice_id"] not in linked]
+    if not missing:
+        return 0, 0
+    models = [IdmUnitDesignV1.model_validate(unit) for unit in units]
+    placed = dropped = 0
+    for practice in missing:
+        start = must_do_unit_position(models, scope, plan.primary_must_do_id,
+                                      list(practice.get("criteria_fact_keys") or []))
+        target = next((position for position in range(start, len(units)) if _has_room(units[position], allowed)),
+                      None)
+        if target is None:
+            data["practice_tasks"].remove(practice)
+            data["notes"] = sanitize_author_text(f"{data['notes']}\n{_dropped_note(practice, scope.locale)}",
+                                                 _NOTES_MAX_CHARS)
+            dropped += 1
+            continue
+        components = units[target]["components"]
+        position = next((index for index, component in enumerate(components) if component["type"] == "la_faq"),
+                        len(components))
+        components.insert(position, _placed_question(units[target], practice, scope.locale))
+        placed += 1
+    return placed, dropped
+
+
 def _converted_rationale(source: str, target: str, locale: str) -> str:
     if locale == "vi":
         return (f"{_TARGET_LABELS[target][0].capitalize()} thay cho dạng {_FORMAT_LABELS[source][0]}: tài liệu không "
@@ -510,6 +583,10 @@ def autofix_lesson(lesson: IdmLessonDesignV1, plan: IdmLessonPlanV1, scope: Modu
             codes[PRACTICE_FORMAT_CODE] += len(conversions)
             data["notes"] = sanitize_author_text(f"{data['notes']}\n{practice_format_note(conversions, scope.locale)}",
                                                  _NOTES_MAX_CHARS)
+        data["units"] = units
+        placed, dropped = _place_practices(data, plan, scope, allowed)
+        codes[PRACTICE_PLACED_CODE] += placed
+        codes[PRACTICE_DROPPED_CODE] += dropped
         codes[COMPONENT_ORDER_CODE] += _order_components(units, order)
         for unit_position, unit in enumerate(units, start=1):
             unit["unit_index"] = unit_position
@@ -525,7 +602,8 @@ def autofix_lesson(lesson: IdmLessonDesignV1, plan: IdmLessonPlanV1, scope: Modu
 
 __all__ = [
     "BLOCK_ATTACHED_CODE", "BLOCK_COVERED_CODE", "COMPONENT_ORDER_CODE", "CRITERIA_TRIMMED_CODE",
-    "FOREIGN_BLOCK_DROPPED_CODE", "FORMAT_TO_HTML_CODE", "HOLD_RELEASED_CODE", "PRACTICE_FORMAT_CODE",
+    "FOREIGN_BLOCK_DROPPED_CODE", "FORMAT_TO_HTML_CODE", "HOLD_RELEASED_CODE", "PRACTICE_DROPPED_CODE",
+    "PRACTICE_FORMAT_CODE", "PRACTICE_PLACED_CODE",
     "QUESTION_ONLY_BLOCK_CODE", "TAUGHT_BEFORE_QUESTION_CODE", "UNITS_MERGED_CODE", "autofix_lesson",
     "format_has_evidence", "practice_format_note", "ranked_criteria", "teach_before_questions", "trim_module_answer",
 ]

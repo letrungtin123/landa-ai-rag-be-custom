@@ -270,7 +270,7 @@ W2_BLUEPRINT: dict[str, Any] = {
         _row("cb_0008", "must_do", "condense", lo_id="lo_3", must_do_ids=["md_4"]),
         _row("cb_0009", "must_do", "keep", lo_id="lo_2", must_do_ids=["md_3"]),
         # QC feedback A5 (owner 2026-10-22): the two blocks W2 used to hold (24 h vs 48 h, a 2021 CRM screen) stay in
-        # the course for their Must Do; W1 keeps their conflict and outdated notes and SME questions.
+        # the course for their Must Do; W1 keeps their conflict and outdated notes (no SME question, owner 2026-10-22).
         _row("cb_0010", "must_know", "rewrite", lo_id="lo_3", must_do_ids=["md_5"]),
         _row("cb_0011", "must_know", "condense", lo_id="lo_2", must_do_ids=["md_3"]),
         _row("cb_0012", "must_know", "rewrite", lo_id="lo_3", must_do_ids=["md_4"]),

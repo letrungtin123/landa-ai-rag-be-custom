@@ -671,16 +671,17 @@ class RunModuleDesignTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn('start feedback_focus.criterion with "Tiêu chí gợi ý: "', provider.calls[0]["prompt"])
         ChapterBlueprintShardV2.model_validate({k: v for k, v in shard.items() if k != "idm_design"})
 
-    async def test_a_held_practice_without_its_component_is_repaired_never_held(self) -> None:
-        # The old answer shape (held practice, its question left out) fails the practice layout and is repaired.
+    async def test_a_held_practice_without_its_component_is_placed_never_held(self) -> None:
+        # The old answer shape (held practice, its question left out): review m19, the released practice gets its
+        # question after the content it needs, without a repair call.
         def hold(p: dict[str, Any]) -> None:
             lesson = p["lessons"][0]
             lesson["practice_tasks"][0].update(hold=True, hold_question="Khách VIP có yếu tố pháp lý thì sao?")
             lesson["units"][1]["components"].pop(0)
 
-        result, provider, _ = await design_module(1, [edited("mod_02", hold), module_response("mod_02")])
-        self.assertEqual(len(provider.calls), 2)
-        self.assertIn('"IDM_W3_PRACTICE_COMPONENT_MISSING"', provider.calls[1]["prompt"])
+        result, provider, runtime = await design_module(1, [edited("mod_02", hold)])
+        self.assertEqual(len(provider.calls), 1)
+        self.assertEqual(runtime.adjustments["IDM_W4_AUTOFIX_PRACTICE_PLACED"], 1)
         self.assertEqual(result["shard"]["idm_design"]["stage_origin"], "provider")
         self.assertFalse(result["shard"]["idm_design"]["lessons"][0]["practice_tasks"][0]["hold"])
         self.assertEqual(result["shard"]["assessment_obligations"], [])

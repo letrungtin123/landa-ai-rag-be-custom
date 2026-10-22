@@ -48,7 +48,7 @@ from app.idm.runtime import (
     repair_thinking,
 )
 from app.idm.terms import course_terms, defined_terms, mentions
-from app.idm.text import single_line
+from app.idm.text import content_pairs, single_line
 from app.idm.validation import IdmIssue, errors
 
 PLACEMENT_BY_CLASSIFICATION: Final[dict[str, Placement]] = {
@@ -101,6 +101,8 @@ class BlueprintResult:
     kept_definitions: list[KeptDefinition] = field(default_factory=list)
     # QLT-5: onboarding background W2 proposed to leave out, kept by the server.
     kept_background: list[KeptBackground] = field(default_factory=list)
+    # Review m20: (Must Do, block) attached without any relation, for the course note (``serve_every_must_do``).
+    loose_must_dos: list[tuple[str, str]] = field(default_factory=list)
 
 
 def blueprint_catalog(blocks: Sequence[IdmContentBlockV1], links: Sequence[IdmBlockLoLinkV1]) -> list[dict[str, Any]]:
@@ -367,35 +369,48 @@ def keep_term_definitions(
 
 
 def serve_every_must_do(rows: Sequence[IdmBlueprintRowV1], links: Sequence[IdmBlockLoLinkV1],
-                        must_dos: Sequence[IdmMustDoV1]) -> tuple[list[IdmBlueprintRowV1], int]:
+                        must_dos: Sequence[IdmMustDoV1], blocks: Sequence[IdmContentBlockV1] = (),
+                        ) -> tuple[list[IdmBlueprintRowV1], int, list[tuple[str, str]]]:
     """A5 (contract K2: no Must Do is blocked): a Must Do no course row serves (its blocks went to the Job Aid or were
-    left out) joins the must_do_ids of the course row that serves its objective best: a block linked to the objective
-    (direct before supporting), else a row of the same objective or of another of its Must Dos, else the first course
-    row in document order; a row never lists more than 8 Must Dos. Without a course row nothing changes (the course
-    has nothing to teach; W4 reports it). Returns the rows and how many Must Dos were attached."""
+    left out) joins the must_do_ids of the course row that serves it best: a block linked to its objective (direct
+    before supporting), else a row of the same objective or of another of its Must Dos, else the block whose name and
+    summary share most word pairs with its statement (review m20: never simply the first course row). With nothing
+    related, it joins the first block a learner can practise on (a "do" or "decide" block), and the pair is returned
+    for the course note. A row never lists more than 8 Must Dos; without a course row nothing changes (the note says
+    so).
+    Returns the rows, how many Must Dos were attached and the (Must Do, block) pairs attached without a relation."""
 
     result = list(rows)
     served = {md for row in result if row.placement == "course" for md in row.must_do_ids}
     relation = {(link.block_id, link.lo_id): _RELATION_RANK[link.relation] for link in links}
     objective_of = {must_do.must_do_id: must_do.lo_id for must_do in must_dos}
+    words = {block.block_id: content_pairs(f"{block.name} {block.summary}") for block in blocks}
+    practised = {block.block_id for block in blocks if block.intent in {"do", "decide"}}
     attached = 0
+    loose: list[tuple[str, str]] = []
     for must_do in must_dos:
         open_rows = [position for position, row in enumerate(result)
                      if row.placement == "course" and len(row.must_do_ids) < _MAX_ROW_MUST_DOS]
         if must_do.must_do_id in served or not open_rows:
             continue
+        statement = content_pairs(must_do.statement)
 
-        def rank(position: int, lo_id: str = must_do.lo_id) -> tuple[int, int, int]:
+        def rank(position: int, lo_id: str = must_do.lo_id, own: set[tuple[str, str]] = statement,
+                 ) -> tuple[int, int, int, int]:
             row = result[position]
             same = row.lo_id == lo_id or any(objective_of.get(md) == lo_id for md in row.must_do_ids)
-            return relation.get((row.block_id, lo_id), len(_RELATION_RANK)), 0 if same else 1, position
+            shared = len(own & words.get(row.block_id, set()))
+            return relation.get((row.block_id, lo_id), len(_RELATION_RANK)), 0 if same else 1, -shared, position
 
         best = min(open_rows, key=rank)
+        if rank(best)[:3] == (len(_RELATION_RANK), 1, 0):
+            best = next((position for position in open_rows if result[position].block_id in practised), best)
+            loose.append((must_do.must_do_id, result[best].block_id))
         result[best] = result[best].model_copy(update={"must_do_ids": [*result[best].must_do_ids,
                                                                         must_do.must_do_id]})
         served.add(must_do.must_do_id)
         attached += 1
-    return result, attached
+    return result, attached, loose
 
 
 def blocked_must_dos(rows: Sequence[IdmBlueprintRowV1], must_dos: Sequence[IdmMustDoV1]) -> list[str]:
@@ -555,9 +570,10 @@ async def run_w2(
     applied_rows, enforced = enforce_treatments(applied_rows, applied_blocks, mode)
     if enforced:
         codes[TREATMENT_POLICY_CODE] += enforced
-    applied_rows, attached = serve_every_must_do(applied_rows, applied_links, must_dos)
+    applied_rows, attached, loose = serve_every_must_do(applied_rows, applied_links, must_dos, applied_blocks)
     if attached:
         codes[MUST_DO_ATTACHED_CODE] += attached
     origin: StageOrigin = ("provider" if fallback_batches == 0
                            else "deterministic_fallback" if fallback_batches == len(batches) else "partial_fallback")
-    return BlueprintResult(applied_blocks, applied_links, applied_rows, origin, dict(codes), kept, background_kept)
+    return BlueprintResult(applied_blocks, applied_links, applied_rows, origin, dict(codes), kept, background_kept,
+                           loose)

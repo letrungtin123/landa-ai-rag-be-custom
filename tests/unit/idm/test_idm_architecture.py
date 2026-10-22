@@ -366,9 +366,19 @@ class SkeletonProjectionTests(unittest.TestCase):
     def setUp(self) -> None:
         self.inputs = w4_inputs()
 
-    def project(self, **changes: Any) -> tuple[IdmCourseDesignV1, CourseSkeletonV2]:
-        design = assemble_idm_course_design(assembly_input(self.inputs, **changes))
-        return design, project_course_skeleton(design, course_plan())
+    def project(self, plan: IdmW4CourseResponseV1 | None = None,
+                **changes: Any) -> tuple[IdmCourseDesignV1, CourseSkeletonV2]:
+        design = assemble_idm_course_design(assembly_input(self.inputs, plan, **changes))
+        return design, project_course_skeleton(design, plan or course_plan())
+
+    @staticmethod
+    def without_lessons_for(*must_do_ids: str) -> IdmW4CourseResponseV1:
+        """The golden plan with the lessons of ``must_do_ids`` teaching md_1 instead (they are then taught nowhere)."""
+
+        plan = course_plan()
+        return plan.model_copy(update={"modules": [module.model_copy(update={"lessons": [
+            lesson.model_copy(update={"primary_must_do_id": "md_1"}) if lesson.primary_must_do_id in must_do_ids
+            else lesson for lesson in module.lessons]}) for module in plan.modules]})
 
     def test_one_chapter_per_module_owning_its_block_scopes(self) -> None:
         design, skeleton = self.project()
@@ -388,13 +398,16 @@ class SkeletonProjectionTests(unittest.TestCase):
         self.assertEqual(skeleton.learning_outcomes, [item.statement for item in design.learning_objectives])
         self.assertEqual(skeleton.title, W4_COURSE["course_title"])
 
-    def test_fully_held_objective_is_not_a_learner_outcome(self) -> None:
-        # QC course 234653 (R3): LO3's only Must Do was on Hold, yet LO3 was shown as a course outcome. Since A5 a
-        # design blocks no Must Do; the projection keeps the rule for a blocked list (an older design read again).
-        design, skeleton = self.project(blocked=["md_3", "md_5"])
+    def test_an_objective_no_lesson_teaches_is_not_a_learner_outcome(self) -> None:
+        # QC course 234653 (R3): an objective no lesson teaches was shown as a course outcome. Review m20 (contract K2):
+        # the design never stores a blocked Must Do; the Must Dos no course block serves are named in the course note
+        # and the projection reads what the lessons teach.
+        design, skeleton = self.project(self.without_lessons_for("md_3", "md_5"), blocked=["md_3", "md_5"])
         statements = {item.lo_id: item.statement for item in design.learning_objectives}
-        self.assertEqual(pending_objective_ids(design.learning_objectives, design.must_dos,
-                                               design.blocked_must_do_ids), ["lo_2"])
+        self.assertEqual(design.blocked_must_do_ids, [])
+        self.assertIn("• Cần xem — Must Do chưa có nội dung nào để dạy trong khoá:", design.notes.course)
+        self.assertEqual(pending_objective_ids(design.learning_objectives, design.must_dos, ["md_3", "md_5"]),
+                         ["lo_2"])
         self.assertEqual(skeleton.learning_outcomes, [statements["lo_1"], statements["lo_3"]])
         self.assertNotIn(statements["lo_2"], [item for chapter in skeleton.chapters
                                               for item in chapter.learning_outcomes])
@@ -403,11 +416,14 @@ class SkeletonProjectionTests(unittest.TestCase):
         self.assertNotIn("Mục tiêu học tập chờ SME", design.notes.course)
         self.assertIn("(chưa có bài dạy)", design.notes.modules["mod_02"])
         self.assertNotIn("SME", design.notes.modules["mod_02"])
-        # A partly held objective (lo_3: md_5 held, md_4 taught) stays a learner outcome.
+        # A partly taught objective (lo_3: md_5 taught nowhere, md_4 taught) stays a learner outcome.
         _design, golden = self.project()
         self.assertEqual(golden.learning_outcomes, list(statements.values()))
-        # Every objective held: the projection keeps them all (the skeleton needs at least one outcome).
-        _design, everything = self.project(blocked=["md_1", "md_2", "md_3", "md_4", "md_5"])
+        # No objective taught: the projection keeps them all (the skeleton needs at least one outcome).
+        nothing = course_plan().model_copy(update={"modules": [module.model_copy(update={"lessons": [
+            lesson.model_copy(update={"primary_must_do_id": None, "secondary_must_do_ids": []})
+            for lesson in module.lessons]}) for module in course_plan().modules]})
+        _design, everything = self.project(nothing)
         self.assertEqual(everything.learning_outcomes, list(statements.values()))
 
     def test_target_audience_suffix_only_when_ai_proposed(self) -> None:

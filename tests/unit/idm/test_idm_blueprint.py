@@ -337,18 +337,19 @@ class DispositionTests(unittest.TestCase):
         excluded = [row.model_copy(update={"placement": "excluded"}) if row.block_id in {"cb_0009", "cb_0011",
                                                                                           "cb_0005"} else row
                     for row in self.rows]
-        served, attached = serve_every_must_do(excluded, self.links, self.state.must_dos)
+        served, attached, loose = serve_every_must_do(excluded, self.links, self.state.must_dos, self.blocks)
         self.assertEqual((attached, blocked_must_dos(served, self.state.must_dos)), (2, []))
-        by_id = {row.block_id: row for row in served}
-        # md_2 (lo_1): the course row linked direct to lo_1 (cb_0003 is only supporting); md_3 (lo_2): no course row
-        # of lo_2 is left, so the first course row in document order takes it.
-        self.assertEqual((by_id["cb_0004"].must_do_ids, by_id["cb_0003"].must_do_ids), (["md_1", "md_2"],
-                                                                                        ["md_1", "md_3"]))
-        self.assertEqual([row for row in served if row.block_id not in {"cb_0003", "cb_0004"}],
-                         [row for row in excluded if row.block_id not in {"cb_0003", "cb_0004"}])
-        self.assertEqual(serve_every_must_do(self.rows, self.links, self.state.must_dos), (list(self.rows), 0))
+        changed = {row.block_id: row.must_do_ids for row, before in zip(served, excluded, strict=True)
+                   if row != before}
+        # md_2 (lo_1): the course row linked direct to lo_1 (cb_0003 is only supporting). md_3 (lo_2): no course row
+        # of lo_2 is left; review m20: it joins the block whose words it shares most, never simply the first row.
+        # ("Quyết định tự xử lý hay escalate" shares "xử lý" with "Xác định hướng xử lý sau khi phân loại").
+        self.assertEqual(changed, {"cb_0004": ["md_1", "md_2"], "cb_0007": ["md_4", "md_3"]})
+        self.assertEqual(loose, [])
+        self.assertEqual(serve_every_must_do(self.rows, self.links, self.state.must_dos, self.blocks),
+                         (list(self.rows), 0, []))
         nothing = [row.model_copy(update={"placement": "excluded"}) for row in self.rows]
-        self.assertEqual(serve_every_must_do(nothing, self.links, self.state.must_dos), (nothing, 0))
+        self.assertEqual(serve_every_must_do(nothing, self.links, self.state.must_dos, self.blocks), (nothing, 0, []))
 
     def test_hold_items_are_always_empty(self) -> None:
         # A5: no row holds, so the design's hold_items field (kept in the contract) is [].

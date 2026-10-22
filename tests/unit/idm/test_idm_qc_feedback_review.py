@@ -6,12 +6,25 @@ before its fix. Every provider is a local fake.
 
 from __future__ import annotations
 
+import copy
 import unittest
 from collections import Counter
+from typing import Any
 
+from app.idm.architecture import run_w4
 from app.idm.artifacts import clean_question
-from app.idm.contracts import IdmIssueV1
+from app.idm.blueprint import serve_every_must_do
+from app.idm.contracts import (
+    IdmAudienceV1,
+    IdmBlueprintRowV1,
+    IdmContentBlockV1,
+    IdmIssueV1,
+    IdmLessonDesignV1,
+    IdmMustDoV1,
+)
 from app.idm.mcq import normalize_single_choice
+from app.idm.module_autofix import autofix_lesson
+from app.idm.module_design import validate_lesson
 from app.idm.notes import SkippedBlockNote, build_course_notes
 from app.idm.qa import JudgeOutcome, build_unit_author_note
 from app.idm.qa_checks import repeated_callouts
@@ -27,8 +40,16 @@ from app.idm.quiz_text import (
     question_report,
     quiz_findings,
 )
+from app.idm.runtime import IdmProviderError
 from app.idm.source_flags import SourceFact, flag_sentence, flag_sentences
 from app.idm.source_locked import idm_source_grounded_single_choice
+from app.idm.validation import errors
+from tests.idm_golden import W2_BLUEPRINT, W4_COURSE, FakeIdmProvider, golden_provider, keys
+from tests.support.idm_test_support import module_response
+from tests.unit.idm.test_idm_architecture import runtime as architecture_runtime
+from tests.unit.idm.test_idm_architecture import w4_inputs
+from tests.unit.idm.test_idm_course_design import run_design
+from tests.unit.idm.test_idm_module_design import ALLOWED, scope_of
 from tests.unit.idm.test_idm_storyboard import (
     JUDGE,
     REPAIR,
@@ -371,3 +392,89 @@ class QuestionCapTests(StoryboardEndpointTestCase):
         self.assertEqual(provider.names[:2], [WRITER, REPAIR])
         self.assertNotEqual(data["unit"]["components"][1]["question"], LONG_STEM)
         self.assertEqual(data["quality_state"], "review_required")
+
+
+def _block(block_id: str, name: str, intent: str) -> IdmContentBlockV1:
+    return IdmContentBlockV1(block_id=block_id, section_id="sec_001", name=name, summary=name, intent=intent,
+                             support_role=None, content_kind="procedure" if intent == "do" else "concept",
+                             fact_keys=[f"d1-c1-f{block_id[-1]}"], issues=[], gaps=[], sme_questions=[],
+                             origin="provider")
+
+
+def _row(block_id: str, lo_id: str, must_do_ids: list[str]) -> IdmBlueprintRowV1:
+    return IdmBlueprintRowV1(block_id=block_id, lo_id=lo_id, must_do_ids=must_do_ids, classification="must_know",
+                             placement="course", treatment="keep", detail_level="Giữ phần cần.", hold=False,
+                             rationale="Phục vụ Must Do.")
+
+
+def _must_do(must_do_id: str, lo_id: str, statement: str) -> IdmMustDoV1:
+    return IdmMustDoV1(must_do_id=must_do_id, lo_id=lo_id, statement=statement, kind="do", bloom="apply")
+
+
+class ReleasedWorkTests(unittest.IsolatedAsyncioTestCase):
+    """m19 / m20: a Must Do without a course row of its own joins the most related block (else a block the learner
+    can practise on, with a note); the design never blocks a Must Do; a released practice is placed after the content
+    it needs, and one that cannot be placed is named in the lesson note."""
+
+    def test_a_must_do_joins_the_most_related_block_never_the_first_one(self) -> None:
+        blocks = [_block("cb_0001", "Cách đóng gói hàng hoá", "know"),
+                  _block("cb_0002", "Quy trình phản hồi khiếu nại cho khách", "do")]
+        rows = [_row("cb_0001", "lo_1", ["md_1"]), _row("cb_0002", "lo_2", ["md_2"])]
+        must_dos = [_must_do("md_1", "lo_1", "Đóng gói hàng đúng chuẩn"),
+                    _must_do("md_2", "lo_2", "Tiếp nhận khiếu nại của khách"),
+                    _must_do("md_3", "lo_3", "Phản hồi khiếu nại đúng thời hạn"),
+                    _must_do("md_4", "lo_4", "Lập báo cáo tài chính hằng quý")]
+        served, attached, loose = serve_every_must_do(rows, [], must_dos, blocks)
+        self.assertEqual(attached, 2)
+        self.assertEqual([row.must_do_ids for row in served], [["md_1"], ["md_2", "md_3", "md_4"]])
+        self.assertEqual(loose, [("md_4", "cb_0002")])
+
+    async def test_the_design_never_blocks_a_must_do(self) -> None:
+        def nothing_taught(payload: dict[str, Any]) -> dict[str, Any]:
+            for row in payload["rows"]:
+                row.update(classification="reference", placement="reference_job_aid", treatment="convert_to_job_aid",
+                           must_do_ids=[])
+            return payload
+
+        provider = golden_provider({"IdmW2BlueprintResponseV1": [nothing_taught(copy.deepcopy(W2_BLUEPRINT))],
+                                    "IdmW4CourseResponseV1": [W4_COURSE, W4_COURSE]})
+        result, _runtime = await run_design(provider)
+        design = result["idm"]
+        self.assertEqual(design["blocked_must_do_ids"], [])
+        self.assertIn("• Cần xem — Must Do chưa có nội dung nào để dạy trong khoá:", design["notes"]["course"])
+        self.assertIn("  - Phân loại khiếu nại theo nhóm", design["notes"]["course"])
+
+    def test_a_released_practice_is_placed_after_its_content_or_named(self) -> None:
+        scope = scope_of(1)
+        plan = scope.lesson_plans[0]
+        payload = module_response("mod_02")["lessons"][0]
+        payload["units"][1]["components"].pop(0)
+        placed, codes = autofix_lesson(IdmLessonDesignV1.model_validate(payload), plan, scope, ALLOWED)
+        self.assertEqual(codes["IDM_W4_AUTOFIX_PRACTICE_PLACED"], 1)
+        self.assertEqual(errors(validate_lesson(placed, plan, scope, ALLOWED, "lessons[0]")), [])
+        crowded = module_response("mod_02")["lessons"][0]
+        second = {**crowded["practice_tasks"][0], "practice_id": "pt_2", "criteria_fact_keys": keys(8, 1, 3)}
+        crowded["practice_tasks"].append(second)
+        kept, codes = autofix_lesson(IdmLessonDesignV1.model_validate(crowded), plan, scope, ALLOWED)
+        self.assertEqual(codes["IDM_W4_AUTOFIX_PRACTICE_DROPPED"], 1)
+        self.assertEqual([practice.practice_id for practice in kept.practice_tasks], ["pt_1"])
+        self.assertIn("Cần xem: bài luyện tập", kept.notes)
+        self.assertEqual(errors(validate_lesson(kept, plan, scope, ALLOWED, "lessons[0]")), [])
+
+
+class FallbackPlanTests(unittest.IsolatedAsyncioTestCase):
+    """m20: the deterministic W4 plan is checked like an answer; what it breaks is counted, never hidden."""
+
+    async def test_a_fallback_plan_that_leaves_a_must_do_out_is_reported(self) -> None:
+        inputs = w4_inputs()
+        # Every course block lists md_1 first: md_2..md_5 own no block, and one lesson has room for two of them.
+        rows = [row.model_copy(update={"must_do_ids": ["md_1", *[md for md in row.must_do_ids if md != "md_1"]]})
+                if row.placement == "course" else row for row in inputs.rows]
+        provider = FakeIdmProvider({"IdmW4CourseResponseV1": [IdmProviderError("SERVICE_BUSY", terminal=False)]})
+        result = await run_w4(architecture_runtime(provider), context=inputs.state.context,
+                              audience=IdmAudienceV1(description="Nhân viên tổng đài", origin="ai_proposed"),
+                              objectives=inputs.state.objectives, must_dos=inputs.state.must_dos,
+                              blocks=inputs.blocks, rows=rows, blocked=inputs.blocked)
+        self.assertEqual(result.origin, "deterministic_fallback")
+        self.assertEqual(result.codes["IDM_W4_FALLBACK_INVALID"], 1)
+        self.assertIn("IDM_W4_MUST_DO_UNPLACED", result.warnings)

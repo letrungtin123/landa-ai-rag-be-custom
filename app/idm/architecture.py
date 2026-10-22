@@ -84,7 +84,7 @@ from app.idm.runtime import (
     repair_thinking,
 )
 from app.idm.source_flags import SourceFact, flag_sentences
-from app.idm.text import is_generic_title, must_do_title, objective_title, single_line
+from app.idm.text import content_pairs, is_generic_title, must_do_title, objective_title, single_line
 from app.idm.validation import IdmIssue, errors
 
 _AI_SUFFIX_VI: Final = " (Đề xuất bởi AI — cần xác nhận)"
@@ -94,6 +94,8 @@ _PENDING_EN: Final = " (not taught yet)"
 _MAX_CHAPTER_OUTCOMES: Final = 12
 _MAX_PREREQUISITES: Final = 10
 _MAX_SECONDARY_MUST_DOS: Final = 2
+# Review m20: the deterministic W4 plan breaks a W4 rule (counted with the rules it breaks).
+FALLBACK_INVALID_CODE: Final = "IDM_W4_FALLBACK_INVALID"
 
 
 @dataclass
@@ -229,6 +231,24 @@ def _normalize_w4(response: IdmW4CourseResponseV1) -> IdmW4CourseResponseV1:
     })
 
 
+_FallbackLesson = tuple[IdmMustDoV1, list[str], list[str]]
+
+
+def _closest_lesson(lessons: Sequence[_FallbackLesson], must_do: IdmMustDoV1,
+                    pairs: Mapping[str, set[tuple[str, str]]]) -> _FallbackLesson | None:
+    """The fallback lesson with room that an orphan Must Do relates to most: one of its own objective first, then the
+    one whose blocks share most word pairs with its statement; never simply the first lesson (review m20)."""
+
+    own = content_pairs(must_do.statement)
+    open_lessons = [lesson for lesson in lessons if len(lesson[2]) < _MAX_SECONDARY_MUST_DOS]
+
+    def rank(lesson: _FallbackLesson) -> tuple[bool, int]:
+        shared = set().union(*(pairs.get(block_id, set()) for block_id in lesson[1]))
+        return lesson[0].lo_id != must_do.lo_id, -len(own & shared)
+
+    return min(open_lessons, key=rank) if open_lessons else None
+
+
 def fallback_w4(
     *,
     context: IdmProjectContextV1,
@@ -262,9 +282,11 @@ def fallback_w4(
         else:
             orphan_mds.append(must_do.must_do_id)
     first_lessons = [lesson for lo_lessons in lessons_by_lo.values() for lesson in lo_lessons]
+    pairs = {block.block_id: content_pairs(f"{block.name} {block.summary}") for block in course_blocks}
+    statements = {must_do.must_do_id: must_do for must_do in active}
     for md in orphan_mds:
-        # A Must Do whose blocks were claimed by an earlier one shares that lesson.
-        target = next((lesson for lesson in first_lessons if len(lesson[2]) < _MAX_SECONDARY_MUST_DOS), None)
+        # A Must Do whose blocks were claimed by an earlier one shares the lesson it relates to most (review m20).
+        target = _closest_lesson(first_lessons, statements[md], pairs)
         if target is not None:
             target[2].append(md)
     modules: list[IdmModulePlanV1] = []
@@ -433,7 +455,14 @@ async def run_w4(
     plan = fallback_w4(context=context, objectives=objectives, must_dos=must_dos, rows=rows,
                        course_blocks=course_blocks, reference_blocks=reference_blocks, blocked=blocked,
                        block_chars=block_chars)
-    return ArchitectureResult(plan, "deterministic_fallback", dict(codes), [])
+    # Review m20: the fallback plan is checked like an answer; what it breaks is counted and noted, never hidden.
+    broken = [issue.code for issue in errors(validate_w4(
+        plan, course_blocks=course_blocks, reference_blocks=reference_blocks, must_dos=must_dos, blocked=blocked,
+        objectives=objectives, duration_target_minutes=None, block_chars=block_chars))]
+    if broken:
+        codes[FALLBACK_INVALID_CODE] += 1
+        codes.update(broken)
+    return ArchitectureResult(plan, "deterministic_fallback", dict(codes), broken)
 
 
 @dataclass
@@ -461,6 +490,9 @@ class AssemblyInput:
     kept_background: Sequence[KeptBackground] = ()
     # Owner decision 2026-10-22: the page of each fact, quoted with it in the points to check (``source_flags``).
     fact_page: Mapping[str, int | None] = field(default_factory=dict)
+    # Review m20: (Must Do, block) pairs W2 attached without a relation (``blueprint.serve_every_must_do``). ``blocked``
+    # is the Must Dos no course block serves: the course note names them, the design never stores them as blocked.
+    loose: Sequence[tuple[str, str]] = ()
 
 
 def assemble_idm_course_design(data: AssemblyInput) -> IdmCourseDesignV1:
@@ -502,7 +534,8 @@ def assemble_idm_course_design(data: AssemblyInput) -> IdmCourseDesignV1:
         "blocks": [item.model_dump(mode="json") for item in data.blocks],
         "lo_links": [item.model_dump(mode="json") for item in data.links],
         "blueprint": [item.model_dump(mode="json") for item in data.rows],
-        "blocked_must_do_ids": list(data.blocked),
+        # Contract K2 (review m20): always []; a Must Do without a course block is named in the course note.
+        "blocked_must_do_ids": [],
         "hold_items": [item.model_dump(mode="json") for item in data.holds],
         "modules": [item.model_dump(mode="json") for item in data.plan.modules],
         "block_scopes": [item.model_dump(mode="json") for item in scopes],
@@ -512,6 +545,19 @@ def assemble_idm_course_design(data: AssemblyInput) -> IdmCourseDesignV1:
     }
     payload["design_hash"] = design_hash_of(payload)
     return IdmCourseDesignV1.model_validate(payload)
+
+
+def _must_do_note_lines(data: AssemblyInput) -> dict[str, list[str]]:
+    """Review m20: the Must Dos W2 attached to a block without any relation (``loose_must_dos``) and those no course
+    block serves (``data.blocked``, never stored as blocked), as course-note lines."""
+
+    statement = {item.must_do_id: item.statement for item in data.must_dos}
+    names = {block.block_id: block.name for block in data.blocks}
+    return {
+        "loose_must_dos": [f"{statement[md]} → “{names[block_id]}”" for md, block_id in data.loose
+                           if md in statement and block_id in names],
+        "unserved_must_dos": [statement[md] for md in data.blocked if md in statement],
+    }
 
 
 def _build_notes(data: AssemblyInput) -> IdmAuthorNotesV1:
@@ -531,7 +577,7 @@ def _build_notes(data: AssemblyInput) -> IdmAuthorNotesV1:
     course = build_course_notes(
         locale=locale, ai_proposed=ai_proposed, total_minutes=sum(lesson.est_minutes for lesson in lessons),
         lesson_count=len(lessons), module_count=len(data.plan.modules), reference_block_count=reference_count,
-        excluded_block_count=excluded_count,
+        excluded_block_count=excluded_count, **_must_do_note_lines(data),
         # Owner decision 2026-10-22: contradictory, unclear or out-of-date points of taught blocks, from their facts.
         source_checks=flag_sentences(
             ((block.name, block.issues) for block in data.blocks
@@ -579,7 +625,11 @@ def project_course_skeleton(design: IdmCourseDesignV1, plan: IdmW4CourseResponse
     ai_proposed = design.target_audience.origin == "ai_proposed"
     suffix = (_AI_SUFFIX_VI if vi else _AI_SUFFIX_EN) if ai_proposed else ""
     audience = single_line(design.target_audience.description, 2000 - len(suffix)) + suffix
-    pending = set(pending_objective_ids(design.learning_objectives, design.must_dos, design.blocked_must_do_ids))
+    # Review m20: the Must Dos no lesson teaches (the design never lists a blocked Must Do since K2).
+    placed = {md for module in design.modules for lesson in module.lessons
+              for md in [lesson.primary_must_do_id, *lesson.secondary_must_do_ids] if md}
+    unplaced = [item.must_do_id for item in design.must_dos if item.must_do_id not in placed]
+    pending = set(pending_objective_ids(design.learning_objectives, design.must_dos, unplaced))
     # Learner-facing outcomes: objectives a lesson teaches. A fully held objective waits for the SME
     # (notes); when every objective is held the projection keeps them all (the skeleton needs one).
     taught = [item for item in design.learning_objectives if item.lo_id not in pending] or list(
