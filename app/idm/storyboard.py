@@ -89,7 +89,6 @@ from app.idm.qa import (
     settled_codes,
     ungrounded_callouts,
 )
-from app.idm.qa_checks import CALLOUT_REPEAT_DROPPED
 from app.idm.quiz_text import QUESTION_CODES, QUIZ_CODES, quiz_hint
 from app.idm.runtime import (
     IdmBudgetError,
@@ -360,10 +359,12 @@ class IdmUnitWriter(IdmUnitRepairSteps):
 
         def parse(text: str) -> dict[str, Any]:
             delta: Any = None
+            drops = dict(self.callout_drops)
             try:
                 delta = self.decode_repair(text, draft.unit, targets, coverage)
                 return self.deps.merge_repair(draft.unit, delta, targets, coverage)
             except self.deps.recoverable_errors as error:
+                self.callout_drops = drops
                 self.report_recoverable("idm_w5_repair", "IDM_W5_REPAIR_INVALID", error)
                 details = (safe_error_details(error) + self.delta_details(delta))[:_MAX_LOGGED_DETAILS]
                 raise IdmResponseInvalidError("IDM_W5_REPAIR_INVALID", details) from error
@@ -685,7 +686,8 @@ async def run_idm_unit(
         faq_items_invalid=writer.faq_items_invalid, remaining=remaining, fixed_codes=fixed,
         faq_items_restated=writer.faq_items_restated, callouts_to_prose=writer.callouts_converted,
         framework_list_inserted=writer.framework_inserted, worksheet_compacted=writer.worksheet_compacted,
-        callouts_repeating=0 if whole_fallback else writer.html_fixes[CALLOUT_REPEAT_DROPPED],
+        callouts_repeating=0 if whole_fallback else sum(
+            count for index, count in writer.callout_drops.items() if index not in draft.fallback_slots),
         worksheet_example_kept=writer.worksheet_example_kept, drafted_examples=drafted,
         example_numbers=example_numbers, faq_items_copied=writer.faq_items_copied,
         faq_items_recall=writer.faq_items_recall, faq_inferred=inferred, faq_items_open=writer.faq_items_open,

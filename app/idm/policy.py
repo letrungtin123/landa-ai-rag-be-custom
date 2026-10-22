@@ -239,12 +239,13 @@ QUIZ_FILLER_EN: Final = (
     "of course", "undeniably", "say no", "smart move", "wise choice",
 )
 # QC feedback 2026-10-21 (A3): a callout (a "warning" block, shown as a quotation) adds a point; one that only repeats
-# its slot's other text goes (``app.idm.qa_checks.repeated_callouts``). Repeats: at least this share of the callout's
-# accent-folded word pairs appear in the slot's other text (its paragraphs, list items, table rows and the callouts
-# before it; pairs never span two pieces). Callouts of fewer words are not judged. "Không hứa bồi thường trước khi
-# phân loại mức độ." under "Nhân viên tuyệt đối không hứa bồi thường cho khách trước khi phân loại mức độ khiếu nại."
-# holds 8 of 9 pairs; a callout with its own rule ("Khiếu nại cấp 3 phải escalate ngay cho quản lý và bộ phận Pháp
-# chế.") under the table of signs fewer than half.
+# the paragraphs before it in its section goes (``app.idm.qa_checks.repeated_callouts``). Review M3 (2026-10-22): a
+# callout is a repeat only when it states no number and no negation those paragraphs do not ("cấp 3 … 24 giờ" under
+# "cấp 2 … 48 giờ", "Không áp dụng …" under "áp dụng …" are new points) and at least this share of its accent-folded
+# word trigrams appear in them (trigrams never span two pieces). Callouts of fewer words are not judged. "Không hứa bồi
+# thường cho khách trước khi phân loại mức độ khiếu nại." under "Nhân viên tuyệt đối không hứa bồi thường cho khách
+# trước khi phân loại mức độ khiếu nại." holds all its trigrams; "Không hứa bồi thường trước khi phân loại mức độ." 6
+# of 8, so it stays.
 # QC feedback 2026-10-21 (A4): the context_description of a suggested infographic or video is a designer brief: the
 # layout, the text and numbers on the image (or screen) and one element per content point, in at least this many
 # words (``app.idm.media_detail``; the contract allows 1000 characters). A thinner one is completed by the server from
@@ -252,8 +253,8 @@ QUIZ_FILLER_EN: Final = (
 IDM_MEDIA_CONTEXT_MIN_WORDS: Final = 40
 IDM_MEDIA_POINT_LABEL_MAX_WORDS: Final = 24
 IDM_MEDIA_CONTEXT_MAX_CHARS: Final = 1000
-IDM_CALLOUT_REPEAT_NGRAM: Final = 2
-IDM_CALLOUT_REPEAT_SHARE: Final = 0.75
+IDM_CALLOUT_REPEAT_NGRAM: Final = 3
+IDM_CALLOUT_REPEAT_SHARE: Final = 0.8
 IDM_CALLOUT_REPEAT_MIN_WORDS: Final = 4
 # Answer leak: an option whose word 4-grams (accent-folded) mostly appear in the html shown before
 # the question in the same unit copies it ("ví dụ đạt chuẩn" -> correct option, "ví dụ không đạt

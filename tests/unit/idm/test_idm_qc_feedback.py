@@ -315,7 +315,7 @@ def block(kind: str, text: str | None = None, **fields: Any) -> dict[str, Any]:
 
 
 PARAGRAPH = "Nhân viên tuyệt đối không hứa bồi thường cho khách trước khi phân loại mức độ khiếu nại."
-REPEAT = "Không hứa bồi thường trước khi phân loại mức độ."
+REPEAT = "Không hứa bồi thường cho khách trước khi phân loại mức độ khiếu nại."
 LEVEL_3 = "Liên quan an toàn, pháp lý hoặc truyền thông. Escalate ngay cho quản lý và bộ phận Pháp chế."
 NEW_POINT = "Khiếu nại cấp 3 phải escalate ngay cho quản lý và bộ phận Pháp chế."
 
@@ -329,10 +329,11 @@ class CalloutRepeatTests(StoryboardEndpointTestCase):
         semantic = {"sections": [section(block("paragraph", PARAGRAPH), block("warning", REPEAT), signs,
                                          block("warning", NEW_POINT))]}
         self.assertEqual(repeated_callouts(semantic), [(0, 1)])
-        # A list item, a table row or a callout before it count too; a callout of three words is not judged.
-        listed = {"sections": [section(block("bullets", items=[PARAGRAPH])), section(block("warning", REPEAT),
-                                                                                      block("warning", "Không hứa."))]}
-        self.assertEqual(repeated_callouts(listed), [(1, 0)])
+        # A list item, a table row or a callout before it in the section count too; a callout of three words is not
+        # judged (review M3: only the blocks before it in its own section are compared).
+        listed = {"sections": [section(block("bullets", items=[PARAGRAPH]), block("warning", REPEAT),
+                                       block("warning", "Không hứa."))]}
+        self.assertEqual(repeated_callouts(listed), [(0, 1)])
         table = {"sections": [section(block("table", rows=[{"label": "Cấp 3", "value": LEVEL_3}]),
                                       block("warning", "Cấp 3: " + LEVEL_3))]}
         self.assertEqual(repeated_callouts(table), [(0, 1)])

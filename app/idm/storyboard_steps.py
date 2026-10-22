@@ -162,6 +162,8 @@ class IdmUnitWriterSteps:
         self.faq_items_invalid = 0
         # Ungrounded callouts turned into plain paragraphs after the repair could not ground them (N9).
         self.callouts_converted = 0
+        # Review m11: slot -> callouts its latest accepted answer lost for repeating the text above them (A3).
+        self.callout_drops: dict[int, int] = {}
         # Slots whose source-locked FAQ repeats one sentence (logged once each).
         self.faq_fallback_repeated: set[int] = set()
         self.budget: dict[str, Any] = self.expected["instructional_output_budget"]
@@ -228,9 +230,12 @@ class IdmUnitWriterSteps:
         if isinstance(semantic, dict):
             semantic = clean_semantic(semantic, self.evidence.pairs, self.runtime.locale, artefacts)
             # QC feedback A3: a callout that only repeats the slot's paragraphs, lists or tables goes (its text stays).
+            # Review m11: per slot, the count of its latest answer (a repair answer replaces the writer's).
+            self.callout_drops[index] = 0
             if (repeats := repeated_callouts(semantic)) and (trimmed := without_blocks(semantic, repeats)) is not None:
                 semantic = trimmed
                 fixes[CALLOUT_REPEAT_DROPPED] += len(repeats)
+                self.callout_drops[index] = len(repeats)
         fixes.update(artefacts)
         component = {**component, "semantic_content": semantic} if fixes else component
         # QLT-5 C: an example that does not repeat the facts carries the illustrative label (explain mode, teaching

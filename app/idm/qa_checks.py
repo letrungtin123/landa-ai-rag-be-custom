@@ -7,6 +7,7 @@ names the ones that remain.
 
 from __future__ import annotations
 
+import re
 from collections.abc import Collection, Sequence
 from dataclasses import dataclass
 from typing import Any, Final
@@ -93,6 +94,11 @@ FRAMEWORK_LIST_INSERTED_CODE: Final = "IDM_W5_FRAMEWORK_LIST_INSERTED"
 CALLOUT_KIND: Final = "warning"
 # The html fix that counts the callouts dropped for repeating their slot (QC feedback A3).
 CALLOUT_REPEAT_DROPPED: Final = "callout_repeat_dropped"
+# What makes a callout a new point (review M3): a number, or a negation or exception word.
+_NUMBER_RE: Final = re.compile(r"\d+(?:[.,:]\d+)*")
+_NEGATION_RE: Final = re.compile(
+    r"(?<!\w)(?:không|chưa|chẳng|cấm|đừng|ngoại trừ|trừ khi|trừ|not|no|never|except|unless|cannot|without|"
+    r"don't|doesn't|do not|does not)(?!\w)")
 
 
 @dataclass(frozen=True)
@@ -231,33 +237,41 @@ def _block_pieces(block: dict[str, Any]) -> list[str]:
             if piece.strip()]
 
 
+def _new_point(callout: str, before: str) -> bool:
+    """The callout states a number or a negation that ``before`` does not (review M3): a new point, never a repeat."""
+
+    numbers = set(_NUMBER_RE.findall(before))
+    negations = set(_NEGATION_RE.findall(before.lower()))
+    return (any(number not in numbers for number in _NUMBER_RE.findall(callout))
+            or any(word not in negations for word in _NEGATION_RE.findall(callout.lower())))
+
+
 def repeated_callouts(semantic: Any) -> list[tuple[int, int]]:
-    """(section, block) of every callout that only repeats its slot's other text (QC feedback 2026-10-21, A3: a
-    quotation or callout box adds a new point, never the paragraph above it): at least
-    ``IDM_CALLOUT_REPEAT_SHARE`` of its word pairs are in the slot's paragraphs, lists, tables or the callouts kept
-    before it."""
+    """(section, block) of every callout that only repeats the paragraphs before it in its section (QC feedback
+    2026-10-21, A3: a quotation or callout box adds a new point, never the paragraph above it). Review M3: a callout
+    with its own number or negation is kept (``_new_point``); otherwise it repeats when at least
+    ``IDM_CALLOUT_REPEAT_SHARE`` of its word trigrams are in the blocks before it in the same section (paragraphs, list
+    items, table rows and the callouts kept before it)."""
 
     sections = semantic.get("sections") if isinstance(semantic, dict) else None
     if not isinstance(sections, list):
         return []
-    blocks = [(section_index, block_index, block)
-              for section_index, section in enumerate(sections) if isinstance(section, dict)
-              for block_index, block in enumerate(section.get("blocks") or []) if isinstance(block, dict)]
     found: list[tuple[int, int]] = []
-    for section_index, block_index, block in blocks:
-        text = str(block.get("text") or "")
-        if block.get("kind") != CALLOUT_KIND or len(text.split()) < IDM_CALLOUT_REPEAT_MIN_WORDS:
-            continue
-        here = (section_index, block_index)
-        # The other blocks of the slot: every non-callout block and the callouts before this one still kept.
-        others = [other for other_section, other_block, other in blocks
-                  if (other_section, other_block) != here and (other_section, other_block) not in found
-                  and (other.get("kind") != CALLOUT_KIND or (other_section, other_block) < here)]
-        known = {gram for other in others for piece in _block_pieces(other)
-                 for gram in word_ngrams(piece, IDM_CALLOUT_REPEAT_NGRAM)}
-        grams = word_ngrams(text, IDM_CALLOUT_REPEAT_NGRAM)
-        if grams and sum(gram in known for gram in grams) / len(grams) >= IDM_CALLOUT_REPEAT_SHARE:
-            found.append(here)
+    for section_index, section in enumerate(sections):
+        blocks = section.get("blocks") if isinstance(section, dict) else None
+        before: list[str] = []
+        for block_index, block in enumerate(blocks if isinstance(blocks, list) else []):
+            if not isinstance(block, dict):
+                continue
+            text = str(block.get("text") or "")
+            if (block.get("kind") == CALLOUT_KIND and len(text.split()) >= IDM_CALLOUT_REPEAT_MIN_WORDS and before
+                    and not _new_point(text, " ".join(before))):
+                known = {gram for piece in before for gram in word_ngrams(piece, IDM_CALLOUT_REPEAT_NGRAM)}
+                grams = word_ngrams(text, IDM_CALLOUT_REPEAT_NGRAM)
+                if grams and sum(gram in known for gram in grams) / len(grams) >= IDM_CALLOUT_REPEAT_SHARE:
+                    found.append((section_index, block_index))
+                    continue
+            before.extend(_block_pieces(block))
     return found
 
 

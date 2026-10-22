@@ -9,6 +9,7 @@ from __future__ import annotations
 import unittest
 
 from app.idm.mcq import normalize_single_choice
+from app.idm.qa_checks import repeated_callouts
 from app.idm.quiz_text import (
     QUESTION_LAYOUT_CODE,
     lay_out_quiz,
@@ -16,6 +17,17 @@ from app.idm.quiz_text import (
     layout_question,
     question_report,
     quiz_findings,
+)
+from tests.unit.idm.test_idm_storyboard import (
+    JUDGE,
+    REPAIR,
+    WRITER,
+    FakeGenerate,
+    StoryboardEndpointTestCase,
+    judge,
+    severity_body,
+    severity_writer,
+    slot_repair,
 )
 
 
@@ -136,3 +148,66 @@ class LetterMentionTests(unittest.TestCase):
         shuffled, _codes = normalize_single_choice({**four(lined), "choices": [dict(item) for item in FOUR[:3]]},
                                                    "seed-x", 0)
         self.assertEqual(str(shuffled["explanation"]).splitlines()[-1], "Lưu ý: luôn ghi nhận khiếu nại.")
+
+
+def section(*blocks: dict[str, object]) -> dict[str, object]:
+    return {"heading": "H", "blocks": list(blocks)}
+
+
+def text_block(kind: str, text: str) -> dict[str, object]:
+    return {"kind": kind, "text": text, "items": [], "rows": []}
+
+
+PARAGRAPH = "Nhân viên tuyệt đối không hứa bồi thường cho khách trước khi phân loại mức độ khiếu nại."
+
+
+class CalloutRepeatTests(StoryboardEndpointTestCase):
+    """M3 / m11: a callout with its own number, level or negation is no repeat; only the paragraphs before it in its
+    section are compared, with word trigrams; the note counts the callouts dropped from the returned unit only."""
+
+    def test_a_callout_with_its_own_number_level_or_negation_is_kept(self) -> None:
+        kept = {
+            "new number": [text_block("paragraph", "Nhân viên tuyệt đối không hứa bồi thường cho khách trước khi phân "
+                                                   "loại mức độ khiếu nại theo bảng dưới đây."),
+                           text_block("warning", "Không hứa bồi thường cho khách trước khi phân loại mức độ khiếu nại, "
+                                                 "và phải báo trong 24 giờ.")],
+            "negation flip": [text_block("paragraph", "Sau khi phân loại mức độ khiếu nại, nhân viên được hứa bồi "
+                                                      "thường cho khách theo bảng mức."),
+                              text_block("warning", "Không được hứa bồi thường cho khách trước khi phân loại mức độ "
+                                                    "khiếu nại.")],
+            "exception": [text_block("paragraph", "Khiếu nại cấp 3 phải chuyển cho quản lý ngay trong ngày."),
+                          text_block("warning", "Khiếu nại cấp 3 không phải chuyển cho quản lý ngay trong ngày.")],
+            "first time": [text_block("paragraph", "Cửa hàng áp dụng giảm giá 10% cho khách hàng mua hàng lần thứ hai "
+                                                   "trở đi."),
+                           text_block("warning", "Không áp dụng giảm giá 10% cho khách hàng mua hàng lần đầu.")],
+            "deadline": [text_block("paragraph", "Khiếu nại cấp 2 phải được phản hồi cho khách hàng trong vòng 48 giờ "
+                                                 "kể từ khi tiếp nhận."),
+                         text_block("warning", "Khiếu nại cấp 3 phải được phản hồi cho khách hàng trong vòng 24 giờ kể "
+                                               "từ khi tiếp nhận.")],
+            "callout first": [text_block("warning", "Không hứa bồi thường trước khi phân loại mức độ."),
+                              text_block("paragraph", PARAGRAPH)],
+        }
+        for name, blocks in kept.items():
+            self.assertEqual(repeated_callouts({"sections": [section(*blocks)]}), [], name)
+        other_section = {"sections": [section(text_block("paragraph", PARAGRAPH)),
+                                      section(text_block("warning", PARAGRAPH.replace("Nhân viên tuyệt đối k", "K")))]}
+        self.assertEqual(repeated_callouts(other_section), [])
+        # The paragraph above in other words, nothing new: a repeat.
+        repeat = {"sections": [section(text_block("paragraph", PARAGRAPH),
+                                       text_block("warning", "Không hứa bồi thường cho khách trước khi phân loại mức "
+                                                             "độ khiếu nại."))]}
+        self.assertEqual(repeated_callouts(repeat), [(0, 1)])
+
+    async def test_the_note_counts_the_returned_unit_only(self) -> None:
+        body = severity_body()
+        writer = severity_writer(body)
+        blocks = writer["components"]["c0"]["semantic_content"]["sections"][0]["blocks"]
+        blocks.append(text_block("warning", "Cấp 3: liên quan an toàn, pháp lý hoặc truyền thông. Escalate ngay cho "
+                                            "quản lý và bộ phận Pháp chế theo quy trình CR-04."))
+        blocks.append(text_block("warning", "Doanh nghiệp không thay đổi tư duy sẽ có nguy cơ bị thị trường đào thải."))
+        provider = FakeGenerate(**{WRITER: [writer], REPAIR: [slot_repair(writer, 0)], JUDGE: [judge()]})
+        status, data, _ = await self.post(body, provider)
+        self.assertEqual(status, 200)
+        self.assertEqual(provider.names, [WRITER, REPAIR, JUDGE])
+        note = data["unit"]["idm_quality"]["author_note"]
+        self.assertIn("Đã bỏ 1 khung trích dẫn/lưu ý chỉ nhắc lại đoạn văn có sẵn trong bài.", note)
