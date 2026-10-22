@@ -86,6 +86,7 @@ from app.idm.quiz_text import (
     QUESTION_LIMIT_CODE,
     QUIZ_STYLE_CODES,
 )
+from app.idm.source_fallback import glued_line, placeholder_line
 from app.idm.source_flags import fit_flags
 from app.idm.source_locked import FAQ_FALLBACK_REPEATED_CODE
 from app.idm.text import sanitize_author_text
@@ -298,6 +299,8 @@ def build_unit_author_note(
     suggested_criteria: bool = False,
     source_flags: Sequence[str] = (),
     source_notes: Sequence[str] = (),
+    placeholder_slots: Sequence[int] = (),
+    glued: Sequence[str] = (),
 ) -> str:
     """Template note for the unit ``implementation_notes``; no IDs, no ``<``/``>``.
 
@@ -323,7 +326,8 @@ def build_unit_author_note(
     ``suggested_criteria`` (A5): the unit's worksheet has criteria the AI suggested from what the lesson teaches.
     ``source_flags`` (owner decision 2026-10-22): one sentence per contradictory or out-of-date point of the source,
     right after the review reasons; ``source_notes`` (run 5496155c): one per unclear point, an edit note after the
-    notices.
+    notices. ``placeholder_slots`` (run 5496155c): the slots of a whole-unit fallback that only repeat sentences of the
+    lesson (no source structure rebuilt them); ``glued``: words the PDF glued together that a fallback slot shows.
     """
 
     vi = locale == "vi"
@@ -344,6 +348,8 @@ def build_unit_author_note(
         parts.append(("Cả bài dùng bản dự phòng dựng từ tài liệu — cần biên tập." if vi
                       else "The whole lesson uses the source-based fallback — edit it.")
                      + ((f" Lý do: {failures}." if vi else f" Reason: {failures}.") if failures else ""))
+        if placeholder_slots:
+            parts.append(placeholder_line(_slot_reasons(placeholder_slots, {}, slot_types, vi), vi))
     elif fallback_slots:
         parts.append(f"{len(fallback_slots)} khối dùng bản dự phòng dựng từ tài liệu — cần biên tập." if vi
                      else f"{len(fallback_slots)} block(s) use the source-based fallback — edit them.")
@@ -384,6 +390,8 @@ def build_unit_author_note(
         parts.append(_acronyms_line(unexplained_acronyms, vi))
     if suggested_criteria:
         parts.append(_SUGGESTED_CRITERIA_LINE[vi])
+    if glued:
+        parts.append(glued_line(glued, vi))
     return sanitize_author_text(" ".join(parts), IDM_UNIT_AUTHOR_NOTE_MAX_CHARS)
 
 

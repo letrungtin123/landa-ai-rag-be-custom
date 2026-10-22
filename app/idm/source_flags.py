@@ -99,16 +99,17 @@ def is_transition(text: str) -> bool:
 
 
 def clean_quote(quote: str) -> bool:
-    """A quote the author can find and read: at least ``_QUOTE_MIN_WORDS`` words, mostly letters, no glued words, no
-    dangling end where the PDF line stopped, never a transition sentence (run 5496155c: "(Chữ", "I", "Xây dựng bộchân
-    dung các nhóm khách hàng của")."""
+    """A quote the author can find and read: at least ``_QUOTE_MIN_WORDS`` words, mostly letters, no glued words,
+    its brackets closed, no dangling end where the PDF line stopped, never a transition sentence (run 5496155c:
+    "(Chữ", "I", "Xây dựng bộchân dung các nhóm khách hàng của")."""
 
     text = quote.strip(" …")
     words = [word for word in text.split() if any(char.isalpha() for char in word)]
     visible = [char for char in text if not char.isspace()]
     if len(words) < _QUOTE_MIN_WORDS or not visible:
         return False
-    if sum(char.isalpha() for char in visible) / len(visible) < _QUOTE_MIN_LETTER_SHARE or glued_words(text):
+    if (sum(char.isalpha() for char in visible) / len(visible) < _QUOTE_MIN_LETTER_SHARE or glued_words(text)
+            or text.count("(") != text.count(")")):
         return False
     last = idm_fold(words[-1]).strip(_QUOTE_MARKS)
     cut_end = not quote.rstrip().endswith("…") and last in _DANGLING_ENDS

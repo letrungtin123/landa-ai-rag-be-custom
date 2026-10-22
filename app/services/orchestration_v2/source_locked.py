@@ -236,6 +236,27 @@ def build_orchestration_v2_source_locked_components(
             for plan in contract.component_plan]
 
 
+def complete_source_locked_components(
+    contract: UnitGenerationContractV2,
+    locale: str,
+    components: list[dict[str, Any] | None],
+    *,
+    single_choice_builder: Callable[..., dict[str, Any] | None],
+    faq_builder: Callable[..., list[dict[str, str]] | None],
+    html_renderer: Callable[..., str] = render_source_locked_html,
+    diagram_builder: Callable[..., dict[str, Any] | None] | None = None,
+) -> list[dict[str, Any] | None]:
+    """``components`` with each slot no source structure rebuilt (``None``) built again by the given last-resort
+    builders: the inventory of the whole-unit fallback only (an IDM unit keeps ``components`` for the fallback of one
+    slot of a provider draft). A slot the last resort cannot build either stays ``None``."""
+
+    fact_by_id = {fact.fact_key: fact.fact_text for fact in contract.source_facts}
+    return [component if component is not None else _orchestration_v2_source_locked_component(
+        contract, plan, fact_by_id, locale, html_renderer=html_renderer, single_choice_builder=single_choice_builder,
+        diagram_builder=diagram_builder, faq_builder=faq_builder)
+        for plan, component in zip(contract.component_plan, components, strict=True)]
+
+
 def _orchestration_v2_source_locked_component(
     contract: UnitGenerationContractV2,
     plan: UnitComponentPlanV2,

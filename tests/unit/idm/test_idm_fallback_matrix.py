@@ -16,6 +16,11 @@ retyped (plan type and purpose, brief type and role) and, where the golden facts
 fact texts are rewritten; the brief and contract hashes are then recomputed. The provider is a local fake with empty
 queues, so nothing reaches the network and any provider call fails the case.
 
+Run 5496155c (the lead's verification: 9 of 10 real units answered 422): in the whole-unit fallback a question or
+FAQ slot no source structure rebuilds is filled with sentences the lesson states (``app.idm.source_fallback``); the
+answer is 422 only when the unit and its lesson hold no such sentence. The per-slot rebuild (the fallback of one slot of
+a provider draft) is unchanged.
+
 A source-locked FAQ says each source sentence once. A lone labelled caution ("Lưu ý: X") made d4ff677 build "Lưu ý: X"
 and "X"; that slot stays buildable: its second item is another sentence of the slot, else of the unit, else the old
 repeated item, which the unit names as a reason for author review.
@@ -208,10 +213,32 @@ VALID_CASES = (
          html_marker="<td>Yếu tố an toàn</td>"),  # never "Yếu tố AN toàn": "AN" is a syllable, not an acronym
 )
 
-UNBUILDABLE_CASES = (
+# Run 5496155c: slots no source structure rebuilds, filled with the lesson's sentences in the whole-unit fallback.
+LAST_RESORT_CASES = (
     Case("problem", "golden lsn_001 u1, prose definitions and categories", lambda: body_for(0, 0, 0), 1),
     Case("problem", "golden lsn_003 u2, prose common mistakes", escalate_body),
     Case("la_faq", "lsn_003 u1 retyped, a single explicit condition", lambda: retype(escalate_rules(), 0, "la_faq")),
+)
+# Facts with no sentence to repeat: slide headings and exercise prompts only.
+HEADINGS_ONLY = {"d1-c6-f1": "6. ESCALATE KHIẾU NẠI", "d1-c6-f2": "BÀI TẬP 5 phút", "d1-c6-f3": "Câu hỏi thảo luận",
+                 "d1-c6-f4": "QUY TẮC CHUYỂN CẤP"}
+
+
+def without_sentences(body: dict[str, Any]) -> dict[str, Any]:
+    """``body`` whose unit holds no sentence of the lesson: its facts are headings and its lesson context empty."""
+
+    contract = body["unit_contract"]
+    texts = {fact["fact_key"]: HEADINGS_ONLY.get(fact["fact_key"], f"MỤC {number}")
+             for number, fact in enumerate(contract["source_facts"], start=1)}
+    contract["idm_unit_brief"]["lesson_context_facts"] = []
+    return with_fact_texts(body, texts)
+
+
+UNBUILDABLE_CASES = (
+    Case("problem", "lsn_003 u1 retyped, headings and exercise prompts only",
+         lambda: without_sentences(retype(escalate_rules(), 0, "problem"))),
+    Case("la_faq", "lsn_003 u1 retyped, headings and exercise prompts only",
+         lambda: without_sentences(retype(escalate_rules(), 0, "la_faq"))),
     Case("la_sortable", "lsn_003 u1 retyped, rules without an ordered sequence",
          lambda: retype(escalate_rules(), 0, "la_sortable")),
     Case("la_sortable", "lsn_005 u1 retyped, table rows are not steps", lambda: retype(job_aid_table(), 0,
@@ -277,6 +304,31 @@ class FallbackMatrixTests(StoryboardEndpointTestCase):
             for locale in LOCALES:
                 with self.subTest(type=case.slot_type, case=case.name, locale=locale):
                     await self.check_valid(fallback_request(case, locale), case)
+
+    async def test_slots_no_structure_rebuilds_get_the_lessons_sentences(self) -> None:
+        for case in LAST_RESORT_CASES:
+            for locale in LOCALES:
+                with self.subTest(type=case.slot_type, case=case.name, locale=locale):
+                    body = fallback_request(case, locale)
+                    # The per-slot rebuild stays empty: only the whole-unit fallback uses the lesson's sentences.
+                    self.assertIsNone(source_locked_slots(body)[case.index])
+                    status, data, provider = await self.post(body)
+                    self.assertEqual((status, provider.calls), (200, []), data.get("detail"))
+                    self.assert_fallback_envelope(body, data)
+                    unit = data["unit"]
+                    self.assertEqual(unit_findings(body, unit), (None, []))
+                    component = unit["components"][case.index]
+                    contract = body["unit_contract"]
+                    corpus = " ".join(" ".join(text.split()) for text in [
+                        *(fact["fact_text"] for fact in contract["source_facts"]),
+                        *(fact["fact_text"] for fact in contract["idm_unit_brief"]["lesson_context_facts"])])
+                    shown = ([component["question"].splitlines()[1][2:]] if case.slot_type == "problem"
+                             else [item["answer"] for item in component["items"]])
+                    # Every sentence shown is the lesson's own, word for word (wrapped lines joined).
+                    for sentence in shown:
+                        self.assertIn(" ".join(sentence.split()), corpus)
+                    note = unit["idm_quality"]["author_note"]
+                    self.assertIn("chỉ nhắc lại câu của bài" if locale == "vi" else "only repeats sentences", note)
 
     async def test_unbuildable_slots_answer_422_never_an_invalid_unit(self) -> None:
         for case in UNBUILDABLE_CASES:

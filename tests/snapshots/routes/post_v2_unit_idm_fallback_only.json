@@ -366,7 +366,7 @@
       ],
       "source_locked_fallback": true,
       "selection_rationale": "Kết quả từ mô hình chưa khả dụng; bản nháp để rà soát này được dựng từ các dữ kiện nguồn đã khóa.",
-      "html": "<h2>Dấu hiệu của từng cấp độ</h2><h3>4. MỨC ĐỘ NGHIÊM TRỌNG</h3><table><thead><tr><th>Cấp độ</th><th>Dấu hiệu</th><th>Cách xử lý</th></tr></thead><tbody><tr><td>Cấp 1</td><td>Ảnh hưởng thấp, không thiệt hại tài chính</td><td>Nhân viên tự xử lý</td></tr><tr><td>Cấp 2</td><td>Thiệt hại tài chính dưới 50 triệu đồng hoặc khách hàng phàn nàn lần thứ hai</td><td>Thông báo trưởng nhóm</td></tr><tr><td>Cấp 3</td><td>Liên quan an toàn, pháp lý hoặc truyền thông</td><td>Escalate ngay cho quản lý và bộ phận Pháp chế theo quy trình CR-04</td></tr></tbody></table>"
+      "html": "<h2>Dấu hiệu của từng cấp độ</h2><h3>4. Mức độ nghiêm trọng</h3><table><thead><tr><th>Cấp độ</th><th>Dấu hiệu</th><th>Cách xử lý</th></tr></thead><tbody><tr><td>Cấp 1</td><td>Ảnh hưởng thấp, không thiệt hại tài chính</td><td>Nhân viên tự xử lý</td></tr><tr><td>Cấp 2</td><td>Thiệt hại tài chính dưới 50 triệu đồng hoặc khách hàng phàn nàn lần thứ hai</td><td>Thông báo trưởng nhóm</td></tr><tr><td>Cấp 3</td><td>Liên quan an toàn, pháp lý hoặc truyền thông</td><td>Escalate ngay cho quản lý và bộ phận Pháp chế theo quy trình CR-04</td></tr></tbody></table>"
      },
      {
       "type": "problem",

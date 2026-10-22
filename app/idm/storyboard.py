@@ -102,6 +102,7 @@ from app.idm.runtime import (
     record_deterministic_fallback,
     repair_thinking,
 )
+from app.idm.source_fallback import fallback_glued_words
 from app.idm.storyboard_context import (
     _COVERAGE_CODES,
     _FALLBACK_INVALID,
@@ -607,6 +608,9 @@ def _whole_fallback(writer: IdmUnitWriter) -> dict[str, Any]:
         raise IdmStageError(_FALLBACK_INVALID)
     for index in range(len(writer.plans)):  # an FAQ that says one sentence twice is a reason in the note
         writer.repeated_faq_fallback(index)
+    # The slots no source structure rebuilt: the last resort repeats sentences of the lesson there (run 5496155c).
+    slots = writer.deps.source_locked_components
+    writer.placeholder_slots = [] if slots is None else [index for index, slot in enumerate(slots) if slot is None]
     record_deterministic_fallback(writer.runtime, stage="idm_w5_unit", code="IDM_W5_UNIT_FALLBACK")
     return dict(source)
 
@@ -694,7 +698,8 @@ async def run_idm_unit(
         review_reasons=review_reasons if reviewable and not whole_fallback else (),
         unexplained_acronyms=unexplained_acronyms, notices=() if whole_fallback else notices,
         suggested_criteria=not whole_fallback and writer.suggested_criteria(draft.fallback_slots),
-        source_flags=writer.source_flags,
+        placeholder_slots=writer.placeholder_slots if whole_fallback else (),
+        glued=fallback_glued_words(components, draft.fallback_slots), source_flags=writer.source_flags,
         source_notes=writer.source_notes)
     quality = build_unit_quality(mode=deps.judge_mode, judge=judge, repair_applied=draft.repair_applied,
                                  deterministic_codes=[*writer.codes, *(item.code for item in remaining)],

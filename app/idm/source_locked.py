@@ -8,7 +8,12 @@ pipeline and stay byte-identical (spec §11.6); IDM units get these variants thr
 * HTML: wrapped PDF lines are joined again, a short line becomes a heading only when it
   introduces content (no runs of ``<h3>``), a lone numbered heading is not a one-item
   list, tables stay where the source put them and carry no generic "data table" label,
-  markdown emphasis markers are removed.
+  markdown emphasis markers are removed. Run 5496155c (c1.l3.u3: "Về Ý nghĩa / Xã hội
+  (Social/Meaningful" as a heading, an orphan "Job): *", stray "|" and "*", a heading in
+  capitals): a line is joined to the next ones until its brackets close, a cell of a table
+  row the PDF broke over several lines ends at its "|" and loses its list marker, a table
+  of a header row alone is a list, a stray "*" goes, and a heading in capitals is written
+  in sentence case (codes and abbreviations keep theirs). Glued words stay as written.
 * Single choice: the question names the term as the source wrote it (never its crossword
   answer form), shows at most four options and explains why the other options are wrong.
 * FAQ: explicit source conditions first (the legacy rule), then labelled source definitions
@@ -23,7 +28,7 @@ from __future__ import annotations
 import hashlib
 import html
 import re
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from typing import Any, Final
 
 from app.content.instructional_quality import (
@@ -42,6 +47,7 @@ from app.content.instructional_quality import (
     source_clarification_signals,
     source_term_definitions,
 )
+from app.idm.acronyms import keeps_capitals
 from app.idm.text import idm_fold
 
 _BULLET_RE: Final = re.compile(r"^[•●▪◦*-]\s+(.+)$")
@@ -55,7 +61,9 @@ _CONNECTOR_END_RE: Final = re.compile(
     r"(?:,|[-\u2013\u2014]|\b(?:va|hoac|cua|trong|cho|voi|de|la|cac|nhung|mot|tu|tai|theo|ve|nhu|khi|neu|"
     r"and|or|of|to|in|for|with|the|a|an|by|on|at|from))$",
 )
-_CONTINUATION_PUNCTUATION: Final = "([,;"
+# A quotation mark too (run 5496155c: "… Một trải nghiệm" + "\"Wow\" ở tuyến trước …").
+_CONTINUATION_PUNCTUATION: Final = "([,;\"" + chr(0x201C)
+_OPENING_CONTINUATION: Final = "(\"" + chr(0x201C)
 _SEMANTIC_KEY_RE: Final = re.compile(r"[^\w\d]+")
 _STEP_LABEL_RE: Final = re.compile(r"^(?:Step|Bước)\s+\d+\s*:\s*", re.IGNORECASE)
 
@@ -73,11 +81,33 @@ _WRAP_TAIL_MAX_WORDS: Final = 4
 _SENTENCE_LOWER_WORD_SHARE: Final = 0.5
 _MIN_INLINE_STEPS: Final = 2
 _MIN_TITLE_SUFFIX_CHARS: Final = 8
+# A label of fewer letters ("I", a lone letter of a slide graphic) is no heading and no text.
+_MIN_HEADING_LETTERS: Final = 2
 _NUMBER_PREFIX_RE: Final = re.compile(r"^(?:[0-9]+ )+")
 _MIN_TABLE_CELLS: Final = 2
 _MAX_TABLE_CELLS: Final = 12
 _MAX_TABLE_ROWS: Final = 40
 _FILL_LEADER_RE: Final = re.compile(r"[.…_·]{4,}")
+# Run 5496155c: what the PDF reader left of a slide table. A "*" bullet after a label ("Job): * Sàng lọc") or alone; the
+# cell separator inside a line that is no table row ("… chung. | - Về Chức năng (Functional Pain): * Bị") and the list
+# marker that opens the next cell ("- Về", "-Về").
+_STAR_RE: Final = re.compile(r"(?<=[:)])[ \t]*\*[ \t]+|(?<=\s)\*(?=\s)")
+_CELL_SEPARATOR_RE: Final = re.compile(r"[ \t]+\|[ \t]+")
+_CELL_MARKER_RE: Final = re.compile(r"^[-*•][ \t]*(?=\S)")
+STATEMENT_END_RE: Final = re.compile(r"[.!…]$")
+# A classroom exercise or discussion prompt of a slide ("BÀI TẬP 10 phút", "Câu hỏi thảo luận: …"), accent-folded: no
+# statement of the lesson and no FAQ answer (run 5496155c).
+EXERCISE_RE: Final = re.compile(r"^\W*(?:bai tap|cau hoi|thao luan|thuc hanh|exercise|question|discussion|homework)\b")
+_SENTENCE_INSIDE_RE: Final = re.compile(r"[.!?…][ \t]+\S")
+_CLOSING_MARKS: Final = "\"')" + chr(0x201D)
+# The end of a label whose start the PDF reader lost ("Pain): Sợ bị coi là …" after a repeated label line was dropped as
+# a duplicate): the text after it is kept, the cut word goes.
+_ORPHAN_LABEL_END_RE: Final = re.compile(r"^[^\W\d_]+\)[ \t]*:[ \t]*(?=\S)")
+# A line whose brackets stay open is joined to at most this many following lines, this long in all.
+_BRACKET_JOIN_LINES: Final = 4
+_BRACKET_JOIN_CHARS: Final = 400
+# A heading in capitals (this share of its letters) is written in sentence case.
+_UPPER_LABEL_SHARE: Final = 0.6
 
 _MAX_GROUNDED_CHOICES: Final = 4
 _MIN_GROUNDED_CHOICES: Final = 3
@@ -131,14 +161,17 @@ def _sentence_like(value: str) -> bool:
 
 
 def _continues(previous: str, current: str) -> bool:
-    """True when ``current`` is the rest of the sentence ``previous`` started (a PDF wrap)."""
+    """True when ``current`` is the rest of the sentence ``previous`` started (a PDF wrap). Run 5496155c: a labelled
+    line ("Về Chức năng (Functional Pain): Bị") is read by its text after the label, and a line that opens with a
+    bracket or a quotation mark continues an unfinished sentence of any length ("… cổ chai" + "(bottleneck) …")."""
 
+    labelled = _TERM_LEAD_RE.match(previous)
     if (_TERMINAL_RE.search(previous) or TABLE_ROW_RE.match(previous) or _structural(current)
-            or not _sentence_like(previous)):
+            or not (labelled or _sentence_like(previous))):
         return False
-    if _CONNECTOR_END_RE.search(idm_fold(previous)):
+    if _CONNECTOR_END_RE.search(idm_fold(previous)) or current[:1] in _OPENING_CONTINUATION:
         return True
-    if len(previous) < _WRAP_MIN_PREVIOUS_CHARS:
+    if len(previous) < _WRAP_MIN_PREVIOUS_CHARS or (labelled and not _sentence_like(previous)):
         return False
     if current[:1].islower() or current[:1].isdigit() or current[:1] in _CONTINUATION_PUNCTUATION:
         return True
@@ -155,13 +188,56 @@ def _continues_row(previous: str, current: str) -> bool:
             or (len(current.split()) <= _WRAP_TAIL_MAX_WORDS and bool(_TERMINAL_RE.search(current))))
 
 
+def _open_brackets(line: str) -> int:
+    return line.count("(") - line.count(")")
+
+
+def _closes(previous: str, current: str, joined: int) -> bool:
+    """``current`` closes the bracket ``previous`` left open ("Về Ý nghĩa / Xã hội (Social/Meaningful" + "Job): …",
+    "(Chữ" + "I" + "Implementation trong G-STIC): …"), within the join bounds; never a new table row."""
+
+    return (_open_brackets(previous) > 0 and joined < _BRACKET_JOIN_LINES and not TABLE_ROW_RE.match(current)
+            and len(previous) + len(current) < _BRACKET_JOIN_CHARS)
+
+
+def _row_goes_on(previous: str, current: str) -> bool:
+    """``current`` holds the next cells of the table row ``previous`` the PDF broke ("Row 1: Tầng góc nhìn | JOB TO
+    BE" + "DONE(…) | PAINS(…) | GAINS(…)")."""
+
+    return (bool(TABLE_ROW_RE.match(previous)) and not _TERMINAL_RE.search(previous)
+            and not TABLE_ROW_RE.match(current) and _CELL_SEPARATOR_RE.search(current) is not None)
+
+
+def _trails_off(text: str) -> bool:
+    """A text that ends a sentence and then stops in the middle of the next one ("… hay CSKH. Nếu hệthống"): the PDF cut
+    it; never an option or an answer (run 5496155c)."""
+
+    return bool(_SENTENCE_INSIDE_RE.search(text)) and not STATEMENT_END_RE.search(text.rstrip(_CLOSING_MARKS))
+
+
+def _wrapped_word(line: str) -> bool:
+    """A few words without closing punctuation: the end of a cell the PDF moved to its own line ("HỘI")."""
+
+    return len(line.split()) <= _WRAP_TAIL_MAX_WORDS and not _TERMINAL_RE.search(line) and not _structural(line)
+
+
+def _cells(text: str) -> list[str]:
+    """A line that is no table row, cut at the cell separators the PDF reader left in it, each cell without its list
+    marker; a table row whole."""
+
+    if TABLE_ROW_RE.match(text) or not _CELL_SEPARATOR_RE.search(text):
+        return [text]
+    return [cell for part in _CELL_SEPARATOR_RE.split(text) if (cell := _CELL_MARKER_RE.sub("", part.strip()))]
+
+
 def _prepare_lines(title: str, values: Iterable[Any]) -> list[str]:
     facts = clean_source_facts([normalize_visible_text(value) for value in values], preserve_table_numeric=True)
     title_key = _key(title)
     lines: list[str] = []
     repeats: list[str] = []
+    joined = 0
     for fact in facts:
-        text = normalize_visible_text(_EMPHASIS_RE.sub(r"\1", fact))
+        text = normalize_visible_text(_STAR_RE.sub(" ", _EMPHASIS_RE.sub(r"\1", fact)))
         key = _key(text)
         # The unit title is already the <h2>; "30 Ngày: SEE DIFFERENT" under "Ngày: SEE DIFFERENT" too.
         if not key:
@@ -172,11 +248,26 @@ def _prepare_lines(title: str, values: Iterable[Any]) -> list[str]:
                                 and _NUMBER_PREFIX_RE.sub("", key) == title_key):
             repeats.append(text)
             continue
-        for part in _split_inline_steps(text):
-            if lines and (_continues(lines[-1], part) or _continues_row(lines[-1], part)):
+        if lines and _row_goes_on(lines[-1], text):
+            lines[-1] = f"{lines[-1]} {text}"
+            joined += 1
+            continue
+        # "Row 4: 3. Ý NGHĨA / XÃ" + "HỘI" + "(Định vị - Tầm nhìn) | …": the short line between is the row's too.
+        if (len(lines) > 1 and _wrapped_word(lines[-1]) and _row_goes_on(f"{lines[-2]} {lines[-1]}", text)):
+            lines[-2:] = [f"{lines[-2]} {lines[-1]} {text}"]
+            continue
+        # A table row keeps its cells: "Row 2: 1. CHỨC NĂNG" is no step "1.".
+        for raw in (cell for value in _cells(text)
+                    for cell in ([value] if TABLE_ROW_RE.match(value) else _split_inline_steps(value))):
+            part = (_ORPHAN_LABEL_END_RE.sub("", raw)
+                    if _open_brackets(raw) < 0 and not (lines and _closes(lines[-1], raw, joined)) else raw)
+            if lines and (_continues(lines[-1], part) or _continues_row(lines[-1], part)
+                          or _closes(lines[-1], part, joined)):
                 lines[-1] = f"{lines[-1]} {part}"
+                joined += 1
             else:
                 lines.append(part)
+                joined = 0
     # A unit whose only fact repeats its title still shows that fact (the shared validator
     # requires visible source text beyond the title).
     return lines or repeats
@@ -211,13 +302,42 @@ def _table(rows: list[str]) -> str:
         if len(cells) >= _MIN_TABLE_CELLS:
             grid.append(cells[:_MAX_TABLE_CELLS])
             continue
-        flush()
+        _flush_or_list(grid, parts, flush)
         # "01 Hành Động Đo Được Trong 90 Ngày;......": a fill-in line, shown without its dot leader.
         text = _FILL_LEADER_RE.sub("", " ".join(cells)).strip()
         if text:
             parts.append(f"<p>{_inline(text)}</p>")
-    flush()
+    _flush_or_list(grid, parts, flush)
     return "".join(parts)
+
+
+def _flush_or_list(grid: list[list[str]], parts: list[str], flush: Callable[[], None]) -> None:
+    """Close the table in progress; a table of its header row alone (the PDF broke its other rows into lines, run
+    5496155c) is the list of its cells instead."""
+
+    if len(grid) == 1:
+        cells = [cell for cell in grid[0] if cell.strip()]
+        grid.clear()
+        if cells:
+            parts.append("<ul>" + "".join(f"<li>{_inline(cell)}</li>" for cell in cells) + "</ul>")
+        return
+    flush()
+
+
+def _sentence_case(label: str) -> str:
+    """A heading in capitals in sentence case: "1.3 HỒ SƠ KHÁCH HÀNG B2B (VD2: NGƯỜI RA QUYẾT ĐỊNH)" -> "1.3 Hồ sơ
+    khách hàng B2B (VD2: người ra quyết định)"; codes and abbreviations keep their capitals (``keeps_capitals``)."""
+
+    letters = [char for char in label if char.isalpha()]
+    if not letters or sum(char.isupper() for char in letters) / len(letters) < _UPPER_LABEL_SHARE:
+        return label
+    words = [word if keeps_capitals(word) else word.lower() for word in label.split()]
+    first = next((index for index, word in enumerate(words) if any(char.isalpha() for char in word)), None)
+    if first is not None and not keeps_capitals(words[first]):
+        word = words[first]
+        letter = next(index for index, char in enumerate(word) if char.isalpha())
+        words[first] = word[:letter] + word[letter].upper() + word[letter + 1:]
+    return " ".join(words)
 
 
 def _list_run(lines: list[str], index: int, keep_single_ordered: bool) -> tuple[str, int] | None:
@@ -281,7 +401,14 @@ def render_idm_source_locked_html(
             while end < len(lines) and _is_label(lines[end]) and (
                     end == index or _list_run(lines, end, keep_single_ordered) is None):
                 end += 1
-            labels = lines[index:end]
+            # A label whose brackets never close is a cut line, and a lone letter no heading: both stay text.
+            labels = [_sentence_case(label) for label in lines[index:end]]
+            if any(_open_brackets(label) or sum(char.isalpha() for char in label) < _MIN_HEADING_LETTERS
+                   for label in labels):
+                parts.extend(f"<p>{_inline(label)}</p>" for label in labels
+                             if sum(char.isalpha() for char in label) >= _MIN_HEADING_LETTERS)
+                index = end
+                continue
             has_body = end < len(lines)
             if has_body and len(labels) <= _HEADING_MAX_LABELS:
                 parts.append(f"<h3>{html.escape(_HEADING_JOINER.join(labels))}</h3>")
@@ -401,10 +528,13 @@ def idm_source_grounded_single_choice(title: str, values: Iterable[Any], *, loca
     if authored is not None:
         return _authored_feedback(authored, locale)
     facts = clean_source_facts(materialized, preserve_table_numeric=True)
+    # Definitions and table rows are read from the lines the PDF wrapped joined again (run 5496155c: an option ended
+    # "… Nếu hệthống", a table of four rows read as one).
+    joined = _prepare_lines("", facts)
     en = locale == "en"
-    definitions = source_term_definitions(facts)
+    definitions = [(term, text) for term, text in source_term_definitions(joined) if not _trails_off(text)]
     if len(definitions) >= _MIN_GROUNDED_CHOICES:
-        display = _display_terms(facts)
+        display = _display_terms(joined)
         named = [(display.get(answer, answer), definition)
                  for answer, definition in definitions[:_MAX_GROUNDED_CHOICES]]
         term, correct = named[0]
@@ -424,7 +554,7 @@ def idm_source_grounded_single_choice(title: str, values: Iterable[Any], *, loca
                 "explanation": _feedback(f"{term} is defined as: {correct}" if en
                                          else f"{term} được xác định là: {correct}", choices, reasons, locale),
             }
-    rows = parse_structured_table_rows(facts)
+    rows = parse_structured_table_rows(joined)
     if len(rows) >= _MIN_TABLE_ROWS_FOR_QUESTION and len(rows[0]) >= _MIN_TABLE_CELLS:
         header, body = rows[0], [row for row in rows[1:] if len(row) >= _MIN_TABLE_CELLS]
         shown = body[:_MAX_GROUNDED_CHOICES]
@@ -494,10 +624,13 @@ def _faq_question(label: str, title: str, index: int, locale: str) -> str:
 
 def _faq_candidates(facts: list[str]) -> list[tuple[str, str, str]]:
     """(source fact, label the question names, answer text) in the order items are chosen: explicit
-    conditions first, whole sentence (the legacy rule), then the definitions of labelled facts."""
+    conditions first, whole sentence (the legacy rule), then the definitions of labelled facts. Run 5496155c: an
+    answer is never a question or a sentence the PDF cut, and a classroom exercise of the slides ("Thực hành: …") comes
+    last."""
 
     candidates = [(answer, _LEAD_LABEL_RE.split(answer, maxsplit=1)[0].strip(), answer)
                   for answer in source_clarification_signals(facts)]
+    exercises: list[tuple[str, str, str]] = []
     for value in facts:
         if TABLE_ROW_RE.match(value) or ORDERED_STEP_RE.match(value):
             continue
@@ -507,9 +640,9 @@ def _faq_candidates(facts: list[str]) -> list[tuple[str, str, str]]:
         label = normalize_visible_text(match.group(1)).strip(_FAQ_LABEL_TRIM)
         definition = normalize_visible_text(match.group(2)).strip()
         if (label and len(label.split()) <= _LABEL_MAX_WORDS and faq_answer_is_complete(definition)
-                and _sentence_like(definition)):
-            candidates.append((value, label, definition))
-    return candidates
+                and _sentence_like(definition) and not _trails_off(definition) and "?" not in definition):
+            (exercises if EXERCISE_RE.match(idm_fold(label)) else candidates).append((value, label, definition))
+    return [*candidates, *exercises]
 
 
 def _repeats(answer: str, others: Iterable[str]) -> bool:
@@ -580,7 +713,8 @@ def idm_source_faq(title: str, values: Iterable[Any], *, locale: str,
     unit keeps the slot for author review (``FAQ_FALLBACK_REPEATED_CODE``).
     """
 
-    facts = clean_source_facts(list(values), preserve_table_numeric=True)
+    # Run 5496155c: answers come from the wrapped lines joined again, never from a line the PDF cut.
+    facts = _prepare_lines("", clean_source_facts(list(values), preserve_table_numeric=True))
     candidates = _faq_candidates(facts)
     items = _faq_items(candidates, title, locale, distinct=True)
     if len(items) >= _FAQ_MIN_ITEMS:
@@ -588,7 +722,7 @@ def idm_source_faq(title: str, values: Iterable[Any], *, locale: str,
     repeated = _faq_items(candidates, title, locale, distinct=False)
     if len(repeated) < _FAQ_MIN_ITEMS:
         return None
-    for value in (*facts, *clean_source_facts(list(unit_values), preserve_table_numeric=True)):
+    for value in (*facts, *_prepare_lines("", clean_source_facts(list(unit_values), preserve_table_numeric=True))):
         if len(items) >= _FAQ_MIN_ITEMS:
             break
         if TABLE_ROW_RE.match(value) or ORDERED_STEP_RE.match(value) or not _sentence_like(value):

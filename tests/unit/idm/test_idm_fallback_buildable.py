@@ -80,7 +80,7 @@ def buildable_map() -> dict[str, bool]:
     """Whether each enumerated slot or builder input gives source-locked content."""
 
     result: dict[str, bool] = {}
-    for case in (*matrix.VALID_CASES, *matrix.UNBUILDABLE_CASES):
+    for case in (*matrix.VALID_CASES, *matrix.UNBUILDABLE_CASES, *matrix.LAST_RESORT_CASES):
         _record_slots(result, f"matrix/{case.slot_type}/{case.name}", case.build())
     for name, body in golden_units():
         _record_slots(result, f"golden/{name}", body)

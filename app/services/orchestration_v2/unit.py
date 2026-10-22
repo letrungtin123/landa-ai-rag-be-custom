@@ -26,6 +26,7 @@ from app.core.logging import SERVICE_LOGGER_NAME, log_payload
 from app.idm.diagram import idm_source_step_diagram
 from app.idm.preserve_unit import is_preserve_unit, run_preserve_unit
 from app.idm.runtime import IDM_LOG_FAMILY, IdmError, IdmStageError
+from app.idm.source_fallback import last_resort_builders
 from app.idm.source_locked import idm_source_faq, idm_source_grounded_single_choice, render_idm_source_locked_html
 from app.idm.storyboard import IdmUnitDeps, run_idm_unit
 from app.infra.gemini.retry import PROVIDER_TRANSIENT_MAX_ATTEMPTS
@@ -53,6 +54,7 @@ from app.services.orchestration_v2.idm import _idm_http_error, _idm_runtime
 from app.services.orchestration_v2.source_locked import (
     build_orchestration_v2_source_locked_components,
     build_orchestration_v2_source_locked_unit,
+    complete_source_locked_components,
 )
 from app.services.retrieval.source_coverage import format_source_coverage_manifest
 from app.services.staged_unit.provider_schemas import (
@@ -123,6 +125,12 @@ def _idm_unit_deps(request: RagLessonAuthorUnitV2Request) -> IdmUnitDeps:
         contract, request.locale, html_renderer=render_idm_source_locked_html,
         single_choice_builder=idm_source_grounded_single_choice, diagram_builder=idm_source_step_diagram,
         faq_builder=idm_source_faq)
+    # The whole-unit fallback (fallback_only, a provider failure) needs every slot: a question or FAQ slot no source
+    # structure rebuilds gets a statement of the lesson there (run 5496155c: 9 of 10 units answered 422 before).
+    question, faq = last_resort_builders([fact.fact_text for fact in contract.source_facts], contract.idm_unit_brief)
+    whole_components = complete_source_locked_components(
+        contract, request.locale, source_locked_components, single_choice_builder=question, faq_builder=faq,
+        html_renderer=render_idm_source_locked_html, diagram_builder=idm_source_step_diagram)
     return IdmUnitDeps(
         build_instance_model=build_staged_instance_response_model,
         bind_instance_payload=bind_staged_instance_payload,
@@ -132,7 +140,7 @@ def _idm_unit_deps(request: RagLessonAuthorUnitV2Request) -> IdmUnitDeps:
         merge_repair=lambda unit, delta, targets, coverage: merge_staged_component_payload_delta(
             unit, delta, targets, coverage_targets=coverage),
         source_locked_unit=build_orchestration_v2_source_locked_unit(
-            contract, request.locale, components=source_locked_components),
+            contract, request.locale, components=whole_components),
         source_locked_components=source_locked_components,
         purity_context=build_learner_content_purity_context(
             {"source_fact_ids": list(contract.unit_source_fact_ids), "supporting_evidence_fact_ids": supporting},

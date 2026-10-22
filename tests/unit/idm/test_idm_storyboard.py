@@ -160,6 +160,15 @@ def served_ordinal(body: dict[str, Any], index: int) -> int:
     return ordinal + (practice_key_shift(practice["practice_id"]) if practice else 0)
 
 
+def rehashed_brief(body: dict[str, Any]) -> dict[str, Any]:
+    """Recompute the brief hash, then the contract hash, as Node does after any change."""
+
+    brief = body["unit_contract"]["idm_unit_brief"]
+    brief["brief_hash"] = brief_hash_of(brief)
+    rehash_contract(body["unit_contract"])
+    return body
+
+
 def slot_repair(writer: dict[str, Any], index: int, **changes: Any) -> dict[str, Any]:
     payload = {k: v for k, v in writer["components"][f"c{index}"].items() if k != "covered_source_fact_ids"}
     return {"components": {f"c{index}": {**payload, **changes}}}
@@ -326,8 +335,25 @@ class UnitEndpointTests(StoryboardEndpointTestCase):
                           ("repair", "failed", "IDM_W5_INSTANCE_INVALID"),
                           ("deterministic", "fallback", "IDM_W5_UNIT_FALLBACK")])
 
-    async def test_no_buildable_fallback_is_422(self) -> None:
+    async def test_a_unit_no_source_rebuilds_falls_back_on_the_lessons_sentences(self) -> None:
+        # Run 5496155c: the question slot of lsn_003 u2 rests on prose; the whole-unit fallback asks whether the lesson
+        # states one of its sentences and the note tells the author to write it again (it was a 422 before).
         status, data, _ = await self.post(escalate_body(), FakeGenerate(**{WRITER: ["{}", "{}"]}))
+        self.assertEqual(status, 200)
+        self.assert_envelope(data, "structured_fallback", "review_required", "reserved_upper_bound")
+        question = data["unit"]["components"][0]
+        self.assertTrue(question["question"].startswith("Đọc nhận định sau:\n- "))
+        self.assertIn("khối 1 (Quiz)", data["unit"]["idm_quality"]["author_note"])
+
+    async def test_no_buildable_fallback_is_422(self) -> None:
+        # Without a single sentence of the lesson to repeat, nothing is invented: the unit still answers 422.
+        body = escalate_body()
+        contract = body["unit_contract"]
+        for number, fact in enumerate(contract["source_facts"], start=1):
+            fact["fact_text"] = f"BÀI TẬP {number}"
+        contract["idm_unit_brief"]["lesson_context_facts"] = []
+        body = rehashed_brief(body)
+        status, data, _ = await self.post(body, FakeGenerate(**{WRITER: ["{}", "{}"]}))
         self.assertEqual((status, data["detail"]["code"]), (422, "ORCHESTRATION_V2_UNIT_FALLBACK_INVALID"))
 
     async def test_incomplete_practice_gets_one_slot_repair(self) -> None:

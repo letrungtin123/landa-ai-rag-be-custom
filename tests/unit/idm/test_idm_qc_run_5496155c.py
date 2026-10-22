@@ -7,6 +7,7 @@ is a local fake.
 from __future__ import annotations
 
 import json
+import re
 import unittest
 from typing import Any
 
@@ -21,9 +22,11 @@ from app.idm.source_flags import (
     flag_sentences,
     is_transition,
 )
+from app.idm.source_locked import render_idm_source_locked_html
 from app.idm.text import glued_words
 from app.idm.worksheet import plain_self_check
 from tests.support.idm_test_support import rehash_contract
+from tests.unit.idm.test_idm_fallback_matrix import procedure_steps, unit_findings, with_fact_texts
 from tests.unit.idm.test_idm_qc_feedback import (
     CONFLICT,
     LINES,
@@ -36,6 +39,8 @@ from tests.unit.idm.test_idm_storyboard import (
     WRITER,
     FakeGenerate,
     StoryboardEndpointTestCase,
+    body_for,
+    escalate_body,
     escalate_writer,
     judge,
     severity_body,
@@ -197,3 +202,124 @@ class SelfCheckHeadingTests(StoryboardEndpointTestCase):
         status, data, _ = await self.post(body, FakeGenerate(**{WRITER: [writer], JUDGE: [judge()]}))
         self.assertEqual(status, 200)
         self.assertNotIn("tiêu chí", data["unit"]["idm_quality"]["author_note"].lower())
+
+
+# The shapes of the run's fallback units (synthetic text). A slide table the PDF reader broke over lines: the header row
+# wrapped inside a cell, row labels cut before their bracket, a label word on its own line (c1.l3.u2).
+BROKEN_TABLE = {
+    "d1-c5-f1": "1.3 TỪ BẢN ĐỒ CẤP ĐỘ TỚI CÁCH XỬ LÝ KHIẾU NẠI",
+    "d1-c5-f2": "Mỗi khiếu nại có một mức độ riêng. Mức độ quyết định ai xử lý và trong bao lâu.",
+    "d1-c5-f3": "Row 1: Cấp độ | DẤU HIỆU(Khách hàng nói gì?) | CÁCH",
+    "d1-c5-f4": "XỬ LÝ(Ai làm gì?) | THỜI HẠN(Bao lâu?)",
+    "d1-c5-f5": "Row 2: 1. THẤP",
+    "d1-c5-f6": "(Ảnh hưởng nhỏ) | Không thiệt hại tài chính. | Nhân viên tự xử lý. | Trong ngày.",
+    "d1-c5-f7": "Row 3: 2. TRUNG BÌNH",
+    "d1-c5-f8": "(Ảnh hưởng vừa) | Thiệt hại dưới 50 triệu đồng. | Báo trưởng nhóm. | Trong 24 giờ.",
+    "d1-c5-f9": "Row 4: 3. CAO / NGHIÊM",
+    "d1-c5-f10": "TRỌNG",
+    "d1-c5-f11": "(Ảnh hưởng lớn) | Liên quan an toàn hoặc pháp lý. | Escalate cho quản lý. | Ngay lập tức.",
+}
+# A profile slide (c1.l3.u3, c1.l3.u4): a header row alone, a label cut before its bracket closes and its "* " bullet,
+# the next column's label after a "|" with a list marker, and a word the PDF glued together.
+BROKEN_PROFILE = {
+    "d1-c2-f1": "1.3 HỒ SƠ KHÁCH HÀNG (VD1: TRƯỞNG PHÒNG MUA HÀNG)",
+    "d1-c2-f2": "Row 1: VIỆC CẦN LÀM - Mục tiêu | NỖI ĐAU - Điều cản trở | LỢI ÍCH - Điều mong đợi",
+    "d1-c2-f3": "Row 2: Về Chức năng (Functional Job)",
+    "d1-c2-f4": "Chọn nhà cung cấp đúng hạn, đúng ngân sách và đúng quy trình mua sắm của công ty.",
+    "d1-c2-f5": "Về Ý nghĩa / Xã hội (Social/Meaningful",
+    "d1-c3-f1": "Job): * Được cấp trên tin tưởng giao các gói mua sắm lớn hơn trong năm tới.",
+    "d1-c3-f2": "Kiểm soát rủi ro khi đổi nhà cung cấp mới cho dự án trọng điểm. | - Về Chức năng (Functional Pain)",
+    "d1-c3-f3": "Hồ sơ chào hàng dài dòng, thiếu số liệu so sánh nên phảiđọc lại nhiều lần.",
+    "d1-c3-f4": "Bị trễ tiến độ vì báo giá thiếu thông tin quan trọng. | -Về Chức năng (Functional Gain)",
+}
+# Classroom exercise slides only (c2.l2.u2, c3.l2.u1): no sentence of the unit states anything.
+EXERCISES = {
+    "d1-c8-f1": "BÀI TẬP 10 phút: CHỌN CÁCH XỬ LÝ",
+    "d1-c8-f2": "Câu hỏi thảo luận: Nhóm bạn đã gặp khiếu nại nào khó xử lý nhất?",
+    "d1-c8-f3": "Thực hành: Các nhóm được phát 4 khiếu nại mẫu và chọn ra đúng 2 khiếu nại cần escalate ngay",
+}
+
+
+def facts_of(body: dict[str, Any], texts: dict[str, str]) -> dict[str, Any]:
+    keys = [fact["fact_key"] for fact in body["unit_contract"]["source_facts"]]
+    return with_fact_texts(body, {key: text for key, text in zip(keys, texts.values(), strict=False)})
+
+
+class FallbackOnlyRunShapeTests(StoryboardEndpointTestCase):
+    """The lead's verification of run 5496155c: 9 of 10 real unit requests answered fallback_only with 422 (already at
+    db022e7), and a fallback slot reached learners with broken table text (c1.l3.u3). Every shape below gives a valid,
+    clean, provider-free unit marked for review, with a plain reason."""
+
+    async def fallback(self, body: dict[str, Any], locale: str = "vi") -> dict[str, Any]:
+        request = {**body, "locale": locale, "fallback_only": True}
+        status, data, provider = await self.post(request)
+        self.assertEqual((status, provider.calls), (200, []), data.get("detail"))
+        self.assert_envelope(data, "structured_fallback", "review_required", "deterministic_fallback")
+        self.assertEqual(unit_findings(request, data["unit"]), (None, []))
+        for component in data["unit"]["components"]:
+            text = re.sub(r"<[^>]+>", "\n", str(component.get("html") or ""))
+            self.assertNotRegex(text, r"(?m)^Row \d|\s\|\s|(?<=\s)\*(?=\s)|\): \*")
+        return data
+
+    async def test_a_broken_slide_table_is_one_table(self) -> None:
+        data = await self.fallback(facts_of(procedure_steps(), BROKEN_TABLE))
+        html = data["unit"]["components"][0]["html"]
+        self.assertIn("<h3>1.3 Từ bản đồ cấp độ tới cách xử lý khiếu nại</h3>", html)
+        self.assertEqual(html.count("<table>"), 1)
+        self.assertEqual(html.count("<tr>"), 4)
+        self.assertIn("<th>DẤU HIỆU(Khách hàng nói gì?)</th><th>CÁCH XỬ LÝ(Ai làm gì?)</th>", html)
+        self.assertIn("<td>3. CAO / NGHIÊM TRỌNG (Ảnh hưởng lớn)</td>", html)
+        self.assertNotIn("<h3>TRỌNG", html)
+
+    async def test_a_profile_slide_reads_as_headings_and_text(self) -> None:
+        for locale in ("vi", "en"):
+            data = await self.fallback(facts_of(body_for(0, 0, 0), BROKEN_PROFILE), locale)
+            html = data["unit"]["components"][0]["html"]
+            self.assertIn("<h3>1.3 Hồ sơ khách hàng (VD1: trưởng phòng mua hàng)</h3>", html)
+            self.assertIn("<ul><li>VIỆC CẦN LÀM - Mục tiêu</li><li>NỖI ĐAU - Điều cản trở</li>", html)
+            self.assertIn("<strong>Về Ý nghĩa / Xã hội (Social/Meaningful Job):</strong> Được cấp trên tin tưởng", html)
+            self.assertIn("<h3>Về Chức năng (Functional Pain)</h3>", html)
+            self.assertNotIn("(Social/Meaningful</", html)
+            # A glued word stays as written and the note names it.
+            self.assertIn("phảiđọc", html)
+            note = data["unit"]["idm_quality"]["author_note"]
+            self.assertIn("«phảiđọc»", note)
+            # The question slot holds no structure: it asks about a sentence of the lesson, the note says to rewrite it.
+            question = data["unit"]["components"][1]
+            self.assertEqual(question["question"].splitlines()[1],
+                             "- Chọn nhà cung cấp đúng hạn, đúng ngân sách và đúng quy trình mua sắm của công ty.")
+            self.assertEqual(sum(choice["correct"] for choice in question["choices"]), 1)
+            self.assertIn("khối 2 (Quiz)" if locale == "vi" else "block 2 (Quiz)", note)
+
+    async def test_exercise_slides_fall_back_on_the_lessons_sentences(self) -> None:
+        body = facts_of(escalate_body(), EXERCISES)
+        data = await self.fallback(body)
+        context = [fact["fact_text"] for fact in body["unit_contract"]["idm_unit_brief"]["lesson_context_facts"]]
+        question, faq = data["unit"]["components"]
+        self.assertIn(question["question"].splitlines()[1][2:], context)
+        self.assertTrue(all(item["answer"] in context for item in faq["items"]))
+        self.assertIn("Tài liệu không đủ dữ kiện để dựng khối 1 (Quiz); khối 2 (Hỏi đáp)",
+                      data["unit"]["idm_quality"]["author_note"])
+
+
+class SourceLockedSlideTextTests(unittest.TestCase):
+    """Item 10 at the renderer: what the PDF reader leaves of a profile slide reads as clean text (synthetic lines with
+    the shapes of c1.l3.u3)."""
+
+    def test_cut_labels_and_cells_are_mended_never_shown_raw(self) -> None:
+        html = render_idm_source_locked_html("Hồ sơ mẫu", [
+            "Row 1: VIỆC CẦN LÀM - Mục tiêu | NỖI ĐAU - Điều cản trở | LỢI ÍCH - Điều mong đợi",
+            "Row 2: Về Chức năng (Functional Job): * Chọn nhà cung cấp đúng hạn và đúng ngân sách của công ty.",
+            "Về Ý nghĩa / Xã hội (Social/Meaningful",
+            "Job): * Được cấp trên tin tưởng giao gói mua sắm lớn hơn. | - Về Chức năng (Functional Pain): * Bị",
+            "\"bủa vây\" bởi hồ sơ chào hàng dài dòng, thiếu số liệu so sánh.",
+            "Pain): * Sợ bị coi là một \"nút thắt\"",
+            "(bottleneck) làm chậm tiến độ của cả phòng.",
+        ], locale="vi")
+        text = re.sub(r"<[^>]+>", "\n", html)
+        self.assertNotRegex(text, r"(?m)\s\|\s|(?<=\s)\*(?=\s)|\): \*|^(?:Job|Pain)\)")
+        self.assertIn("<ul><li>VIỆC CẦN LÀM - Mục tiêu</li>", html)
+        self.assertIn("Về Ý nghĩa / Xã hội (Social/Meaningful Job):</strong> Được cấp trên tin tưởng", html)
+        self.assertIn("Về Chức năng (Functional Pain):</strong> Bị &quot;bủa vây&quot; bởi hồ sơ", html)
+        self.assertIn("<p>Sợ bị coi là một &quot;nút thắt&quot; (bottleneck) làm chậm tiến độ của cả phòng.</p>", html)
+        self.assertNotIn("<h3>", html)

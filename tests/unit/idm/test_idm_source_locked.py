@@ -40,10 +40,11 @@ class IdmHtmlRendererTests(unittest.TestCase):
                            "Mọi hoạt động quản trị phải được tích hợp thành một cấu trúc vững chãi.")
         self.assertNotIn("</h3><h3>", html)
         self.assertEqual(html.count("<h3>"), 1)
-        self.assertIn("<ul><li>TRỤ CỘT 01</li><li>Business Excellence</li><li>TRỤ CỘT 02</li></ul>", html)
+        # Run 5496155c: labels in capitals are written in sentence case (codes such as ERA5.0 keep theirs).
+        self.assertIn("<ul><li>Trụ cột 01</li><li>Business Excellence</li><li>Trụ cột 02</li></ul>", html)
         self.assertIn("<h3>ERA5.0 Connection</h3><p>Mọi hoạt động", html)
         two = self.render("CHƯƠNG 01", "WHY CHANGE? • BỐI CẢNH MỚI", "Môi trường kinh tế đã thay đổi hoàn toàn.")
-        self.assertIn("<h3>CHƯƠNG 01 - WHY CHANGE? • BỐI CẢNH MỚI</h3>", two)
+        self.assertIn("<h3>Chương 01 - Why change? • bối cảnh mới</h3>", two)
         trailing = self.render("Một đoạn nội dung đầy đủ để mở đầu phần này.", "Ghi chú cuối")
         self.assertTrue(trailing.endswith("<p>Ghi chú cuối</p>"))
 
