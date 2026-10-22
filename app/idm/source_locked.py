@@ -93,9 +93,9 @@ _FILL_LEADER_RE: Final = re.compile(r"[.…_·]{4,}")
 # Run 5496155c: what the PDF reader left of a slide table. A "*" bullet after a label ("Job): * Sàng lọc") or alone; the
 # cell separator inside a line that is no table row ("… chung. | - Về Chức năng (Functional Pain): * Bị") and the list
 # marker that opens the next cell ("- Về", "-Về").
-# Review of dfb6db2 (item 4): only such a bullet star (after a label, a bracket or a sentence end) or one left at the
-# end of a line goes; a star between two operands ("Doanh thu trung bình * Số năm") is the formula's.
-_STAR_RE: Final = re.compile(r"(?<=[:);.])[ \t]*\*[ \t]+|[ \t]+\*[ \t]*$")
+# Review of dfb6db2 (item 4): only such a bullet star (after a label or a sentence end) or one ending a line goes; a
+# star between operands ("Doanh thu trung bình * Số năm", "(Tác động + Mức khẩn) * Khả thi") is the formula's.
+_STAR_RE: Final = re.compile(r"(?<=[:;.])[ \t]*\*[ \t]+|[ \t]+\*[ \t]*$")
 _CELL_SEPARATOR_RE: Final = re.compile(r"[ \t]+\|[ \t]+")
 # A "-" before a digit is a sign ("| -5% | +3% |"), never a list marker (review of dfb6db2, item 4).
 _CELL_MARKER_RE: Final = re.compile(r"^(?:[*•][ \t]*|-[ \t]*(?![\d\s]))(?=\S)")
@@ -105,7 +105,9 @@ STATEMENT_END_RE: Final = re.compile(r"[.!…]$")
 EXERCISE_RE: Final = re.compile(r"^\W*(?:bai tap|cau hoi|thao luan|thuc hanh|exercise|question|discussion|homework)\b")
 _SENTENCE_INSIDE_RE: Final = re.compile(r"[.!?…][ \t]+\S")
 _CLOSING_MARKS: Final = "\"')" + chr(0x201D)
-_QUOTE_OPENINGS: Final = "\"" + chr(0x201C)
+# A word that introduces the quotation on the next line ("… cần tránh câu" + "“Việc này …”").
+_QUOTE_LEAD_RE: Final = re.compile(r"\b(?:cau|loi|rang|noi|hoi|chu|khau hieu|thong diep|cum tu|says?|said|asks?"
+                                   r"|asked|phrase|words?|slogan)$")
 _WORD_MARKS: Final = ".,;:!?()[]\"'" + chr(0x201C) + chr(0x201D)
 # The end of a label whose start the PDF reader lost ("Pain): Sợ bị coi là …" after a repeated label line was dropped as
 # a duplicate): the text after it is kept, the cut word goes.
@@ -144,12 +146,19 @@ def _structural(line: str) -> bool:
                 or CHECKLIST_ITEM_RE.match(line) or CALLOUT_RE.match(line))
 
 
+def _whole_quote(line: str) -> bool:
+    """A line that is one quotation ("“Tôi cần …”"), never a quoted word that starts a longer line (review 4)."""
+
+    text = line.strip()
+    closing = {chr(0x201C): chr(0x201D), '"': '"'}.get(text[:1])
+    return closing is not None and len(text) > 1 and text.find(closing, 1) == len(text) - 1
+
+
 def _is_label(line: str) -> bool:
-    """A short line without closing punctuation; never a quotation (review of dfb6db2, item 10: "“Tôi cần …”" was
-    joined to the heading above it), whose closing mark may follow its full stop."""
+    """A short line without closing punctuation (a closing mark may follow it), never a whole quotation (item 10)."""
 
     return (len(line) <= _LABEL_MAX_CHARS and len(line.split()) <= _LABEL_MAX_WORDS
-            and line[:1] not in _QUOTE_OPENINGS and not _TERMINAL_RE.search(line.rstrip(_CLOSING_MARKS))
+            and not _whole_quote(line) and not _TERMINAL_RE.search(line.rstrip(_CLOSING_MARKS))
             and not TABLE_ROW_RE.match(line)
             and not _BULLET_RE.match(line) and not CHECKLIST_ITEM_RE.match(line) and not CALLOUT_RE.match(line))
 
@@ -180,12 +189,15 @@ def _continues(previous: str, current: str) -> bool:
     if (_TERMINAL_RE.search(previous) or TABLE_ROW_RE.match(previous) or _structural(current)
             or not (labelled or _sentence_like(previous))):
         return False
-    # Review of dfb6db2 (item 10): a quotation after a list item or a heading is a line of its own (a labelled line,
-    # "Về Chức năng (Functional Pain): Bị" + "\"bủa vây\" bởi …", goes on).
-    if current[:1] in _QUOTE_OPENINGS and (_structural(previous)
-                                           or (_is_label(previous) and not labelled)):
+    folded = idm_fold(previous)
+    if _CONNECTOR_END_RE.search(folded):
+        return True
+    # Item 10 (narrowed by review 4): a whole-line quotation after a list item or a heading stands apart; a quotation
+    # the sentence introduces ("… cần tránh câu" + "“…”") or a labelled line ("…(Functional Pain): Bị") goes on.
+    if (_whole_quote(current) and not _QUOTE_LEAD_RE.search(folded)
+            and (_structural(previous) or (_is_label(previous) and not labelled))):
         return False
-    if _CONNECTOR_END_RE.search(idm_fold(previous)) or current[:1] in _OPENING_CONTINUATION:
+    if current[:1] in _OPENING_CONTINUATION:
         return True
     if len(previous) < _WRAP_MIN_PREVIOUS_CHARS or (labelled and not _sentence_like(previous)):
         return False
@@ -213,7 +225,7 @@ def _closes(previous: str, current: str, joined: int) -> bool:
     "(Chữ" + "I" + "Implementation trong G-STIC): …"), within the join bounds; never a new table row."""
 
     return (_open_brackets(previous) > 0 and joined < _BRACKET_JOIN_LINES and not TABLE_ROW_RE.match(current)
-            and current[:1] not in _QUOTE_OPENINGS and len(previous) + len(current) < _BRACKET_JOIN_CHARS)
+            and not _whole_quote(current) and len(previous) + len(current) < _BRACKET_JOIN_CHARS)
 
 
 def _row_goes_on(previous: str, current: str) -> bool:
@@ -342,8 +354,8 @@ def _flush_or_list(grid: list[list[str]], parts: list[str], flush: Callable[[], 
 
 @dataclass(frozen=True)
 class _Names:
-    """The names of a unit's lines: known place and personal names, runs of capitalised Vietnamese words inside a
-    sentence (``TitleCaser``) and single words a sentence writes capitalised ("công ty Vinamilk")."""
+    """Known place and personal names, runs of capitalised Vietnamese words inside a sentence (``TitleCaser``) and
+    single brand-like words a sentence capitalises ("công ty Vinamilk"); never "từng Điểm chạm" (review 4)."""
 
     caser: TitleCaser
     words: frozenset[str]
@@ -351,16 +363,17 @@ class _Names:
     @classmethod
     def of(cls, lines: Sequence[str]) -> _Names:
         words: set[str] = set()
+        lower = {core for line in lines for token in line.split() if (core := token.strip(_WORD_MARKS)).islower()}
         for line in lines:
             if _is_label(line) or not _sentence_like(line):
                 continue
             tokens = line.split()
             for position, token in enumerate(tokens[1:], 1):
                 core = token.strip(_WORD_MARKS)
-                if (len(core) > 1 and core[0].isupper() and core[1:].islower()
+                if (len(core) > 1 and core.isascii() and core[0].isupper() and core[1:].islower()
                         and not tokens[position - 1].endswith((".", ":", "!", "?"))):
                     words.add(core.lower())
-        return cls(TitleCaser.from_texts(lines), frozenset(words))
+        return cls(TitleCaser.from_texts(lines), frozenset(words - lower))
 
     def positions(self, lowered: Sequence[str]) -> set[int]:
         return self.caser.name_positions(lowered) | {index for index, word in enumerate(lowered) if word in self.words}
@@ -373,11 +386,9 @@ def _capitalised(word: str) -> str:
 
 def _sentence_case(label: str, names: _Names | None = None) -> str:
     """A heading in capitals in sentence case: "1.3 HỒ SƠ KHÁCH HÀNG B2B (VD2: NGƯỜI RA QUYẾT ĐỊNH)" -> "1.3 Hồ sơ
-    khách hàng B2B (VD2: người ra quyết định)"; codes and abbreviations keep their capitals (``keeps_capitals``).
-
-    Review of dfb6db2 (item 11): "VINAMILK TẠI HÀ NỘI" lost its names. A known place or personal name and a name the
-    unit's other lines write capitalised (``names``) keep their capital: "CHI NHÁNH VINAMILK TẠI ĐÀ NẴNG" under "công
-    ty Vinamilk …" reads "Chi nhánh Vinamilk tại Đà Nẵng"."""
+    khách hàng B2B (VD2: người ra quyết định)"; codes and abbreviations keep their capitals (``keeps_capitals``), and
+    the ``names`` of the unit their capital (item 11): "CHI NHÁNH VINAMILK TẠI ĐÀ NẴNG" -> "Chi nhánh Vinamilk tại Đà
+    Nẵng"."""
 
     letters = [char for char in label if char.isalpha()]
     if not letters or sum(char.isupper() for char in letters) / len(letters) < _UPPER_LABEL_SHARE:

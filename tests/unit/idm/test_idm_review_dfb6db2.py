@@ -468,3 +468,30 @@ class UnclearDefinitionTests(unittest.TestCase):
                       "follow as written", prompt)
         self.assertIn("conflict", REVIEW_FLAG_TYPES)
         self.assertNotIn("unclear", REVIEW_FLAG_TYPES)
+
+
+class Review4RendererTests(unittest.TestCase):
+    """Review 4 of dfb6db2..266d5df: M1 (a quoted word inside a wrapped sentence goes on), M2 (a slide term
+    capitalised mid-sentence is no name), L1 (a star after a bracket is an operator)."""
+
+    def test_a_wrapped_sentence_with_a_quote_stays_one_paragraph(self) -> None:
+        for facts in (("Khách hàng sẽ nhớ mãi một trải nghiệm",
+                       "\"Wow\" ở tuyến trước nếu hậu trường vận hành chuẩn xác."),
+                      ("Doanh nghiệp B2B thường gặp những", "“nút thắt” rủi ro trong khâu phê duyệt nội bộ kéo dài."),
+                      ("Nhân viên tuyến đầu cần tránh câu", "“Việc này không thuộc bộ phận của tôi.”")):
+            with self.subTest(first=facts[0]):
+                self.assertEqual(rendered(*facts).count("<p>"), 1)
+                self.assertNotIn("<h3>", rendered(*facts))
+
+    def test_a_slide_term_capitalised_mid_sentence_is_no_name(self) -> None:
+        self.assertIn("<h3>Triết lý cốt lõi (quan điểm quản trị)</h3>", rendered(
+            "TRIẾT LÝ CỐT LÕI (QUAN ĐIỂM QUẢN TRỊ)",
+            "Doanh nghiệp tối ưu từng Điểm chạm với khách hàng trong hành trình."))
+        self.assertIn("<h3>Chiến lược giá và phân phối</h3>", rendered(
+            "CHIẾN LƯỢC GIÁ VÀ PHÂN PHỐI", "Mô hình gồm Sản phẩm, Giá, Phân phối và Xúc tiến cho mỗi thị trường."))
+        self.assertIn("<h3>Chi nhánh Vinamilk tại Đà Nẵng</h3>", rendered(
+            "CHI NHÁNH VINAMILK TẠI ĐÀ NẴNG", "Công ty Vinamilk mở thêm kênh phân phối cho các tỉnh miền Trung."))
+
+    def test_a_star_after_a_bracket_is_an_operator(self) -> None:
+        self.assertIn("(Tác động + Mức khẩn) * Khả thi", rendered(
+            "Điểm ưu tiên = (Tác động + Mức khẩn) * Khả thi của từng sáng kiến trong danh mục."))
