@@ -15,6 +15,15 @@ from app.idm.contracts import IdmIssueV1, brief_hash_of
 from app.idm.notes import build_course_notes
 from app.idm.prompts_module import module_prompt
 from app.idm.prompts_unit import _WORKSHEET_RULE
+from app.idm.quiz_text import (
+    EXPLANATION_NAMES_ONLY_CODE,
+    QUESTION_ITEM_NOUN_CODE,
+    QUESTION_TWICE_CODE,
+    explanation_report,
+    lay_out_quiz,
+    number_item_letters,
+    question_report,
+)
 from app.idm.source_flags import (
     REVIEW_FLAG_TYPES,
     SOFT_FLAG_TYPES,
@@ -411,3 +420,85 @@ class WorksheetInputTests(StoryboardEndpointTestCase):
         self.assertIn("writes it out in full", module_prompt(
             "vi", module_plan={}, lesson_plans=[], audience="", objectives=[], must_dos=[], course_blocks=[],
             facts=[], allowed_components=["html"]))
+
+
+def stem_quiz(question: str, choices: list[tuple[str, bool]], explanation: str) -> dict[str, Any]:
+    return {"type": "problem", "problem_type": "multiple_choice", "question": question,
+            "choices": [{"text": text, "correct": correct} for text, correct in choices], "explanation": explanation}
+
+
+# The shape of c2.l2.u2: items "Phương án 1-4", options that only name them, explanation lines without their content.
+NOUN_ITEMS = stem_quiz(
+    "Bạn nhận được bốn đề xuất lời cam kết sau:\n- Phương án 1: Dành cho trưởng phòng mua hàng, giảm thời gian duyệt "
+    "báo giá nhờ cổng duyệt tự động.\n- Phương án 2: Giải pháp quản lý kho toàn diện giúp tiết kiệm chi phí.\n- "
+    "Phương án 3: Hỗ trợ các chuỗi bán lẻ tăng doanh thu mà không tốn thời gian.\n- Phương án 4: Ứng dụng độc quyền "
+    "giúp nhân viên kinh doanh học sản phẩm mới trong 5 phút mỗi ngày.\nĐề xuất nào đủ ba thành phần?",
+    [("Phương án 2", False), ("Phương án 1", True), ("Phương án 3", False)],
+    "Nguyên tắc: lời cam kết đủ ba thành phần.\nA - Sai vì phương án thiếu đối tượng mục tiêu cụ thể.\nB - Đúng vì "
+    "phương án nêu đủ ba phần.\nC - Sai vì phương án thiếu cách làm khác biệt.")
+# The shapes of c2.l4.u2 (a question before the list and on the last line) and c3.l1.u1 (one in the context line).
+ASKED_BEFORE_LIST = ("Khách hàng chờ báo giá 5 ngày.\nCách nào xử lý tận gốc điểm đau này?\n- Cách 1: Gửi thư xin "
+                     "lỗi.\n- Cách 2: Duyệt báo giá tự động trong ngày.\nCách nào đúng nhất?")
+ASKED_IN_CONTEXT = ("Giả sử khách hàng phàn nàn vì đơn kích hoạt trễ. Nhận định nào đúng?\n- Nhận định 1: Do thái độ "
+                    "nhân viên.\n- Nhận định 2: Do hệ thống hậu trường.\nBạn đồng ý với nhận định nào?")
+
+
+class StemNamingTests(StoryboardEndpointTestCase):
+    """Items 4 and 5: stem items are never named like the answer options, an option that only names an item gets an
+    explanation that says what the item is, and a stem asks one question, on its last line."""
+
+    def test_items_named_like_the_options_are_found(self) -> None:
+        laid = lay_out_quiz(NOUN_ITEMS)[0]
+        self.assertIn(QUESTION_ITEM_NOUN_CODE, question_report(laid))
+        self.assertEqual(explanation_report(laid)[EXPLANATION_NAMES_ONLY_CODE],
+                         ["the lines of A, B, C never say what their item is"])
+        renamed = json.loads(json.dumps(NOUN_ITEMS, ensure_ascii=False).replace("Phương án", "Cách"))
+        renamed["explanation"] = ("Nguyên tắc: lời cam kết đủ ba thành phần.\nA - Sai vì quản lý kho chưa nêu đối "
+                                  "tượng mục tiêu.\nB - Đúng vì trưởng phòng mua hàng, duyệt báo giá và cổng duyệt tự "
+                                  "động đủ ba phần.\nC - Sai vì tăng doanh thu chưa nêu cách làm khác biệt.")
+        laid = lay_out_quiz(renamed)[0]
+        self.assertEqual({**question_report(laid), **explanation_report(laid)}, {})
+
+    def test_a_lettered_item_gets_a_neutral_noun_only_when_certain(self) -> None:
+        lettered = stem_quiz("Bối cảnh:\n- Lựa chọn A: giảm giá\n- Lựa chọn B: tặng quà\nLựa chọn nào giữ khách?",
+                             [("Lựa chọn A", False), ("Lựa chọn B", True)], "Nguyên tắc: x.\nA - Sai.\nB - Đúng.")
+        self.assertEqual(number_item_letters(lettered)[0]["question"],
+                         "Bối cảnh:\n- Cách 1: giảm giá\n- Cách 2: tặng quà\nLựa chọn nào giữ khách?")
+        english = stem_quiz("Plans:\n- Option A: cut prices\n- Option B: add a gift\nWhich option keeps margin?",
+                            [("Option A", False), ("Option B", True)], "Principle: x.\nA - No.\nB - Yes.")
+        self.assertEqual([choice["text"] for choice in number_item_letters(english)[0]["choices"]],
+                         ["Approach 1", "Approach 2"])
+        # Another generic label keeps its noun; a name with a letter and the article "a" are never touched.
+        story = stem_quiz("Bối cảnh:\n- Kịch bản A: chờ\n- Kịch bản B: gọi lại\nChọn?",
+                          [("Kịch bản A", True), ("Kịch bản B", False)], "")
+        self.assertEqual(number_item_letters(story)[0]["question"], "Bối cảnh:\n- Kịch bản 1: chờ\n- Kịch bản 2: gọi "
+                                                                    "lại\nChọn?")
+        for name in ("Vitamin A", "Hạng B"):
+            kept = stem_quiz(f"Bối cảnh:\n- {name}: một\n- {name[:-1]}C: hai\nChọn?", [(name, True)], "")
+            self.assertEqual(number_item_letters(kept), (kept, 0))
+
+    def test_a_question_asked_twice_is_found(self) -> None:
+        for question in (ASKED_BEFORE_LIST, ASKED_IN_CONTEXT):
+            self.assertIn(QUESTION_TWICE_CODE, question_report({"question": question}), question)
+        once = ("Khách hỏi: “Bao giờ có báo giá?”. Bạn cần trả lời theo quy trình.\n- Cách 1: Có cần duyệt lại?\n"
+                "- Cách 2: Gửi ngay.\nCách nào đúng?")
+        self.assertNotIn(QUESTION_TWICE_CODE, question_report({"question": once}))
+
+    async def test_one_repair_then_an_edit_note(self) -> None:
+        body = severity_body()
+        writer = severity_writer(body, explanation=LINES)
+        writer["components"]["c1"]["question"] = (
+            "Khách hàng gọi lần thứ hai vì đơn giao trễ, chưa có thiệt hại tài chính. Bạn xếp cấp nào?\n- Phương án 1: "
+            "Xếp cấp 1 vì chưa có thiệt hại.\n- Phương án 2: Xếp cấp 2 vì khách phàn nàn lần thứ hai.\n- Phương án 3: "
+            "Xếp cấp 3 và escalate ngay.\nKhiếu nại này thuộc cấp nào?")
+        provider = FakeGenerate(**{WRITER: [writer], REPAIR: [slot_repair(writer, 1)], JUDGE: [judge()]})
+        status, data, _ = await self.post(body, provider)
+        self.assertEqual(status, 200)
+        self.assertEqual(provider.names, [WRITER, REPAIR, JUDGE])
+        prompt = provider.calls[1]["prompt"]
+        self.assertIn("c1 IDM_W5_QUESTION_ITEM_NOUN at c1.question", prompt)
+        self.assertIn("c1 IDM_W5_QUESTION_ASKED_TWICE at c1.question", prompt)
+        self.assertEqual(data["quality_state"], "validated")
+        note = data["unit"]["idm_quality"]["author_note"]
+        self.assertIn("Nên biên tập khối 2 (Quiz): các ý trong đề được gọi là «Phương án 1, 2…»", note)
+        self.assertIn("đề hỏi hai lần", note)

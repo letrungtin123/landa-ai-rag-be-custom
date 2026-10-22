@@ -65,17 +65,17 @@ class LetteredItemTests(unittest.TestCase):
             texts = [laid["question"], *(choice["text"] for choice in laid["choices"]), laid["explanation"]]
             self.assertFalse(any(LETTER_LABEL.search(text) for text in texts), texts)
             stem = str(laid["question"]).splitlines()
-            self.assertEqual([line[:14] for line in stem[1:5]],
-                             ["- Phương án 1:", "- Phương án 2:", "- Phương án 3:", "- Phương án 4:"])
+            # Run 5496155c: the options' own noun "phương án" becomes the neutral "cách" where items are renamed.
+            self.assertEqual([line[:9] for line in stem[1:5]], ["- Cách 1:", "- Cách 2:", "- Cách 3:", "- Cách 4:"])
             key = next(choice["text"] for choice in laid["choices"] if choice["correct"])
-            self.assertTrue(key.startswith("Phương án 2: Thiết kế tài liệu tóm tắt"), key)
+            self.assertTrue(key.startswith("Cách 2: Thiết kế tài liệu tóm tắt"), key)
             lines = str(laid["explanation"]).splitlines()
             self.assertEqual([line[:4] for line in lines[1:]], ["A - ", "B - ", "C - ", "D - "])
             letter = "ABCD"[[choice["correct"] for choice in laid["choices"]].index(True)]
             self.assertTrue(lines[1 + "ABCD".index(letter)].startswith(f"{letter} - Đúng vì"))
-        # Nothing but the item letters changes.
-        before = re.sub(r"(?i)(phương án) [A-D](?!\w)", r"\1 #", json.dumps(component, ensure_ascii=False))
-        after = re.sub(r"(?i)(phương án) [1-4](?!\w)", r"\1 #", json.dumps(numbered, ensure_ascii=False))
+        # Nothing but the item letters and their noun changes.
+        before = re.sub(r"(?i)phương án [A-D](?!\w)", "#", json.dumps(component, ensure_ascii=False))
+        after = re.sub(r"(?i)cách [1-4](?!\w)", "#", json.dumps(numbered, ensure_ascii=False))
         self.assertEqual(before, after)
 
     def test_a_stem_without_letter_labels_is_left_alone(self) -> None:

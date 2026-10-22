@@ -50,9 +50,13 @@ _QUIZ_TEXT_RULE: Final = f"""\
   question: the whole case and its question: one or two short context sentences and the question sentence, together
   at most {IDM_MCQ_STEM_PROSE_MAX_WORDS} words; when the case lists several items (groups, offers, figures, steps; at
   most {IDM_MCQ_STEM_MAX_ITEMS}, each at most {IDM_MCQ_STEM_ITEM_MAX_WORDS} words), each item on its own line starting
-  "- ", never labelled with the option letters A-H (after the options are shuffled they read as answer letters):
-  number them ("Phương án 1", "Tương tác 2") or name them; the question sentence itself alone on the last line,
-  ending with "?".
+  "- ", never labelled with the option letters A-H (after the options are shuffled they read as answer letters) and
+  never named with the options' own noun ("Phương án", "Lựa chọn", "Option": the answer options A-D are the
+  "phương án"): name them "Cách 1", "Đề xuất 1", "Tình huống 1", "Yêu cầu 1", "Nhân sự 1" or with a short
+  descriptive name. Ask ONE question, once: the question sentence itself alone on the last line, ending with "?";
+  no context line and no line before the list asks it (or another question) too. An option states its content (what
+  the learner chooses); an option that only names an item ("Cách 2") is allowed, but then its explanation line says
+  what that item is or does, never only "phương án này".
   explanation: line 1 the principle of the lesson that decides the answer (one sentence, two at most, at most
   {IDM_MCQ_EXPLANATION_PRINCIPLE_MAX_WORDS} words; never restate several definitions); then one line per option in
   the order A, B, C …: "A - Đúng vì …" or "A - Sai vì …" (English: "A - Correct because …" or "A - Incorrect
@@ -428,9 +432,21 @@ UNIT_RULE_TEXT: Final[dict[str, str]] = {
                                   "one): keep the facts that decide the answer and the question sentence; keep the "
                                   "options and the answer key",
     "IDM_W5_QUESTION_ITEM_LETTERS": "the question's listed items are named with the option letters A-H (\"Phương "
-                                    "án A\"): number them (\"Phương án 1\", \"Phương án 2\") or name them, and use "
-                                    "the same names in the options and the explanation; keep the facts and the "
-                                    "answer key",
+                                    "án A\"): name them with another noun and a number (\"Cách 1\", \"Đề xuất "
+                                    "1\") or a short name, and use the same names in the options and the "
+                                    "explanation; keep the facts and the answer key",
+    # Run 5496155c (owner decision 2026-10-22): items, questions and explanation lines that confuse the learner.
+    "IDM_W5_QUESTION_ITEM_NOUN": "the question's listed items are named with the noun of the answer options "
+                                 "(\"Phương án 1\", \"Lựa chọn 1\", \"Option 1\"), so a choice reads \"A: "
+                                 "Phương án 2\": name them with another noun (\"Cách 1\", \"Đề xuất 1\", \"Tình "
+                                 "huống 1\", \"Yêu cầu 1\") or a short name, the same in the options and the "
+                                 "explanation; keep the facts and the answer key",
+    "IDM_W5_QUESTION_ASKED_TWICE": "the question asks twice (a context line or the line before the list asks too): "
+                                   "keep ONE question sentence, alone on the last line; the earlier lines only give "
+                                   "the case; keep the facts, the options and the answer key",
+    "IDM_W5_EXPLANATION_NAMES_ONLY": "the listed option lines explain an option that only names a listed item "
+                                     "(\"Cách 2\") without saying what that item is: say in each line what the "
+                                     "item proposes and why it meets or breaks the criterion; keep the answer key",
     "IDM_W5_QUESTION_LENGTH": f"shorten the question: the context and the question sentence together at most "
                               f"{IDM_MCQ_STEM_PROSE_MAX_WORDS} words, at most {IDM_MCQ_STEM_MAX_ITEMS} listed items of "
                               f"at most {IDM_MCQ_STEM_ITEM_MAX_WORDS} words each; keep the facts that "

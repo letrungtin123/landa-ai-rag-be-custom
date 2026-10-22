@@ -133,6 +133,13 @@ HASH_HISTORY: tuple[tuple[str, str], ...] = (
     # practices included.
     ("27f0de5b869d672c2e022d809347e563a39f3804b80359c4e236997028322419",
      "A worksheet gives the data its task refers to"),
+    # Run 5496155c (owner decision 2026-10-22): QUIZ TEXT names stem items with another noun than the options'
+    # ("Cách 1", "Đề xuất 1", never "Phương án 1"), asks one question once on the last line, and an option that only
+    # names an item gets an explanation line about that item's content; three repair rules
+    # (IDM_W5_QUESTION_ITEM_NOUN, IDM_W5_QUESTION_ASKED_TWICE, IDM_W5_EXPLANATION_NAMES_ONLY) and the lettered-items
+    # rule asks for another noun.
+    ("803bdc52ad4009760d352ce3677c15c7313cf38417ddd8161d85e59f317f3bfa",
+     "Stem items never named like the options; one question, once"),
 )
 PROMPT_NAME = re.compile(r"(prompt|_rules?$|_suffix$|rule_lines?$|_hint$|^rule_line$|_cue_line$)")
 

@@ -47,7 +47,7 @@ from app.idm.policy import (
     QUIZ_FILLER_VI,
 )
 from app.idm.quiz_letters import number_item_letters, stem_item_letters
-from app.idm.text import EvidenceIndex, idm_fold, ngram_overlap
+from app.idm.text import EvidenceIndex, content_words, idm_fold, ngram_overlap
 
 EXPLANATION_LAYOUT_CODE: Final = "IDM_W5_EXPLANATION_LAYOUT"
 EXPLANATION_VERDICT_CODE: Final = "IDM_W5_EXPLANATION_VERDICT"
@@ -61,16 +61,25 @@ QUESTION_LIMIT_CODE: Final = "IDM_W5_QUESTION_OVER_LIMIT"
 # Review 2 (2026-10-22): stem items named with option letters that the server could not number with certainty
 # (``quiz_letters``): the text is kept, the writer renames them once, then an edit note.
 QUESTION_ITEM_LETTERS_CODE: Final = "IDM_W5_QUESTION_ITEM_LETTERS"
+# Run 5496155c (owner decision 2026-10-22): "A: Phương án 2" still confused learners. Stem items named with the options'
+# own noun ("Phương án 1 … 4", "Lựa chọn 1", "Option 1"); a stem that asks its question twice (on a context line and on
+# the last line, or before its list); an option that only names a stem item ("Phương án 2") whose explanation line never
+# says what that item is. Each is repaired once, then an edit note; the server deletes or renames nothing here.
+QUESTION_ITEM_NOUN_CODE: Final = "IDM_W5_QUESTION_ITEM_NOUN"
+QUESTION_TWICE_CODE: Final = "IDM_W5_QUESTION_ASKED_TWICE"
+EXPLANATION_NAMES_ONLY_CODE: Final = "IDM_W5_EXPLANATION_NAMES_ONLY"
 QUIZ_CODES: Final = frozenset({EXPLANATION_LAYOUT_CODE, EXPLANATION_VERDICT_CODE, EXPLANATION_FILLER_CODE,
                                EXPLANATION_LENGTH_CODE, EXPLANATION_RESTATES_CODE, QUESTION_LAYOUT_CODE,
-                               QUESTION_LENGTH_CODE, QUESTION_LIMIT_CODE, QUESTION_ITEM_LETTERS_CODE})
+                               QUESTION_LENGTH_CODE, QUESTION_LIMIT_CODE, QUESTION_ITEM_LETTERS_CODE,
+                               QUESTION_ITEM_NOUN_CODE, QUESTION_TWICE_CODE, EXPLANATION_NAMES_ONLY_CODE})
 QUESTION_CODES: Final = frozenset({QUESTION_LAYOUT_CODE, QUESTION_LENGTH_CODE, QUESTION_LIMIT_CODE,
-                                   QUESTION_ITEM_LETTERS_CODE})
+                                   QUESTION_ITEM_LETTERS_CODE, QUESTION_ITEM_NOUN_CODE, QUESTION_TWICE_CODE})
 # Findings about the wording, not the correctness: a slot kept with only these is a polish notice.
 # Owner decision 2026-10-22: a stem over the readability cap is one of them (an edit note, never "Cần xem"); one over
 # the 1,000 characters Node keeps is not (review m18): after its repair it falls back like any blocking finding.
 QUIZ_STYLE_CODES: Final = frozenset({EXPLANATION_FILLER_CODE, EXPLANATION_LENGTH_CODE, QUESTION_LAYOUT_CODE,
-                                     QUESTION_LENGTH_CODE, QUESTION_ITEM_LETTERS_CODE})
+                                     QUESTION_LENGTH_CODE, QUESTION_ITEM_LETTERS_CODE, QUESTION_ITEM_NOUN_CODE,
+                                     QUESTION_TWICE_CODE, EXPLANATION_NAMES_ONLY_CODE})
 # The quiz findings a writer's slot is kept with for review when the repair does not settle them.
 QUIZ_REVIEW_CODES: Final = QUIZ_CODES - {QUESTION_LIMIT_CODE}
 QUESTION_LAID_OUT: Final = "w5_problem_question_laid_out"
@@ -107,6 +116,16 @@ _SENTENCE_STARTS: Final = "\"'“‘(-"  # noqa: RUF001 - opening quotes
 _END_PUNCTUATION: Final = ".!?…"
 _TRAILING_JOINERS: Final = ";, \t"
 _MAX_HINT_ITEMS: Final = 6
+# A stem item named with the options' own noun and a number ("- Phương án 2: …"); a lettered one is renamed by
+# ``quiz_letters`` or reported as such.
+_OPTION_NOUN_ITEM_RE: Final = re.compile(r"^-[ \t]+(?:phương[ \t]+án|lựa[ \t]+chọn|options?)[ \t]+\d{1,2}\b",
+                                         re.IGNORECASE)
+# A named stem item: "- Nhận định 2: text", "- Phương án 1 (rẻ): text" (a name of at most 4 words and its number).
+_NAMED_ITEM_RE: Final = re.compile(r"^-[ \t]+(?P<name>[^\W\d_]+(?:[ \t]+[^\W\d_]+){0,3}[ \t]+(?:\d{1,2}|[A-H]))"
+                                   r"(?:[ \t]*\([^()\n]{1,80}\))?[ \t]*:[ \t]*(?P<text>\S.*)$")
+_MIN_NAMED_ITEMS: Final = 2
+# A quotation inside a stem line ("Khách hỏi: “Bao giờ giao?”"): its question mark asks nothing of the learner.
+_QUOTED_RE: Final = re.compile("\"[^\"]*\"|\u201c[^\u201d]*\u201d|\u00ab[^\u00bb]*\u00bb")
 
 
 def _normal(text: str) -> str:
@@ -383,6 +402,42 @@ def _verdicts(options: Sequence[tuple[str, str]], choices: Sequence[dict[str, An
     return missing, wrong
 
 
+def _named_items(lines: Sequence[str]) -> dict[str, str]:
+    """Folded item name -> its text, of the stem lines that name an item ("- Nhận định 2: …")."""
+
+    items = {}
+    for line in lines:
+        if match := _NAMED_ITEM_RE.match(line):
+            items[idm_fold(match.group("name"))] = match.group("text")
+    return items
+
+
+def _names_only(component: Mapping[str, Any], options: Sequence[tuple[str, str]]) -> list[str]:
+    """Letters of the options that only name a stem item ("Phương án 2") whose explanation line shares no content
+    word with that item's text: the learner reads "Sai vì phương án thiếu …" without knowing which content it is."""
+
+    items = _named_items(_lines(str(component.get("question") or "")))
+    if len(items) < _MIN_NAMED_ITEMS:
+        return []
+    found = []
+    for (letter, rest), choice in zip(options, _choices(component), strict=False):
+        name = idm_fold(str(choice.get("text") or "")).strip(" .:;,")
+        if name not in items:
+            continue
+        own = set(content_words(items[name])) - set(content_words(name))
+        if own and not own & set(content_words(_VERDICT_RE.sub("", rest.strip(), count=1))):
+            found.append(letter)
+    return found
+
+
+def _asks_early(lines: Sequence[str]) -> list[str]:
+    """The line numbers (1-based) before the last line that ask a question of the learner: a context line with a
+    sentence that ends with "?" outside a quotation (list items may be questions)."""
+
+    return [str(number) for number, line in enumerate(lines[:-1], start=1)
+            if not line.startswith(LIST_MARKER) and "?" in _QUOTED_RE.sub("", line)]
+
+
 def explanation_report(component: Mapping[str, Any], evidence: EvidenceIndex | None = None) -> dict[str, list[str]]:
     """Code -> the measured facts behind it (letters, phrases, numbers) for the explanation of ``component``."""
 
@@ -402,6 +457,8 @@ def explanation_report(component: Mapping[str, Any], evidence: EvidenceIndex | N
             report[EXPLANATION_VERDICT_CODE] = [f"the verdict of {', '.join(wrong)} contradicts the answer key"]
         if restating := _restating(options, choices):
             report[EXPLANATION_RESTATES_CODE] = [f"the lines of {', '.join(restating)} repeat their option"]
+        if named := _names_only(component, options):
+            report[EXPLANATION_NAMES_ONLY_CODE] = [f"the lines of {', '.join(named)} never say what their item is"]
     if fillers := filler_phrases(text, evidence):
         report[EXPLANATION_FILLER_CODE] = fillers[:_MAX_HINT_ITEMS]
     if over := _too_long(lines, options, text):
@@ -450,6 +507,10 @@ def question_report(component: Mapping[str, Any]) -> dict[str, list[str]]:
     if (letters := stem_item_letters(component)) and not number_item_letters(
             {**component, "choices": list(_choices(component))})[1]:
         report[QUESTION_ITEM_LETTERS_CODE] = [f"listed items named with the letters {', '.join(letters)}"]
+    if sum(bool(_OPTION_NOUN_ITEM_RE.match(line)) for line in lines) >= _MIN_NAMED_ITEMS:
+        report[QUESTION_ITEM_NOUN_CODE] = ["listed items named with the noun of the answer options"]
+    if early := _asks_early(lines):
+        report[QUESTION_TWICE_CODE] = [f"a question on line {', '.join(early)} before the last line"]
     return report
 
 
@@ -479,11 +540,36 @@ def quiz_hint(code: str, component: Mapping[str, Any], evidence: EvidenceIndex |
 
 
 __all__ = [
-    "EXPLANATION_FILLER_CODE", "EXPLANATION_LAID_OUT", "EXPLANATION_LAYOUT_CODE", "EXPLANATION_LENGTH_CODE",
-    "EXPLANATION_RESTATES_CODE", "EXPLANATION_VERDICT_CODE", "LINE_FEED", "LIST_MARKER", "OPTION_SEPARATOR",
-    "QUESTION_CODES", "QUESTION_ITEM_LETTERS_CODE", "QUESTION_LAID_OUT", "QUESTION_LAYOUT_CODE",
-    "QUESTION_LENGTH_CODE", "QUESTION_LIMIT_CODE", "QUIZ_CODES",
-    "QUIZ_REVIEW_CODES", "QUIZ_STYLE_CODES", "explanation_report", "filler_phrases", "lay_out_quiz",
-    "layout_explanation", "layout_question", "number_item_letters", "question_report", "quiz_findings", "quiz_hint",
-    "sentence_spans", "utf16_length",
+    "EXPLANATION_FILLER_CODE",
+    "EXPLANATION_LAID_OUT",
+    "EXPLANATION_LAYOUT_CODE",
+    "EXPLANATION_LENGTH_CODE",
+    "EXPLANATION_NAMES_ONLY_CODE",
+    "EXPLANATION_RESTATES_CODE",
+    "EXPLANATION_VERDICT_CODE",
+    "LINE_FEED",
+    "LIST_MARKER",
+    "OPTION_SEPARATOR",
+    "QUESTION_CODES",
+    "QUESTION_ITEM_LETTERS_CODE",
+    "QUESTION_ITEM_NOUN_CODE",
+    "QUESTION_LAID_OUT",
+    "QUESTION_LAYOUT_CODE",
+    "QUESTION_LENGTH_CODE",
+    "QUESTION_LIMIT_CODE",
+    "QUESTION_TWICE_CODE",
+    "QUIZ_CODES",
+    "QUIZ_REVIEW_CODES",
+    "QUIZ_STYLE_CODES",
+    "explanation_report",
+    "filler_phrases",
+    "lay_out_quiz",
+    "layout_explanation",
+    "layout_question",
+    "number_item_letters",
+    "question_report",
+    "quiz_findings",
+    "quiz_hint",
+    "sentence_spans",
+    "utf16_length",
 ]

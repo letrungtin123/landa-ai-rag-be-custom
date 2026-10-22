@@ -78,18 +78,32 @@ from app.idm.quiz_text import (
     EXPLANATION_FILLER_CODE,
     EXPLANATION_LAYOUT_CODE,
     EXPLANATION_LENGTH_CODE,
+    EXPLANATION_NAMES_ONLY_CODE,
     EXPLANATION_RESTATES_CODE,
     EXPLANATION_VERDICT_CODE,
     QUESTION_ITEM_LETTERS_CODE,
+    QUESTION_ITEM_NOUN_CODE,
     QUESTION_LAYOUT_CODE,
     QUESTION_LENGTH_CODE,
     QUESTION_LIMIT_CODE,
+    QUESTION_TWICE_CODE,
     QUIZ_STYLE_CODES,
 )
 from app.idm.source_fallback import glued_line, placeholder_line
 from app.idm.source_flags import fit_flags
 from app.idm.source_locked import FAQ_FALLBACK_REPEATED_CODE
 from app.idm.text import sanitize_author_text
+from app.idm.unit_note_lines import (
+    SLOT_LABEL_EN,
+    SLOT_LABEL_VI,
+    SUGGESTED_CRITERIA_LINE,
+    callout_lines,
+    drafted_examples_line,
+    dropped_faq_lines,
+    example_numbers_line,
+    faq_inferred_line,
+    worksheet_line,
+)
 from app.idm.worksheet_input import WORKSHEET_INPUT_CODE
 
 _CRITERION_LABEL_VI: Final = {
@@ -124,10 +138,8 @@ _CRITERION_LABEL_EN: Final = {
 }
 
 
-_SLOT_LABEL_VI: Final = {"html": "Lý thuyết", "problem": "Quiz", "la_faq": "Hỏi đáp", "la_sortable": "Sắp xếp",
-                         "la_crossword": "Ô chữ", "la_diagram": "Sơ đồ"}
-_SLOT_LABEL_EN: Final = {"html": "Theory", "problem": "Quiz", "la_faq": "FAQ", "la_sortable": "Sortable",
-                         "la_crossword": "Crossword", "la_diagram": "Diagram"}
+_SLOT_LABEL_VI: Final = SLOT_LABEL_VI
+_SLOT_LABEL_EN: Final = SLOT_LABEL_EN
 _SAFE_NOTE_CODE_RE: Final = re.compile(r"^[A-Z][A-Z0-9_]{2,95}$")
 _MAX_NOTE_CODES: Final = 6
 
@@ -181,6 +193,9 @@ _CODE_TEXT_VI: Final[dict[str, str]] = {
     QUESTION_LENGTH_CODE: "đề câu hỏi quá dài",
     QUESTION_LIMIT_CODE: "đề câu hỏi dài hơn mức hệ thống nhận",
     QUESTION_ITEM_LETTERS_CODE: "các ý trong đề đặt tên bằng chữ cái của đáp án",
+    QUESTION_ITEM_NOUN_CODE: "các ý trong đề đặt tên giống phương án trả lời",
+    QUESTION_TWICE_CODE: "đề hỏi hai lần",
+    EXPLANATION_NAMES_ONLY_CODE: "lời giải chỉ nhắc tên ý, không nói nội dung",
 }
 _CODE_TEXT_EN: Final[dict[str, str]] = {
     ANSWER_LEAK_CODE: "an option gives the answer away",
@@ -228,6 +243,9 @@ _CODE_TEXT_EN: Final[dict[str, str]] = {
     QUESTION_LENGTH_CODE: "a question that is too long",
     QUESTION_LIMIT_CODE: "a question longer than the system accepts",
     QUESTION_ITEM_LETTERS_CODE: "items in the question named with the answer letters",
+    QUESTION_ITEM_NOUN_CODE: "items in the question named like the answer options",
+    QUESTION_TWICE_CODE: "a question asked twice",
+    EXPLANATION_NAMES_ONLY_CODE: "feedback that names an item without its content",
 }
 # A code without its own words, by family.
 _CODE_FAMILY_VI: Final = (("HTML_", "lỗi định dạng phần lý thuyết"), ("DIAGRAM_", "lỗi sơ đồ"),
@@ -366,25 +384,25 @@ def build_unit_author_note(
     if repair_failures and not whole_fallback and (fallback_slots or review_slots):
         parts.append(f"Sửa tự động không thành công: {repair_failures}." if vi
                      else f"Automatic repair did not succeed: {repair_failures}.")
-    parts.extend(_dropped_faq_lines(vi, dropped=faq_items_dropped, restated=faq_items_restated,
+    parts.extend(dropped_faq_lines(vi, dropped=faq_items_dropped, restated=faq_items_restated,
                                     copied=faq_items_copied, recall=faq_items_recall, unresolved=faq_items_open,
                                     invalid=faq_items_invalid))
-    parts.extend(_callout_lines(vi, to_prose=callouts_to_prose, repeating=callouts_repeating))
+    parts.extend(callout_lines(vi, to_prose=callouts_to_prose, repeating=callouts_repeating))
     if framework_list_inserted:
         parts.append(f"Đã chèn danh sách {framework_list_inserted} thành phần của khung (tên lấy từ tài liệu) vào phần "
                      "lý thuyết — tác giả nên biên tập cho liền mạch." if vi
                      else f"A list of the framework's {framework_list_inserted} items (names from the source) was "
                           "inserted into the theory block — edit it into the text.")
     if worksheet_compacted:
-        parts.append(_worksheet_line(vi, example_kept=worksheet_example_kept))
+        parts.append(worksheet_line(vi, example_kept=worksheet_example_kept))
     if not whole_fallback:
         parts.extend(_check_lines(vi, deterministic_codes, remaining, fixed_codes, slot_types))
     if drafted_examples and not whole_fallback:
-        parts.append(_drafted_examples_line(drafted_examples, slot_types, vi))
+        parts.append(drafted_examples_line(drafted_examples, slot_types, vi))
     if example_numbers and not whole_fallback:
-        parts.append(_example_numbers_line(example_numbers, slot_types, vi))
+        parts.append(example_numbers_line(example_numbers, slot_types, vi))
     if faq_inferred and not whole_fallback:
-        parts.append(_faq_inferred_line(faq_inferred, slot_types, vi))
+        parts.append(faq_inferred_line(faq_inferred, slot_types, vi))
     # A source-locked unit carries no drafted scenario; the review reason already says it when it is one.
     if ai_drafted and not whole_fallback and REVIEW_REASON_SCENARIO not in review_reasons:
         parts.append("Tình huống minh hoạ do AI soạn, tác giả nên kiểm tra lại tính thực tế." if vi
@@ -392,7 +410,7 @@ def build_unit_author_note(
     if unexplained_acronyms and not whole_fallback:
         parts.append(_acronyms_line(unexplained_acronyms, vi))
     if suggested_criteria:
-        parts.append(_SUGGESTED_CRITERIA_LINE[vi])
+        parts.append(SUGGESTED_CRITERIA_LINE[vi])
     if glued:
         parts.append(glued_line(glued, vi))
     return sanitize_author_text(" ".join(parts), IDM_UNIT_AUTHOR_NOTE_MAX_CHARS)
@@ -416,109 +434,6 @@ def _judge_line(judge: JudgeOutcome, problems: Sequence[Any], labels: Mapping[st
         return ("QA tự động: không chạy được, cần rà soát thủ công." if vi
                 else "Automatic QA: unavailable, review manually.")
     return ""
-
-
-def _callout_lines(vi: bool, *, to_prose: int, repeating: int) -> list[str]:
-    """The notes of callouts the server changed: ungrounded ones turned into paragraphs (N9), and those that only
-    repeated the text of their slot, removed (QC feedback A3)."""
-
-    lines = []
-    if to_prose:
-        lines.append(f"Đã chuyển {to_prose} khung trích dẫn/lưu ý không có trong tài liệu thành đoạn văn thường — tác "
-                     "giả nên kiểm tra lại nội dung." if vi
-                     else f"{to_prose} callout(s) not found in the source were turned into plain paragraphs — the "
-                          "author should check their content.")
-    if repeating:
-        lines.append(f"Đã bỏ {repeating} khung trích dẫn/lưu ý chỉ nhắc lại đoạn văn có sẵn trong bài." if vi
-                     else f"{repeating} callout(s) that only repeated the text around them were removed.")
-    return lines
-
-
-def _worksheet_line(vi: bool, *, example_kept: bool) -> str:
-    """The note of a worksheet the server shortened to fit its budget (QC run 8de1c76b, Q2; QLT-9)."""
-
-    if example_kept:
-        return ("Phiếu thực hành dài hơn giới hạn nên đã rút gọn gợi ý trong bảng (ví dụ mẫu vẫn giữ, có thể còn hai "
-                "dòng) — tác giả có thể bổ sung lại gợi ý." if vi
-                else "The worksheet was over its length budget, so the guidance in its table was shortened (the worked "
-                     "example stays, possibly with two entries) — the author may add the guidance back.")
-    return ("Phiếu thực hành dài hơn giới hạn nên đã bỏ phần ví dụ mẫu (hoặc rút gọn gợi ý trong bảng) — tác giả có "
-            "thể bổ sung lại một ví dụ ngắn." if vi
-            else "The worksheet was over its length budget, so its worked example (or the extra guidance in its table) "
-                 "was left out — the author may add a short example back.")
-
-
-# A5 (owner decision 2026-10-22): the worksheet of the unit has criteria the AI suggested; keyed by "Vietnamese". Run
-# 5496155c: the learner reads "Tự kiểm tra" only, so this line is where the author learns it.
-_SUGGESTED_CRITERIA_LINE: Final = {
-    True: "Tài liệu không nêu tiêu chí chấm cho phiếu thực hành của bài này: phần Tự kiểm tra dùng tiêu chí AI gợi ý "
-          "từ nội dung đã dạy — tác giả nên xem lại.",
-    False: "The source states no grading criteria for this unit's worksheet: its Self-check uses criteria the AI "
-           "suggested from what the lesson teaches — the author should check them.",
-}
-
-
-def _drafted_examples_line(examples: Mapping[int, int], slot_types: Sequence[str], vi: bool) -> str:
-    """One plain line per unit: how many AI-drafted examples, and in which slots."""
-
-    labels = _SLOT_LABEL_VI if vi else _SLOT_LABEL_EN
-    total = sum(examples.values())
-    where = ", ".join(f"{'khối' if vi else 'block'} {index + 1}"
-                      + (f" ({labels[slot_types[index]]})" if index < len(slot_types) and slot_types[index] in labels
-                         else "") for index in sorted(examples))
-    return (f"Ví dụ minh hoạ do AI soạn — cần kiểm tra: {total} ví dụ ({where})." if vi
-            else f"Illustrative examples drafted by AI — please check: {total} example(s) ({where}).")
-
-
-def _example_numbers_line(numbers: Mapping[int, int], slot_types: Sequence[str], vi: bool) -> str:
-    """One plain line: the AI-drafted examples that state a number the facts do not (a notice, never a review mark)."""
-
-    labels = _SLOT_LABEL_VI if vi else _SLOT_LABEL_EN
-    where = ", ".join(f"{'khối' if vi else 'block'} {index + 1}"
-                      + (f" ({labels[slot_types[index]]})" if index < len(slot_types) and slot_types[index] in labels
-                         else "") for index in sorted(numbers))
-    total = sum(numbers.values())
-    return (f"Ví dụ minh hoạ do AI soạn có số liệu không có trong tài liệu, chỉ để minh hoạ — cần kiểm tra lại số "
-            f"liệu: {total} ví dụ ({where})." if vi
-            else f"Illustrative examples drafted by AI state numbers that are not in the source, for illustration only "
-                 f"— check the numbers: {total} example(s) ({where}).")
-
-
-def _dropped_faq_lines(vi: bool, *, dropped: int, restated: int, copied: int, recall: int, unresolved: int,
-                       invalid: int) -> list[str]:
-    """The "Đã bỏ …" lines of the FAQ items removed during generation, one per reason."""
-
-    lines = [
-        (dropped, f"Đã bỏ {dropped} câu hỏi đáp có nội dung ngoài tài liệu." if vi
-         else f"{dropped} FAQ item(s) with claims outside the source were removed."),
-        (restated, f"Đã bỏ {restated} câu hỏi đáp chỉ nhắc lại nội dung vừa học." if vi
-         else f"{restated} FAQ item(s) that only repeated the content just taught were removed."),
-        (copied, f"Đã bỏ {copied} câu hỏi đáp gần như chép nguyên câu tài liệu." if vi
-         else f"{copied} FAQ item(s) that nearly copied a source sentence were removed."),
-        (recall, f"Đã bỏ {recall} câu hỏi đáp chỉ hỏi lại kiến thức đã học." if vi
-         else f"{recall} FAQ item(s) that only asked for a fact again were removed."),
-        (unresolved, f"Đã bỏ {unresolved} câu hỏi đáp trả lời điều tài liệu chưa chốt." if vi
-         else f"{unresolved} FAQ item(s) that answered a point the source has not settled were removed."),
-        (invalid, f"Đã bỏ {invalid} câu hỏi đáp hệ thống không lưu được (ký tự góc nhọn, câu hỏi trùng)." if vi
-         else f"{invalid} FAQ item(s) the course editor cannot store (angle brackets, repeated question) were "
-              "removed."),
-    ]
-    return [line for count, line in lines if count]
-
-
-def _faq_inferred_line(inferred: Mapping[int, int], slot_types: Sequence[str], vi: bool) -> str:
-    """One plain line: FAQ answers that explain beyond the words of their facts, for the SME to check."""
-
-    labels = _SLOT_LABEL_VI if vi else _SLOT_LABEL_EN
-    total = sum(inferred.values())
-    where = ", ".join(f"{'khối' if vi else 'block'} {index + 1}"
-                      + (f" ({labels[slot_types[index]]})" if index < len(slot_types) and slot_types[index] in labels
-                         else "") for index in sorted(inferred))
-    return (f"Câu trả lời hỏi đáp có phần AI suy luận từ tài liệu — tác giả nên kiểm tra không có quy định mới: "
-            f"{total} câu ({where})." if vi
-            else f"FAQ answers with AI reasoning drawn from the source — the author should check they add no new "
-                 "rule: "
-                 f"{total} answer(s) ({where}).")
 
 
 # Content-mode findings (QLT-5 C) in plain words, without codes.
@@ -547,7 +462,13 @@ _PLAIN_HINT_VI: Final = {
                           "dòng và câu hỏi ở dòng cuối",
     QUESTION_LENGTH_CODE: "đề câu hỏi dài — nên rút gọn phần bối cảnh hoặc các ý liệt kê",
     QUESTION_ITEM_LETTERS_CODE: "các ý trong đề được đặt tên bằng chữ A, B, C — dễ nhầm với chữ cái của đáp án, nên "
-                                "đổi thành số 1, 2, 3 ở cả đề, đáp án và lời giải",
+                                "đổi thành tên khác kèm số (Cách 1, Đề xuất 1) ở cả đề, đáp án và lời giải",
+    QUESTION_ITEM_NOUN_CODE: "các ý trong đề được gọi là «Phương án 1, 2…» nên đáp án đọc thành «A: Phương án 2» — "
+                             "nên đổi tên ý (Cách 1, Đề xuất 1, Tình huống 1) ở cả đề, đáp án và lời giải",
+    QUESTION_TWICE_CODE: "đề hỏi hai lần (câu hỏi ở dòng bối cảnh hoặc trước danh sách và ở dòng cuối) — chỉ giữ một "
+                         "câu hỏi ở dòng cuối",
+    EXPLANATION_NAMES_ONLY_CODE: "đáp án chỉ ghi tên ý (như «Cách 2») mà lời giải không nói ý đó là gì — nên nêu nội "
+                                 "dung của ý trong lời giải",
 }
 _PLAIN_HINT_EN: Final = {
     SENTENCE_COPY_CODE: "many sentences copy the source almost word for word — rewrite them in plain words and explain "
@@ -573,7 +494,14 @@ _PLAIN_HINT_EN: Final = {
                           "on its own line and the question on the last line",
     QUESTION_LENGTH_CODE: "the question is long — shorten the context or the listed items",
     QUESTION_ITEM_LETTERS_CODE: "the items in the question are named with the letters A, B, C, which read like the "
-                                "answer letters — number them 1, 2, 3 in the question, the options and the feedback",
+                                "answer letters — give them another name with a number (Approach 1) in the "
+                                "question, the options and the feedback",
+    QUESTION_ITEM_NOUN_CODE: "the items in the question are called «Option 1, 2…», so a choice reads «A: Option 2» — "
+                             "rename them (Approach 1, Proposal 1) in the question, the options and the feedback",
+    QUESTION_TWICE_CODE: "the question is asked twice (on a context line or before the list, and on the last line) — "
+                         "keep one question on the last line",
+    EXPLANATION_NAMES_ONLY_CODE: "an option only names an item («Approach 2») and its feedback never says what it is — "
+                                 "say the item's content in the feedback",
 }
 
 

@@ -14,6 +14,12 @@ only when it is certain (review 2: a wrong rename is worse than none):
 A letter after another label ("Lựa chọn A"), a lowercase one ("phương án a"), a bare one ("B không giải quyết") or the
 label with a number already ("phương án 2") leaves the whole quiz as written; its stem gets an edit note instead
 (``quiz_text.QUESTION_ITEM_LETTERS_CODE``). The English article ("a plan a manager likes") is not a letter.
+
+Run 5496155c (owner decision 2026-10-22): "A: Phương án 2" still confused learners, because the options A-D are the
+"phương án" of the question. When the label is the options' own noun ("phương án", "lựa chọn", "option"), the renaming
+also writes a neutral noun at exactly the places it renumbers ("Phương án A" -> "Cách 1", "phương án A và B" -> "cách 1
+và 2", "Option A" -> "Approach 1"), keeping a capital where there was one; the noun alone ("Phương án nào đúng?") stays.
+Safety: the same certain positions as the letters, all of them or none.
 """
 
 from __future__ import annotations
@@ -39,6 +45,8 @@ _LABELS: Final = {
     "scenarios": "scenario", "plan": "plan", "plans": "plan", "proposal": "proposal", "proposals": "proposal",
 }
 _ENGLISH: Final = frozenset({"option", "case", "scenario", "plan", "proposal"})
+# Labels that are the options' own noun, and the neutral noun a renamed item gets instead.
+_NEUTRAL_NOUNS: Final = {"phương án": "cách", "lựa chọn": "cách", "option": "approach"}
 _LABEL: Final = (r"(?i:phương[ \t]+án|lựa[ \t]+chọn|tình[ \t]+huống|trường[ \t]+hợp|cách|đề[ \t]+xuất|kịch[ \t]+bản"
                  r"|options?|cases?|scenarios?|plans?|proposals?)")
 _LABEL_RE: Final = re.compile(rf"(?<!\w)({_LABEL})(?!\w)")
@@ -136,12 +144,20 @@ def _article(text: str, start: int, end: int) -> bool:
     return text[start] == "A" and (before[-1:] in _SENTENCE_STARTS or before.endswith("\n"))
 
 
-def _scan(text: str, label: str, numbers: Mapping[str, str], prefixes: set[int]) -> list[tuple[int, str]] | None:
-    """(position, number) of each item letter of ``text`` to rename; ``None`` when a letter cannot be mapped with
-    certainty. ``prefixes``: the positions of the explanation's option prefixes ("A - …")."""
+def _noun(label: str, neutral: str) -> str:
+    """``neutral`` with the capital of ``label`` ("Phương án" -> "Cách", "phương án" -> "cách")."""
+
+    return neutral[:1].upper() + neutral[1:] if label[:1].isupper() else neutral
+
+
+def _scan(text: str, label: str, numbers: Mapping[str, str], prefixes: set[int]) -> list[tuple[int, int, str]] | None:
+    """(start, end, replacement) of each item letter of ``text`` to rename, and of the label noun before it when it is
+    the options' own noun (``_NEUTRAL_NOUNS``); ``None`` when a letter cannot be mapped with certainty. ``prefixes``:
+    the positions of the explanation's option prefixes ("A - …")."""
 
     english = label in _ENGLISH
-    renames: list[tuple[int, str]] = []
+    neutral = _NEUTRAL_NOUNS.get(label)
+    renames: list[tuple[int, int, str]] = []
     for found in _LABEL_RE.finditer(text):
         same = _canonical(found.group(1)) == label
         if same and _NUMBER_AFTER_RE.match(text, found.end()):
@@ -156,9 +172,11 @@ def _scan(text: str, label: str, numbers: Mapping[str, str], prefixes: set[int])
             if same and char not in numbers:
                 return None
             if same:
-                renames.append((letter.start(1), numbers[char]))
+                if neutral and pattern is _FIRST_LETTER_RE:
+                    renames.append((found.start(1), found.end(1), _noun(found.group(1), neutral)))
+                renames.append((letter.start(1), letter.end(1), numbers[char]))
             end, pattern = letter.end(), _CHAIN_RE
-    claimed = {position for position, _number in renames}
+    claimed = {start for start, _end, _value in renames}
     for token in _LETTER_RE.finditer(text):
         start, char = token.start(), token.group()
         if (start in claimed or start in prefixes or char not in numbers
@@ -204,11 +222,11 @@ def number_item_letters(component: dict[str, Any]) -> tuple[dict[str, Any], int]
         renames = _scan(normal, label, numbers, prefixes)
         if renames is None:
             return component, 0
-        for start, number in sorted(renames, reverse=True):
-            normal = f"{normal[:start]}{number}{normal[start + 1:]}"
+        for start, end, value in sorted(renames, reverse=True):
+            normal = f"{normal[:start]}{value}{normal[end:]}"
         if renames:
             renamed.append((key, position, normal))
-            count += len(renames)
+            count += sum(value.isdigit() for _start, _end, value in renames)
     if not count:
         return component, 0
     result = {**component, "choices": [dict(choice) if isinstance(choice, dict) else choice for choice in choices]}

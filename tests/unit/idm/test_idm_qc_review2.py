@@ -84,12 +84,13 @@ class ConservativeRenumberingTests(unittest.TestCase):
                          hints=["So sánh phương án A với phương án B"], title="Phương án A hay B?")
         out, count = renamed(component)
         self.assertGreater(count, 0)
-        self.assertIn("Nên chọn phương án 1 hay 2?", out["question"])
+        # Run 5496155c: "phương án" is the options' own noun, so the renamed items get the neutral "cách".
+        self.assertIn("Nên chọn cách 1 hay 2?", out["question"])
         self.assertEqual([choice["text"] for choice in out["choices"]],
-                         ["Kết hợp phương án 1 và 2", "Chỉ làm phương án 3", "Phương án 1, 2 và 3", "Phương án 1/2"])
-        self.assertIn("A - Đúng vì phương án 1 và 2 bổ trợ nhau.", out["explanation"])
-        self.assertIn("phương án 1, 2 hoặc 3", out["explanation"])
-        self.assertEqual((out["hints"], out["title"]), (["So sánh phương án 1 với phương án 2"], "Phương án 1 hay 2?"))
+                         ["Kết hợp cách 1 và 2", "Chỉ làm cách 3", "Cách 1, 2 và 3", "Cách 1/2"])
+        self.assertIn("A - Đúng vì cách 1 và 2 bổ trợ nhau.", out["explanation"])
+        self.assertIn("cách 1, 2 hoặc 3", out["explanation"])
+        self.assertEqual((out["hints"], out["title"]), (["So sánh cách 1 với cách 2"], "Cách 1 hay 2?"))
         for ordinal in range(3):
             laid, _codes = lay_out_quiz(normalize_single_choice(out, "seed-x", ordinal)[0])
             self.assertEqual([line[:4] for line in str(laid["explanation"]).splitlines()[1:]],
@@ -98,16 +99,16 @@ class ConservativeRenumberingTests(unittest.TestCase):
     def test_semicolons_parentheses_and_an_english_article(self) -> None:
         inline = quiz("Có ba phương án: Phương án A: giảm giá; Phương án B: tặng quà; Phương án C: chờ. Chọn phương án "
                       "nào?", [("Phương án A", True), ("Phương án B", False), ("Phương án C", False)])
-        self.assertEqual(renamed(inline)[0]["question"], "Có ba phương án: Phương án 1: giảm giá; Phương án 2: tặng "
-                                                         "quà; Phương án 3: chờ. Chọn phương án nào?")
+        self.assertEqual(renamed(inline)[0]["question"], "Có ba phương án: Cách 1: giảm giá; Cách 2: tặng quà; Cách 3: "
+                                                         "chờ. Chọn phương án nào?")
         dashed = quiz("Có ba phương án: - Phương án A: giảm giá - Phương án B: tặng quà - Phương án C: chờ. Chọn?",
                       [("Phương án A", True), ("Phương án C", False)])
-        self.assertEqual(renamed(dashed)[0]["question"], "Có ba phương án: - Phương án 1: giảm giá - Phương án 2: "
-                                                         "tặng quà - Phương án 3: chờ. Chọn?")
+        self.assertEqual(renamed(dashed)[0]["question"], "Có ba phương án: - Cách 1: giảm giá - Cách 2: tặng quà - "
+                                                         "Cách 3: chờ. Chọn?")
         tagged = quiz("Bối cảnh:\n- Phương án A (rẻ): giảm\n- Phương án B (nhanh): tặng\nChọn?",
                       [("Phương án A", True), ("Phương án B", False)])
-        self.assertEqual(renamed(tagged)[0]["question"], "Bối cảnh:\n- Phương án 1 (rẻ): giảm\n- Phương án 2 (nhanh): "
-                                                         "tặng\nChọn?")
+        self.assertEqual(renamed(tagged)[0]["question"], "Bối cảnh:\n- Cách 1 (rẻ): giảm\n- Cách 2 (nhanh): tặng\n"
+                                                         "Chọn?")
         english = quiz("Two plans:\n- Plan A: cut prices\n- Plan B: add a gift\nWhich plan keeps margin?",
                        [("Plan A", False), ("Plan B", True)],
                        "Principle: x.\nA - Incorrect because plan A cuts margin; a plan a manager likes.\nB - Correct "
