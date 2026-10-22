@@ -59,8 +59,11 @@ QUIZ_CODES: Final = frozenset({EXPLANATION_LAYOUT_CODE, EXPLANATION_VERDICT_CODE
                                QUESTION_LENGTH_CODE})
 QUESTION_CODES: Final = frozenset({QUESTION_LAYOUT_CODE, QUESTION_LENGTH_CODE})
 # Findings about the wording, not the correctness: a slot kept with only these is a polish notice.
-QUIZ_STYLE_CODES: Final = frozenset({EXPLANATION_FILLER_CODE, EXPLANATION_LENGTH_CODE, QUESTION_LAYOUT_CODE,
-                                     QUESTION_LENGTH_CODE})
+# Review m18: a question over its cap is not one of them: Node cuts a question at 1,000 characters, so a question the
+# repair leaves too long falls back like any blocking finding.
+QUIZ_STYLE_CODES: Final = frozenset({EXPLANATION_FILLER_CODE, EXPLANATION_LENGTH_CODE, QUESTION_LAYOUT_CODE})
+# The quiz findings a writer's slot is kept with for review when the repair does not settle them.
+QUIZ_REVIEW_CODES: Final = QUIZ_CODES - {QUESTION_LENGTH_CODE}
 QUESTION_LAID_OUT: Final = "w5_problem_question_laid_out"
 EXPLANATION_LAID_OUT: Final = "w5_problem_explanation_laid_out"
 
@@ -103,6 +106,12 @@ def _normal(text: str) -> str:
 
 def _words(text: str) -> int:
     return len(text.split())
+
+
+def utf16_length(text: str) -> int:
+    """The length Node measures (UTF-16 code units: an emoji counts two), review m18."""
+
+    return len(text.encode("utf-16-le")) // 2
 
 
 def sentence_spans(text: str) -> list[str]:
@@ -270,12 +279,13 @@ def lay_out_quiz(component: dict[str, Any]) -> tuple[dict[str, Any], Counter[str
     result = dict(component)
     question = component.get("question")
     if isinstance(question, str) and (laid := layout_question(question)) and laid != question and (
-            len(laid) <= max(NODE_QUESTION_MAX_CHARS, len(question))):
+            utf16_length(laid) <= max(NODE_QUESTION_MAX_CHARS, utf16_length(question))):
         result["question"] = laid
         codes[QUESTION_LAID_OUT] += 1
     explanation = component.get("explanation")
     if isinstance(explanation, str) and (laid := layout_explanation(explanation, len(choices))) and (
-            laid != explanation and len(laid) <= max(NODE_EXPLANATION_MAX_CHARS, len(explanation))):
+            laid != explanation
+            and utf16_length(laid) <= max(NODE_EXPLANATION_MAX_CHARS, utf16_length(explanation))):
         result["explanation"] = laid
         codes[EXPLANATION_LAID_OUT] += 1
     return result, codes
@@ -405,7 +415,7 @@ def question_report(component: Mapping[str, Any]) -> dict[str, list[str]]:
         layout.append(f"{context} context sentences (at most {IDM_MCQ_STEM_CONTEXT_MAX_SENTENCES})")
     if layout:
         report[QUESTION_LAYOUT_CODE] = layout
-    words, chars = sum(_words(line) for line in lines), len("\n".join(lines))
+    words, chars = sum(_words(line) for line in lines), utf16_length(LINE_FEED.join(lines))
     if words > IDM_MCQ_STEM_MAX_WORDS or chars > IDM_MCQ_STEM_MAX_CHARS:
         report[QUESTION_LENGTH_CODE] = [f"{words} words, {chars} characters (at most {IDM_MCQ_STEM_MAX_WORDS} words "
                                         f"and {IDM_MCQ_STEM_MAX_CHARS} characters)"]
@@ -439,9 +449,9 @@ def quiz_hint(code: str, component: Mapping[str, Any], evidence: EvidenceIndex |
 
 __all__ = [
     "EXPLANATION_FILLER_CODE", "EXPLANATION_LAID_OUT", "EXPLANATION_LAYOUT_CODE", "EXPLANATION_LENGTH_CODE",
-    "EXPLANATION_RESTATES_CODE", "EXPLANATION_VERDICT_CODE", "LIST_MARKER", "OPTION_SEPARATOR", "QUESTION_CODES",
-    "QUESTION_LAID_OUT",
-    "QUESTION_LAYOUT_CODE", "QUESTION_LENGTH_CODE", "QUIZ_CODES", "QUIZ_STYLE_CODES", "explanation_report",
-    "filler_phrases", "lay_out_quiz", "layout_explanation", "layout_question", "question_report", "quiz_findings",
-    "quiz_hint", "sentence_spans",
+    "EXPLANATION_RESTATES_CODE", "EXPLANATION_VERDICT_CODE", "LINE_FEED", "LIST_MARKER", "OPTION_SEPARATOR",
+    "QUESTION_CODES", "QUESTION_LAID_OUT", "QUESTION_LAYOUT_CODE", "QUESTION_LENGTH_CODE", "QUIZ_CODES",
+    "QUIZ_REVIEW_CODES", "QUIZ_STYLE_CODES", "explanation_report", "filler_phrases", "lay_out_quiz",
+    "layout_explanation", "layout_question", "question_report", "quiz_findings", "quiz_hint", "sentence_spans",
+    "utf16_length",
 ]

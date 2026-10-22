@@ -41,7 +41,7 @@ from app.idm.qa import (
     WORKSHEET_INCOMPLETE_CODE,
     JudgeMode,
 )
-from app.idm.quiz_text import QUIZ_CODES
+from app.idm.quiz_text import QUIZ_CODES, QUIZ_REVIEW_CODES
 from app.idm.runtime import IdmStageError
 from app.instructional_density import INSTRUCTIONAL_DENSITY_POLICY_VERSION
 
@@ -69,12 +69,13 @@ VERBATIM_COPY_CODE: Final = "IDM_W5_VERBATIM_COPY"
 # source-locked FAQ is made of verbatim source sentences.
 # QC feedback 2026-10-21 (A1/A2): the quiz-text findings (an explanation without its principle or reasons, a stem in one
 # block) too: the source-locked question would replace a good question for a layout or wording problem.
+# Review m18: not a question over its cap (Node cuts it at 1,000 characters): after its repair it falls back.
 _REVIEW_FIRST_CODES: Final = frozenset({WORKSHEET_INCOMPLETE_CODE, ANSWER_LEAK_CODE, ANSWER_CONTESTED_CODE,
                                         CALLOUT_UNGROUNDED_CODE, FAQ_RESTATES_HTML_CODE, FAQ_TITLE_MISMATCH_CODE,
                                         FRAMEWORK_INCOMPLETE_CODE, SOURCE_ARTIFACT_CODE, VERBATIM_COPY_CODE,
-                                        *FIDELITY_CODES, *FAQ_VALUE_CODES, *QUIZ_CODES})
+                                        *FIDELITY_CODES, *FAQ_VALUE_CODES, *QUIZ_REVIEW_CODES})
 # Findings whose repair is dropped when it breaks a shared or Node rule: they end as review notes anyway.
-_REVIEW_ONLY_CODES: Final = frozenset({*FIDELITY_CODES, *FAQ_VALUE_CODES, *QUIZ_CODES})
+_REVIEW_ONLY_CODES: Final = frozenset({*FIDELITY_CODES, *FAQ_VALUE_CODES, *QUIZ_REVIEW_CODES})
 # Findings a deterministic step settles when the repair does not (a list inserted, an FAQ item dropped, a callout
 # turned into prose, a review note): their repair alone is a targeted one, a scoped rewrite at low thinking. QC run
 # ab8d67e1 (R3): two leak repairs at medium thinking were cut by the unit deadline.

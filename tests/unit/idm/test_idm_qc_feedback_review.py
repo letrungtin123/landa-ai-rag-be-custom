@@ -18,6 +18,7 @@ from app.idm.qa_checks import repeated_callouts
 from app.idm.quiz_text import (
     EXPLANATION_VERDICT_CODE,
     QUESTION_LAYOUT_CODE,
+    QUESTION_LENGTH_CODE,
     explanation_report,
     filler_phrases,
     lay_out_quiz,
@@ -332,3 +333,41 @@ class SmallFixTests(unittest.TestCase):
         self.assertEqual(filler_phrases("A - Incorrect because you must tell your superior first."), [])
         self.assertEqual(filler_phrases("A - Sai vì mức xuất sắc chỉ dành cho nhân viên đạt 100% KPI."), [])
         self.assertEqual(filler_phrases("B - Đúng vì đây là lựa chọn dũng cảm."), ["dũng cảm"])
+
+
+EMOJI = "\U0001F4E6"  # two UTF-16 units, as Node counts it
+LONG_STEM = ("Tại một doanh nghiệp, khách hàng gọi lần thứ hai để phàn nàn vì đơn hàng giao trễ. " * 12
+             + "Khiếu nại này thuộc cấp độ nào?")
+
+
+class QuestionCapTests(StoryboardEndpointTestCase):
+    """m18: a question over its cap (Node measures UTF-16 units) is a blocking finding: one repair, then the fallback
+    question; the layout never makes a text longer than Node keeps, in UTF-16 units."""
+
+    def test_the_cap_counts_utf16_units(self) -> None:
+        stem = "Khách hàng gửi ảnh gói hàng " + EMOJI * 500 + ". Khiếu nại thuộc cấp nào?"
+        self.assertLessEqual(len(stem), 800)
+        self.assertGreater(len(stem.encode("utf-16-le")) // 2, 800)
+        self.assertIn(QUESTION_LENGTH_CODE, question_report({"question": stem}))
+
+    def test_the_layout_never_grows_a_text_past_node_in_utf16_units(self) -> None:
+        reason = "vì" + " tiêu chí" * 52
+        options = f" A - Sai {reason}; B - Đúng {reason}; C - Sai {reason}"
+        principle = (EMOJI * 4 + " Tiêu chí" + " x" * 100)[:1498 - len(options)] + "."
+        paragraph = principle + options
+        self.assertLessEqual(len(paragraph), 1500)
+        self.assertGreater(len(paragraph.encode("utf-16-le")) // 2, 1500)
+        laid, _codes = lay_out_quiz({"problem_type": "multiple_choice", "question": "Chọn gì?",
+                                     "choices": [dict(item) for item in THREE], "explanation": paragraph})
+        self.assertEqual(laid["explanation"], paragraph)
+
+    async def test_an_over_long_question_falls_back_after_one_repair(self) -> None:
+        body = severity_body()
+        writer = severity_writer(body)
+        writer["components"]["c1"]["question"] = LONG_STEM
+        provider = FakeGenerate(**{WRITER: [writer], REPAIR: [slot_repair(writer, 1)], JUDGE: [judge()]})
+        status, data, _ = await self.post(body, provider)
+        self.assertEqual(status, 200)
+        self.assertEqual(provider.names[:2], [WRITER, REPAIR])
+        self.assertNotEqual(data["unit"]["components"][1]["question"], LONG_STEM)
+        self.assertEqual(data["quality_state"], "review_required")
