@@ -151,6 +151,10 @@ HASH_HISTORY: tuple[tuple[str, str], ...] = (
     # is a supposition ("Giả sử …"), never told as a real past event; the IDM_W5_FAQ_HYPE repair rule and its hint.
     ("3ee3d4f13bd2dd1c027e69343066dd49971549913e53e5833b77a100b494e7bc",
      "No hype words in explanations and FAQ answers; drafted cases as suppositions"),
+    # Run 5496155c: the W5 writing rules and the W4 title rule name a framework, model or process and its parts as the
+    # facts do: never a part's name for the whole, never a new metaphor, never axes or steps the facts do not list.
+    ("6afa78c0891699ccfa745a55d02af110caa5d1b31a6c23f5b1cfc57580f1dd8b",
+     "Frameworks and their parts keep the source's names"),
 )
 PROMPT_NAME = re.compile(r"(prompt|_rules?$|_suffix$|rule_lines?$|_hint$|^rule_line$|_cue_line$)")
 

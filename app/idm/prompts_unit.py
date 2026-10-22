@@ -176,6 +176,11 @@ Writing rules (learner-facing, {locale_name(locale)}):
 {faq_rules}{_CALLOUT_RULE}
 - Never invent rules, thresholds, criteria, labels or consequences the facts do not state, not even as the
   labels of a template or the edges of a diagram.
+- Name a framework, model, matrix or process and each of its parts exactly as SOURCE_FACTS name it (their term and
+  language, or the translation the facts themselves give): never call a part by the name of the whole or the whole
+  by the name of one part, never rename it with your own metaphor, and never give it axes, dimensions, criteria,
+  steps or stages the facts do not list (a matrix keeps the facts' axes and cells, a process its own steps, in their
+  number and order).
 - The facts keep marks of the PDF page: never copy them. No "Row N:" labels, no word cut at a line end
   ("Best-in" is "Best-in-Class"; drop a cut "(KPI /"), no Title Case Copied From A Slide (write slot titles,
   headings and labels in sentence case, keep acronyms and names), no word written twice in a row.

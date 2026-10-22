@@ -829,3 +829,24 @@ class ImagePageTests(unittest.TestCase):
             request = RagLessonAuthorUnitV2Request.model_validate(body)
             with self.subTest(share=share):
                 self.assertEqual(unit_service._idm_unit_deps(request).evidence_review_required, expected)
+
+
+def flat(text: str) -> str:
+    return " ".join(text.split())
+
+
+class NamingFidelityTests(unittest.TestCase):
+    """Item 11: a framework and its parts keep the source's names; no part named as the whole, no invented axes or
+    steps (the run renamed a map after one of its parts and gave a two-group framework axes and steps of its own)."""
+
+    def test_the_writer_and_the_module_keep_the_source_names(self) -> None:
+        self.assertIn("Name a framework, model, matrix or process and each of its parts exactly as SOURCE_FACTS name "
+                      "it (their term and language, or the translation the facts themselves give): never call a part "
+                      "by the name of the whole or the whole by the name of one part, never rename it with your own "
+                      "metaphor, and never give it axes, dimensions, criteria, steps or stages the facts do not list",
+                      flat(PRACTICE_RULES))
+        module = module_prompt("vi", module_plan={}, lesson_plans=[], audience="", objectives=[], must_dos=[],
+                               course_blocks=[], facts=[], allowed_components=["html"])
+        self.assertIn("A title that names a framework, model or process, or one of its parts, uses the name the facts "
+                      "give it: never a part's name for the whole, never a new metaphor, never axes or steps the facts "
+                      "do not list.", flat(module))

@@ -132,7 +132,9 @@ Return the lessons in exactly the order and with exactly the lesson_key values o
    component_index is the 1-based position inside the unit; unit_index is 1-based inside the lesson.
    Unit titles name what the unit actually teaches (never "Tổng quan 5 chuyển dịch" over a unit about something
    else). Lesson, unit and component titles are in sentence case (a capital for the first word only; acronyms,
-   codes and names as the facts write them). When an objective this module serves, or COURSE_PURPOSE, names an
+   codes and names as the facts write them). A title that names a framework, model or process, or one of its parts,
+   uses the name the facts give it: never a part's name for the whole, never a new metaphor, never axes or steps the
+   facts do not list. When an objective this module serves, or COURSE_PURPOSE, names an
    enumerated framework whose items this module's blocks hold ("5 chuyển dịch", "6 trụ cột", "3 giai đoạn"), the
    first lesson that serves it opens with ONE orientation unit
    (segment context_explain, an html component) whose title names the framework with its number
