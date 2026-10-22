@@ -495,3 +495,14 @@ class Review4RendererTests(unittest.TestCase):
     def test_a_star_after_a_bracket_is_an_operator(self) -> None:
         self.assertIn("(Tác động + Mức khẩn) * Khả thi", rendered(
             "Điểm ưu tiên = (Tác động + Mức khẩn) * Khả thi của từng sáng kiến trong danh mục."))
+
+
+class Review4GivenDataTests(OwnDataTests):
+    """Review 4, M3: the "learner's own data" exception never swallows data the task says it gives."""
+
+    def test_given_data_named_near_the_learner_is_still_required(self) -> None:
+        for task in ("Đánh giá 3 đề xuất sau của nhóm bạn theo tiêu chí khả thi.",
+                     "Xem 3 hồ sơ ứng viên bạn vừa nhận dưới đây và chọn một người.",
+                     "Đọc danh sách dưới đây mà bạn đã nhận từ phòng kinh doanh và phân loại theo mức ưu tiên."):
+            with self.subTest(task=task):
+                self.assertIsNotNone(missing_input(self.worksheet(task)))

@@ -34,7 +34,8 @@ EXAMPLE_REUSE_CODE: Final = "IDM_W5_WORKSHEET_EXAMPLE_REUSES_INPUT"
 _NUMBERS: Final = {"hai": 2, "ba": 3, "bon": 4, "nam": 5, "sau": 6, "bay": 7, "tam": 8, "chin": 9, "muoi": 10,
                    "two": 2, "three": 3, "four": 4, "five": 5, "six": 6, "seven": 7, "eight": 8, "nine": 9, "ten": 10}
 _COUNT: Final = r"(\d{1,2}|" + "|".join(_NUMBERS) + r")"
-_ITEMS_VI: Final = (r"(?:yeu cau|tinh huong|de xuat|y kien|phan hoi|ho so|nhan su|khach hang|sang kien|khieu nai"
+_ITEMS_VI: Final = (r"(?:yeu cau|tinh huong|de xuat|y kien|phan hoi|ho so|nhan su|khach hang muc tieu|khach hang"
+                    r"|sang kien|khieu nai"
                     r"|truong hop|ung vien|nha cung cap|du an|cau tra loi)")
 _ITEMS_EN: Final = (r"(?:requests?|cases?|complaints?|profiles?|items?|candidates?|suppliers?|customers?|ideas?"
                     r"|initiatives?|answers?)")
@@ -104,9 +105,13 @@ def _count(value: str | None) -> int | None:
 
 # Review of dfb6db2 (item 8): data the learner brings or makes ("cho 3 khách hàng mục tiêu của chính bạn", "danh sách
 # bạn vừa lập", "từ 5 khách hàng của bạn", "your own list") is no data the worksheet must give.
-_OWN_DATA_RE: Final = re.compile(r"(?:\s+\w+){0,3}?\s+(?:cua\s+(?:chinh\s+)?(?:ban|minh|doanh nghiep ban|nhom ban)"
+# Review 4: at most one word between the reference and the learner's own, and never when the clause points at given
+# data ("3 đề xuất sau của nhóm bạn", "… bạn vừa nhận dưới đây", "the following …", "below").
+_OWN_DATA_RE: Final = re.compile(r"(?:\s+\w+)?\s+(?:cua\s+(?:chinh\s+)?(?:ban|minh|doanh nghiep ban|nhom ban)"
                                  r"|ban\s+(?:vua|da|tu)\s+\w+|you\s+(?:just\s+)?(?:made|built|collected|wrote)"
                                  r"|of\s+your\s+own|your\s+own)\b")
+_GIVEN_DATA_RE: Final = re.compile(r"\b(?:sau\b(?!\s+khi)|duoi day|ben duoi|following|below)")
+_CLAUSE_END_RE: Final = re.compile(r"[.;!?]")
 
 
 def input_reference(texts: Iterable[str]) -> InputReference | None:
@@ -117,7 +122,9 @@ def input_reference(texts: Iterable[str]) -> InputReference | None:
         folded = idm_fold(text)
         for kind, pattern in _REFERENCES:
             for match in pattern.finditer(folded):
-                if not _OWN_DATA_RE.match(folded, match.end()):
+                end = _CLAUSE_END_RE.search(folded, match.end())
+                clause = folded[match.start():end.start() if end else len(folded)]
+                if not _OWN_DATA_RE.match(folded, match.end()) or _GIVEN_DATA_RE.search(clause):
                     return InputReference(kind, _count(match.group(1)) if pattern.groups else None)
     return None
 
