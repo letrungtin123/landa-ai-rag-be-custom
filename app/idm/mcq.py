@@ -61,6 +61,8 @@ _NAME_BEFORE_RE: Final = re.compile(
 _SEGMENT_RE: Final = re.compile(r"(?:^|(?<=[\s;,.(]))([A-F])\s*(?:[—–:.)]|-(?=\s))")  # noqa: RUF001
 # How the per-option segments of an explanation may end: one shared mark, re-joined as given.
 _SEGMENT_JOINERS: Final = {";": "; ", ",": ", ", ".": " ", "!": " ", "?": " "}
+# What may come right before a segment's label inside a paragraph: the end of a sentence or a clause.
+_SEGMENT_AFTER: Final = ".;:,!?("
 _SENTENCE_BREAK_RE: Final = re.compile(r"[.!?]\s+\S")
 _CONTEXT_CHARS: Final = 40
 # question_ordinal: "chapter_2.lesson_3.unit_1"; steps per chapter and per lesson (see its docstring).
@@ -280,27 +282,55 @@ def labelled_letters(text: str) -> set[str]:
             if _is_label(normalized, match.start(), match.end())}
 
 
+def segment_starts(text: str, count: int) -> list[re.Match[str]]:
+    """The option labels that start a segment of ``text`` ("A - …", "B: …", "C. …", "D) …"), letters A.. of ``count``
+    options (review M2, m7): with one option per line, only a label at the start of a line; in a paragraph, only one at
+    the start or after the end of a sentence or clause. A letter after an ordinary word ("như phương án A.", "đáp án
+    đúng là B.", "Phương án C: …", "hạng C: …") never starts a segment."""
+
+    letters = OPTION_LETTERS[:count]
+    lined = "\n" in text.strip()
+    starts = []
+    for match in _SEGMENT_RE.finditer(text):
+        if match.group(1) not in letters:
+            continue
+        before = text[:match.start()].rstrip(" \t")
+        if not before or (before.endswith("\n") if lined else before[-1] in _SEGMENT_AFTER):
+            starts.append(match)
+    return starts
+
+
+def _ordered_lines(text: str, relabelled: str, starts: Sequence[re.Match[str]], new_letter: Mapping[str, str],
+                   ) -> str | None:
+    """``relabelled`` with its option lines in the new letter order (K1). The option lines must follow each other; a
+    line before them (the principle) or after them (a closing remark) stays where it is."""
+
+    rows = [text.count("\n", 0, match.start()) for match in starts]
+    if rows != list(range(rows[0], rows[0] + len(rows))):
+        return None
+    lines = relabelled.split("\n")
+    order = sorted(range(len(starts)), key=lambda index: new_letter[OPTION_LETTERS[index]])
+    moved = [lines[rows[index]] for index in order]
+    return "\n".join([*lines[:rows[0]], *moved, *lines[rows[-1] + 1:]])
+
+
 def _ordered_segments(text: str, relabelled: str, count: int, new_letter: Mapping[str, str]) -> str | None:
     """``relabelled`` with its per-option segments in A, B, C ... order, when that is safe.
 
-    Safe means: the original explanation names each option exactly once at a segment start, in
-    order A, B, C ..., and its last segment is one sentence (a closing remark after it would
-    otherwise travel with that option). Segments written one per line keep their lines (K1).
+    Safe means: the original explanation names each option exactly once at a segment start (``segment_starts``), in
+    order A, B, C ..., and its last segment is one sentence (a closing remark after it would otherwise travel with that
+    option). Segments written one per line move as lines (K1, ``_ordered_lines``).
     """
 
-    starts = [match for match in _SEGMENT_RE.finditer(text) if match.group(1) in OPTION_LETTERS[:count]]
+    starts = segment_starts(text, count)
     if [match.group(1) for match in starts] != list(OPTION_LETTERS[:count]) or any(
             relabelled[match.start()] != new_letter[match.group(1)] for match in starts):
         return None
+    if "\n" in text.strip():
+        return _ordered_lines(text, relabelled, starts, new_letter)
     bounds = [match.start() for match in starts] + [len(text)]
     bodies = [relabelled[bounds[index]:bounds[index + 1]].strip() for index in range(count)]
     new_order = sorted(range(count), key=lambda index: new_letter[OPTION_LETTERS[index]])
-    if all(text[:start].rstrip(" \t").endswith("\n") for start in bounds[1:-1]):
-        # One line per option (QC feedback A1, contract K1): the lines move as they are; a line holding more than its
-        # option (a closing remark on a line of its own) would travel with it.
-        if any("\n" in body for body in bodies):
-            return None
-        return relabelled[:bounds[0]] + "\n".join(bodies[index] for index in new_order)
     marks = {body[-1:] for body in bodies[:-1]}
     if _SENTENCE_BREAK_RE.search(bodies[-1]) or len(marks) != 1 or next(iter(marks)) not in _SEGMENT_JOINERS:
         return None
@@ -443,4 +473,5 @@ __all__ = [
     "question_complete",
     "question_ordinal",
     "relabel_explanation",
+    "segment_starts",
 ]

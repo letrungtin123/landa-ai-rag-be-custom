@@ -27,7 +27,7 @@ from collections.abc import Mapping, Sequence
 from itertools import pairwise
 from typing import Any, Final
 
-from app.idm.mcq import OPTION_LETTERS, question_complete
+from app.idm.mcq import OPTION_LETTERS, question_complete, segment_starts
 from app.idm.policy import (
     IDM_MCQ_EXPLANATION_MAX_CHARS,
     IDM_MCQ_EXPLANATION_OPTION_MAX_SENTENCES,
@@ -66,6 +66,7 @@ EXPLANATION_LAID_OUT: Final = "w5_problem_explanation_laid_out"
 
 LIST_MARKER: Final = "- "
 OPTION_SEPARATOR: Final = " - "
+LINE_FEED: Final = "\n"
 _SINGLE_CHOICE_TYPES: Final = frozenset({"multiple_choice", "single_choice"})
 # An inline list item: a marker between spaces before an item that starts with a capital letter or a digit.
 _INLINE_MARKER_RE: Final = re.compile(r"[ \t]+[-–•][ \t]+(?=\S)")  # noqa: RUF001 - the en dash is a marker
@@ -76,8 +77,6 @@ _ITEM_LABEL_RE: Final = re.compile(r"([^\s:–—-][^\s:]*)(?:[ \t]+[^\s:]+){0,3
 _OTHER_MARKER_RE: Final = re.compile(r"^[•*–][ \t]+(?=\S)")  # noqa: RUF001 - the en dash is a marker
 # An option label at a line start: "A - ", "A: ", "A. ", "A) " or a dash other than the hyphen.
 _LINE_LABEL_RE: Final = re.compile(r"^([A-F])[ \t]*(?:-|–|—|:|\.|\))[ \t]+(?=\S)")  # noqa: RUF001 - dashes
-# The start of one option's segment inside a paragraph (as ``app.idm.mcq`` reads it).
-_SEGMENT_RE: Final = re.compile(r"(?:^|(?<=[\s;,.(]))([A-F])[ \t]*(?:[—–:.)]|-(?=\s))[ \t]*")  # noqa: RUF001
 # The verdict and the reason connector right after the label.
 _VERDICT_RE: Final = re.compile(
     r"^(?:(?P<vi>đúng|sai|chưa đúng)(?:[ \t]*[,:])?[ \t]+(?:là vì|bởi vì|vì|bởi|do)"
@@ -214,24 +213,43 @@ def _labelled_lines(text: str) -> str:
     return "\n".join(_option_line(line) if _LINE_LABEL_RE.match(line) else line for line in _lines(text))
 
 
-def layout_explanation(text: str, option_count: int) -> str:
-    """``text`` as the principle line and one line per option in letter order, when its options are named once each
-    at the start of a segment (out of their order only when every segment is one sentence, so no remark moves with
-    another option); otherwise ``text`` with only the separators of its labelled lines normalised."""
+def _paragraph_layout(text: str, letters: list[str]) -> str | None:
+    """One line of ``text`` as the principle line and one line per option in letter order, when its options are
+    named once each at the start of a segment (``mcq.segment_starts``; out of their order only when every segment is
+    one sentence, so no remark moves with another option); ``None`` otherwise."""
 
-    normal = _normal(text).strip()
-    letters = list(OPTION_LETTERS[:option_count])
-    starts = [match for match in _SEGMENT_RE.finditer(normal) if match.group(1) in letters]
+    starts = segment_starts(text, len(letters))
     if sorted(match.group(1) for match in starts) != letters:
-        return _labelled_lines(normal)
-    bounds = [match.start() for match in starts] + [len(normal)]
-    lines = {match.group(1): _option_line(" ".join(normal[bounds[index]:bounds[index + 1]].split()))
+        return None
+    bounds = [match.start() for match in starts] + [len(text)]
+    lines = {match.group(1): _option_line(" ".join(text[bounds[index]:bounds[index + 1]].split()))
              for index, match in enumerate(starts)}
     if [match.group(1) for match in starts] != letters and any(
             len(sentence_spans(line)) > IDM_MCQ_EXPLANATION_OPTION_MAX_SENTENCES for line in lines.values()):
-        return _labelled_lines(normal)
-    principle = " ".join(normal[:bounds[0]].split())
-    return "\n".join([*([principle] if principle else []), *(lines[letter] for letter in letters)])
+        return None
+    principle = " ".join(text[:bounds[0]].split())
+    return LINE_FEED.join([*([principle] if principle else []), *(lines[letter] for letter in letters)])
+
+
+def layout_explanation(text: str, option_count: int) -> str:
+    """``text`` as the principle line and one line per option in letter order.
+
+    A paragraph is cut at its option segments (``_paragraph_layout``). Text already in lines keeps every line (K1;
+    review m7: a closing line "Lưu ý: …" is never merged into the last option): only the separators of its labelled
+    lines are normalised, and a line that holds all the options inside it is cut when no line starts with a label.
+    Anything unsure stays as written, for the checks to report."""
+
+    normal = _normal(text).strip()
+    letters = list(OPTION_LETTERS[:option_count])
+    if LINE_FEED not in normal:
+        return _paragraph_layout(normal, letters) or _labelled_lines(normal)
+    lines = _lines(normal)
+    if not any((match := _LINE_LABEL_RE.match(line)) and match.group(1) in letters for line in lines):
+        for index, line in enumerate(lines):
+            if (laid := _paragraph_layout(line, letters)) is not None:
+                lines = [*lines[:index], *laid.split(LINE_FEED), *lines[index + 1:]]
+                break
+    return _labelled_lines(LINE_FEED.join(lines))
 
 
 def lay_out_quiz(component: dict[str, Any]) -> tuple[dict[str, Any], Counter[str]]:

@@ -8,7 +8,15 @@ from __future__ import annotations
 
 import unittest
 
-from app.idm.quiz_text import QUESTION_LAYOUT_CODE, layout_question, question_report
+from app.idm.mcq import normalize_single_choice
+from app.idm.quiz_text import (
+    QUESTION_LAYOUT_CODE,
+    lay_out_quiz,
+    layout_explanation,
+    layout_question,
+    question_report,
+    quiz_findings,
+)
 
 
 def words(text: str) -> list[str]:
@@ -60,5 +68,71 @@ class InlineListTests(unittest.TestCase):
         self.assertIn(QUESTION_LAYOUT_CODE, question_report({"question": mixed}))
 
 
-if __name__ == "__main__":
-    unittest.main()
+KEY_LINES = ("Nguyên tắc: phân loại mức độ trước khi xử lý.\nA - Sai vì chỉ cấp 3 mới báo pháp chế.\n"
+             "B - Đúng vì lần đầu, chưa thiệt hại là cấp 1.\nC - Sai vì không hứa bồi thường trước khi phân loại.\n"
+             "D - Sai vì cũng bỏ qua phân loại như phương án A.")
+FOUR = [{"text": "Báo ngay cho bộ phận pháp chế", "correct": False},
+        {"text": "Phân loại cấp 1 và xử lý tại quầy", "correct": True},
+        {"text": "Hứa bồi thường để giữ khách", "correct": False},
+        {"text": "Chuyển khiếu nại cho quản lý vùng", "correct": False}]
+
+
+def four(explanation: str) -> dict[str, object]:
+    return {"type": "problem", "problem_type": "multiple_choice",
+            "question": "Khách hàng phàn nàn lần đầu, chưa có thiệt hại. Bạn xử lý thế nào?",
+            "choices": [dict(choice) for choice in FOUR], "explanation": explanation}
+
+
+class LetterMentionTests(unittest.TestCase):
+    """M2 / m7: a letter an explanation mentions ("như phương án A", "đáp án đúng là B", "Phương án A: sai") is no
+    option label; in line form only a letter at a line start labels an option, and a closing line stays a line."""
+
+    def test_shuffled_lines_follow_the_new_letters_whatever_they_mention(self) -> None:
+        for seed in range(40):
+            for ordinal in range(4):
+                shuffled, _codes = normalize_single_choice(four(KEY_LINES), f"seed-{seed}", ordinal)
+                laid, _laid = lay_out_quiz(shuffled)
+                lines = str(laid["explanation"]).splitlines()
+                self.assertEqual([line[:4] for line in lines[1:]], ["A - ", "B - ", "C - ", "D - "], (seed, ordinal))
+                self.assertEqual(quiz_findings(laid), [], (seed, ordinal))
+                key = "ABCD"[[choice["correct"] for choice in laid["choices"]].index(True)]
+                self.assertTrue(lines[1 + "ABCD".index(key)].startswith(f"{key} - Đúng vì"))
+
+    def test_a_principle_that_names_the_key_keeps_the_lines_in_order(self) -> None:
+        explanation = ("Nguyên tắc: phân loại trước, nên đáp án đúng là B.\nA - Sai vì chỉ cấp 3 mới báo pháp chế.\n"
+                       "B - Đúng vì lần đầu là cấp 1.\nC - Sai vì không hứa bồi thường.\nD - Sai vì chưa cần quản lý.")
+        shuffled, _codes = normalize_single_choice(four(explanation), "seed-x", 0)
+        laid, _laid = lay_out_quiz(shuffled)
+        lines = str(laid["explanation"]).splitlines()
+        self.assertEqual(lines[0], "Nguyên tắc: phân loại trước, nên đáp án đúng là A.")
+        self.assertEqual([line[:4] for line in lines[1:]], ["A - ", "B - ", "C - ", "D - "])
+        self.assertTrue(lines[1].startswith("A - Đúng vì lần đầu"))
+
+    def test_a_letter_after_a_word_never_starts_a_segment(self) -> None:
+        paragraph = ("Cần phân loại trước khi xử lý. Phương án A: sai vì chưa đến cấp 3. Phương án B: đúng vì đây là "
+                     "cấp 1. Phương án C: sai vì hứa bồi thường trước khi phân loại. Phương án D: sai vì chưa cần quản "
+                     "lý vùng.")
+        for seed in range(40):
+            for ordinal in range(4):
+                shuffled, _codes = normalize_single_choice(four(paragraph), f"seed-{seed}", ordinal)
+                laid, _laid = lay_out_quiz(shuffled)
+                self.assertNotIn("Phương án.", laid["explanation"])
+                self.assertEqual(str(laid["explanation"]).count("Phương án"), 4)
+        for text in ("Đáp án đúng là B. A - Sai vì chưa phân loại mức độ. C - Sai vì cấp 3 cần escalate. D - Sai vì "
+                     "không hứa bồi thường.",
+                     "Cần phân loại trước khi xử lý. Phương án A: sai vì bỏ qua phân loại. Phương án B: đúng vì phân "
+                     "loại trước. Phương án C: sai vì hứa bồi thường."):
+            self.assertEqual(layout_explanation(text, 3 if "Phương" in text else 4), text)
+        self.assertEqual(layout_explanation("Nguyên tắc: hạng C: khách mới cần tư vấn. A - Sai vì x; B - Đúng vì y; "
+                                            "phương án C sai vì z.", 3),
+                         "Nguyên tắc: hạng C: khách mới cần tư vấn. A - Sai vì x; B - Đúng vì y; phương án C sai vì z.")
+        self.assertEqual(layout_explanation("Theo mục A. của quy trình, cần phân loại. A - Sai vì x; B - Đúng vì y; "
+                                            "C - Sai vì z.", 3),
+                         "Theo mục A. của quy trình, cần phân loại.\nA - Sai vì x.\nB - Đúng vì y.\nC - Sai vì z.")
+
+    def test_a_closing_line_stays_its_own_line(self) -> None:
+        lined = "Phân loại trước.\nA - Sai vì x.\nB - Đúng vì y.\nC - Sai vì z.\nLưu ý: luôn ghi nhận khiếu nại."
+        self.assertEqual(layout_explanation(lined, 3), lined)
+        shuffled, _codes = normalize_single_choice({**four(lined), "choices": [dict(item) for item in FOUR[:3]]},
+                                                   "seed-x", 0)
+        self.assertEqual(str(shuffled["explanation"]).splitlines()[-1], "Lưu ý: luôn ghi nhận khiếu nại.")
