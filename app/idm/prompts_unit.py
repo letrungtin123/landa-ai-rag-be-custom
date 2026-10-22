@@ -423,6 +423,10 @@ UNIT_RULE_TEXT: Final[dict[str, str]] = {
     "IDM_W5_QUESTION_OVER_LIMIT": "shorten the question to well under 1000 characters (the system cuts a longer "
                                   "one): keep the facts that decide the answer and the question sentence; keep the "
                                   "options and the answer key",
+    "IDM_W5_QUESTION_ITEM_LETTERS": "the question's listed items are named with the option letters A-H (\"Phương "
+                                    "án A\"): number them (\"Phương án 1\", \"Phương án 2\") or name them, and use "
+                                    "the same names in the options and the explanation; keep the facts and the "
+                                    "answer key",
     "IDM_W5_QUESTION_LENGTH": f"shorten the question: the context and the question sentence together at most "
                               f"{IDM_MCQ_STEM_PROSE_MAX_WORDS} words, at most {IDM_MCQ_STEM_MAX_ITEMS} listed items of "
                               f"at most {IDM_MCQ_STEM_ITEM_MAX_WORDS} words each; keep the facts that "

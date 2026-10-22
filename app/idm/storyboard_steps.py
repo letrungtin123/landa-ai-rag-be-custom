@@ -55,7 +55,8 @@ from app.idm.qa import (
     ungrounded_callouts,
 )
 from app.idm.qa_checks import CALLOUT_REPEAT_DROPPED, repeated_callouts, without_blocks
-from app.idm.quiz_text import ITEM_LETTERS_NUMBERED, lay_out_quiz, number_item_letters
+from app.idm.quiz_letters import ITEM_LETTERS_NUMBERED, number_item_letters
+from app.idm.quiz_text import lay_out_quiz
 from app.idm.runtime import IdmResponseInvalidError, IdmRuntime, ThinkingLevel, log_stage, record_deterministic_fallback
 from app.idm.source_flags import unit_flags
 from app.idm.source_locked import FAQ_FALLBACK_REPEATED_CODE, faq_answers_repeat
