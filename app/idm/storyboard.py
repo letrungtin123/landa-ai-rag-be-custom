@@ -128,6 +128,7 @@ from app.idm.storyboard_context import (
 from app.idm.storyboard_judge import judge_and_repair as _judge_and_repair
 from app.idm.storyboard_judge import unit_review_reasons
 from app.idm.storyboard_repair import IdmUnitRepairSteps
+from app.idm.worksheet_input import WORKSHEET_INPUT_CODE, input_hint, missing_input
 
 _FIELD_OF_PATH_RE: Final = re.compile(r"^components\[\d+\]\.?")
 # FAQ findings settled by dropping the items concerned while the slot keeps two items.
@@ -213,6 +214,8 @@ class IdmUnitWriter(IdmUnitRepairSteps):
                         lines.append(self.length_cue_line(slot, component))
                     elif code == ANSWER_CONTESTED_CODE and isinstance(component, dict):
                         lines.append(self.contested_rule_line(slot, index, component, unit))
+                    elif code == WORKSHEET_INPUT_CODE and isinstance(component, dict):
+                        lines.append(rule_line(slot, code, slot) + input_hint(missing_input(component)))
                     elif code in QUIZ_CODES and isinstance(component, dict):
                         field = "question" if code in QUESTION_CODES else "explanation"
                         lines.append(rule_line(slot, code, f"{slot}.{field}")
@@ -608,9 +611,6 @@ def _whole_fallback(writer: IdmUnitWriter) -> dict[str, Any]:
         raise IdmStageError(_FALLBACK_INVALID)
     for index in range(len(writer.plans)):  # an FAQ that says one sentence twice is a reason in the note
         writer.repeated_faq_fallback(index)
-    # The slots no source structure rebuilt: the last resort repeats sentences of the lesson there (run 5496155c).
-    slots = writer.deps.source_locked_components
-    writer.placeholder_slots = [] if slots is None else [index for index, slot in enumerate(slots) if slot is None]
     record_deterministic_fallback(writer.runtime, stage="idm_w5_unit", code="IDM_W5_UNIT_FALLBACK")
     return dict(source)
 

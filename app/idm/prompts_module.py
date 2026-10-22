@@ -39,7 +39,9 @@ def _criteria_rule(locale: Locale) -> str:
    criteria_fact_keys the facts of this lesson's blocks the practice applies (what the lesson teaches about it),
    start feedback_focus.criterion with "{label}: " and state there criteria drawn only from that taught content
    (never a rule, number or threshold the facts do not state); the practice is a WORKSHEET checked by a problem when
-   the worksheet is allowed, else a problem. Contexts, characters and example situations may be drafted by you
+   the worksheet is allowed, else a problem, and like any practice it writes out the data its task works on (a
+   classroom exercise of the slides becomes one the learner can do alone). Contexts, characters and example
+   situations may be drafted by you
    (scenario_origin "ai_drafted") but must not introduce new rules, numbers or exceptions.""")
 
 
@@ -79,9 +81,11 @@ Return the lessons in exactly the order and with exactly the lesson_key values o
 1. PRACTICE FIRST. Write 1-3 practice tasks as one sentence
    "Cho [bối cảnh/đầu vào], người học [hành động] để [kết quả/quyết định]"
    ("Given [context/input], the learner [action] to produce/decide [result]"), plus context_input,
-   learner_action, result and Bloom level. Ids pt_1, pt_2, pt_3 inside each lesson. The practice must use the same
-   kind of action as the Must Do (classify, sequence, decide, apply a rule, choose a message ...). Do not turn
-   everything into recall questions.
+   learner_action, result and Bloom level. Ids pt_1, pt_2, pt_3 inside each lesson. context_input is what the
+   learner works on; when it is data to read (a list, an interview, requests, cases), keep it short (at most 6
+   entries): the practice unit writes it out in full, never "the team's own list" or data the learner does not have.
+   The practice must use the same kind of action as the Must Do (classify, sequence, decide, apply a rule, choose a
+   message ...). Do not turn everything into recall questions.
    Must Do of kind "do" that produces an output (fill in a form or canvas, draft a plan, write a commitment, map
    resources, redesign a step; not classify, identify or choose), and a Must Do marked "decide" whose verb
    produces one (sign a commitment, draw up a list): the main practice lets the learner DO it. Use

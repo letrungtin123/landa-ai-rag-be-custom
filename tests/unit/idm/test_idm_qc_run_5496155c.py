@@ -13,6 +13,8 @@ from typing import Any
 
 from app.idm.contracts import IdmIssueV1, brief_hash_of
 from app.idm.notes import build_course_notes
+from app.idm.prompts_module import module_prompt
+from app.idm.prompts_unit import _WORKSHEET_RULE
 from app.idm.source_flags import (
     REVIEW_FLAG_TYPES,
     SOFT_FLAG_TYPES,
@@ -25,6 +27,7 @@ from app.idm.source_flags import (
 from app.idm.source_locked import render_idm_source_locked_html
 from app.idm.text import glued_words
 from app.idm.worksheet import plain_self_check
+from app.idm.worksheet_input import InputReference, input_hint, missing_input
 from tests.support.idm_test_support import rehash_contract
 from tests.unit.idm.test_idm_fallback_matrix import procedure_steps, unit_findings, with_fact_texts
 from tests.unit.idm.test_idm_qc_feedback import (
@@ -36,6 +39,7 @@ from tests.unit.idm.test_idm_qc_feedback import (
 )
 from tests.unit.idm.test_idm_storyboard import (
     JUDGE,
+    REPAIR,
     WRITER,
     FakeGenerate,
     StoryboardEndpointTestCase,
@@ -45,6 +49,8 @@ from tests.unit.idm.test_idm_storyboard import (
     judge,
     severity_body,
     severity_writer,
+    slot_repair,
+    worksheet_body,
     worksheet_writer,
 )
 
@@ -323,3 +329,85 @@ class SourceLockedSlideTextTests(unittest.TestCase):
         self.assertIn("Về Chức năng (Functional Pain):</strong> Bị &quot;bủa vây&quot; bởi hồ sơ", html)
         self.assertIn("<p>Sợ bị coi là một &quot;nút thắt&quot; (bottleneck) làm chậm tiến độ của cả phòng.</p>", html)
         self.assertNotIn("<h3>", html)
+
+
+def worksheet(task: str, *extra: dict[str, Any], template_rows: int = 4) -> dict[str, Any]:
+    """A worksheet html slot: the task, ``extra`` blocks after it, a template table, a worked example, a self-check."""
+
+    def block(kind: str, **fields: Any) -> dict[str, Any]:
+        return {"kind": kind, "text": fields.get("text"), "items": fields.get("items", []),
+                "rows": fields.get("rows", [])}
+
+    rows = [{"label": f"Ô {number}", "value": "Ghi gì vào ô này?"} for number in range(1, template_rows + 1)]
+    return {"type": "html", "semantic_content": {"sections": [
+        {"heading": "Nhiệm vụ", "blocks": [block("task", text=task), *extra]},
+        {"heading": "Biểu mẫu cần điền", "blocks": [block("table", rows=rows)]},
+        {"heading": "Ví dụ mẫu đối chiếu", "blocks": [block("table", rows=rows[:2])]},
+        {"heading": "Tự kiểm tra", "blocks": [block("bullets", items=["Đủ các ô.", "Đúng vai trò."])]},
+    ]}}
+
+
+def bullets(count: int) -> dict[str, Any]:
+    return {"kind": "bullets", "text": None, "rows": [],
+            "items": [f"Đề xuất {number}: một yêu cầu mẫu của khách hàng." for number in range(1, count + 1)]}
+
+
+INTERVIEW = ("Tổng giám đốc chia sẻ: tôi cần các khoản đầu tư có tỷ suất hoàn vốn rõ ràng, tôi lo đội ngũ không theo "
+             "kịp thay đổi và tôi muốn công ty được đối tác nhìn nhận là đơn vị dẫn đầu trong ngành.")
+
+
+class WorksheetInputTests(StoryboardEndpointTestCase):
+    """Item 3: a worksheet gives the data its task refers to (a list, an interview, requests); one that does not is
+    repaired once, then kept for the author's review with a plain note."""
+
+    def test_a_task_without_its_data_is_found(self) -> None:
+        # The run's three shapes: a list of people, an interview, five requests (only a 3-step list and the template).
+        for task, extra in (("Bạn hãy đọc danh sách nhân sự tham gia dự án, sau đó phân loại từng người.", ()),
+                            ("Hãy bóc tách nội dung phỏng vấn thành ma trận ba tầng.", ()),
+                            ("Từ danh sách 5 yêu cầu của khách hàng, hãy chọn ra 2 sáng kiến khả thi nhất.",
+                             (bullets(3),))):
+            reference = missing_input(worksheet(task, *extra))
+            self.assertIsNotNone(reference, task)
+        self.assertEqual(missing_input(worksheet("Từ danh sách 5 yêu cầu, hãy chọn 2.", bullets(3))),
+                         InputReference("items", 5))
+        self.assertIn("(5 entries)", input_hint(InputReference("items", 5)))
+
+    def test_a_task_with_its_data_or_without_a_reference_is_left_alone(self) -> None:
+        self.assertIsNone(missing_input(worksheet("Từ danh sách 5 yêu cầu, hãy chọn 2 sáng kiến.", bullets(5))))
+        self.assertIsNone(missing_input(worksheet("Hãy bóc tách nội dung phỏng vấn thành ma trận ba tầng.",
+                                                  {"kind": "paragraph", "text": INTERVIEW, "items": [], "rows": []})))
+        # Data written as the first table, before the template.
+        table = {"kind": "table", "text": None, "items": [],
+                 "rows": [{"label": f"Người {n}", "value": "Trợ lý giám đốc."} for n in range(1, 4)]}
+        self.assertIsNone(missing_input(worksheet("Bạn hãy đọc danh sách nhân sự dưới đây và phân loại.", table)))
+        # An output to produce is no input: "lập danh sách", "chọn ra 2".
+        for task in ("Lập danh sách 5 khách hàng mục tiêu của bạn.", "Chọn ra đúng 2 sáng kiến khả thi nhất."):
+            self.assertIsNone(missing_input(worksheet(task)))
+
+    async def test_the_writer_adds_the_data_once_else_the_unit_is_kept_for_review(self) -> None:
+        body = worksheet_body()
+        writer = worksheet_writer(body)
+        writer["components"]["c0"]["semantic_content"]["sections"][0]["blocks"].pop()  # the three complaints go
+        fixed = worksheet_writer(body)
+        provider = FakeGenerate(**{WRITER: [writer], REPAIR: [slot_repair(fixed, 0)], JUDGE: [judge()]})
+        status, data, _ = await self.post(body, provider)
+        self.assertEqual(status, 200)
+        self.assertEqual(provider.names, [WRITER, REPAIR, JUDGE])
+        self.assertIn("c0 IDM_W5_WORKSHEET_INPUT_MISSING at c0: the worksheet's task refers to data the learner works "
+                      "on", provider.calls[1]["prompt"])
+        self.assertIn("(the task refers to the items (3 entries) the worksheet does not give)",
+                      provider.calls[1]["prompt"])
+        self.assertEqual(data["quality_state"], "validated")
+        provider = FakeGenerate(**{WRITER: [writer], REPAIR: [slot_repair(writer, 0)], JUDGE: [judge()]})
+        status, data, _ = await self.post(body, provider)
+        self.assertEqual((status, data["quality_state"]), (200, "review_required"))
+        note = data["unit"]["idm_quality"]["author_note"]
+        self.assertIn("phiếu thực hành nhắc tới dữ liệu để làm bài (danh sách, nội dung phỏng vấn, các yêu cầu) nhưng "
+                      "không đưa dữ liệu đó", note)
+        self.assertNotIn("source_locked_fallback", data["unit"]["components"][0])
+
+    def test_the_prompts_ask_for_the_data(self) -> None:
+        self.assertIn('(heading "Dữ liệu đầu vào" / "Input data")', _WORKSHEET_RULE)
+        self.assertIn("writes it out in full", module_prompt(
+            "vi", module_plan={}, lesson_plans=[], audience="", objectives=[], must_dos=[], course_blocks=[],
+            facts=[], allowed_components=["html"]))

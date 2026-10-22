@@ -90,6 +90,7 @@ from app.idm.source_fallback import glued_line, placeholder_line
 from app.idm.source_flags import fit_flags
 from app.idm.source_locked import FAQ_FALLBACK_REPEATED_CODE
 from app.idm.text import sanitize_author_text
+from app.idm.worksheet_input import WORKSHEET_INPUT_CODE
 
 _CRITERION_LABEL_VI: Final = {
     "Q1_support_sufficient": "phần hỗ trợ chưa đủ cho bài luyện tập",
@@ -160,6 +161,7 @@ _CODE_TEXT_VI: Final[dict[str, str]] = {
     FRAMEWORK_LIST_INSERTED_CODE: "chèn danh sách thành phần",
     SOURCE_ARTIFACT_CODE: "chữ bị cắt như trong PDF",
     WORKSHEET_INCOMPLETE_CODE: "phiếu thực hành thiếu phần",
+    WORKSHEET_INPUT_CODE: "phiếu thực hành thiếu dữ liệu đầu vào",
     "IDM_W5_WORKSHEET_COMPACTED": "rút gọn phiếu thực hành",
     "HTML_INSTRUCTIONAL_DENSITY_EXCEEDED": "phần lý thuyết dài quá giới hạn",
     "IDM_W5_REPAIR_INVALID": "lần sửa của AI sai định dạng",
@@ -207,6 +209,7 @@ _CODE_TEXT_EN: Final[dict[str, str]] = {
     FRAMEWORK_LIST_INSERTED_CODE: "a list of items added",
     SOURCE_ARTIFACT_CODE: "text cut as in the PDF",
     WORKSHEET_INCOMPLETE_CODE: "an incomplete worksheet",
+    WORKSHEET_INPUT_CODE: "a worksheet without its input data",
     "IDM_W5_WORKSHEET_COMPACTED": "a shortened worksheet",
     "HTML_INSTRUCTIONAL_DENSITY_EXCEEDED": "theory over its length",
     "IDM_W5_REPAIR_INVALID": "an AI repair in the wrong format",
@@ -590,6 +593,9 @@ _REVIEW_HINT_VI: Final = {
     FRAMEWORK_INCOMPLETE_CODE: "tiêu đề nêu một khung gồm nhiều thành phần nhưng nội dung chưa liệt kê đủ các thành "
                                "phần đó — bổ sung bản đồ tổng quan hoặc đổi tiêu đề theo nội dung",
     QUESTION_INCOMPLETE_CODE: "đề câu hỏi bị cụt, chưa có câu hỏi ở cuối — cần viết lại cho trọn câu hỏi",
+    # Run 5496155c: a worksheet that names data it does not give cannot be done.
+    WORKSHEET_INPUT_CODE: "phiếu thực hành nhắc tới dữ liệu để làm bài (danh sách, nội dung phỏng vấn, các yêu cầu) "
+                          "nhưng không đưa dữ liệu đó — cần bổ sung để người học làm được bài",
     # QC feedback 2026-10-21 (A1): the feedback must tell the learner why each option is right or wrong.
     EXPLANATION_LAYOUT_CODE: "lời giải chưa theo bố cục: một dòng nêu nguyên tắc, rồi mỗi phương án một dòng «A - Đúng "
                              "vì …» hoặc «A - Sai vì …» — cần viết lại để người học thấy vì sao đúng, vì sao sai",
@@ -613,6 +619,8 @@ _REVIEW_HINT_EN: Final = {
     FRAMEWORK_INCOMPLETE_CODE: "the title names a framework of several items but the content does not list all of "
                                "them — add the overview or retitle it to what it teaches",
     QUESTION_INCOMPLETE_CODE: "the question stops before it asks anything — write the question out in full",
+    WORKSHEET_INPUT_CODE: "the worksheet refers to data to work on (a list, an interview, requests) but does not give "
+                          "it — add it so learners can do the task",
     EXPLANATION_LAYOUT_CODE: "the feedback is not laid out as one line with the principle, then one line per option "
                              "(«A - Correct because …» or «A - Incorrect because …») — rewrite it so learners see why "
                              "each option is right or wrong",

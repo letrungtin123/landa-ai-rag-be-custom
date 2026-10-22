@@ -127,6 +127,12 @@ HASH_HISTORY: tuple[tuple[str, str], ...] = (
     # server removes one still written, ``worksheet.plain_self_check``).
     ("5a596ada1012dc60e714976880d8c2c25ad9a5822ad9547aa3ce889547c2c1a4",
      "Self-check heading without the suggested-criteria label"),
+    # Run 5496155c: a worksheet gives the data its task refers to. The W5 worksheet rule asks for it in its own section
+    # after the task; a new repair rule (IDM_W5_WORKSHEET_INPUT_MISSING, ``app.idm.worksheet_input:input_hint`` joins
+    # the manifest); the module prompt keeps context_input short and written out by the practice unit, released
+    # practices included.
+    ("27f0de5b869d672c2e022d809347e563a39f3804b80359c4e236997028322419",
+     "A worksheet gives the data its task refers to"),
 )
 PROMPT_NAME = re.compile(r"(prompt|_rules?$|_suffix$|rule_lines?$|_hint$|^rule_line$|_cue_line$)")
 

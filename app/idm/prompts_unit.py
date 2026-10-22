@@ -79,7 +79,11 @@ _WORKSHEET_RULE: Final = """\
   gợi ý" / "suggested criteria" (the author is told apart). The worked example meets every self-check item of its
   own worksheet (when an item asks for a measurable KPI, the example's KPI has a number). Do not reveal the answer of
   the problem slot that follows it; that problem asks the learner to judge a sample entry against the same criteria
-  (exactly one option meets them). A worksheet has the same length budget as any html slot, so keep it lean: one
+  (exactly one option meets them). When the task refers to data the learner works on (a list of people, an
+  interview, requests, cases, figures), the worksheet gives that data in full in its own section right after the task
+  (heading "Dữ liệu đầu vào" / "Input data"), as a bullets list or a table with exactly the entries the task names
+  (at most 6), about a case other than the worked example's; never refer to data the worksheet does not show. A
+  worksheet has the same length budget as any html slot, so keep it lean: one
   template row per field (its value one guiding question of at most 15 words), a worked example of at most two
   filled entries and at most 6 self-check items; a worksheet still over the budget loses its worked example."""
 # N9 and QC feedback 2026-10-21 (A3): a callout quotes the source and adds a point its slot does not already make.
@@ -480,6 +484,14 @@ UNIT_RULE_TEXT: Final[dict[str, str]] = {
     "IDM_W5_WORKSHEET_INCOMPLETE": "a worksheet slot needs a task block, the template to complete (table rows or "
                                    "steps) and a final self-check bullets block whose items are the practice "
                                    "criteria taken from the facts",
+    # Run 5496155c: "đọc danh sách nhân sự …" without the list (``app.idm.worksheet_input``).
+    "IDM_W5_WORKSHEET_INPUT_MISSING": "the worksheet's task refers to data the learner works on (a list, an interview, "
+                                      "requests or cases) that the worksheet does not give: add that data in full in "
+                                      "its own section right after the task (heading \"Dữ liệu đầu vào\" / \"Input "
+                                      "data\"), as a bullets list or a table with exactly the number of entries the "
+                                      "task names, about a case other than the worked example's; drafted entries add "
+                                      "no rule or number the facts do not state; keep the task, the template, the "
+                                      "worked example and the self-check",
     "IDM_W6_Q1": "a learner can do the practice using only what this lesson taught",
     "IDM_W6_Q2": "rewrite for the learner; do not paste the source (exact rules and definitions may stay)",
     "IDM_W6_Q3": "context, task, input, one correct answer and feedback are present and consistent; the question ends "

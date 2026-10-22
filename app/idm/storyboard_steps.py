@@ -167,8 +167,10 @@ class IdmUnitWriterSteps:
         self.callout_drops: dict[int, int] = {}
         # Slots whose source-locked FAQ repeats one sentence (logged once each).
         self.faq_fallback_repeated: set[int] = set()
-        # Run 5496155c: the slots of a whole-unit fallback no source structure rebuilt (sentences of the lesson there).
-        self.placeholder_slots: list[int] = []
+        # Run 5496155c: the slots no source structure rebuilds; a whole-unit fallback repeats sentences of the lesson
+        # there (the last resort, ``app.idm.source_fallback``).
+        self.placeholder_slots = [index for index, slot in enumerate(deps.source_locked_components or ())
+                                  if slot is None]
         self.budget: dict[str, Any] = self.expected["instructional_output_budget"]
         self.min_html_chars = minimum_visible_chars(self.budget.get("source_content_chars"))
         # Deterministic html fixes applied before validation (counted, never content).

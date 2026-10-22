@@ -123,6 +123,11 @@ def worksheet_writer(body: dict[str, Any]) -> dict[str, Any]:
         return {"heading": heading, "learning_block_ids": [], "blocks": [{"text": None, "items": [], "rows": [],
                                                                          **block}]}
 
+    # Run 5496155c: the worksheet gives the three complaints its task refers to, right after the task.
+    complaints = {"kind": "bullets", "text": None, "rows": [], "items": [
+        "Khách hàng báo sản phẩm bị trầy nhẹ khi nhận và không yêu cầu bồi thường.",
+        "Khách hàng bị thiệt hại tài chính dưới 50 triệu đồng vì lô hàng giao thiếu.",
+        "Khách hàng báo thiết bị phát nhiệt bất thường khi sử dụng."]}
     writer["components"]["c0"]["semantic_content"] = {"sections": [
         section("Bạn cần làm gì với ba khiếu nại mẫu?", {"kind": "task", "text": (
             "Đọc mô tả ba khiếu nại mẫu, xác định cấp độ của từng khiếu nại và ghi người cần xử lý vào bảng "
@@ -135,6 +140,7 @@ def worksheet_writer(body: dict[str, Any]) -> dict[str, Any]:
             "Cấp 2 khi thiệt hại tài chính dưới 50 triệu đồng hoặc khách hàng phàn nàn lần thứ hai.",
             "Cấp 3 khi liên quan an toàn, pháp lý hoặc truyền thông: escalate ngay cho quản lý."]}),
     ]}
+    writer["components"]["c0"]["semantic_content"]["sections"][0]["blocks"].append(complaints)
     return writer
 
 
@@ -544,7 +550,7 @@ class UnitEndpointTests(StoryboardEndpointTestCase):
         self.assertIn('"role":"practice","title"', prompt)
         kinds = [block["kind"] for section in data["unit"]["components"][0]["semantic_content"]["sections"]
                  for block in section["blocks"]]
-        self.assertEqual(kinds, ["task", "table", "paragraph", "bullets"])
+        self.assertEqual(kinds, ["task", "bullets", "table", "paragraph", "bullets"])
 
     async def test_incomplete_worksheet_is_kept_for_review_not_replaced(self) -> None:
         body = worksheet_body()

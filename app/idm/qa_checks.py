@@ -64,6 +64,7 @@ from app.idm.text import (
     ngram_overlap,
     word_ngrams,
 )
+from app.idm.worksheet_input import WORKSHEET_INPUT_CODE, missing_input
 
 MIN_FEEDBACK_CHARS: Final = 60
 # An option is named by its text when the explanation contains the start of it (accent-folded).
@@ -357,9 +358,12 @@ def deterministic_slot_findings(
                     and index < len(owned_text_by_slot)
                     and ngram_overlap(text, owned_text_by_slot[index]) > VERBATIM_MAX_OVERLAP):
                 findings.append(SlotFinding("IDM_W5_VERBATIM_COPY", index))
-            if (slot is not None and slot.role == "practice" and slot.type == WORKSHEET_COMPONENT_TYPE
-                    and not worksheet_complete(component, evidence)):
+            worksheet = slot is not None and slot.role == "practice" and slot.type == WORKSHEET_COMPONENT_TYPE
+            if worksheet and not worksheet_complete(component, evidence):
                 findings.append(SlotFinding(WORKSHEET_INCOMPLETE_CODE, index))
+            # Run 5496155c: a worksheet whose task refers to a list, an interview or requests it does not give.
+            if worksheet and missing_input(component) is not None:
+                findings.append(SlotFinding(WORKSHEET_INPUT_CODE, index))
             if evidence is not None and ungrounded_callouts(component, evidence):
                 findings.append(SlotFinding(CALLOUT_UNGROUNDED_CODE, index))
             if cut_fragments(component.get("semantic_content")):
