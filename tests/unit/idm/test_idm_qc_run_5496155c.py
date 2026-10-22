@@ -695,7 +695,7 @@ class SuppositionTests(StoryboardEndpointTestCase):
                 "Giả sử trong quý vừa qua, bộ phận kinh doanh đã áp dụng quy trình bốn bước.",
             "Khách hàng phàn nàn. Năm ngoái, công ty mất ba khách lớn.":
                 "Khách hàng phàn nàn. Giả sử năm ngoái, công ty mất ba khách lớn.",
-            "Trong năm qua bạn đã ký ba hợp đồng.": "Giả sử trong năm qua bạn đã ký ba hợp đồng.",
+            "Trong năm qua, công ty ký ba hợp đồng.": "Giả sử trong năm qua, công ty ký ba hợp đồng.",
         }
         for text, expected in changed.items():
             self.assertEqual(as_supposition(text, "vi", None), (expected, 1))

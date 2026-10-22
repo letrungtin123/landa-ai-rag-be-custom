@@ -8,11 +8,14 @@ from __future__ import annotations
 
 import json
 import unittest
+from collections import Counter
 from typing import Any
 
 from app.idm.answer_checks import copies_example_measure, stem_copies_answer, unit_teaching
+from app.idm.hypothetical import SUPPOSITION_ADDED, as_supposition, suppose_semantic
 from app.idm.prompts_unit import unit_writer_prompt
 from app.idm.quiz_text import lay_out_quiz
+from app.idm.text import evidence_index
 from app.idm.worksheet import compact_worksheet
 from app.idm.worksheet_input import is_example_section, is_input_section, missing_input, reused_entries
 
@@ -141,3 +144,39 @@ class SectionKindTests(unittest.TestCase):
         worksheet = html(section("Nhiệm vụ", {"kind": "task", "text": "Điền bảng cho khách hàng của bạn."}),
                          template, example, WORKSHEET["semantic_content"]["sections"][-1])
         self.assertEqual(reused_entries(worksheet), [])
+
+
+class SuppositionScopeTests(unittest.TestCase):
+    """Item 3: "Giả sử " only before a declarative scenario sentence that opens with a past time and its comma."""
+
+    TET = evidence_index(["Doanh số tháng trước Tết thường tăng mạnh nhờ nhu cầu quà biếu doanh nghiệp."])
+
+    def test_questions_instructions_and_the_learners_past_stay(self) -> None:
+        for text in ("Trong tuần qua, bạn đã nhận bao nhiêu phản hồi từ khách hàng? Hãy ghi lại ba phản hồi.",
+                     "Trong tháng qua, hãy liệt kê ba khách hàng bạn đã gặp trực tiếp.",
+                     "Năm ngoái, bạn đã ký được bao nhiêu hợp đồng mới.",
+                     "Trong năm qua bạn ký ba hợp đồng."):
+            self.assertEqual(as_supposition(text, "vi", None), (text, 0))
+
+    def test_a_longer_time_or_one_the_facts_use_stays(self) -> None:
+        text = "Trong tháng trước Tết, doanh số thường tăng mạnh nhờ quà biếu."
+        self.assertEqual(as_supposition(text, "vi", self.TET), (text, 0))
+        sourced = "Tháng trước, đội bán hàng gặp mười khách."
+        self.assertEqual(as_supposition(sourced, "vi", evidence_index(["Số khách tháng trước là mười."])), (sourced, 0))
+
+    def test_only_the_units_language(self) -> None:
+        english = "In the past month, the team closed two deals."
+        self.assertEqual(as_supposition(english, "vi", None), (english, 0))
+        self.assertEqual(as_supposition(english, "en", None),
+                         ("Suppose that in the past month, the team closed two deals.", 1))
+
+    def test_a_declarative_scenario_still_opens_with_suppose(self) -> None:
+        scenario = "Trong quý vừa qua, bộ phận kinh doanh áp dụng quy trình bốn bước."
+        self.assertEqual(as_supposition(scenario, "vi", None), ("Giả sử t" + scenario[1:], 1))
+
+    def test_a_worksheets_task_stays(self) -> None:
+        semantic = {"sections": [section("Nhiệm vụ", {"kind": "task", "text": "Trong tuần qua, đội của bạn nhận năm "
+                                                                             "yêu cầu mới."})]}
+        counts: Counter[str] = Counter()
+        self.assertIs(suppose_semantic(semantic, "vi", None, counts), semantic)
+        self.assertEqual(counts[SUPPOSITION_ADDED], 0)

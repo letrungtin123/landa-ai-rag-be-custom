@@ -4,12 +4,14 @@ The run told three drafted cases as facts: "Trong quý vừa qua, bộ phận ph
 bước …", "Trong quý vừa qua, một chuyên viên … đã hoàn thiện mẫu …", "Trong quý vừa qua, khách hàng B2B gặp nút thắt
 …". The writer is asked to open such a case with "Giả sử …" / "Hãy hình dung …"; what it still writes so is fixed here.
 
-``as_supposition`` puts "Giả sử " ("Suppose that ") before a sentence that OPENS with a relative past time used as an
-adverbial ("Trong quý vừa qua", "Trong năm qua", "Hồi tháng trước" or any such time followed by a comma: "Năm ngoái,",
-"Tháng trước,"; "Last quarter", "In the past year"), and lowers the time's capital. Safety: only those fixed openings,
-only at the start of a sentence, only two words are added and no word changes; a time that is the subject ("Quý trước
-là …") stays, and a time the facts themselves use ("quý vừa qua" in the source) is the source's own account and stays
-as written.
+``as_supposition`` puts "Giả sử " ("Suppose that ") before a declarative sentence that opens with a relative past time
+of the unit's language followed by a comma ("Trong quý vừa qua,", "Năm ngoái,", "Hồi tháng trước,"; "Last quarter,",
+"In the past year,"), and lowers the time's capital. Safety (review of dfb6db2, item 3): only those fixed openings, at
+the start of a sentence, with their comma; never a question ("Trong tuần qua, bạn đã nhận bao nhiêu …?"), an
+instruction ("…, hãy liệt kê …") or a sentence about the learner's own past ("bạn đã"); never a longer time ("Trong
+tháng trước Tết") and never a time the facts use themselves (read without its "Trong"/"Hồi"); only the language of the
+unit. Two words are added and no word changes. It is applied to the stem of a question and to the texts, list items
+and table values of an html slot, never to a worksheet's task.
 """
 
 from __future__ import annotations
@@ -24,39 +26,54 @@ from typing import Any, Final
 from app.idm.text import EvidenceIndex, idm_fold
 
 SUPPOSITION_ADDED: Final = "past_scenario_supposed"
-_PAST_VI: Final = (r"(?:Trong[ \t]+)?(?:quý|năm|tháng|tuần|kỳ)[ \t]+(?:vừa[ \t]+qua|vừa[ \t]+rồi|trước|qua)"
-                   r"|Năm[ \t]+ngoái|Hồi[ \t]+(?:quý|năm|tháng|tuần)[ \t]+trước")
-_PAST_EN: Final = r"(?:In[ \t]+the[ \t]+(?:last|past)[ \t]+|Last[ \t]+)(?:quarter|year|month|week)"
-# The opening of a text or of a sentence inside it, then the past time and a comma or a space.
-_OPENING_RE: Final = re.compile(rf"(?:^|(?<=[.!?…][ \t])|(?<=\n))({_PAST_VI}|{_PAST_EN})(?=[ \t,])", re.IGNORECASE)
-# An opening that frames a time on its own ("Trong …", "Hồi …", "Last …", "In the …"); a bare one needs its comma.
-_FRAMED_RE: Final = re.compile(r"(?:trong|hồi|last|in)[ 	]", re.IGNORECASE)
+_PAST: Final = {
+    "vi": (r"(?:Trong[ \t]+)?(?:quý|năm|tháng|tuần|kỳ)[ \t]+(?:vừa[ \t]+qua|vừa[ \t]+rồi|trước|qua)"
+           r"|Năm[ \t]+ngoái|Hồi[ \t]+(?:quý|năm|tháng|tuần)[ \t]+trước"),
+    "en": r"(?:In[ \t]+the[ \t]+(?:last|past)[ \t]+|Last[ \t]+)(?:quarter|year|month|week)",
+}
+# The opening of a text or of a sentence inside it, then the past time and its comma.
+_OPENING_RE: Final = {language: re.compile(rf"(?:^|(?<=[.!…][ \t])|(?<=\n))({pattern})(?=,)", re.IGNORECASE)
+                      for language, pattern in _PAST.items()}
+_SENTENCE_END_RE: Final = re.compile(r"[.!?…](?=\s|$)|\n")
+# A sentence that addresses the learner: an instruction or the learner's own past, never a scenario.
+_LEARNER_RE: Final = {
+    "vi": re.compile(r"(?<!\w)(?:hãy|bạn đã|bạn vừa)(?!\w)", re.IGNORECASE),
+    "en": re.compile(r"(?<!\w)(?:you have|you did|you handled|please|list|write)(?!\w)", re.IGNORECASE)}
+_FRAME_RE: Final = re.compile(r"^(?:trong|hoi|in the|last)\s+")
 _LEAD: Final = {"vi": "Giả sử ", "en": "Suppose that "}
 
 
 def _sourced(phrase: str, evidence: EvidenceIndex | None) -> bool:
-    tokens = idm_fold(phrase).split()
-    return evidence is not None and all(pair in evidence.pairs for pair in pairwise(tokens))
+    """The facts use the time themselves, with or without its framing word ("tháng trước" for "Trong tháng trước")."""
+
+    tokens = _FRAME_RE.sub("", idm_fold(phrase)).split()
+    return evidence is not None and all(pair in evidence.pairs for pair in pairwise(tokens)) and (
+        len(tokens) > 1 or (bool(tokens) and tokens[0] in evidence.words))
+
+
+def _sentence(text: str, start: int) -> str:
+    end = _SENTENCE_END_RE.search(text, start)
+    return text[start:end.end() if end is not None else len(text)]
 
 
 def as_supposition(text: str, locale: str, evidence: EvidenceIndex | None) -> tuple[str, int]:
-    """``text`` with "Giả sử " before each sentence that opens with a relative past time the facts do not use, and the
-    number of sentences changed."""
+    """``text`` with "Giả sử " before each declarative sentence that opens with a relative past time and its comma the
+    facts do not use, and the number of sentences changed."""
 
+    language = "en" if locale == "en" else "vi"
     normal = unicodedata.normalize("NFC", text)
-    lead = _LEAD["en" if locale == "en" else "vi"]
     count = 0
 
     def suppose(match: re.Match[str]) -> str:
         nonlocal count
         phrase = match.group(1)
-        adverbial = match.string[match.end():match.end() + 1] == "," or _FRAMED_RE.match(phrase) is not None
-        if not adverbial or _sourced(phrase, evidence):
+        sentence = _sentence(match.string, match.start())
+        if sentence.rstrip().endswith("?") or _LEARNER_RE[language].search(sentence) or _sourced(phrase, evidence):
             return phrase
         count += 1
-        return lead + phrase[:1].lower() + phrase[1:]
+        return _LEAD[language] + phrase[:1].lower() + phrase[1:]
 
-    changed = _OPENING_RE.sub(suppose, normal)
+    changed = _OPENING_RE[language].sub(suppose, normal)
     return (changed, count) if count else (text, 0)
 
 
@@ -71,8 +88,8 @@ def _texts(value: Any, rewrite: Callable[[str], str]) -> Any:
 def suppose_semantic(semantic: dict[str, Any], locale: str, evidence: EvidenceIndex | None,
                      counts: Counter[str]) -> dict[str, Any]:
     """``semantic`` (an html slot's sections) with its texts, list items and table values as suppositions where they
-    open with a past time (``as_supposition``); headings and row labels stay as written. ``counts`` gets the number of
-    sentences changed."""
+    open with a past time (``as_supposition``); headings, row labels and a worksheet's task stay as written.
+    ``counts`` gets the number of sentences changed."""
 
     added = 0
 
@@ -83,6 +100,8 @@ def suppose_semantic(semantic: dict[str, Any], locale: str, evidence: EvidenceIn
         return changed
 
     def block_of(block: dict[str, Any]) -> dict[str, Any]:
+        if block.get("kind") == "task":
+            return block
         changed = dict(block)
         if isinstance(block.get("text"), str):
             changed["text"] = rewrite(block["text"])
