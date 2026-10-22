@@ -35,6 +35,9 @@ _PAST: Final = {
 _OPENING_RE: Final = {language: re.compile(rf"(?:^|(?<=[.!…][ \t])|(?<=\n))({pattern})(?=,)", re.IGNORECASE)
                       for language, pattern in _PAST.items()}
 _SENTENCE_END_RE: Final = re.compile(r"[.!?…](?=\s|$)|\n")
+# A full stop that ends an abbreviation, never a sentence ("chi nhánh TP. HCM", "ThS. Lan", "Dr. Smith", "v.v.").
+_ABBREVIATION_RE: Final = re.compile(r"(?:(?<!\w)(?:TP|Tp|tp|Q|P|TS|ThS|PGS|GS|BS|KS|St|Mr|Mrs|Ms|Dr|No|Co|Ltd|Inc)"
+                                     r"|v\.v|etc)\.$")
 # A sentence that addresses the learner: an instruction or the learner's own past, never a scenario.
 _LEARNER_RE: Final = {
     "vi": re.compile(r"(?<!\w)(?:hãy|bạn đã|bạn vừa)(?!\w)", re.IGNORECASE),
@@ -52,8 +55,20 @@ def _sourced(phrase: str, evidence: EvidenceIndex | None) -> bool:
 
 
 def _sentence(text: str, start: int) -> str:
-    end = _SENTENCE_END_RE.search(text, start)
-    return text[start:end.end() if end is not None else len(text)]
+    """The sentence from ``start``: up to its end mark, never the full stop of an abbreviation."""
+
+    for end in _SENTENCE_END_RE.finditer(text, start):
+        if not _ABBREVIATION_RE.search(text, start, end.end()):
+            return text[start:end.end()]
+    return text[start:]
+
+
+def _asks(text: str, start: int) -> bool:
+    """Whether the line from ``start`` (to its line break or the end of the text) ends with a question mark: a
+    question, however its sentences split (review 4: "Năm ngoái, chi nhánh TP. HCM … giao trễ?")."""
+
+    end = text.find("\n", start)
+    return text[start:end if end != -1 else len(text)].rstrip().endswith("?")
 
 
 def as_supposition(text: str, locale: str, evidence: EvidenceIndex | None) -> tuple[str, int]:
@@ -68,7 +83,8 @@ def as_supposition(text: str, locale: str, evidence: EvidenceIndex | None) -> tu
         nonlocal count
         phrase = match.group(1)
         sentence = _sentence(match.string, match.start())
-        if sentence.rstrip().endswith("?") or _LEARNER_RE[language].search(sentence) or _sourced(phrase, evidence):
+        if (sentence.rstrip().endswith("?") or _asks(match.string, match.start())
+                or _LEARNER_RE[language].search(sentence) or _sourced(phrase, evidence)):
             return phrase
         count += 1
         return _LEAD[language] + phrase[:1].lower() + phrase[1:]

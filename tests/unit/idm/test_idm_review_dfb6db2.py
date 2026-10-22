@@ -608,3 +608,20 @@ class Review4NoteTests(StoryboardEndpointTestCase):
         note = data["unit"]["idm_quality"]["author_note"]
         self.assertIn("Phiếu thực hành dự phòng ở khối 1 chỉ mô tả dữ liệu đầu vào", note)
         self.assertNotIn("khối 1 (Lý thuyết) chỉ mô tả", note)
+
+
+class SuppositionAbbreviationTests(unittest.TestCase):
+    """An abbreviation's full stop ("TP.", "ThS.", "Dr.") never ends the sentence: a question stays a question."""
+
+    def test_a_question_with_an_abbreviation_gets_no_suppose(self) -> None:
+        for text in ("Năm ngoái, chi nhánh TP. HCM mất 3 khách hàng lớn vì giao trễ?",
+                     "Năm ngoái, ThS. Lan nhận 5 khiếu nại từ khách hàng nào?",
+                     "Trong quý vừa qua, công ty mất khách. Vì sao đơn hàng ở TP. HCM giao trễ?"):
+            with self.subTest(text=text):
+                self.assertEqual(as_supposition(text, "vi", None), (text, 0))
+        self.assertEqual(as_supposition("Last year, Dr. Smith closed 12 deals?", "en", None),
+                         ("Last year, Dr. Smith closed 12 deals?", 0))
+
+    def test_a_statement_with_an_abbreviation_still_gets_suppose(self) -> None:
+        text = "Năm ngoái, chi nhánh TP. HCM mất 3 khách hàng lớn vì giao trễ."
+        self.assertEqual(as_supposition(text, "vi", None), ("Giả sử n" + text[1:], 1))
