@@ -49,8 +49,8 @@ _REFERENCES: Final[tuple[tuple[str, re.Pattern[str]], ...]] = (
     ("interview", re.compile(r"\b(?:noi dung|bien ban|doan|ket qua|ghi chep|loi|cau tra loi|ban ghi)\s+(?:cua\s+)?"
                              r"(?:buoi\s+|cuoc\s+)?phong van\b")),
     ("interview", re.compile(r"\b(?:the|this)\s+interview\b|\binterview\s+(?:notes|transcript|answers)\b")),
-    ("data", re.compile(r"\b(?:tinh huong|du lieu|so lieu|mo ta|ho so)\s+(?:sau|duoi day|ben duoi|da cho|"
-                        r"duoc cung cap)\b")),
+    ("data", re.compile(r"\b(?:tinh huong|du lieu|so lieu|mo ta|ho so)\s+(?:sau(?!\s+khi)|duoi day|ben duoi|"
+                        r"da cho|duoc cung cap)\b")),
     ("data", re.compile(rf"\bthe\s+following\s+{_ITEMS_EN}\b|\b(?:case|data)\s+below\b")),
 )
 # The worked example: a section whose heading names an example or a model entry.
@@ -102,14 +102,23 @@ def _count(value: str | None) -> int | None:
     return int(value) if value.isdigit() else _NUMBERS.get(value)
 
 
+# Review of dfb6db2 (item 8): data the learner brings or makes ("cho 3 khách hàng mục tiêu của chính bạn", "danh sách
+# bạn vừa lập", "từ 5 khách hàng của bạn", "your own list") is no data the worksheet must give.
+_OWN_DATA_RE: Final = re.compile(r"(?:\s+\w+){0,3}?\s+(?:cua\s+(?:chinh\s+)?(?:ban|minh|doanh nghiep ban|nhom ban)"
+                                 r"|ban\s+(?:vua|da|tu)\s+\w+|you\s+(?:just\s+)?(?:made|built|collected|wrote)"
+                                 r"|of\s+your\s+own|your\s+own)\b")
+
+
 def input_reference(texts: Iterable[str]) -> InputReference | None:
-    """The first reference to given data in ``texts`` (accent-folded), or ``None``."""
+    """The first reference to given data in ``texts`` (accent-folded), or ``None``; never data the learner brings or
+    makes."""
 
     for text in texts:
         folded = idm_fold(text)
         for kind, pattern in _REFERENCES:
-            if match := pattern.search(folded):
-                return InputReference(kind, _count(match.group(1)) if pattern.groups else None)
+            for match in pattern.finditer(folded):
+                if not _OWN_DATA_RE.match(folded, match.end()):
+                    return InputReference(kind, _count(match.group(1)) if pattern.groups else None)
     return None
 
 

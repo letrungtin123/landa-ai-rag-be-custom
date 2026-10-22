@@ -366,3 +366,27 @@ class RepairOverBudgetTests(StoryboardEndpointTestCase):
         self.assertNotIn("Cần xem khối 1", note)
         self.assertIn("Phiếu thực hành dài hơn giới hạn nên đã rút gọn", note)
         self.assertIn("Đã tự sửa: phiếu thực hành thiếu dữ liệu đầu vào", note)
+
+
+class OwnDataTests(unittest.TestCase):
+    """Item 8: a task on data the learner brings or makes needs no input section."""
+
+    TEMPLATE = section("Mẫu cần điền", {"kind": "table", "rows": [{"label": "Đối tượng", "value": "Ai?"},
+                                                                   {"label": "Lợi ích", "value": "Gì?"}]})
+    CHECK = section("Tự kiểm tra", {"kind": "bullets", "items": ["Đủ ba phần", "Có số liệu"]})
+
+    def worksheet(self, task: str) -> dict[str, Any]:
+        return html(section("Nhiệm vụ", {"kind": "task", "text": task}), self.TEMPLATE, self.CHECK)
+
+    def test_the_learners_own_data_is_no_missing_input(self) -> None:
+        for task in ("Soạn đề xuất giá trị cho 3 khách hàng mục tiêu của chính bạn rồi so với tiêu chí.",
+                     "Dựa trên danh sách bạn vừa lập ở bước trước, chọn ra hai ưu tiên.",
+                     "Phân tích dữ liệu sau khi phỏng vấn để điền bảng.",
+                     "Thu thập phản hồi từ 5 khách hàng của bạn trong tuần này rồi điền bảng."):
+            with self.subTest(task=task):
+                self.assertIsNone(missing_input(self.worksheet(task)))
+
+    def test_given_data_is_still_required(self) -> None:
+        reference = missing_input(self.worksheet("Đọc danh sách 5 yêu cầu dưới đây và chọn 2 yêu cầu ưu tiên."))
+        self.assertIsNotNone(reference)
+        self.assertIsNotNone(missing_input(self.worksheet("Phân loại 3 khách hàng mục tiêu theo dữ liệu sau.")))
