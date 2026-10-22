@@ -161,6 +161,9 @@ IDM_NOTES_SUMMARY_CHARS: Final = 160
 # and of the unit note, so the sections and lines after them keep their room.
 IDM_NOTES_SOURCE_CHECKS_MAX_CHARS: Final = 1_500
 IDM_UNIT_SOURCE_FLAGS_MAX_CHARS: Final = 400
+# Run 5496155c: a source page is an image page the system could not read when its unobserved images cover at least
+# this share of it (``app.idm.visual_pages``); a picture beside slide text covered 12-37 %, the picture pages 41-99 %.
+IDM_IMAGE_PAGE_MIN_SHARE: Final = 0.4
 # Removed blocks with the W2 reason, and definition blocks kept against the W2 proposal (QC course 364564, N4).
 IDM_NOTES_MAX_REMOVED: Final = 12
 IDM_UNIT_AUTHOR_NOTE_MAX_CHARS: Final = 1_500

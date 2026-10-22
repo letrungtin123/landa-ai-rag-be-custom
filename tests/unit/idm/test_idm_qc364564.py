@@ -138,8 +138,9 @@ class AnswerLeakTests(StoryboardEndpointTestCase):
                       "question's case in a different industry AND at a different touchpoint", second["prompt"])
         self.assertNotIn("SECOND ATTEMPT", provider.calls[1]["prompt"])
         self.assertNotIn("source_locked_fallback", data["unit"]["components"][1])
-        self.assertIn("Giữ bản AI để tác giả rà soát: khối 2 (Quiz): phương án lộ đáp án.", quality.author_note)
-        self.assertIn("Cần xem khối 2 (Quiz): một phương án gần như chép lại ví dụ",
+        # Run 5496155c: the reason is named once, by its own "Cần xem" line.
+        self.assertIn("Giữ bản AI để tác giả rà soát: khối 2 (Quiz). Cần xem khối 2 (Quiz): một phương án gần như "
+                      "chép lại ví dụ",
                       quality.author_note)
         self.assertNotIn("Đã tự sửa", quality.author_note)
 
@@ -213,8 +214,7 @@ class FinalCodeTests(StoryboardEndpointTestCase):
         quality = self.assert_envelope(data, "provider_validated", "validated", "provider")
         self.assertEqual(provider.names, [WRITER, REPAIR, JUDGE])
         self.assertEqual(quality.deterministic_codes, ["HTML_SOURCE_LOCATOR", "IDM_W5_PRACTICE_INCOMPLETE"])
-        self.assertEqual(quality.author_note, "QA tự động: không phát hiện vấn đề lớn. "
-                                              "Đã tự sửa: lỗi định dạng phần lý thuyết, bài luyện tập thiếu phần. "
+        self.assertEqual(quality.author_note, "Đã tự sửa: lỗi định dạng phần lý thuyết, bài luyện tập thiếu phần. "
                                               "Tình huống minh hoạ do AI soạn, tác giả nên kiểm tra lại tính thực tế.")
 
     async def test_english_note_lists_fixed_codes(self) -> None:
@@ -559,8 +559,7 @@ class CalloutKeptForReviewTests(unittest.IsolatedAsyncioTestCase):
         blocks = result["unit"]["components"][0]["semantic_content"]["sections"][0]["blocks"]
         self.assertEqual((blocks[-1]["kind"], blocks[-1]["text"]), ("warning", INVENTED_CALLOUT))
         note = result["unit"]["idm_quality"]["author_note"]
-        self.assertIn("Giữ bản AI để tác giả rà soát: khối 1 (Lý thuyết): khung trích dẫn không có trong "
-                      "tài liệu.", note)
+        self.assertIn("Giữ bản AI để tác giả rà soát: khối 1 (Lý thuyết).", note)
         self.assertIn("Cần xem khối 1 (Lý thuyết): khung trích dẫn/lưu ý nêu điều không "
                       "tìm thấy trong tài liệu", note)
 

@@ -407,13 +407,12 @@ class AuthorNoteAndQualityTests(unittest.TestCase):
             fallback_slots=[0], ai_drafted=False, review_slots=[2], slot_types=["html", "problem", "la_faq"],
             slot_reasons={0: ["HTML_SEMANTIC_INVALID"], 2: ["IDM_W5_FAQ_TYPE_MIX"]},
             failure_codes=["IDM_W5_REPAIR_INVALID", "not a code"], faq_items_dropped=1)
-        self.assertEqual(note, "QA tự động: không phát hiện vấn đề lớn. "
-                               "1 khối dùng bản dự phòng dựng từ tài liệu — cần biên tập. "
+        # Run 5496155c: no "no major issue" next to a fallback, and no "còn cảnh báo" repeating the fallback's reason.
+        self.assertEqual(note, "1 khối dùng bản dự phòng dựng từ tài liệu — cần biên tập. "
                                "Lý do: khối 1 (Lý thuyết): lỗi định dạng phần lý thuyết. "
                                "Giữ bản AI để tác giả rà soát: khối 3 (Hỏi đáp): hỏi đáp chỉ hỏi lại kiến thức. "
                                "Sửa tự động không thành công: lần sửa của AI sai định dạng. "
-                               "Đã bỏ 1 câu hỏi đáp có nội dung ngoài tài liệu. "
-                               "Kiểm tra tự động còn cảnh báo: lỗi định dạng phần lý thuyết.")
+                               "Đã bỏ 1 câu hỏi đáp có nội dung ngoài tài liệu.")
         whole = build_unit_author_note(locale="en", judge=JudgeOutcome("not_run"),
                                        deterministic_codes=["IDM_W5_INSTANCE_INVALID"], fallback_slots=[0, 1],
                                        ai_drafted=False, slot_types=["html", "problem"],

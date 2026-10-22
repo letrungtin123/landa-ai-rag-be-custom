@@ -358,38 +358,15 @@ def build_unit_author_note(
     """
 
     vi = locale == "vi"
-    labels = _CRITERION_LABEL_VI if vi else _CRITERION_LABEL_EN
-    reasons = slot_reasons or {}
     problems = [finding for finding in judge.findings if finding.severity in {"major", "critical"}]
-    parts: list[str] = []
-    if line := _review_reasons_line(review_reasons, vi):
-        parts.append(line)
-    parts.extend(fit_flags(source_flags, IDM_UNIT_SOURCE_FLAGS_MAX_CHARS, locale))
-    if line := _notices_line(notices, vi):
-        parts.append(line)
-    parts.extend(fit_flags(source_notes, IDM_UNIT_SOURCE_FLAGS_MAX_CHARS, locale, soft=True))
-    if line := _judge_line(judge, problems, labels, vi, marked=bool(review_reasons)):
-        parts.append(line)
-    failures = _codes([*failure_codes, *deterministic_codes], vi)
-    if whole_fallback:
-        parts.append(("Cả bài dùng bản dự phòng dựng từ tài liệu — cần biên tập." if vi
-                      else "The whole lesson uses the source-based fallback — edit it.")
-                     + ((f" Lý do: {failures}." if vi else f" Reason: {failures}.") if failures else ""))
-        if placeholder_slots:
-            parts.append(placeholder_line(_slot_reasons(placeholder_slots, {}, slot_types, vi), vi))
-    elif fallback_slots:
-        parts.append(f"{len(fallback_slots)} khối dùng bản dự phòng dựng từ tài liệu — cần biên tập." if vi
-                     else f"{len(fallback_slots)} block(s) use the source-based fallback — edit them.")
-        explained = [index for index in fallback_slots if _codes(reasons.get(index, ()), vi)]
-        if explained:
-            parts.append(("Lý do: " if vi else "Reason: ") + _slot_reasons(explained, reasons, slot_types, vi) + ".")
-    if review_slots and not whole_fallback:
-        parts.append(("Giữ bản AI để tác giả rà soát: " if vi else "AI draft kept for author review: ")
-                     + _slot_reasons(review_slots, reasons, slot_types, vi) + ".")
-    repair_failures = _codes(failure_codes, vi)
-    if repair_failures and not whole_fallback and (fallback_slots or review_slots):
-        parts.append(f"Sửa tự động không thành công: {repair_failures}." if vi
-                     else f"Automatic repair did not succeed: {repair_failures}.")
+    judged = _judge_line(judge, problems, _CRITERION_LABEL_VI if vi else _CRITERION_LABEL_EN, vi,
+                         marked=bool(review_reasons))
+    parts = [judged] if judged else []
+    slot_lines, named = _slot_lines(vi, slot_reasons or {}, slot_types, whole_fallback=whole_fallback,
+                                    fallback_slots=fallback_slots, review_slots=review_slots,
+                                    failure_codes=failure_codes, deterministic_codes=deterministic_codes,
+                                    placeholder_slots=placeholder_slots, remaining=remaining)
+    parts.extend(slot_lines)
     parts.extend(dropped_faq_lines(vi, dropped=faq_items_dropped, restated=faq_items_restated,
                                     copied=faq_items_copied, recall=faq_items_recall, unresolved=faq_items_open,
                                     invalid=faq_items_invalid))
@@ -404,7 +381,7 @@ def build_unit_author_note(
     if worksheet_compacted:
         parts.append(worksheet_line(vi, example_kept=worksheet_example_kept))
     if not whole_fallback:
-        parts.extend(_check_lines(vi, deterministic_codes, remaining, fixed_codes, slot_types))
+        parts.extend(_check_lines(vi, deterministic_codes, remaining, fixed_codes, slot_types, named=named))
     if drafted_examples and not whole_fallback:
         parts.append(drafted_examples_line(drafted_examples, slot_types, vi))
     if example_numbers and not whole_fallback:
@@ -421,7 +398,60 @@ def build_unit_author_note(
         parts.append(SUGGESTED_CRITERIA_LINE[vi])
     if glued:
         parts.append(glued_line(glued, vi))
-    return sanitize_author_text(" ".join(parts), IDM_UNIT_AUTHOR_NOTE_MAX_CHARS)
+    # Run 5496155c: a reason says "chi tiết bên dưới" only when a line below gives the details.
+    kept_line = bool(review_slots) and not whole_fallback
+    detailed = {reason for reason, shown in (
+        (REVIEW_REASON_SOURCE, bool(source_flags)), (REVIEW_REASON_JUDGE, bool(problems) and bool(judged)),
+        (REVIEW_REASON_KEPT_SLOTS, kept_line), (REVIEW_REASON_STYLE, kept_line),
+        (REVIEW_REASON_SERVER_EDIT, callouts_to_prose > 0 or framework_list_inserted > 0),
+        (REVIEW_REASON_EXAMPLE_NUMBERS, bool(example_numbers) and not whole_fallback)) if shown}
+    head = [_reasons_line(review_reasons, vi, detailed, _REVIEW_LEAD[vi]),
+            *fit_flags(source_flags, IDM_UNIT_SOURCE_FLAGS_MAX_CHARS, locale),
+            _reasons_line(notices, vi, detailed, _NOTICE_LEAD[vi]),
+            *fit_flags(source_notes, IDM_UNIT_SOURCE_FLAGS_MAX_CHARS, locale, soft=True)]
+    # Run 5496155c: "no major issue" only on a note that asks nothing else of the author ("Đã tự sửa" only informs).
+    if judged == _NO_ISSUE_LINE[vi] and any(part and not part.startswith(_FIXED_LEAD[vi])
+                                            for part in [*head, *parts[1:]]):
+        parts = parts[1:]
+    return sanitize_author_text(" ".join(part for part in [*head, *parts] if part), IDM_UNIT_AUTHOR_NOTE_MAX_CHARS)
+
+
+def _slot_lines(vi: bool, reasons: Mapping[int, Sequence[str]], slot_types: Sequence[str], *, whole_fallback: bool,
+                fallback_slots: Sequence[int], review_slots: Sequence[int], failure_codes: Sequence[str],
+                deterministic_codes: Sequence[str], placeholder_slots: Sequence[int],
+                remaining: Sequence[SlotFinding] | None) -> tuple[list[str], set[str]]:
+    """The lines of the fallback and kept slots and why, and the plain words they name, which the "còn cảnh báo"
+    line does not repeat. Run 5496155c: a kept slot's finding with its own "Cần xem"/"Nên biên tập" line below is not
+    named twice."""
+
+    if whole_fallback:
+        failures = _codes([*failure_codes, *deterministic_codes], vi)
+        lines = [("Cả bài dùng bản dự phòng dựng từ tài liệu — cần biên tập." if vi
+                  else "The whole lesson uses the source-based fallback — edit it.")
+                 + ((f" Lý do: {failures}." if vi else f" Reason: {failures}.") if failures else "")]
+        if placeholder_slots:
+            lines.append(placeholder_line(_slot_reasons(placeholder_slots, {}, slot_types, vi), vi))
+        return lines, set()
+    lines = []
+    if fallback_slots:
+        lines.append(f"{len(fallback_slots)} khối dùng bản dự phòng dựng từ tài liệu — cần biên tập." if vi
+                     else f"{len(fallback_slots)} block(s) use the source-based fallback — edit them.")
+        explained = [index for index in fallback_slots if _codes(reasons.get(index, ()), vi)]
+        if explained:
+            lines.append(("Lý do: " if vi else "Reason: ") + _slot_reasons(explained, reasons, slot_types, vi) + ".")
+    hinted = {(item.component_index, item.code) for item in remaining or ()
+              if item.code in _REVIEW_HINT_VI or item.code in _PLAIN_HINT_VI}
+    kept = {index: [code for code in reasons.get(index, ()) if (index, code) not in hinted] for index in review_slots}
+    if review_slots:
+        lines.append(("Giữ bản AI để tác giả rà soát: " if vi else "AI draft kept for author review: ")
+                     + _slot_reasons(review_slots, kept, slot_types, vi) + ".")
+    repair_failures = _codes(failure_codes, vi)
+    if repair_failures and (fallback_slots or review_slots):
+        lines.append(f"Sửa tự động không thành công: {repair_failures}." if vi
+                     else f"Automatic repair did not succeed: {repair_failures}.")
+    named = {_code_text(code, vi) for codes in [*(reasons.get(index, ()) for index in fallback_slots),
+                                                *kept.values()] for code in codes}
+    return lines, named
 
 
 def _judge_line(judge: JudgeOutcome, problems: Sequence[Any], labels: Mapping[str, str], vi: bool, *,
@@ -435,7 +465,7 @@ def _judge_line(judge: JudgeOutcome, problems: Sequence[Any], labels: Mapping[st
             return (f"QA tự động: {len(problems)} vấn đề cần xem — {described}." if vi
                     else f"Automatic QA: {len(problems)} issue(s) to review — {described}.")
         if not marked:
-            return "QA tự động: không phát hiện vấn đề lớn." if vi else "Automatic QA: no major issue found."
+            return _NO_ISSUE_LINE[vi]
     elif judge.status == "skipped_budget":
         return "QA tự động: bỏ qua do hết thời gian." if vi else "Automatic QA: skipped (time budget)."
     elif judge.status == "failed":
@@ -602,12 +632,12 @@ _REVIEW_REASON_VI: Final = {
     REVIEW_REASON_KEPT_SLOTS: "có khối AI viết chưa đạt hết kiểm tra tự động (chi tiết bên dưới)",
     REVIEW_REASON_STEP_INCOMPLETE: "một bước sửa hoặc kiểm tra tự động không hoàn tất",
     REVIEW_REASON_SERVER_EDIT: "hệ thống đã tự chèn hoặc đổi một phần nội dung (chi tiết bên dưới)",
-    REVIEW_REASON_EVIDENCE: "tài liệu nguồn của phần này có hình ảnh hoặc bảng hệ thống chưa đọc chắc chắn — cần đối "
-                            "chiếu với tài liệu gốc",
+    REVIEW_REASON_EVIDENCE: "tài liệu nguồn của phần này có trang chủ yếu là hình ảnh (bảng hoặc sơ đồ dạng ảnh) hệ "
+                            "thống chưa đọc được — cần đối chiếu với tài liệu gốc",
     REVIEW_REASON_JUDGE: "kiểm tra tự động phát hiện vấn đề lớn (chi tiết bên dưới)",
     REVIEW_REASON_SCENARIO: "câu hỏi dùng tình huống do AI soạn, tác giả nên kiểm tra lại tình huống và đáp án",
     REVIEW_REASON_SOURCE: "tài liệu nguồn có chỗ ghi khác nhau hoặc có thể đã cũ (chi tiết bên dưới)",
-    REVIEW_REASON_STYLE: "có khối AI còn câu dài hoặc câu gần chép tài liệu, nên biên tập lại (chi tiết bên dưới)",
+    REVIEW_REASON_STYLE: "có khối AI nên biên tập lại câu chữ (chi tiết bên dưới)",
     REVIEW_REASON_EXAMPLE_NUMBERS: "ví dụ minh hoạ do AI soạn có số liệu không có trong tài liệu (chi tiết bên dưới)",
 }
 _REVIEW_REASON_EN: Final = {
@@ -615,31 +645,34 @@ _REVIEW_REASON_EN: Final = {
     REVIEW_REASON_KEPT_SLOTS: "some AI blocks did not pass every automatic check (details below)",
     REVIEW_REASON_STEP_INCOMPLETE: "an automatic repair or check step did not finish",
     REVIEW_REASON_SERVER_EDIT: "the system inserted or changed part of the content (details below)",
-    REVIEW_REASON_EVIDENCE: "the source of this section has images or tables the system could not read with "
-                            "certainty — check them against the original document",
+    REVIEW_REASON_EVIDENCE: "the source of this section has pages that are mostly an image (a table or diagram as a "
+                            "picture) the system could not read — check them against the original document",
     REVIEW_REASON_JUDGE: "the automatic review found a major issue (details below)",
     REVIEW_REASON_SCENARIO: "the question uses an AI-drafted scenario; the author should check the scenario and "
                             "the answer",
     REVIEW_REASON_SOURCE: "the source differs or may be out of date in places (details below)",
-    REVIEW_REASON_STYLE: "some AI blocks keep long or copied sentences; polish them (details below)",
+    REVIEW_REASON_STYLE: "some AI blocks need their wording polished (details below)",
     REVIEW_REASON_EXAMPLE_NUMBERS: "AI-drafted illustrative examples state numbers that are not in the source (details "
                                    "below)",
 }
 _MAX_NOTE_ACRONYMS: Final = 8
 
 
-def _review_reasons_line(reasons: Sequence[str], vi: bool) -> str:
-    texts = _REVIEW_REASON_VI if vi else _REVIEW_REASON_EN
-    described = [texts[reason] for reason in dict.fromkeys(reasons) if reason in texts]
-    if not described:
-        return ""
-    return ("Cần tác giả xem lại vì: " if vi else "Needs the author's review because: ") + "; ".join(described) + "."
+_REVIEW_LEAD: Final = {True: "Cần tác giả xem lại vì: ", False: "Needs the author's review because: "}
+_NOTICE_LEAD: Final = {True: "Lưu ý: ", False: "Note: "}
+_DETAILS_MARK: Final = {True: " (chi tiết bên dưới)", False: " (details below)"}
+_NO_ISSUE_LINE: Final = {True: "QA tự động: không phát hiện vấn đề lớn.", False: "Automatic QA: no major issue found."}
+_FIXED_LEAD: Final = {True: "Đã tự sửa:", False: "Automatically fixed:"}
 
 
-def _notices_line(notices: Sequence[str], vi: bool) -> str:
+def _reasons_line(reasons: Sequence[str], vi: bool, detailed: Collection[str], lead: str) -> str:
+    """``lead`` and the plain words of ``reasons``; "(chi tiết bên dưới)" only for those in ``detailed`` (a line
+    below gives their details, run 5496155c)."""
+
     texts = _REVIEW_REASON_VI if vi else _REVIEW_REASON_EN
-    described = [texts[reason] for reason in dict.fromkeys(notices) if reason in texts]
-    return (("Lưu ý: " if vi else "Note: ") + "; ".join(described) + ".") if described else ""
+    described = [texts[reason] if reason in detailed else texts[reason].replace(_DETAILS_MARK[vi], "")
+                 for reason in dict.fromkeys(reasons) if reason in texts]
+    return f"{lead}{'; '.join(described)}." if described else ""
 
 
 def _acronyms_line(acronyms: Sequence[str], vi: bool) -> str:
@@ -651,9 +684,9 @@ def _acronyms_line(acronyms: Sequence[str], vi: bool) -> str:
 
 
 def _check_lines(vi: bool, deterministic_codes: Sequence[str], remaining: Sequence[SlotFinding] | None,
-                 fixed_codes: Sequence[str], slot_types: Sequence[str]) -> list[str]:
+                 fixed_codes: Sequence[str], slot_types: Sequence[str], *, named: Collection[str] = ()) -> list[str]:
     """The "Đã tự sửa" line (settled during generation), one review line per hinted finding, then what still
-    warns on the returned unit."""
+    warns on the returned unit and no line above names (``named``: the plain words of the slot lines)."""
 
     lines: list[str] = []
     fixed = _codes(sorted(set(fixed_codes)), vi)
@@ -675,8 +708,8 @@ def _check_lines(vi: bool, deterministic_codes: Sequence[str], remaining: Sequen
             lines.append(f"Nên biên tập {where}: {hint}." if vi else f"Polish {where}: {hint}.")
         else:
             lines.append(f"Cần xem {where}: {hint}." if vi else f"Review {where}: {hint}.")
-    warn = _codes(sorted({code for code in still if remaining is None or (code not in hints and code not in plain)}),
-                  vi)
+    warn = _codes(sorted({code for code in still if (remaining is None or (code not in hints and code not in plain))
+                          and _code_text(code, vi) not in named}), vi)
     if warn:
         lines.append(f"Kiểm tra tự động còn cảnh báo: {warn}." if vi else f"Automatic checks still warn: {warn}.")
     return lines

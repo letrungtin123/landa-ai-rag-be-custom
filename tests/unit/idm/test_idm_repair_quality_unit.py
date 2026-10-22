@@ -164,7 +164,8 @@ class SecondRepairTests(StoryboardEndpointTestCase):
         self.assertEqual(status, 200)
         quality = self.assert_envelope(data, "provider_validated", "review_required", "provider")
         self.assertEqual(provider.names, [WRITER, REPAIR, REPAIR, JUDGE])
-        self.assertIn("Giữ bản AI để tác giả rà soát: khối 2 (Quiz): phương án lộ đáp án.", quality.author_note)
+        self.assertIn("Giữ bản AI để tác giả rà soát: khối 2 (Quiz).", quality.author_note)
+        self.assertIn("Cần xem khối 2 (Quiz): một phương án gần như chép lại ví dụ", quality.author_note)
         self.assertIn("Sửa tự động không thành công: lần sửa của AI sai định dạng.", quality.author_note)
 
 

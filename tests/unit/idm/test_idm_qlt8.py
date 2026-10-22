@@ -201,14 +201,15 @@ class AuthorTextTests(unittest.TestCase):
                                       fallback_slots=[], ai_drafted=True,
                                       review_reasons=[REVIEW_REASON_EVIDENCE, REVIEW_REASON_SCENARIO],
                                       unexplained_acronyms=["BQS", "G8D"])
-        self.assertTrue(note.startswith("Cần tác giả xem lại vì: tài liệu nguồn của phần này có hình ảnh hoặc bảng "
-                                        "hệ thống chưa đọc chắc chắn"))
+        self.assertTrue(note.startswith("Cần tác giả xem lại vì: tài liệu nguồn của phần này có trang chủ yếu là "
+                                        "hình ảnh (bảng hoặc sơ đồ dạng ảnh) hệ thống chưa đọc được"))
         self.assertIn("câu hỏi dùng tình huống do AI soạn, tác giả nên kiểm tra lại tình huống và đáp án.", note)
         self.assertNotIn("Tình huống minh hoạ do AI soạn", note)
         self.assertTrue(note.endswith("tác giả nên bổ sung nghĩa ở lần xuất hiện đầu: BQS, G8D."))
         english = build_unit_author_note(locale="en", judge=JudgeOutcome("pass"), deterministic_codes=[],
                                          fallback_slots=[], ai_drafted=False, review_reasons=[REVIEW_REASON_EVIDENCE])
-        self.assertTrue(english.startswith("Needs the author's review because: the source of this section has images"))
+        self.assertTrue(english.startswith("Needs the author's review because: the source of this section has pages "
+                                           "that are mostly an image"))
 
 
 class RuleTextTests(unittest.TestCase):
@@ -309,7 +310,8 @@ class UnitFlowTests(StoryboardEndpointTestCase):
         self.assertEqual(served["question"], layout_question(whole))
         self.assertIn("Thiệt hại tài chính dưới 50 triệu đồng hoặc khách hàng phàn nàn lần thứ hai",
                       [choice["text"] for choice in served["choices"]])
-        self.assertIn("Giữ bản AI để tác giả rà soát: khối 2 (Quiz): phương án lộ đáp án", quality.author_note)
+        self.assertIn("Giữ bản AI để tác giả rà soát: khối 2 (Quiz). Cần xem khối 2 (Quiz): một phương án",
+                      quality.author_note)
         self.assertTrue(quality.author_note.startswith("Cần tác giả xem lại vì: có khối AI viết chưa đạt hết kiểm tra"))
 
     async def test_abbreviations_get_their_full_form_or_a_note(self) -> None:

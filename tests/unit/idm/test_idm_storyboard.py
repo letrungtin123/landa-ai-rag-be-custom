@@ -316,8 +316,7 @@ class UnitEndpointTests(StoryboardEndpointTestCase):
                          ("medium", 16_000))
         self.assertEqual((quality.judge_mode, quality.judge_status, quality.repair_applied),
                          ("observe", "pass", False))
-        self.assertEqual(quality.author_note, "QA tự động: không phát hiện vấn đề lớn. Tình huống minh hoạ do AI "
-                                              "soạn, tác giả nên kiểm tra lại tính thực tế.")
+        self.assertEqual(quality.author_note, "Tình huống minh hoạ do AI soạn, tác giả nên kiểm tra lại tính thực tế.")
         plans = body["unit_contract"]["component_plan"]
         self.assertEqual([c["component_plan_id"] for c in data["unit"]["components"]],
                          [plan["component_plan_id"] for plan in plans])
@@ -451,7 +450,9 @@ class UnitEndpointTests(StoryboardEndpointTestCase):
         self.assertEqual(data["unit"]["components"][0]["explanation"], ONE_OPTION)
         self.assertFalse(any(c.get("source_locked_fallback") for c in data["unit"]["components"]))
         self.assertEqual(quality.deterministic_codes, ["IDM_W5_PRACTICE_INCOMPLETE"])
-        self.assertIn("Kiểm tra tự động còn cảnh báo: bài luyện tập thiếu phần.", quality.author_note)
+        # Run 5496155c: the kept slot's line names the finding; "còn cảnh báo" does not repeat it.
+        self.assertIn("Giữ bản AI để tác giả rà soát: khối 1 (Quiz): bài luyện tập thiếu phần.", quality.author_note)
+        self.assertNotIn("còn cảnh báo", quality.author_note)
         self.assertNotIn("fallback", [e["outcome"] for e in data["attempt_trace"]])
 
     async def test_fallback_only_makes_no_provider_call(self) -> None:
@@ -530,9 +531,7 @@ class UnitEndpointTests(StoryboardEndpointTestCase):
                 faq = data["unit"]["components"][1]
                 self.assertNotIn("source_locked_fallback", faq)
                 self.assertEqual([item["answer"] for item in faq["items"]], [grounded, UNGROUNDED_ANSWER])
-                self.assertIn("Giữ bản AI để tác giả rà soát: khối 2 (Hỏi đáp): hỏi đáp có số liệu hoặc tên "
-                              "ngoài tài liệu.",
-                              quality.author_note)
+                self.assertIn("Giữ bản AI để tác giả rà soát: khối 2 (Hỏi đáp).", quality.author_note)
                 self.assertIn("Cần xem khối 2 (Hỏi đáp): câu hỏi đáp có số liệu hoặc tên riêng không có trong tài liệu",
                               quality.author_note)
                 self.assertEqual(quality.deterministic_codes, ["IDM_W5_FAQ_NEW_FACT"])

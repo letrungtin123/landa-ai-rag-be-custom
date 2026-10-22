@@ -193,9 +193,10 @@ class NoteTests(unittest.TestCase):
             fallback_slots=[], ai_drafted=False, review_slots=[0], slot_types=["html"],
             slot_reasons={0: ["IDM_W5_SENTENCE_LENGTH"]}, remaining=[SlotFinding("IDM_W5_SENTENCE_LENGTH", 0)],
             notices=[REVIEW_REASON_EVIDENCE, REVIEW_REASON_STYLE])
-        self.assertTrue(note.startswith("Lưu ý: tài liệu nguồn của phần này có hình ảnh hoặc bảng"))
-        self.assertIn("QA tự động: không phát hiện vấn đề lớn.", note)
-        self.assertIn("Giữ bản AI để tác giả rà soát: khối 1 (Lý thuyết): câu quá dài.", note)
+        self.assertTrue(note.startswith("Lưu ý: tài liệu nguồn của phần này có trang chủ yếu là hình ảnh"))
+        # Run 5496155c: a note with a notice never says "no major issue"; the finding is named once, by its own line.
+        self.assertNotIn("không phát hiện vấn đề lớn", note)
+        self.assertIn("Giữ bản AI để tác giả rà soát: khối 1 (Lý thuyết).", note)
         self.assertIn("Nên biên tập khối 1 (Lý thuyết): nhiều câu quá dài", note)
         self.assertNotIn("IDM_", note)
         self.assertNotIn("Cần tác giả xem lại", note)

@@ -20,7 +20,18 @@ from app.idm.notes import build_course_notes
 from app.idm.prompts_judge import judge_prompt
 from app.idm.prompts_module import module_prompt
 from app.idm.prompts_unit import _WORKSHEET_RULE, unit_writer_prompt
+from app.idm.qa import (
+    REVIEW_REASON_EVIDENCE,
+    REVIEW_REASON_JUDGE,
+    REVIEW_REASON_KEPT_SLOTS,
+    REVIEW_REASON_SOURCE,
+    JudgeOutcome,
+    SlotFinding,
+    build_unit_author_note,
+)
+from app.idm.qa_checks import WORKSHEET_INCOMPLETE_CODE
 from app.idm.quiz_text import (
+    EXPLANATION_FILLER_CODE,
     EXPLANATION_NAMES_ONLY_CODE,
     QUESTION_ITEM_NOUN_CODE,
     QUESTION_TWICE_CODE,
@@ -41,8 +52,11 @@ from app.idm.source_flags import (
 )
 from app.idm.source_locked import render_idm_source_locked_html
 from app.idm.text import evidence_index, glued_words
+from app.idm.visual_pages import evidence_needs_check, unread_image_pages
 from app.idm.worksheet import plain_self_check
 from app.idm.worksheet_input import InputReference, input_hint, missing_input
+from app.schemas.orchestration_v2 import RagLessonAuthorUnitV2Request
+from app.services.orchestration_v2 import unit as unit_service
 from tests.support.idm_test_support import rehash_contract
 from tests.unit.idm.test_idm_fallback_matrix import procedure_steps, unit_findings, with_fact_texts
 from tests.unit.idm.test_idm_faq import EXPLAINED, WHAT_IF, faq_writer
@@ -717,3 +731,101 @@ class SuppositionTests(StoryboardEndpointTestCase):
         self.assertTrue(question.startswith("Giả sử trong quý vừa qua, một khách hàng"))
         self.assertIn("Đã thêm «Giả sử» trước 2 tình huống AI soạn được kể như chuyện đã xảy ra",
                       data["unit"]["idm_quality"]["author_note"])
+
+
+def note(**changes: Any) -> str:
+    base: dict[str, Any] = {"locale": "vi", "judge": JudgeOutcome("pass"), "deterministic_codes": [],
+                            "fallback_slots": [], "ai_drafted": False, "slot_types": ["html", "problem", "la_faq"]}
+    return build_unit_author_note(**{**base, **changes})
+
+
+NO_ISSUE = "QA tự động: không phát hiện vấn đề lớn."
+
+
+class AuthorNoteNoiseTests(unittest.TestCase):
+    """Item 9: "no major issue" next to warnings, "(chi tiết bên dưới)" without details and reasons named twice."""
+
+    def test_no_major_issue_only_on_a_note_that_asks_nothing_else(self) -> None:
+        self.assertEqual(note(), NO_ISSUE)
+        fixed = note(fixed_codes=["IDM_W5_EXPLANATION_LENGTH"], remaining=[])
+        self.assertEqual(fixed, NO_ISSUE + " Đã tự sửa: lời giải quá dài.")
+        unclear = "Tài liệu ghi chưa rõ ở phần “Ba cấp độ”: trang 4 — nên đọc lại khi biên tập."
+        for changes in ({"notices": [REVIEW_REASON_EVIDENCE]}, {"ai_drafted": True}, {"source_notes": [unclear]},
+                        {"unexplained_acronyms": ["TNA"]},
+                        {"fixed_codes": ["IDM_W5_EXPLANATION_LENGTH"], "remaining": [], "ai_drafted": True}):
+            with self.subTest(changes=sorted(changes)):
+                self.assertNotIn("không phát hiện vấn đề lớn", note(**changes))
+
+    def test_details_below_only_when_a_line_below_gives_them(self) -> None:
+        # A source reason whose points were all cut, a judge reason without a major finding, kept slots of a unit that
+        # fell back as a whole: nothing below details them.
+        bare = note(review_reasons=[REVIEW_REASON_SOURCE, REVIEW_REASON_JUDGE])
+        self.assertTrue(bare.startswith("Cần tác giả xem lại vì: tài liệu nguồn có chỗ ghi khác nhau hoặc có thể đã "
+                                        "cũ; kiểm tra tự động phát hiện vấn đề lớn."), bare)
+        whole = note(review_reasons=[REVIEW_REASON_KEPT_SLOTS], review_slots=[1], whole_fallback=True,
+                     slot_reasons={1: [WORKSHEET_INCOMPLETE_CODE]})
+        self.assertNotIn("chi tiết bên dưới", whole)
+        flagged = note(review_reasons=[REVIEW_REASON_SOURCE],
+                       source_flags=["Tài liệu ghi khác nhau ở phần “Ba cấp độ”: “Cấp 2 được phản hồi trong 48 giờ” "
+                                     "(trang 7). Hãy kiểm tra trước khi áp dụng."])
+        self.assertIn("có thể đã cũ (chi tiết bên dưới). Tài liệu ghi khác nhau", flagged)
+
+    def test_a_kept_slots_reason_is_named_once(self) -> None:
+        # c1.l2.u2: "Giữ bản AI …: phiếu thực hành thiếu phần." then "còn cảnh báo: phiếu thực hành thiếu phần."
+        worksheet = note(review_reasons=[REVIEW_REASON_KEPT_SLOTS], review_slots=[0],
+                         slot_reasons={0: [WORKSHEET_INCOMPLETE_CODE]},
+                         remaining=[SlotFinding(WORKSHEET_INCOMPLETE_CODE, 0)])
+        self.assertIn("Giữ bản AI để tác giả rà soát: khối 1 (Lý thuyết): phiếu thực hành thiếu phần.", worksheet)
+        self.assertNotIn("còn cảnh báo", worksheet)
+        self.assertNotIn("không phát hiện vấn đề lớn", worksheet)
+        # c2.l2.u1: the kept reason and its own "Nên biên tập" line said the same.
+        filler = note(review_slots=[1], slot_reasons={1: [EXPLANATION_FILLER_CODE]},
+                      remaining=[SlotFinding(EXPLANATION_FILLER_CODE, 1)])
+        self.assertIn("Giữ bản AI để tác giả rà soát: khối 2 (Quiz). Nên biên tập khối 2 (Quiz): lời giải dùng chữ "
+                      "sáo rỗng", filler)
+        self.assertEqual(filler.count("sáo rỗng"), 1)
+
+
+# The run's slide deck: a photo beside the text of a slide (12-37 % of the page) and picture pages (41-99 %).
+SHA = "b" * 64
+
+
+def region(page: int, share: float | None, *, asset: str = SHA, status: str = "unreviewed",
+           box: tuple[float, float, float, float] = (0.5, 0.2, 0.95, 0.9)) -> dict[str, Any]:
+    raw: dict[str, Any] = {"region_kind": "embedded_image" if share is not None else "vector_composition",
+                           "asset_revision": asset, "locator": {"page": page, "bbox_normalized": list(box)},
+                           "observation": {"status": status, "facts": []},
+                           "inference": {"status": "not_performed", "claims": []}}
+    if share is not None:
+        raw["page_area_ratio"] = share
+    return raw
+
+
+class ImagePageTests(unittest.TestCase):
+    """Item 9: the note's image warning only for a page that is mostly an image nobody has read."""
+
+    def test_only_a_page_mostly_an_unread_image_counts(self) -> None:
+        decorative = [{"visual_regions": [region(14, 0.35)]}, {"visual_regions": [region(15, 0.27, asset="c" * 64)]}]
+        self.assertEqual(unread_image_pages(decorative), [])
+        self.assertFalse(evidence_needs_check(decorative))
+        # The same photo carried by two facts counts once; two photos of one page add up.
+        self.assertEqual(unread_image_pages([{"visual_regions": [region(21, 0.3)]},
+                                             {"visual_regions": [region(21, 0.3)]}]), [])
+        self.assertEqual(unread_image_pages([{"visual_regions": [region(29, 0.25), region(29, 0.2, asset="d" * 64)]}]),
+                         [29])
+        self.assertEqual(unread_image_pages([{"visual_regions": [region(39, 0.69)]}]), [39])
+        # A region somebody observed is read; a vector drawing counts by its box.
+        self.assertEqual(unread_image_pages([{"visual_regions": [region(39, 0.69, status="observed")]}]), [])
+        self.assertEqual(unread_image_pages([{"visual_regions": [region(12, None, box=(0.1, 0.1, 0.9, 0.9))]}]), [12])
+        # A legacy document: nothing tells its pages apart, the warning stays.
+        self.assertTrue(evidence_needs_check([{"source_evidence_status": "legacy_review_required"}]))
+
+    def test_the_unit_warns_only_for_an_image_page(self) -> None:
+        for share, expected in ((0.3, False), (0.7, True)):
+            body = severity_body()
+            for fact in body["unit_contract"]["source_facts"]:
+                fact["locator"] = {**(fact.get("locator") or {}), "visual_regions": [region(7, share)]}
+            rehash_contract(body["unit_contract"])
+            request = RagLessonAuthorUnitV2Request.model_validate(body)
+            with self.subTest(share=share):
+                self.assertEqual(unit_service._idm_unit_deps(request).evidence_review_required, expected)
