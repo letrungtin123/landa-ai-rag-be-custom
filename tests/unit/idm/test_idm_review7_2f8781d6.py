@@ -9,6 +9,7 @@ import json
 import unittest
 
 from app.core.errors import AppError, ServiceError
+from app.idm.fallback_lines import restore_stops
 from app.idm.node_acceptance import html_quality_code
 from app.idm.slot_words import exercise_details
 from app.idm.source_locked import render_idm_source_locked_html
@@ -129,3 +130,15 @@ class NamedExerciseTests(unittest.TestCase):
                          ["15 phút"])
         self.assertEqual(exercise_details(["Thảo luận: Các nhóm làm việc trong 20 phút, trình bày theo nhóm."]),
                          ["20 phút", "theo nhóm"])
+
+
+class LowerCaseStopTests(unittest.TestCase):
+    """L3: only the title-case dotted abbreviations of a name keep their dot ("Tp.", "Mr.", "Ths.")."""
+
+    def test_lower_case_words_get_their_space(self) -> None:
+        for glued, mended in (("thời gian phản hồi 200 ms.Sau đó", "thời gian phản hồi 200 ms. Sau đó"),
+                              ("say no.The manager agreed", "say no. The manager agreed"),
+                              ("vd.Khách hàng mua 2 sản phẩm", "vd. Khách hàng mua 2 sản phẩm")):
+            self.assertEqual(restore_stops(glued), mended)
+        for name in ("Tp.Hồ Chí Minh", "Mr.Smith", "Ths.Nguyễn Văn A", "St.Petersburg", "Node.Js là"):
+            self.assertEqual(restore_stops(name), name)

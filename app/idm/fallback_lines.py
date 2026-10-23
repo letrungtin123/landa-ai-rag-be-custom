@@ -71,9 +71,10 @@ LABEL_JOINER: Final = " – "  # noqa: RUF001 - the en dash joins the section na
 _STOP_RE: Final = re.compile(r"\.(?=\S\S)")
 _CLOSING: Final = ")\"'" + chr(0x201D) + chr(0x2019)
 _MAX_CLOSING: Final = 2
-# Review 6 (L1): the abbreviations a dot ends inside a name ("Tp.Hồ Chí Minh", "Ths.Nguyễn", "Mr.Smith", "Co.Ltd").
-_DOTTED_ABBREVIATIONS: Final = frozenset({"tp", "ths", "ts", "gs", "pgs", "bs", "ks", "mr", "mrs", "ms", "dr", "st",
-                                          "co", "inc", "ltd", "corp", "jsc", "vd", "no"})
+# Review 6 (L1): the abbreviations a dot ends inside a name ("Tp.Hồ Chí Minh", "Ths.Nguyễn", "Mr.Smith", "Co.Ltd"),
+# as a name writes them (review 7, L3: "200 ms.Sau đó", "say no.The", "vd.Khách hàng" are sentences).
+_DOTTED_ABBREVIATIONS: Final = frozenset({"Tp", "Ths", "Ts", "Gs", "Pgs", "Bs", "Ks", "Mr", "Mrs", "Ms", "Dr", "St",
+                                          "Co", "Inc", "Ltd", "Corp", "Jsc"})
 # A web or e-mail address keeps its dots.
 _ADDRESS_RE: Final = re.compile(r"://|^www\.|@", re.IGNORECASE)
 # The word before the stop: two letters at least (one Vietnamese letter with its mark: "Lưu ý.Đây"), not after another
@@ -322,7 +323,7 @@ def restore_stops(text: str) -> str:
                 and following.group(0).isascii() and not word.group(0).islower())
         glued = (word is not None and word.group(0)[-1].islower() and start - len(before) <= _MAX_CLOSING
                  and after[0].isalpha() and after[0].isupper() and after[1].isalpha() and after[1].islower()
-                 and word.group(0).lower() not in _DOTTED_ABBREVIATIONS and not name
+                 and word.group(0) not in _DOTTED_ABBREVIATIONS and not name
                  and not _ADDRESS_RE.search(token))
         return ". " if glued else "."
 
