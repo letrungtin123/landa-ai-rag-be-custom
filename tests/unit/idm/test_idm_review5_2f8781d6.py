@@ -9,6 +9,7 @@ import json
 import unittest
 from typing import Any
 
+from app.idm.acronyms import explained
 from app.idm.answer_near import ANSWER_NEAR_EXAMPLE_CODE, near_example
 from app.idm.fallback_lines import restore_stops
 from app.idm.node_acceptance import html_quality_code
@@ -367,3 +368,15 @@ class ToolNameTests(unittest.TestCase):
         self.assertEqual(source.missing("Khung ma trận thấu cảm và 3 tầng nhận thức"), ["ma trận thấu cảm"])
         self.assertEqual(source.missing("The Value Proposition Canvas"), ["Value Proposition Canvas"])
         self.assertEqual(source.missing("Building the Customer Journey Map"), ["Customer Journey Map"])
+
+
+class DashedAbbreviationTests(unittest.TestCase):
+    """L1: "<words> - ABBR" explains ABBR only when the words spell it."""
+
+    def test_only_spelled_words_explain(self) -> None:
+        for text, token in (("khoảnh khắc sự thật (Moments of Truth - MOT) quyết định", "MOT"),
+                            ("Net Promoter Score - NPS đo lòng trung thành", "NPS")):
+            self.assertTrue(explained(token, None, [text]), text)
+        for text, token in (("Ba chỉ số cần theo dõi hằng tuần - NPS, CSAT và CES.", "NPS"),
+                            ("Doanh thu quý này tăng mạnh - KPI vượt kế hoạch.", "KPI")):
+            self.assertFalse(explained(token, None, [text]), text)

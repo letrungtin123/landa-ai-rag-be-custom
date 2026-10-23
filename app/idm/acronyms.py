@@ -111,6 +111,10 @@ def keeps_capitals(word: str) -> bool:
 
 
 _TEXT_KINDS: Final = frozenset({"paragraph", "task", "warning"})
+# Review 5 (L1): the function words an abbreviation may skip ("Moments of Truth" -> MOT or MT), and how many words more
+# than its letters a dashed full form may hold.
+_INITIAL_STOPS: Final = frozenset({"of", "and", "the", "for", "to", "in", "on", "&", "và", "của", "cho"})
+_MAX_SKIPPED_WORDS: Final = 2
 _LIST_KINDS: Final = frozenset({"bullets", "steps"})
 
 
@@ -193,17 +197,32 @@ def abbreviations(texts: Iterable[str]) -> list[str]:
     return list(dict.fromkeys(match.group(1) for text in texts for match in ACRONYM_RE.finditer(text)))
 
 
+def _spelled(token: str, words: Sequence[str]) -> bool:
+    """The last of ``words`` spell ``token`` by their initials, with or without their function words ("Moments of
+    Truth" -> MOT; review 5, L1)."""
+
+    letters = idm_fold("".join(char for char in token if char.isalpha()))
+    for size in range(1, min(len(words), len(letters) + _MAX_SKIPPED_WORDS) + 1):
+        tail = [word for word in words[-size:] if word[:1].isalpha()]
+        initials = "".join(idm_fold(word[:1]) for word in tail)
+        content = "".join(idm_fold(word[:1]) for word in tail if word.lower() not in _INITIAL_STOPS)
+        if letters and letters in {initials, content}:
+            return True
+    return False
+
+
 def explained(token: str, full: str | None, texts: Sequence[str]) -> bool:
-    """The unit already gives the full form: "(ROI)" after a phrase, "ROI (" with its meaning, the full form, or a
-    phrase of two words or more and a dash (hyphen, en or em dash) before it: "(Moments of Truth - MOT)", "Moments of
-    Truth - MOT" (run 2f8781d6: the note listed MOT as unexplained)."""
+    """The unit already gives the full form: "(ROI)" after a phrase, "ROI (" with its meaning, the full form, or the
+    words it abbreviates and a dash (hyphen, en or em dash) before it: "(Moments of Truth - MOT)", "Moments of Truth -
+    MOT" (run 2f8781d6: the note listed MOT as unexplained). Review 5 (L1): only words whose initials spell it; "Ba chỉ
+    số cần theo dõi hằng tuần - NPS" explains nothing."""
 
     joined = " ".join(texts)
     escaped = re.escape(token)
     if re.search(rf"\(\s*{escaped}\s*\)", joined) or re.search(rf"(?<![\w&]){escaped}\s*\(", joined):
         return True
-    if re.search(rf"[^\W\d_][\w'’]*(?:\s+[^\W\d_][\w'’&/]*)+\s+[-–—]\s+{escaped}(?![\w&])",  # noqa: RUF001
-                 joined):
+    dashed = rf"([^\W\d_][\w'’]*(?:\s+[^\W\d_][\w'’&/]*)+)\s+[-–—]\s+{escaped}(?![\w&])"  # noqa: RUF001
+    if any(_spelled(token, match.group(1).split()) for match in re.finditer(dashed, joined)):
         return True
     return full is not None and idm_fold(full) in idm_fold(joined)
 
