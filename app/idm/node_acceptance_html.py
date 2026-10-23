@@ -11,11 +11,11 @@ import unicodedata
 from collections.abc import Iterable, Mapping
 from typing import Any, Final
 
+from app.core.markup import replace_tags
 from app.idm.node_acceptance_text import (
     _ENTITY_RE,
     _JS_WS,
     _JS_WS_RUN,
-    _TAG_RE,
     _js_number,
     _js_truthy,
     _list,
@@ -410,7 +410,7 @@ def idm_html_visible_text(component: Mapping[str, Any]) -> str | None:
         raw = next((value for value in (component.get("html"), component.get("data"), component.get("content"))
                     if _js_truthy(value)), None)
         html = raw if isinstance(raw, str) else ""
-        return re.sub(r"\s+", " ", _TAG_RE.sub(" ", html)).strip()
+        return re.sub(r"\s+", " ", replace_tags(html, " ")).strip()
     if not isinstance(semantic, dict) or not semantic:
         return None
     try:

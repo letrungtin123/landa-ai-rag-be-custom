@@ -22,6 +22,7 @@ from dataclasses import dataclass
 from typing import Final, Literal
 
 from app.contracts.orchestration_v2.provider import SourceSnapshotFactV2
+from app.core.markup import replace_tags
 from app.idm.policy import (
     IDM_HEADING_ALL_CAPS_RATIO,
     IDM_PRESERVE_FURNITURE_MAX_CHARS,
@@ -45,7 +46,6 @@ TABLE_ROW_RE: Final = re.compile(f"Row[{WS_CLASS}]+([0-9]+)[{WS_CLASS}]*:[{WS_CL
 _CELL_SPLIT_RE: Final = re.compile(f"[{WS_CLASS}]+\\|[{WS_CLASS}]+")
 # A literal pipe inside a cell is stored as a broken bar by the table extractor.
 _ESCAPED_PIPE: Final = chr(0xA6)
-_TAG_RE: Final = re.compile(r"<[^>]+>")
 _ENTITY_RE: Final = re.compile(r"&(?:#([0-9]{1,7})|#[xX]([0-9a-fA-F]{1,6})|([A-Za-z]{2,8}));")
 # Exactly the entities the renderer, the Node normaliser and the course html sanitizer emit.
 _NAMED_ENTITIES: Final = {"amp": "&", "lt": "<", "gt": ">", "quot": '"', "apos": "'", "nbsp": chr(0xA0)}
@@ -133,7 +133,7 @@ def _decode_entity(match: re.Match[str]) -> str:
 def html_tokens(html: str) -> list[str]:
     """Words a learner reads in an html fragment: tags are separators, entities are decoded once."""
 
-    return tokens(_ENTITY_RE.sub(_decode_entity, _TAG_RE.sub(" ", html)))
+    return tokens(_ENTITY_RE.sub(_decode_entity, replace_tags(html, " ")))
 
 
 # --- headings ----------------------------------------------------------------------------------------------

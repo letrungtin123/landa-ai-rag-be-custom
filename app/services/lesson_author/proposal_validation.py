@@ -8,6 +8,7 @@ from typing import Any
 
 from app.content.ordered_learning_content import flatten_ordered_content
 from app.content.source_structure import strip_source_range_suffix
+from app.core.markup import replace_tags
 from app.services.lesson_author.errors import LessonAuthorProposalValidationError
 from app.workflows.contracts import WorkflowFailure
 
@@ -425,7 +426,7 @@ def validate_lesson_author_proposal_shape(proposal: dict[str, Any]) -> None:
                                     or nested_content.get("content")
                                     or ""
                                 )
-                                visible_text = re.sub(r"<[^>]+>", " ", str(html_value))
+                                visible_text = replace_tags(str(html_value), " ")
                                 visible_text = re.sub(r"\s+", " ", visible_text).strip()
                             # A deterministic source-locked baseline is a
                             # review surface, not a claim that the model
@@ -444,7 +445,7 @@ def validate_lesson_author_proposal_shape(proposal: dict[str, Any]) -> None:
                                 )
                     continue
                 if isinstance(unit_value.get("html"), str) and unit_value["html"].strip():
-                    visible_text = re.sub(r"<[^>]+>", " ", unit_value["html"])
+                    visible_text = replace_tags(unit_value["html"], " ")
                     visible_text = re.sub(r"\s+", " ", visible_text).strip()
                     if len(visible_text) < MIN_LESSON_AUTHOR_HTML_TEXT_CHARS:
                         raise LessonAuthorProposalValidationError(
@@ -452,7 +453,7 @@ def validate_lesson_author_proposal_shape(proposal: dict[str, Any]) -> None:
                         )
                     continue
                 if isinstance(unit_value.get("content"), str) and unit_value["content"].strip():
-                    visible_text = re.sub(r"<[^>]+>", " ", unit_value["content"])
+                    visible_text = replace_tags(unit_value["content"], " ")
                     visible_text = re.sub(r"\s+", " ", visible_text).strip()
                     if len(visible_text) < MIN_LESSON_AUTHOR_HTML_TEXT_CHARS:
                         raise LessonAuthorProposalValidationError(

@@ -13,6 +13,8 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any, Final, Literal
 
+from app.core.markup import replace_tags
+
 AcceptanceCheck = Literal["normalization", "response", "coverage", "idm_budget", "workspace_component"]
 
 
@@ -22,7 +24,6 @@ _JS_WS: Final = "\t\n\v\f\r \u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3
 _JS_WS_RUN: Final = re.compile(f"[{_JS_WS}]+")
 _JS_TRIM: Final = re.compile(f"^[{_JS_WS}]+|[{_JS_WS}]+$")
 _ENTITY_RE: Final = re.compile(r"&(?:[a-z]+|#\d+|#x[a-f0-9]+);", re.IGNORECASE | re.ASCII)
-_TAG_RE: Final = re.compile(r"<[^>]+>")
 _COMBINING_RE: Final = re.compile("[\u0300-\u036f]")
 _BMP_MAX: Final = 0xFFFF
 _SURROGATES: Final = re.compile("[\ud800-\udfff]")
@@ -114,7 +115,7 @@ def read_scalar_string(value: Any, fallback: str, max_length: int) -> str:
 def visible_html_text(value: str) -> str:
     """``visibleHtmlText`` of lesson-author-content-contract.logic."""
 
-    return js_trim(_JS_WS_RUN.sub(" ", _ENTITY_RE.sub(" ", _TAG_RE.sub(" ", value))))
+    return js_trim(_JS_WS_RUN.sub(" ", _ENTITY_RE.sub(" ", replace_tags(value, " "))))
 
 
 def instructional_fold(value: str) -> str:
@@ -139,7 +140,7 @@ def strip_html(value: str) -> str:
 
     text = re.sub(r"<style[^>]*>[\s\S]*?</style>", "", value, flags=re.IGNORECASE | re.ASCII)
     text = re.sub(r"<script[^>]*>[\s\S]*?</script>", "", text, flags=re.IGNORECASE | re.ASCII)
-    text = _TAG_RE.sub(" ", text)
+    text = replace_tags(text, " ")
     for entity, replacement in (("&nbsp;", " "), ("&amp;", "&"), ("&lt;", "<"), ("&gt;", ">"), ("&quot;", '"'),
                                 ("&#39;", "'")):
         text = re.sub(re.escape(entity), replacement, text, flags=re.IGNORECASE | re.ASCII)

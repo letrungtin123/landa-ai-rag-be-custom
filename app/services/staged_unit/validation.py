@@ -17,6 +17,7 @@ from app.content.instructional_quality import (
 )
 from app.content.learner_content_purity import component_learner_text, learner_content_purity_finding
 from app.content.ordered_learning_content import semantic_shape_diagnostics
+from app.core.markup import replace_tags
 from app.instructional_density import INSTRUCTIONAL_DENSITY_POLICY_VERSION
 from app.services.lesson_author.errors import LessonAuthorProposalValidationError
 from app.services.lesson_author.proposal_validation import (
@@ -89,7 +90,7 @@ def staged_html_contains_faq(component: dict[str, Any]) -> bool:
         raw = str(component.get("html") or component.get("data") or component.get("content") or "")
         if re.search(r"<\s*(?:details|summary)\b", raw, re.IGNORECASE):
             return True
-        visible = normalized(re.sub(r"<[^>]+>", " ", raw))
+        visible = normalized(replace_tags(raw, " "))
 
     markers = ("faq", "frequently asked questions", "frequently asked question",
                "cau hoi thuong gap", "hoi dap thuong gap")
@@ -175,7 +176,7 @@ def staged_instructional_finding(  # noqa: PLR0917 - positional signature kept f
                         "not enough.",
                     )
         else:
-            text = re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", html)).strip()
+            text = re.sub(r"\s+", " ", replace_tags(html, " ")).strip()
         source_chars = output_budget.get("source_content_chars") if isinstance(output_budget, dict) else None
         source_relative_minimum = (
             max(20, min(MIN_STAGED_LESSON_AUTHOR_HTML_TEXT_CHARS, int(source_chars) // 2))
@@ -1178,7 +1179,7 @@ def lesson_author_proposal_quality_metrics(proposal: dict[str, Any]) -> dict[str
                             visible_text = re.sub(
                                 r"\s+",
                                 " ",
-                                re.sub(r"<[^>]+>", " ", str(component.get("html") or component.get("data") or "")),
+                                replace_tags(str(component.get("html") or component.get("data") or ""), " "),
                             ).strip()
                         html_lengths.append(len(visible_text))
     return {

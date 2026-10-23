@@ -5,6 +5,7 @@ import re
 from collections.abc import Iterable
 from typing import Any
 
+from app.core.markup import replace_tags
 from app.core.text import casefold_strip_marks_and_d as _fold
 
 LEARNER_CONTENT_PURITY_POLICY_VERSION = "learner-content-purity-2"
@@ -75,7 +76,7 @@ _DANGLING_PROVENANCE_ONLY_RE = re.compile(
 
 
 def _visible_text(value: Any) -> str:
-    text = html.unescape(re.sub(r"<[^>]+>", " ", str(value or "")))
+    text = html.unescape(replace_tags(str(value or ""), " "))
     return re.sub(r"\s+", " ", text).strip()
 
 
