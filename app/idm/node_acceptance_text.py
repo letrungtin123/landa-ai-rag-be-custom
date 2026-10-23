@@ -13,7 +13,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any, Final, Literal
 
-from app.core.markup import replace_tags
+from app.core.markup import remove_elements, replace_tags
 
 AcceptanceCheck = Literal["normalization", "response", "coverage", "idm_budget", "workspace_component"]
 
@@ -138,8 +138,8 @@ def instructional_fold(value: str) -> str:
 def strip_html(value: str) -> str:
     """``stripHtml`` of chat.service (the normalizer's thin-content measure)."""
 
-    text = re.sub(r"<style[^>]*>[\s\S]*?</style>", "", value, flags=re.IGNORECASE | re.ASCII)
-    text = re.sub(r"<script[^>]*>[\s\S]*?</script>", "", text, flags=re.IGNORECASE | re.ASCII)
+    # The regexes /<style[^>]*>[\s\S]*?<\/style>/gi and the script one, in linear time (review of wave 1, L-5).
+    text = remove_elements(remove_elements(value, "style"), "script")
     text = replace_tags(text, " ")
     for entity, replacement in (("&nbsp;", " "), ("&amp;", "&"), ("&lt;", "<"), ("&gt;", ">"), ("&quot;", '"'),
                                 ("&#39;", "'")):

@@ -14,6 +14,7 @@ from html import unescape
 from typing import Any
 
 from app.content.ordered_learning_content import flatten_ordered_content
+from app.core.markup import replace_tags
 from app.workflows.contracts import WorkflowIssue, WorkflowValidationResult
 
 EXPLANATORY_TYPES = {"html", "la_faq"}
@@ -72,7 +73,7 @@ def _parse_embedded(value: Any) -> dict[str, Any]:
 
 
 def _plain_text(value: Any) -> str:
-    return re.sub(r"\s+", " ", re.sub(r"<[^>]*>", " ", unescape(str(value or "")))).strip()
+    return re.sub(r"\s+", " ", replace_tags(unescape(str(value or "")), " ", include_empty=True)).strip()
 
 
 def _normalized_text(value: Any) -> str:

@@ -11,7 +11,7 @@ import unicodedata
 from collections.abc import Iterable, Mapping
 from typing import Any, Final
 
-from app.core.markup import replace_tags
+from app.core.markup import remove_elements, replace_tags
 from app.idm.node_acceptance_text import (
     _ENTITY_RE,
     _JS_WS,
@@ -33,9 +33,9 @@ from app.idm.node_acceptance_text import (
 # --- html: sanitizer, contract, instructional quality -------------------------------------------
 _SAFE_HTML_TAGS: Final = frozenset({"h2", "h3", "p", "ul", "ol", "li", "strong", "blockquote", "table", "thead",
                                     "tbody", "tr", "th", "td"})
-_DROPPED_ELEMENTS: Final = tuple(
-    re.compile(rf"<{tag}[^>]*>[\s\S]*?</{tag}>", re.IGNORECASE | re.ASCII)
-    for tag in ("script", "style", "iframe", "object", "embed"))
+# Removed with their content, in this order: the regexes /<tag[^>]*>[\s\S]*?<\/tag>/gi of the Node sanitizer, in
+# linear time (app.core.markup.remove_elements; review of wave 1, L-5).
+_DROPPED_ELEMENTS: Final = ("script", "style", "iframe", "object", "embed")
 _SANITIZE_TAG_RE: Final = re.compile(f"</?([a-z0-9]+)(?:[{_JS_WS}][^>]*)?>", re.IGNORECASE | re.ASCII)
 _CONTRACT_TAG_RE: Final = re.compile(r"</?([a-z0-9]+)>", re.IGNORECASE | re.ASCII)
 MAX_UNIT_HTML_CHARS: Final = 20_000
@@ -46,8 +46,8 @@ def sanitize_lesson_author_html(value: Any) -> str:
     """``sanitizeLessonAuthorHtml``."""
 
     text = value if isinstance(value, str) else ""
-    for pattern in _DROPPED_ELEMENTS:
-        text = pattern.sub("", text)
+    for tag in _DROPPED_ELEMENTS:
+        text = remove_elements(text, tag)
 
     def keep(match: re.Match[str]) -> str:
         tag = match.group(1).lower()

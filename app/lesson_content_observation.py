@@ -14,6 +14,7 @@ from hashlib import sha256
 from html import unescape
 from typing import Any
 
+from app.core.markup import replace_tags
 from app.core.text import casefold_strip_marks_and_d
 from app.lesson_prompt_policy import component_instructional_brief, instructional_action_intents
 from app.content.ordered_learning_content import ordered_content_fields
@@ -47,7 +48,9 @@ def _ids(value: Any) -> list[str]:
 
 
 def _normalize(text: str) -> str:
-    return " ".join(re.findall(r"\w+", casefold_strip_marks_and_d(unescape(re.sub(r"<[^>]*>", " ", text)))))
+    # The former tag regex (it also removed "<>"), in linear time (review of wave 1, L-5).
+    visible = replace_tags(text, " ", include_empty=True)
+    return " ".join(re.findall(r"\w+", casefold_strip_marks_and_d(unescape(visible))))
 
 
 @dataclass(frozen=True)
