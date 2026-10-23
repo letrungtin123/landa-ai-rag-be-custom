@@ -210,8 +210,9 @@ class FallbackLabelTests(unittest.TestCase):
             "1.3 HỒ SƠ (VD3: NGƯỜI SỬ DỤNG TRỰC TIẾP)", "Về Cảm xúc (Emotional Job)",
             "Muốn làm việc thoải mái với công cụ mới mỗi ngày.", social,
             "Được công nhận là nhân viên lành nghề trong phòng ban."], locale="vi")
-        # The 14-word prefixed label is a heading as its 9-word sibling is (it was a paragraph).
-        self.assertIn("Người sử dụng trực tiếp – Về Cảm xúc (Emotional Job)</h3>", html)  # noqa: RUF001
+        # The 14-word prefixed label is a heading as its 9-word sibling is (it was a paragraph); review 6 (L7): the
+        # label right under its section title joins it in one heading, without the name again.
+        self.assertIn("(VD3: người sử dụng trực tiếp) - Về Cảm xúc (Emotional Job)</h3>", html)
         self.assertIn(f"<h3>Người sử dụng trực tiếp – {social}</h3>", html)  # noqa: RUF001 - the en dash
         self.assertIsNone(html_quality_code(html))
 

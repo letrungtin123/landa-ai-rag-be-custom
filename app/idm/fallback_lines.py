@@ -58,8 +58,8 @@ _STEP_MARKER_RE: Final = re.compile(r"^((?:bước|buoc|step|giai đoạn|phase|
                                     re.IGNORECASE)
 # The lead of a row ("Về Chức năng (Functional Job): Sàng lọc …"): the text before its first colon.
 _LEAD_RE: Final = re.compile(r"^([^:]{2,90}?)\s*:\s+\S")
-# A section name before a label has no sentence mark.
-_NAME_MARKS_RE: Final = re.compile(r"[,.;!?]")
+# Review 6 (M2): a label the section name may lead has letters of its own ("Mục tiêu"; never "85%").
+_MIN_LABEL_LETTERS: Final = 4
 _SHORT_NAME_MAX_CHARS: Final = 60
 _SHORT_NAME_MAX_WORDS: Final = 8
 LABEL_JOINER: Final = " – "  # noqa: RUF001 - the en dash joins the section name and the label
@@ -233,47 +233,66 @@ def _sections(lines: Sequence[str], is_label: LabelTest) -> list[tuple[str, str 
     return found
 
 
+class PrefixedLabel(str):
+    """A label ``prefix_repeated_labels`` led with its section's name; ``core`` is the label alone. Review 6 (M1):
+    only such a line is measured as a label without that name, never a source line that holds an en dash."""
+
+    core: str
+
+    def __new__(cls, text: str, core: str) -> PrefixedLabel:
+        made = super().__new__(cls, text)
+        made.core = core
+        return made
+
+
+def _joins_title(lines: Sequence[str], position: int, is_label: LabelTest) -> bool:
+    """Review 6 (L7): the label at ``position`` comes right after its section title and before a line of content, so
+    the renderer joins the two into one heading ("Bước 2: thực hiện - Mục tiêu của bước này"), unique by the title."""
+
+    line = lines[position]
+    previous = lines[position - 1] if position else ""
+    following = lines[position + 1] if position + 1 < len(lines) else ""
+    return (bool(previous) and is_section(previous, is_label) and is_label(line) and bool(following)
+            and not is_label(following) and not TABLE_ROW_RE.match(following)
+            and all(text.count("(") == text.count(")") for text in (previous, line)))
+
+
 def prefix_repeated_labels(lines: Sequence[str], is_label: LabelTest) -> list[str]:
-    """``lines`` with the labels of each section that uses a label of an earlier section again led by that section's
-    short name, so no label repeats ("Row 2: Người sử dụng trực tiếp" + ``LABEL_JOINER`` + "Về Chức năng (Functional
-    Job)"); a label that would still repeat (two sections of one short name) is left out, as the shared cleaning did.
-    Review 5 (L3): a label an earlier section wrote as the lead of a row ("Về Chức năng (Functional Job): Sàng lọc …")
-    counts as used, and every label of such a section is led by its name, so the labels of a section have one form."""
+    """``lines`` with every label an earlier section already used (as a label or as the lead of a row, "Về Chức năng
+    (Functional Job): Sàng lọc …") led by its section's short name, so no label repeats ("Row 2: Người sử dụng trực
+    tiếp" + ``LABEL_JOINER`` + "Về Chức năng (Functional Job)"); a label that would still repeat (two sections of one
+    short name) is left out, as the shared cleaning did. Review 6: never a line no other section uses, a figure or a
+    data line ("85%", "Ngân sách tối đa 2 tỷ đồng", M2), nor a label joined with its section title (L7)."""
 
     sections = _sections(lines, is_label)
     first: dict[str, str | None] = {}
-    repeating: set[str] = set()
-    for line, section in zip(lines, sections, strict=True):
-        where = section[0] if section else None
-        label, keys = _label_keys(line, is_label)
-        if label is not None and where is not None and any(key in first and first[key] != where for key in keys):
-            repeating.add(where)
-        for key in keys:
-            first.setdefault(key, where)
     result: list[str] = []
     shown: set[str] = set()
-    for source, section in zip(lines, sections, strict=True):
-        label, _keys = _label_keys(source, is_label)
-        if label is None or section is None or section[0] not in repeating or not section[1]:
+    for position, (source, section) in enumerate(zip(lines, sections, strict=True)):
+        where = section[0] if section else None
+        label, keys = _label_keys(source, is_label)
+        repeated = label is not None and where is not None and any(key in first and first[key] != where
+                                                                   for key in keys)
+        for key in keys:
+            first.setdefault(key, where)
+        if (label is None or not repeated or section is None or not section[1]
+                or sum(char.isalpha() for char in label) < _MIN_LABEL_LETTERS
+                or _joins_title(lines, position, is_label)):
             result.append(source)
             continue
-        label = f"{section[1]}{LABEL_JOINER}{label}"
-        if _fold(label) not in shown:
-            shown.add(_fold(label))
-            result.append(f"{_row_split(source)[0]}{label}")
+        prefixed = f"{section[1]}{LABEL_JOINER}{label}"
+        if _fold(prefixed) not in shown:
+            shown.add(_fold(prefixed))
+            result.append(PrefixedLabel(f"{_row_split(source)[0]}{prefixed}", label))
     return result
 
 
 def label_core(line: str) -> str:
-    """Review 5 (L3): a label without the section name ``prefix_repeated_labels`` put before it, measured as its
-    siblings are ("Người sử dụng trực tiếp" + ``LABEL_JOINER`` + "Về Ý nghĩa / Xã hội (Social/Meaningful Job)" is a
-    label of 9 words); any other line as it is."""
+    """The label a line is measured as: a ``PrefixedLabel`` without its section name ("Người sử dụng trực tiếp" +
+    ``LABEL_JOINER`` + "Về Ý nghĩa / Xã hội (Social/Meaningful Job)" is a label of 9 words, review 5 L3); any other
+    line as it is (review 6, M1)."""
 
-    head, joiner, tail = line.partition(LABEL_JOINER)
-    if (joiner and tail.strip() and len(head) <= _SHORT_NAME_MAX_CHARS and len(head.split()) <= _SHORT_NAME_MAX_WORDS
-            and not _NAME_MARKS_RE.search(head)):
-        return tail
-    return line
+    return line.core if isinstance(line, PrefixedLabel) else line
 
 
 def restore_stops(text: str) -> str:
@@ -352,6 +371,6 @@ def faq_topic(title: str) -> str:
     return _FAQ_LEAD_RE.sub("", title).strip() or title
 
 
-__all__ = ["LABEL_JOINER", "ORPHAN_LABEL_END_RE", "OrphanLabels", "faq_topic", "is_section", "label_core",
-           "label_text", "prefix_repeated_labels", "restore_stops", "short_name", "source_facts", "split_glued",
-           "tidy_facts", "written_labels"]
+__all__ = ["LABEL_JOINER", "ORPHAN_LABEL_END_RE", "OrphanLabels", "PrefixedLabel", "faq_topic", "is_section",
+           "label_core", "label_text", "prefix_repeated_labels", "restore_stops", "short_name", "source_facts",
+           "split_glued", "tidy_facts", "written_labels"]

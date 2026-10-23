@@ -100,12 +100,12 @@ ROWS = [
     ("bởi hồ sơ chào hàng dài dòng", "Về Chức năng (Functional Pain)"),
     ("Sợ bị coi là một", SOCIAL_PAIN),
     ("Được đồng nghiệp nể trọng", SOCIAL_GAIN),
-    # Review 5 (L3): the second profile repeats labels of the first one (the leads of its rows), so all its labels
-    # carry its name, as the third one's do.
+    # Review 5 (L3), review 6 (M2): a label of the second profile the first one already used (also as the lead of a
+    # row) carries its name; one it uses first does not.
     ("Phê duyệt khoản đầu tư", f"Giám đốc tài chính – {FUNCTIONAL_JOB}"),  # noqa: RUF001 - the en dash
-    ("Muốn chắc chắn họ phải", f"Giám đốc tài chính – {EMOTIONAL_JOB}"),  # noqa: RUF001 - the en dash
+    ("Muốn chắc chắn họ phải", EMOTIONAL_JOB),
     ("Sợ bị đánh giá là người quản lý", f"Giám đốc tài chính – {SOCIAL_PAIN}"),  # noqa: RUF001 - the en dash
-    ("An tâm khi đội ngũ", f"Giám đốc tài chính – {EMOTIONAL_GAIN}"),  # noqa: RUF001 - the en dash
+    ("An tâm khi đội ngũ", EMOTIONAL_GAIN),
     ("Được hội đồng quản trị ghi nhận", f"Giám đốc tài chính – {SOCIAL_GAIN}"),  # noqa: RUF001 - the en dash
     ("Hoàn thành chỉ tiêu xuất kho", f"Nhân viên kho – {FUNCTIONAL_JOB}"),  # noqa: RUF001 - the en dash
     ("Muốn làm việc thoải mái", f"Nhân viên kho – {EMOTIONAL_JOB}"),  # noqa: RUF001 - the en dash
@@ -235,7 +235,9 @@ class FallbackTextTests(unittest.TestCase):
                  "HỒ SƠ (VD3: KHO HÀNG)", EMOTIONAL_JOB, "Muốn tự tin khi nhập số liệu tồn kho."]
         html = render_idm_source_locked_html("Hồ sơ", facts, locale="vi")
         self.assertIsNone(html_quality_code(html))
-        self.assertEqual(html.count(f"Kho hàng – {EMOTIONAL_JOB}"), 1)  # noqa: RUF001 - the en dash
+        # Review 6 (L7): each label right under its section title joins it in one heading, so it needs no name.
+        self.assertEqual(html.count(f"(VD2: kho hàng) - {EMOTIONAL_JOB}</h3>"), 1)
+        self.assertNotIn("Kho hàng –", html)  # noqa: RUF001 - the en dash
 
 
 class FallbackOnlyProfileTests(StoryboardEndpointTestCase):
