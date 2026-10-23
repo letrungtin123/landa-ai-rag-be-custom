@@ -19,6 +19,12 @@ only between a lowercase letter and a capital followed by a lowercase letter: ne
 and splits a glued word ("họphải") only when the slot's own facts write its parts as words and no other split of it
 is possible (``tidy_facts``); the author note lists the glued words left.
 
+Review 5: a step section ("BƯỚC 2: THỰC HIỆN") leads its labels by its words without the step marker, so a prefixed
+label never reads as a numbered step (M3); a cut label gets its start back only when the slot writes that label in full
+elsewhere (L2); every label a later section repeats is led by its section name, also when an earlier section wrote it as
+the lead of a row ("Về Chức năng (Functional Job): …"), and a prefixed label is measured as a label without that name
+(``label_core``, L3); a stop after a word with a capital ("Node.Js", "TP.HCM") keeps its place (L5).
+
 Deterministic and meaning-preserving: no word is added except a repeated label's section name, which the source
 states as that section's title.
 """
@@ -47,6 +53,13 @@ _MIN_SECTION_LETTERS: Final = 4
 _CODED_BRACKET_RE: Final = re.compile(r"\(\s*[^\W_]{1,12}\s*:\s*([^()]{3,60}?)\s*\)\s*$")
 _BRACKET_RE: Final = re.compile(r"\(\s*([^()]{3,60}?)\s*\)\s*$")
 _NUMBERING_RE: Final = re.compile(r"^[\d.]+\s+")
+# Review 5 (M3): the step marker of a section title ("BƯỚC 2:", "Step 3 -", "Giai đoạn 1.").
+_STEP_MARKER_RE: Final = re.compile(r"^((?:bước|buoc|step|giai đoạn|phase|phần|part)\s*\d{1,3})\s*[:.)\-–—]?\s*",  # noqa: RUF001
+                                    re.IGNORECASE)
+# The lead of a row ("Về Chức năng (Functional Job): Sàng lọc …"): the text before its first colon.
+_LEAD_RE: Final = re.compile(r"^([^:]{2,90}?)\s*:\s+\S")
+# A section name before a label has no sentence mark.
+_NAME_MARKS_RE: Final = re.compile(r"[,.;!?]")
 _SHORT_NAME_MAX_CHARS: Final = 60
 _SHORT_NAME_MAX_WORDS: Final = 8
 LABEL_JOINER: Final = " – "  # noqa: RUF001 - the en dash joins the section name and the label
@@ -55,10 +68,13 @@ LABEL_JOINER: Final = " – "  # noqa: RUF001 - the en dash joins the section na
 _STOP_RE: Final = re.compile(r"\.(?=\S\S)")
 _CLOSING: Final = ")\"'" + chr(0x201D) + chr(0x2019)
 _MAX_CLOSING: Final = 2
+# Review 5 (L5): an English word of two letters after a stop is a name's part ("Node.Js"), never a sentence's start.
+_SHORT_WORD_CHARS: Final = 2
 # A web or e-mail address keeps its dots.
 _ADDRESS_RE: Final = re.compile(r"://|^www\.|@", re.IGNORECASE)
-# The word before the stop: two letters at least, not after another stop ("v.v.", "e.g." keep theirs).
-_LAST_WORD_RE: Final = re.compile(r"(?<![.\w])[^\W\d_]{2,}$")
+# The word before the stop: two letters at least (one Vietnamese letter with its mark: "Lưu ý.Đây"), not after another
+# stop ("v.v.", "e.g." keep theirs).
+_LAST_WORD_RE: Final = re.compile(r"(?<![.\w])(?:[^\W\d_]{2,}|[^\W\d_a-zA-Z])$")
 _WORD_RE: Final = re.compile(r"[^\W\d_]+")
 # The lead of an FAQ slot's title.
 _FAQ_LEAD_RE: Final = re.compile(r"^\s*(?:hỏi\s*(?:-|–|&)?\s*đáp|câu hỏi thường gặp|faq|q\s*&\s*a)\s*[:\-–]\s*",  # noqa: RUF001
@@ -113,6 +129,9 @@ def short_name(title: str) -> str | None:
     coded, bracket = _CODED_BRACKET_RE.search(text), _BRACKET_RE.search(text)
     # A coded bracket names the case ("VD3: …"); else the title itself ("2.3 LỘ TRÌNH … (WORKBOOK)": not "Workbook").
     main = _NUMBERING_RE.sub("", text[:bracket.start()] if bracket else text).strip(" .:;-")
+    # Review 5 (M3): a step's words without its marker ("Thực hiện"), or the marker alone ("Bước 2") with no words.
+    step = _STEP_MARKER_RE.match(main)
+    main = (main[step.end():].strip(" .:;-") or step.group(1)) if step else main
     candidates = [coded.group(1) if coded else "", main, bracket.group(1) if bracket else ""]
     name = next((value.strip(" .:;-") for value in candidates if value.strip(" .:;-")
                  and len(value) <= _SHORT_NAME_MAX_CHARS and len(value.split()) <= _SHORT_NAME_MAX_WORDS), "")
@@ -146,12 +165,33 @@ def source_facts(values: Iterable[Any], is_label: LabelTest, *, keep_labels: boo
     return facts
 
 
+def _plain_label(text: str) -> str:
+    """``text`` without its "Row N:" prefix, list marker and emphasis stars, folded."""
+
+    return _fold(_LEAD_MARKER_RE.sub("", _row_split(text)[1].replace("*", " ")).strip())
+
+
+def written_labels(facts: Iterable[str]) -> frozenset[str]:
+    """The labels the facts of a slot write in full (a line or the lead of a row, folded), for ``OrphanLabels``."""
+
+    found: set[str] = set()
+    for fact in facts:
+        for cell in _row_split(fact)[1].split(" | "):
+            plain = _plain_label(cell)
+            found.add(plain)
+            if (lead := _LEAD_RE.match(plain)) is not None:
+                found.add(lead.group(1).strip())
+    return frozenset(found)
+
+
 class OrphanLabels:
     """The label starts of a slot the PDF cut before their last word ("Về Ý nghĩa / Xã hội (Social/Meaningful" +
-    "Job): …"); an orphan label end ("Pain): …") is the same start cut the same way when the slot has exactly one."""
+    "Job): …"); an orphan label end ("Pain): …") is the same start cut the same way when the slot has exactly one and
+    writes that label in full elsewhere (``known``, review 5: never an invented label)."""
 
-    def __init__(self) -> None:
+    def __init__(self, known: frozenset[str] = frozenset()) -> None:
         self.starts: dict[str, str] = {}
+        self.known = known
 
     def note(self, start: str, part: str) -> None:
         """``part`` closes the bracket of ``start`` as a cut label does: remember the start."""
@@ -162,39 +202,78 @@ class OrphanLabels:
     def restore(self, orphan: str) -> str:
         """``orphan`` with its label start again when it is certain, else without its cut word (as before)."""
 
-        if ORPHAN_LABEL_END_RE.match(orphan) and len(self.starts) == 1:
-            return f"{next(iter(self.starts.values()))} {orphan}"
+        end = ORPHAN_LABEL_END_RE.match(orphan)
+        if end is not None and len(self.starts) == 1:
+            start = next(iter(self.starts.values()))
+            if _plain_label(f"{start} {end.group(0).split(')', 1)[0]})") in self.known:
+                return f"{start} {orphan}"
         return ORPHAN_LABEL_END_RE.sub("", orphan)
 
 
-def prefix_repeated_labels(lines: Sequence[str], is_label: LabelTest) -> list[str]:
-    """``lines`` with every label used again under another section title led by that section's short name, so no label
-    repeats ("Row 2: Người sử dụng trực tiếp" + ``LABEL_JOINER`` + "Về Chức năng (Functional Job)"); a label that
-    would still repeat (two sections of one short name) is left out, as the shared cleaning did."""
+def _label_keys(line: str, is_label: LabelTest) -> tuple[str | None, list[str]]:
+    """(the label a line is, its keys: the folded label and the lead of a row it opens, "Về Chức năng (Functional
+    Job)" of "Về Chức năng (Functional Job): Sàng lọc …")."""
 
-    result: list[str] = []
-    first: dict[str, str | None] = {}
-    shown: set[str] = set()
+    label = label_text(line, is_label)
+    lead = _LEAD_RE.match(_plain_label(line))
+    keys = [key for key in (_fold(label) if label is not None else "",
+                            lead.group(1).strip() if lead and is_label(lead.group(1)) else "") if key]
+    return label, keys
+
+
+def _sections(lines: Sequence[str], is_label: LabelTest) -> list[tuple[str, str | None] | None]:
+    """The section (folded title, short name) each line is under, ``None`` before the first one."""
+
+    found: list[tuple[str, str | None] | None] = []
     section: tuple[str, str | None] | None = None
-    for source in lines:
-        if is_section(source, is_label):
-            section = (_fold(source), short_name(source))
-        label = label_text(source, is_label)
-        if label is None:
+    for line in lines:
+        if is_section(line, is_label):
+            section = (_fold(line), short_name(line))
+        found.append(section)
+    return found
+
+
+def prefix_repeated_labels(lines: Sequence[str], is_label: LabelTest) -> list[str]:
+    """``lines`` with the labels of each section that uses a label of an earlier section again led by that section's
+    short name, so no label repeats ("Row 2: Người sử dụng trực tiếp" + ``LABEL_JOINER`` + "Về Chức năng (Functional
+    Job)"); a label that would still repeat (two sections of one short name) is left out, as the shared cleaning did.
+    Review 5 (L3): a label an earlier section wrote as the lead of a row ("Về Chức năng (Functional Job): Sàng lọc …")
+    counts as used, and every label of such a section is led by its name, so the labels of a section have one form."""
+
+    sections = _sections(lines, is_label)
+    first: dict[str, str | None] = {}
+    repeating: set[str] = set()
+    for line, section in zip(lines, sections, strict=True):
+        where = section[0] if section else None
+        label, keys = _label_keys(line, is_label)
+        if label is not None and where is not None and any(key in first and first[key] != where for key in keys):
+            repeating.add(where)
+        for key in keys:
+            first.setdefault(key, where)
+    result: list[str] = []
+    shown: set[str] = set()
+    for source, section in zip(lines, sections, strict=True):
+        label, _keys = _label_keys(source, is_label)
+        if label is None or section is None or section[0] not in repeating or not section[1]:
             result.append(source)
             continue
-        key = _fold(label)
-        where = section[0] if section else None
-        line = source
-        if key in first and first[key] != where and section is not None and section[1]:
-            label = f"{section[1]}{LABEL_JOINER}{label}"
-            if _fold(label) in shown:
-                continue
+        label = f"{section[1]}{LABEL_JOINER}{label}"
+        if _fold(label) not in shown:
             shown.add(_fold(label))
-            line = f"{_row_split(source)[0]}{label}"
-        first.setdefault(key, where)
-        result.append(line)
+            result.append(f"{_row_split(source)[0]}{label}")
     return result
+
+
+def label_core(line: str) -> str:
+    """Review 5 (L3): a label without the section name ``prefix_repeated_labels`` put before it, measured as its
+    siblings are ("Người sử dụng trực tiếp" + ``LABEL_JOINER`` + "Về Ý nghĩa / Xã hội (Social/Meaningful Job)" is a
+    label of 9 words); any other line as it is."""
+
+    head, joiner, tail = line.partition(LABEL_JOINER)
+    if (joiner and tail.strip() and len(head) <= _SHORT_NAME_MAX_CHARS and len(head.split()) <= _SHORT_NAME_MAX_WORDS
+            and not _NAME_MARKS_RE.search(head)):
+        return tail
+    return line
 
 
 def restore_stops(text: str) -> str:
@@ -206,8 +285,13 @@ def restore_stops(text: str) -> str:
         after = text[match.end():match.end() + 2]
         token = text[text.rfind(" ", 0, start) + 1:].split(" ", 1)[0]
         word = _LAST_WORD_RE.search(before)
-        glued = (word is not None and word.group(0)[-1].islower() and start - len(before) <= _MAX_CLOSING
+        following = _WORD_RE.match(text, match.end())
+        english = following is not None and following.group(0).isascii()
+        # Review 5 (L5): never inside a name ("Node.Js", "System.Console", "TP.HCM"): the word before is lower case,
+        # and an English word after has two lower-case letters ("Js" has one; "Bị" is Vietnamese).
+        glued = (word is not None and word.group(0).islower() and start - len(before) <= _MAX_CLOSING
                  and after[0].isalpha() and after[0].isupper() and after[1].isalpha() and after[1].islower()
+                 and following is not None and (not english or len(following.group(0)) > _SHORT_WORD_CHARS)
                  and not _ADDRESS_RE.search(token))
         return ". " if glued else "."
 
@@ -268,5 +352,6 @@ def faq_topic(title: str) -> str:
     return _FAQ_LEAD_RE.sub("", title).strip() or title
 
 
-__all__ = ["LABEL_JOINER", "ORPHAN_LABEL_END_RE", "OrphanLabels", "faq_topic", "is_section", "label_text",
-           "prefix_repeated_labels", "restore_stops", "short_name", "source_facts", "split_glued", "tidy_facts"]
+__all__ = ["LABEL_JOINER", "ORPHAN_LABEL_END_RE", "OrphanLabels", "faq_topic", "is_section", "label_core",
+           "label_text", "prefix_repeated_labels", "restore_stops", "short_name", "source_facts", "split_glued",
+           "tidy_facts", "written_labels"]

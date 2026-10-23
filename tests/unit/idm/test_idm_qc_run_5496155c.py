@@ -360,10 +360,14 @@ class SourceLockedSlideTextTests(unittest.TestCase):
         self.assertIn("<ul><li>VIỆC CẦN LÀM - Mục tiêu</li>", html)
         self.assertIn("Về Ý nghĩa / Xã hội (Social/Meaningful Job):</strong> Được cấp trên tin tưởng", html)
         self.assertIn("Về Chức năng (Functional Pain):</strong> Bị &quot;bủa vây&quot; bởi hồ sơ", html)
-        # Run 2f8781d6 (N1): the cut label's end gets back the one label start the slide cut the same way, so the row
-        # stays under its own layer (it used to lose its label and read as part of the row above).
-        self.assertIn("<p><strong>Về Ý nghĩa / Xã hội (Social/Meaningful Pain):</strong> Sợ bị coi là một &quot;nút "
-                      "thắt&quot; (bottleneck) làm chậm tiến độ của cả phòng.</p>", html)
+        # Review 5 (L2): the cut label's end gets its start back only when the slot writes that label in full elsewhere
+        # (run 2f8781d6: page 25 does); here nothing does, so no label is made up.
+        self.assertIn("<p>Sợ bị coi là một &quot;nút thắt&quot; (bottleneck) làm chậm tiến độ của cả phòng.</p>", html)
+        restored = render_idm_source_locked_html("Hồ sơ mẫu", [
+            "Về Ý nghĩa / Xã hội (Social/Meaningful", "Job): * Được cấp trên tin tưởng giao gói mua sắm lớn hơn.",
+            "Pain): * Sợ bị coi là một nút thắt làm chậm tiến độ của cả phòng.", "HỒ SƠ (VD2: KẾ TOÁN)",
+            "Về Ý nghĩa / Xã hội (Social/Meaningful Pain)", "Sợ bị đánh giá là người lỗi thời."], locale="vi")
+        self.assertIn("<strong>Về Ý nghĩa / Xã hội (Social/Meaningful Pain):</strong> Sợ bị coi là một", restored)
         self.assertNotIn("<h3>", html)
 
 

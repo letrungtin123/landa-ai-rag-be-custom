@@ -9,8 +9,11 @@ import json
 import unittest
 from typing import Any
 
+from app.idm.fallback_lines import restore_stops
+from app.idm.node_acceptance import html_quality_code
 from app.idm.quiz_letters import expand_short_item_labels
 from app.idm.source_fallback import idm_statement_faq
+from app.idm.source_locked import render_idm_source_locked_html
 from tests.support.log_support import logged_events
 from tests.unit.idm.test_idm_storyboard import (
     JUDGE,
@@ -157,3 +160,56 @@ class StatementFaqTests(StoryboardEndpointTestCase):
         self.assertEqual(status, 200, data.get("detail"))
         self.assertEqual(data["content_origin"], "structured_fallback")
         self.assertEqual([item["answer"] for item in data["unit"]["components"][1]["items"]], SAME_LABEL)
+
+
+STEP_FACTS = ["BƯỚC 1: CHUẨN BỊ", "Mục tiêu của bước này", "Thu thập đủ hồ sơ của khách hàng trước buổi gặp đầu tiên.",
+              "Công cụ cần dùng", "Bảng kiểm hồ sơ và mẫu email xác nhận lịch hẹn.", "BƯỚC 2: THỰC HIỆN",
+              "Mục tiêu của bước này", "Trình bày giải pháp phù hợp với đúng nhu cầu đã ghi nhận.", "Công cụ cần dùng",
+              "Bộ slide giới thiệu và bảng so sánh phương án."]
+
+
+class FallbackLabelTests(unittest.TestCase):
+    """M3, L2, L3, L5: the source-locked html keeps a step's words, never makes up a label, gives the labels of one
+    section one form and leaves the dots of names alone."""
+
+    def test_a_step_section_keeps_its_words_and_no_label_is_a_step(self) -> None:
+        for required in ((), ({"type": "ordered_list"},)):
+            html = render_idm_source_locked_html("Quy trình bán hàng", STEP_FACTS, locale="vi",
+                                                 required_artifacts=required)
+            self.assertIsNone(html_quality_code(html))
+            self.assertEqual(html.count("Mục tiêu của bước này"), 2, required)
+            self.assertEqual(html.count("Công cụ cần dùng"), 2, required)
+            self.assertNotRegex(html, r"<li>[^<]*(?:Mục tiêu của bước này|Công cụ cần dùng)", required)
+            self.assertIn("Thực hiện – Công cụ cần dùng", html)  # noqa: RUF001 - the en dash
+        plain = render_idm_source_locked_html("Quy trình bán hàng", STEP_FACTS, locale="vi")
+        self.assertNotIn("<ol>", plain)
+        self.assertIn("Bước 2: thực hiện", plain)
+
+    def test_a_cut_label_is_never_made_up(self) -> None:
+        html = render_idm_source_locked_html("Hồ sơ", [
+            "HỒ SƠ (VD1: KHO HÀNG)", "- Về Ý nghĩa / Xã hội (Social/Meaningful",
+            "Job): * Được công nhận là nhân viên lành nghề trong phòng ban.",
+            "Indicator): * Tỷ lệ đơn xuất kho đúng hạn mỗi ngày của cả ca."], locale="vi")
+        self.assertNotIn("Meaningful Indicator", html)
+        self.assertIn("<p>Tỷ lệ đơn xuất kho đúng hạn mỗi ngày của cả ca.</p>", html)
+
+    def test_the_labels_of_a_section_have_one_form(self) -> None:
+        social = "Về Ý nghĩa / Xã hội (Social/Meaningful Job)"
+        html = render_idm_source_locked_html("Hồ sơ", [
+            "1.3 HỒ SƠ (VD1: NGƯỜI GÁC CỔNG)", f"Row 2: {social}: * Được sếp tin tưởng giao việc lớn hơn.",
+            "Về Cảm xúc (Emotional Job): * Thấy an tâm khi lịch của sếp được giữ gọn.",
+            "1.3 HỒ SƠ (VD3: NGƯỜI SỬ DỤNG TRỰC TIẾP)", "Về Cảm xúc (Emotional Job)",
+            "Muốn làm việc thoải mái với công cụ mới mỗi ngày.", social,
+            "Được công nhận là nhân viên lành nghề trong phòng ban."], locale="vi")
+        # The 14-word prefixed label is a heading as its 9-word sibling is (it was a paragraph).
+        self.assertIn("Người sử dụng trực tiếp – Về Cảm xúc (Emotional Job)</h3>", html)  # noqa: RUF001
+        self.assertIn(f"<h3>Người sử dụng trực tiếp – {social}</h3>", html)  # noqa: RUF001 - the en dash
+        self.assertIsNone(html_quality_code(html))
+
+    def test_a_name_keeps_its_dot(self) -> None:
+        for text in ("Node.Js là nền tảng", "System.Console ghi lỗi", "Văn phòng TP.HCM mở cửa", "giá 3.5.Tiếp",
+                     "xem v.v.Các bước", "trang www.abc.Com"):
+            self.assertEqual(restore_stops(text), text)
+        self.assertEqual(restore_stops("bộ phận nội bộ.Phân loại"), "bộ phận nội bộ. Phân loại")
+        self.assertEqual(restore_stops("lõi.Bị các sales"), "lõi. Bị các sales")
+        self.assertEqual(restore_stops("Lưu ý.Đây là bước đầu"), "Lưu ý. Đây là bước đầu")

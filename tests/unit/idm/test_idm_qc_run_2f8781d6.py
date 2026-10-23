@@ -54,9 +54,11 @@ FUNCTIONAL_JOB = "Về Chức năng (Functional Job)"
 EMOTIONAL_JOB = "Về Cảm xúc (Emotional Job)"
 SOCIAL_PAIN = "Về Ý nghĩa / Xã hội (Social/Meaningful Pain)"
 EMOTIONAL_GAIN = "Về Cảm xúc (Emotional Gain)"
+SOCIAL_GAIN = "Về Ý nghĩa / Xã hội (Social/Meaningful Gain)"
 # Three profiles with the shapes of pages 24-26 of run 2f8781d6: the first one written inline with a label the PDF cut
 # ("(Social/Meaningful" + "Job): *") and the ends of two more labels whose starts the PDF reader dropped as repeats
-# ("Pain): *", "Gain): *"); the second and third ones with the same labels on their own lines.
+# ("Pain): *", "Gain): *"); the second and third ones with the same labels on their own lines (the second one writes
+# the two cut labels in full, as page 25 does: review 5, L2).
 PROFILE_FACTS = [
     "1.3 HỒ SƠ KHÁCH HÀNG B2B (VD1: TRƯỞNG PHÒNG MUA HÀNG)",
     HEADER,
@@ -78,6 +80,8 @@ PROFILE_FACTS = [
     "Sợ bị đánh giá là người quản lý lỗi thời trước hội đồng quản trị.",
     EMOTIONAL_GAIN,
     "An tâm khi đội ngũ tự đồng bộ số liệu tại từng điểm chạm.",
+    SOCIAL_GAIN,
+    "Được hội đồng quản trị ghi nhận vì dẫn dắt công ty chuyển mình.",
     "1.3 HỒ SƠ KHÁCH HÀNG B2B (VD3: NHÂN VIÊN KHO)",
     HEADER,
     f"Row 2: {FUNCTIONAL_JOB}",
@@ -95,11 +99,14 @@ ROWS = [
     ("Được cấp trên tin tưởng", "Về Ý nghĩa / Xã hội (Social/Meaningful Job)"),
     ("bởi hồ sơ chào hàng dài dòng", "Về Chức năng (Functional Pain)"),
     ("Sợ bị coi là một", SOCIAL_PAIN),
-    ("Được đồng nghiệp nể trọng", "Về Ý nghĩa / Xã hội (Social/Meaningful Gain)"),
-    ("Phê duyệt khoản đầu tư", FUNCTIONAL_JOB),
-    ("Muốn chắc chắn họ phải", EMOTIONAL_JOB),
-    ("Sợ bị đánh giá là người quản lý", SOCIAL_PAIN),
-    ("An tâm khi đội ngũ", EMOTIONAL_GAIN),
+    ("Được đồng nghiệp nể trọng", SOCIAL_GAIN),
+    # Review 5 (L3): the second profile repeats labels of the first one (the leads of its rows), so all its labels
+    # carry its name, as the third one's do.
+    ("Phê duyệt khoản đầu tư", f"Giám đốc tài chính – {FUNCTIONAL_JOB}"),  # noqa: RUF001 - the en dash
+    ("Muốn chắc chắn họ phải", f"Giám đốc tài chính – {EMOTIONAL_JOB}"),  # noqa: RUF001 - the en dash
+    ("Sợ bị đánh giá là người quản lý", f"Giám đốc tài chính – {SOCIAL_PAIN}"),  # noqa: RUF001 - the en dash
+    ("An tâm khi đội ngũ", f"Giám đốc tài chính – {EMOTIONAL_GAIN}"),  # noqa: RUF001 - the en dash
+    ("Được hội đồng quản trị ghi nhận", f"Giám đốc tài chính – {SOCIAL_GAIN}"),  # noqa: RUF001 - the en dash
     ("Hoàn thành chỉ tiêu xuất kho", f"Nhân viên kho – {FUNCTIONAL_JOB}"),  # noqa: RUF001 - the en dash
     ("Muốn làm việc thoải mái", f"Nhân viên kho – {EMOTIONAL_JOB}"),  # noqa: RUF001 - the en dash
     ("Sợ bị mang tiếng chậm chạp", f"Nhân viên kho – {SOCIAL_PAIN}"),  # noqa: RUF001 - the en dash
@@ -162,7 +169,7 @@ class RepeatedLabelFallbackTests(unittest.TestCase):
     def test_a_label_is_prefixed_only_under_a_new_section(self) -> None:
         html = render_idm_source_locked_html("Bộ hồ sơ mẫu", PROFILE_FACTS, locale="vi")
         self.assertEqual(html.count(f"Nhân viên kho – {EMOTIONAL_JOB}"), 1)  # noqa: RUF001 - the en dash
-        self.assertNotIn(f"Giám đốc tài chính – {EMOTIONAL_JOB}", html)  # noqa: RUF001 - the en dash
+        self.assertNotIn(f"Trưởng phòng mua hàng – {FUNCTIONAL_JOB}", html)  # noqa: RUF001 - the first profile
         # A label repeated inside one section (a running header) is dropped as before.
         repeated = render_idm_source_locked_html("Hồ sơ", [*PROFILE_FACTS[9:15], EMOTIONAL_JOB, "Muốn cảm thấy yên "
                                                           "tâm khi duyệt mọi khoản chi lớn."], locale="vi")
@@ -217,7 +224,9 @@ class FallbackTextTests(unittest.TestCase):
                          "Người sử dụng trực tiếp")
         self.assertEqual(short_name("2.3 LỘ TRÌNH TRẢI NGHIỆM KHÁCH HÀNG (WORKBOOK)"),
                          "Lộ trình trải nghiệm khách hàng")
-        self.assertEqual(short_name("BƯỚC 2: XỬ LÝ KHIẾU NẠI VIP"), "Bước 2: xử lý khiếu nại VIP")
+        # Review 5 (M3): a step's words without its marker (a prefixed label is never a numbered step).
+        self.assertEqual(short_name("BƯỚC 2: XỬ LÝ KHIẾU NẠI VIP"), "Xử lý khiếu nại VIP")
+        self.assertEqual(short_name("BƯỚC 2"), "Bước 2")
         self.assertIsNone(short_name("1.3 " + "RẤT DÀI " * 10))
 
     def test_two_sections_of_one_short_name_never_repeat_a_label(self) -> None:

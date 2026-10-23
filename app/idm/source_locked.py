@@ -48,6 +48,7 @@ from app.content.instructional_quality import (
     source_clarification_signals,
     source_term_definitions,
 )
+from app.idm import fallback_lines
 from app.idm.acronyms import keeps_capitals
 from app.idm.fallback_lines import ORPHAN_LABEL_END_RE, OrphanLabels, faq_topic, prefix_repeated_labels, source_facts
 from app.idm.text import idm_fold
@@ -155,7 +156,7 @@ def _whole_quote(line: str) -> bool:
 def _is_label(line: str) -> bool:
     """A short line without closing punctuation (a closing mark may follow it), never a whole quotation (item 10)."""
 
-    return (len(line) <= _LABEL_MAX_CHARS and len(line.split()) <= _LABEL_MAX_WORDS
+    return (len(core := fallback_lines.label_core(line)) <= _LABEL_MAX_CHARS and len(core.split()) <= _LABEL_MAX_WORDS
             and not _whole_quote(line) and not _TERMINAL_RE.search(line.rstrip(_CLOSING_MARKS))
             and not TABLE_ROW_RE.match(line)
             and not _BULLET_RE.match(line) and not CHECKLIST_ITEM_RE.match(line) and not CALLOUT_RE.match(line))
@@ -261,7 +262,7 @@ def _prepare_lines(title: str, values: Iterable[Any], *, labels: bool = False) -
     title_key = _key(title)
     lines: list[str] = []
     repeats: list[str] = []
-    joined, orphans = 0, OrphanLabels()
+    joined, orphans = 0, OrphanLabels(fallback_lines.written_labels(facts))
     for fact in facts:
         text = normalize_visible_text(_STAR_RE.sub(" ", _EMPHASIS_RE.sub(r"\1", fact)))
         key = _key(text)
