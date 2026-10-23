@@ -428,6 +428,16 @@ UNIT_RULE_TEXT: Final[dict[str, str]] = {
                           "explanation) in new words or about a different case so the learner must apply the "
                           "criterion, and give every distractor the same footing in what was taught; keep the earlier "
                           "html as it is",
+    # Run 2f8781d6 (B6): soft give-aways (app.idm.answer_near), repaired once.
+    "IDM_W5_ANSWER_NEAR_EXAMPLE": "the correct option, or the listed item it names, repeats the words of the example, "
+                                  "table row, list item or case right before it (or the case names the need in the "
+                                  "key's own words), so the learner can match words: keep the principle the question "
+                                  "tests and the answer key, change the case details and the wording of the case, that "
+                                  "option or item and its explanation line; keep the earlier html as it is",
+    "IDM_W5_ANSWER_ITEM_LENGTH_CUE": "the listed item the correct option names is clearly the longest item of the "
+                                     "case, so learners can pick it by length: balance the items (shorten that item or "
+                                     "give the others the same level of plausible detail, each still wrong by the "
+                                     "criterion); keep the names, the options and the answer key",
     "IDM_W5_ANSWER_CONTESTED": "the question's case also meets the criteria this unit's html table, list, FAQ "
                                "answers or the table rows of SOURCE_FACTS give for another option (for example a code "
                                "or condition only that option's row states), so more than one option is defensible: "

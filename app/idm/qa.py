@@ -10,6 +10,7 @@ import re
 from collections.abc import Collection, Mapping, Sequence
 from typing import Any, Final, NamedTuple
 
+from app.idm.answer_near import ANSWER_ITEM_LENGTH_CODE, ANSWER_NEAR_EXAMPLE_CODE
 from app.idm.faq_checks import (
     FAQ_HYPE_CODE,
     FAQ_INVENTED_REASON_CODE,
@@ -157,6 +158,7 @@ _MAX_NOTE_CODES: Final = 6
 # stay in ``deterministic_codes`` for the tools; the author reads words.
 _CODE_TEXT_VI: Final[dict[str, str]] = {
     ANSWER_LEAK_CODE: "phương án lộ đáp án",
+    ANSWER_NEAR_EXAMPLE_CODE: "đáp án lặp lại câu chữ ngay phía trên", ANSWER_ITEM_LENGTH_CODE: "ý của đáp án dài nhất",
     ANSWER_LENGTH_CUE_CODE: "đáp án đúng dài hơn hẳn",
     ANSWER_CONTESTED_CODE: "đáp án có thể tranh cãi",
     QUESTION_INCOMPLETE_CODE: "câu hỏi bị cụt",
@@ -211,6 +213,7 @@ _CODE_TEXT_VI: Final[dict[str, str]] = {
 }
 _CODE_TEXT_EN: Final[dict[str, str]] = {
     ANSWER_LEAK_CODE: "an option gives the answer away",
+    ANSWER_NEAR_EXAMPLE_CODE: "a key in the words just above", ANSWER_ITEM_LENGTH_CODE: "the key's item is the longest",
     ANSWER_LENGTH_CUE_CODE: "the correct option is much longer",
     ANSWER_CONTESTED_CODE: "a contestable answer",
     QUESTION_INCOMPLETE_CODE: "a cut question",
@@ -489,6 +492,12 @@ def _judge_line(judge: JudgeOutcome, problems: Sequence[Any], labels: Mapping[st
 
 # Content-mode findings (QLT-5 C) in plain words, without codes.
 _PLAIN_HINT_VI: Final = {
+    # Run 2f8781d6 (B6): soft give-aways of the key, left after their one repair.
+    ANSWER_NEAR_EXAMPLE_CODE: "đáp án đúng (hoặc ý nó chỉ tới) lặp lại câu chữ của ví dụ, bảng hoặc tình huống ngay "
+                              "phía trên — người học có thể chọn theo chữ; nên giữ nguyên tắc nhưng đổi chi tiết tình "
+                              "huống và cách diễn đạt",
+    ANSWER_ITEM_LENGTH_CODE: "ý mà đáp án đúng chỉ tới dài hơn hẳn các ý khác — người học có thể đoán theo độ dài, nên "
+                             "cân độ dài các ý",
     SENTENCE_COPY_CODE: "nhiều câu gần như chép nguyên văn tài liệu — nên viết lại bằng lời dễ hiểu và giải thích thêm",
     EXPLANATION_MISSING_CODE: "phần lý thuyết mới nêu lại nội dung tài liệu — nên thêm giải thích vì sao quan trọng "
                               "và một ví dụ",
@@ -525,6 +534,11 @@ _PLAIN_HINT_VI: Final = {
                                  "dung của ý trong lời giải",
 }
 _PLAIN_HINT_EN: Final = {
+    ANSWER_NEAR_EXAMPLE_CODE: "the correct option (or the item it names) repeats the words of the example, table or "
+                              "case just above — learners can match words; keep the principle, change the case "
+                              "details and the wording",
+    ANSWER_ITEM_LENGTH_CODE: "the item the correct option names is clearly longer than the others — learners can guess "
+                             "by length; balance the items",
     SENTENCE_COPY_CODE: "many sentences copy the source almost word for word — rewrite them in plain words and explain "
                         "them",
     EXPLANATION_MISSING_CODE: "the theory only restates the source — add why it matters and an example",
@@ -644,7 +658,7 @@ NOTICE_REASONS: Final = frozenset({REVIEW_REASON_EVIDENCE, REVIEW_REASON_STYLE, 
 STYLE_CODES: Final = frozenset({
     SENTENCE_COPY_CODE, SENTENCE_LENGTH_CODE, "IDM_W5_VERBATIM_COPY", EXPLANATION_MISSING_CODE, EXAMPLE_ROLE_CODE,
     FAQ_TITLE_MISMATCH_CODE, FAQ_TYPE_MIX_CODE, FAQ_RESTATES_HTML_CODE, FAQ_RESTATES_SOURCE_CODE,
-    ANSWER_LENGTH_CUE_CODE, FAQ_HYPE_CODE, *QUIZ_STYLE_CODES,
+    ANSWER_LENGTH_CUE_CODE, FAQ_HYPE_CODE, *QUIZ_STYLE_CODES, ANSWER_NEAR_EXAMPLE_CODE, ANSWER_ITEM_LENGTH_CODE,
 })
 _REVIEW_REASON_VI: Final = {
     REVIEW_REASON_FALLBACK: "có khối dùng bản dự phòng dựng từ tài liệu",

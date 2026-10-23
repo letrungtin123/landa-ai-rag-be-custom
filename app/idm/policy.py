@@ -388,6 +388,24 @@ IDM_ANSWER_STEM_ITEM_COPY_SHARE: Final = 0.5
 IDM_ANSWER_STEM_ITEM_MIN_WORDS: Final = 4
 IDM_ANSWER_STEM_ITEM_WORD_SHARE: Final = 0.7
 IDM_ANSWER_STEM_ITEM_MARGIN: Final = 0.1
+# Run 2f8781d6 (B6, ``app.idm.answer_near``): soft give-aways, calibrated on the run's 11 provider questions. The key
+# copies a passage run of 5 words (3 content words) longer than any distractor's (c2.l4.u2: 7 against 6; two earlier
+# runs: an equal 5 and 5 on a question where every option copied its own row stays quiet); or holds 50 % of one
+# passage's content words, 0.15 more than any distractor (c1.l2.u1 0.78 against 0.60, c2.l1.u1 0.50 against 0.21; the
+# good c1.l2.u2 0.28, c1.l1.u2 0.20); or the case copies 6 words of a passage holding a word pair only the key has
+# (c2.l1.u3: 8); or the case and the key share 4 words in a row no distractor shares more than 2 of (c2.l2.u3: 4).
+IDM_ANSWER_NEAR_RUN_WORDS: Final = 5
+IDM_ANSWER_NEAR_RUN_CONTENT_WORDS: Final = 3
+IDM_ANSWER_NEAR_MIN_SHARE: Final = 0.5
+IDM_ANSWER_NEAR_MIN_MARGIN: Final = 0.15
+IDM_ANSWER_NEAR_MIN_KEY_WORDS: Final = 4
+IDM_ANSWER_NEAR_CASE_RUN_WORDS: Final = 6
+IDM_ANSWER_NEAR_STEM_RUN_WORDS: Final = 4
+IDM_ANSWER_NEAR_STEM_OTHER_MAX_WORDS: Final = 2
+# The key's listed item clearly the longest (QC: 5 of 6 lists; c1.l1.u1 106 against 97 characters, c2.l1.u3 70 against
+# 61; the 89 against 88 of c1.l2.u2 is no cue).
+IDM_MCQ_ITEM_LENGTH_CUE_RATIO: Final = 1.08
+IDM_MCQ_ITEM_LENGTH_CUE_MIN_CHARS: Final = 8
 # Paid verification of 3ed380d (R2, c1.l3.u4): the worked example of a worksheet solved exactly the three interview
 # entries of its own input data. An input entry reappears in the example when an example entry names it ("Ý kiến 1")
 # and shares at least ``IDM_WORKSHEET_REUSE_MIN_WORDS`` content words with it, or holds at least

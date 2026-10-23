@@ -1,6 +1,6 @@
 {
  "prompt_policy_version": "idm-prompt-1",
- "prompt_templates_hash": "a657004d14c93381f6ae9fd75b91085ed863e8f685156206629dd13969573d4e",
+ "prompt_templates_hash": "331d73ab0e4fb2a078ff4a04a09b50988b6d5538adf5eb4204591dbed6b8efe3",
  "sources": {
   "app.idm.example_roles:role_rule": "ade567182c9b222f982cc9e9c3371c58f59ae9cec5cab401dd514e800daa83c1",
   "app.idm.faq_checks:FaqChecker.hype_hint": "494b8c595d66de2f5eaa07401276fdcbd08ea833c3e9395e4d1604b2377e18a7",
@@ -20,7 +20,7 @@
   "app.idm.prompts_judge": "fc3b3319aea93ebf7b29a98fca6c6ca61770c93c168d67a76b071003231a9f83",
   "app.idm.prompts_module": "ce9af9c97ff6ee9ba574448d1b71334ac3c8e1eaf62847cd3b4aa9e528c9c2bf",
   "app.idm.prompts_org_distill": "f65cb5379ae298ba4a9ff8c5eb5254309e935442ad0b2e24b3701bf4fc0791f3",
-  "app.idm.prompts_unit": "168ceabc4ae20ccdc8168046f3f93e545ec8234bd0a82758a3920e50e6f41f84",
+  "app.idm.prompts_unit": "0b79a0537486f35aff66f08c59b44c205c919bb245a81676b6b8d86c303b71ea",
   "app.idm.purpose": "1b6fff70f99aeb0868c696f0a63324944de9dd0ddaf97326e9f9bf4478a357ff",
   "app.idm.quiz_text:quiz_hint": "deef82296106fad5fe4fb07dd30fbd30dcf5b6fa66344ed01ebc1be565c45739",
   "app.idm.storyboard:IdmUnitWriter.acceptance_rule_lines": "ae3dd87886fd4ccd5eb2cb9fcf7673e60ec7b6a0a4ba8105ddc37bf4b3792495",
@@ -33,7 +33,7 @@
   "app.idm.storyboard:IdmUnitWriter.length_cue_line": "78425e3c0043bd32eec8aadc44b5084603f6e6afbe217fbc4dc1b9216cbb8713",
   "app.idm.storyboard:IdmUnitWriter.rule_lines": "3936951efde33745e30b813b099a4a18c8a2f5acd7630006633382a75904ca8c",
   "app.idm.storyboard:IdmUnitWriter.writer_prompt": "9123edf27215736c6b3194062f4956f5c5ee9b2fb2a75a86a9eaf4ea08a8c566",
-  "app.idm.storyboard_steps:IdmUnitWriterSteps.slot_hint": "4e975aaf498fadc4daada5b3338e376881bfb876c5a389975be569a60b05d9cf",
+  "app.idm.storyboard_steps:IdmUnitWriterSteps.slot_hint": "0f04dd1de49e6a0db4a736089ade9422096afea8c6f49794293fcb9949dd27e4",
   "app.idm.worksheet_input:input_hint": "46e80f5cde8ceddfb53c63e0f36dcf3e28d1c57def265d09b363442ec53a95be",
   "app.idm.worksheet_input:reuse_hint": "7592cef6b68cbd3e13b879f4de2e470fe51923fa139f4fc7eae4943a9741e39c",
   "app.prompt_safety": "5f73b94e58312c214cb3817dd2134cc90984f6fd773073f5a2d91ea981f2c70b"

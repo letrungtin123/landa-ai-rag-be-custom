@@ -24,6 +24,7 @@ from app.idm.answer_checks import (
     stem_copies_answer,
     unit_teaching,
 )
+from app.idm.answer_near import ANSWER_ITEM_LENGTH_CODE, ANSWER_NEAR_EXAMPLE_CODE, item_length_cue, near_example
 from app.idm.artifacts import cut_fragments
 from app.idm.contracts import IdmUnitBriefV1
 from app.idm.faq_checks import FaqChecker
@@ -411,6 +412,9 @@ def deterministic_slot_findings(
                         or restates_list(read, teaching) or restates_joined_example(read, teaching)
                         or stem_copies_answer(read, teaching, component) or copies_example_measure(read, teaching)):
                     findings.append(SlotFinding(ANSWER_LEAK_CODE, index))
+                # Run 2f8781d6 (B6): a key the words right above give away, short of a leak: a soft finding.
+                elif near_example(component, [item for item in components[:index] if item.get("type") == "html"]):
+                    findings.append(SlotFinding(ANSWER_NEAR_EXAMPLE_CODE, index))
                 if contested_option(component, teaching) is not None:
                     findings.append(SlotFinding(ANSWER_CONTESTED_CODE, index))
     # The overview is taught, not practised: a worksheet html slot neither promises nor lists it.
@@ -479,11 +483,18 @@ def reworded_key(component: dict[str, Any], preceding_text: str) -> bool:
 
 
 def advisory_slot_findings(unit: dict[str, Any], exempt: Collection[int] = ()) -> list[SlotFinding]:
-    """Review notes that never trigger a repair or a fallback: the length cue of a question (N2)."""
+    """Review notes that never trigger a fallback (one targeted repair, then a note): the length cue of a question
+    (N2), and the key's listed item clearly the longest item of the case (run 2f8781d6, B6)."""
 
-    return [SlotFinding(ANSWER_LENGTH_CUE_CODE, index)
-            for index, component in enumerate(item for item in unit.get("components", []) if isinstance(item, dict))
-            if index not in exempt and component.get("type") == "problem" and answer_length_cue(component)]
+    found: list[SlotFinding] = []
+    for index, component in enumerate(item for item in unit.get("components", []) if isinstance(item, dict)):
+        if index in exempt or component.get("type") != "problem":
+            continue
+        if answer_length_cue(component):
+            found.append(SlotFinding(ANSWER_LENGTH_CUE_CODE, index))
+        elif item_length_cue(component) is not None:
+            found.append(SlotFinding(ANSWER_ITEM_LENGTH_CODE, index))
+    return found
 
 
 def final_unit_findings(unit: dict[str, Any], brief: IdmUnitBriefV1, owned_text_by_slot: Sequence[str],

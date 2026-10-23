@@ -16,6 +16,7 @@ from app.content.ordered_learning_content import bind_provider_semantic_versions
 from app.contracts.orchestration_v2.provider import UnitGenerationContractV2
 from app.idm.acronyms import KNOWN_ABBREVIATIONS, AcronymGuide, abbreviations, explained, learner_texts, with_expansion
 from app.idm.answer_checks import fact_table_rows
+from app.idm.answer_near import ANSWER_ITEM_LENGTH_CODE, item_length_cue
 from app.idm.artifacts import clean_question, clean_semantic
 from app.idm.budget import writer_thinking
 from app.idm.contracts import IdmUnitBriefV1
@@ -326,6 +327,9 @@ class IdmUnitWriterSteps:
             return input_hint(missing_input(component))
         if code == EXAMPLE_REUSE_CODE:
             return reuse_hint(reused_entries(component))
+        if code == ANSWER_ITEM_LENGTH_CODE and (lengths := item_length_cue(component)) is not None:
+            return (f" (the item the correct option names has {lengths[0]} characters, the longest other item "
+                    f"{lengths[1]})")
         return self.faq.hype_hint(component) if code == FAQ_HYPE_CODE else None
 
     def count_artefacts(self, artefacts: Counter[str]) -> None:

@@ -176,6 +176,10 @@ HASH_HISTORY: tuple[tuple[str, str], ...] = (
     # writing rule moved to the module constant _REPEAT_RULE).
     ("a657004d14c93381f6ae9fd75b91085ed863e8f685156206629dd13969573d4e",
      "Row labels several sections share carry their section's name"),
+    # Run 2f8781d6 (B6): the repair rules of the two soft give-aways of a key (IDM_W5_ANSWER_NEAR_EXAMPLE,
+    # IDM_W5_ANSWER_ITEM_LENGTH_CUE) and the measured item lengths of the second one (slot_hint).
+    ("331d73ab0e4fb2a078ff4a04a09b50988b6d5538adf5eb4204591dbed6b8efe3",
+     "A key in the words just above, or the longest item, is repaired once"),
 )
 PROMPT_NAME = re.compile(r"(prompt|_rules?$|_suffix$|rule_lines?$|_hint$|^rule_line$|_cue_line$)")
 
