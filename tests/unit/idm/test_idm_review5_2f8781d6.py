@@ -12,6 +12,7 @@ from typing import Any
 from app.idm.fallback_lines import restore_stops
 from app.idm.node_acceptance import html_quality_code
 from app.idm.quiz_letters import expand_short_item_labels
+from app.idm.sortable import without_order_labels
 from app.idm.source_fallback import idm_statement_faq
 from app.idm.source_locked import render_idm_source_locked_html
 from tests.support.log_support import logged_events
@@ -213,3 +214,34 @@ class FallbackLabelTests(unittest.TestCase):
         self.assertEqual(restore_stops("bộ phận nội bộ.Phân loại"), "bộ phận nội bộ. Phân loại")
         self.assertEqual(restore_stops("lõi.Bị các sales"), "lõi. Bị các sales")
         self.assertEqual(restore_stops("Lưu ý.Đây là bước đầu"), "Lưu ý. Đây là bước đầu")
+
+
+class SortableNumberTests(unittest.TestCase):
+    """M4: only a pure ordinal prefix of one form with numbers one by one goes; a number that is content stays."""
+
+    @staticmethod
+    def texts(items: list[str]) -> tuple[list[str], int]:
+        component, count = without_order_labels({"question_text": "Sắp xếp", "items": [{"text": t} for t in items]})
+        return [item["text"] for item in component["items"]], count
+
+    def test_numbers_that_are_content_stay(self) -> None:
+        for items in (["Mốc 7 ngày: gọi điện hỏi thăm khách hàng mới", "Mốc 30 ngày: gửi khảo sát mức độ hài lòng",
+                       "Mốc 90 ngày: đề xuất gói gia hạn hợp đồng"],
+                      ["Tier 1 agents log the ticket and greet the caller", "Tier 2 engineers reproduce the fault",
+                       "Tier 3 vendors ship the firmware fix"],
+                      ["Nhân viên tiếp nhận yêu cầu hoàn tiền của khách", "Cấp 2 phê duyệt khoản hoàn tiền",
+                       "Kế toán chuyển tiền và báo lại cho khách"],
+                      ["Phần 1 của buổi gặp: hỏi về mục tiêu kinh doanh",
+                       "Phần 2 của buổi gặp: trình bày giải pháp phù hợp",
+                       "Phần 3 của buổi gặp: thống nhất bước tiếp theo"],
+                      ["Bước 1: xác định nhóm khách hàng mục tiêu", "Bước 3: phân tích hành trình mua hàng",
+                       "Bước 4: thiết kế điểm chạm tạo khác biệt"]):  # 2 is missing: not one by one
+            self.assertEqual(self.texts(items), (items, 0))
+
+    def test_a_pure_ordinal_prefix_goes(self) -> None:
+        self.assertEqual(self.texts(["Tầng 1: Cột mốc hành trình theo thời gian", "Tầng 2: Tâm thế và kỳ vọng khách",
+                                     "Tầng 3: Điểm đau trọng yếu từng giai đoạn"]),
+                         (["Cột mốc hành trình theo thời gian", "Tâm thế và kỳ vọng khách",
+                           "Điểm đau trọng yếu từng giai đoạn"], 3))
+        # Source steps numbered from 9 still give their order away.
+        self.assertEqual(self.texts([f"Bước {n}: Thực hiện việc số {n} của quy trình" for n in (10, 9, 11)])[1], 3)

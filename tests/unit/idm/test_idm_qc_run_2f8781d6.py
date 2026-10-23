@@ -367,12 +367,17 @@ class SortableOrderLabelTests(StoryboardEndpointTestCase):
                     "Tầng 3: Điểm đau trọng yếu ở từng giai đoạn", "Tầng 4: Điểm chạm và giải pháp tạo cảm xúc"],
                    ["Cột mốc hành trình theo trục thời gian", "Tâm thế và kỳ vọng của khách hàng",
                     "Điểm đau trọng yếu ở từng giai đoạn", "Điểm chạm và giải pháp tạo cảm xúc"]),
-            "vi-mixed": (["Bước 1: xác định nhóm khách hàng mục tiêu", "Giai đoạn 2 - Phân tích hành trình mua",
-                          "3. Thiết kế điểm chạm tạo khác biệt", "(4) Đo lường kết quả sau ba tháng"],
-                         ["Xác định nhóm khách hàng mục tiêu", "Phân tích hành trình mua",
-                          "Thiết kế điểm chạm tạo khác biệt", "Đo lường kết quả sau ba tháng"]),
+            "vi-stages": (["Giai đoạn 1 - xác định nhóm khách hàng mục tiêu",
+                           "Giai đoạn 2 - Phân tích hành trình mua", "Giai đoạn 3 - Thiết kế điểm chạm tạo khác biệt",
+                           "Giai đoạn 4 - Đo lường kết quả sau ba tháng"],
+                          ["Xác định nhóm khách hàng mục tiêu", "Phân tích hành trình mua",
+                           "Thiết kế điểm chạm tạo khác biệt", "Đo lường kết quả sau ba tháng"]),
+            "vi-brackets": (["(1) Xác định nhóm khách hàng mục tiêu", "(2) Phân tích hành trình mua",
+                             "(3) Thiết kế điểm chạm tạo khác biệt", "(4) Đo lường kết quả sau ba tháng"],
+                            ["Xác định nhóm khách hàng mục tiêu", "Phân tích hành trình mua",
+                             "Thiết kế điểm chạm tạo khác biệt", "Đo lường kết quả sau ba tháng"]),
             "en": (["Step 1: Map the customer milestones", "Step 2: Capture the mindset at each stage",
-                    "Stage 3 - List the pain points per stage", "4) Design the touchpoints and fixes"],
+                    "Step 3 - List the pain points per stage", "Step 4) Design the touchpoints and fixes"],
                    ["Map the customer milestones", "Capture the mindset at each stage",
                     "List the pain points per stage", "Design the touchpoints and fixes"]),
         }
@@ -386,7 +391,10 @@ class SortableOrderLabelTests(StoryboardEndpointTestCase):
                       ["1.5 triệu khách hàng mới trong quý", "Hai kênh bán hàng chính của công ty",
                        "Ba nhóm sản phẩm chủ lực năm nay"],  # a figure is no ordinal
                       ["Tầng 1: Điểm chạm của khách hàng", "Tầng 2: Điểm chạm của khách hàng",
-                       "Tầng 3: Điểm đau lớn nhất của khách"]):  # two items would read the same
+                       "Tầng 3: Điểm đau lớn nhất của khách"],  # two items would read the same
+                      # Review 5 (M4): labels of several forms are no single ordinal prefix.
+                      ["Bước 1: xác định nhóm khách hàng mục tiêu", "Giai đoạn 2 - Phân tích hành trình mua",
+                       "3. Thiết kế điểm chạm tạo khác biệt", "(4) Đo lường kết quả sau ba tháng"]):
             component = {"question_text": "Sắp xếp", "items": [{"text": text} for text in items]}
             self.assertEqual(without_order_labels(component), (component, 0))
 
