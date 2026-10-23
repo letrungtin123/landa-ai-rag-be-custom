@@ -751,7 +751,8 @@ def note(**changes: Any) -> str:
     return build_unit_author_note(**{**base, **changes})
 
 
-NO_ISSUE = "QA tự động: không phát hiện vấn đề lớn."
+# Run 2f8781d6 (A4): the line is gone from every note.
+NO_ISSUE = ""
 
 
 class AuthorNoteNoiseTests(unittest.TestCase):
@@ -760,7 +761,7 @@ class AuthorNoteNoiseTests(unittest.TestCase):
     def test_no_major_issue_only_on_a_note_that_asks_nothing_else(self) -> None:
         self.assertEqual(note(), NO_ISSUE)
         fixed = note(fixed_codes=["IDM_W5_EXPLANATION_LENGTH"], remaining=[])
-        self.assertEqual(fixed, NO_ISSUE + " Đã tự sửa: lời giải quá dài.")
+        self.assertEqual(fixed, "Đã tự sửa: lời giải quá dài.")
         unclear = "Tài liệu ghi chưa rõ ở phần “Ba cấp độ”: trang 4 — nên đọc lại khi biên tập."
         for changes in ({"notices": [REVIEW_REASON_EVIDENCE]}, {"ai_drafted": True}, {"source_notes": [unclear]},
                         {"unexplained_acronyms": ["TNA"]},

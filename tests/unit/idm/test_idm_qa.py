@@ -382,8 +382,9 @@ class AuthorNoteAndQualityTests(unittest.TestCase):
         self.assertEqual(en, "Automatic QA: 1 issue(s) to review — feedback does not explain each option. "
                              "The illustrative scenario was drafted by AI; the author should check it is realistic.")
         cases = {
-            ("vi", "pass"): "QA tự động: không phát hiện vấn đề lớn.",
-            ("en", "pass"): "Automatic QA: no major issue found.",
+            # Run 2f8781d6 (A4): a clean unit's note never says "no major issue".
+            ("vi", "pass"): "",
+            ("en", "pass"): "",
             ("vi", "skipped_budget"): "QA tự động: bỏ qua do hết thời gian.",
             ("en", "skipped_budget"): "Automatic QA: skipped (time budget).",
             ("vi", "failed"): "QA tự động: không chạy được, cần rà soát thủ công.",
@@ -431,8 +432,7 @@ class AuthorNoteAndQualityTests(unittest.TestCase):
             deterministic_codes=["IDM_W5_PRACTICE_INCOMPLETE", "HTML_SOURCE_LOCATOR"],
             fallback_slots=[], ai_drafted=False, slot_types=types, remaining=[],
             fixed_codes=["IDM_W5_PRACTICE_INCOMPLETE", "HTML_SOURCE_LOCATOR"])
-        self.assertEqual(fixed, "QA tự động: không phát hiện vấn đề lớn. "
-                                "Đã tự sửa: lỗi định dạng phần lý thuyết, bài luyện tập thiếu phần.")
+        self.assertEqual(fixed, "Đã tự sửa: lỗi định dạng phần lý thuyết, bài luyện tập thiếu phần.")
         remaining = [SlotFinding("IDM_W5_ANSWER_LENGTH_CUE", 1), SlotFinding("IDM_W5_ANSWER_LEAK", 1),
                      SlotFinding("IDM_W5_WORKSHEET_INCOMPLETE", 2)]
         vi = build_unit_author_note(locale="vi", judge=JudgeOutcome("not_run"), deterministic_codes=[],

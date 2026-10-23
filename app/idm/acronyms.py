@@ -194,11 +194,16 @@ def abbreviations(texts: Iterable[str]) -> list[str]:
 
 
 def explained(token: str, full: str | None, texts: Sequence[str]) -> bool:
-    """The unit already gives the full form: "(ROI)" after a phrase, "ROI (" with its meaning, or the full form."""
+    """The unit already gives the full form: "(ROI)" after a phrase, "ROI (" with its meaning, the full form, or a
+    phrase of two words or more and a dash (hyphen, en or em dash) before it: "(Moments of Truth - MOT)", "Moments of
+    Truth - MOT" (run 2f8781d6: the note listed MOT as unexplained)."""
 
     joined = " ".join(texts)
     escaped = re.escape(token)
     if re.search(rf"\(\s*{escaped}\s*\)", joined) or re.search(rf"(?<![\w&]){escaped}\s*\(", joined):
+        return True
+    if re.search(rf"[^\W\d_][\w'’]*(?:\s+[^\W\d_][\w'’&/]*)+\s+[-–—]\s+{escaped}(?![\w&])",  # noqa: RUF001
+                 joined):
         return True
     return full is not None and idm_fold(full) in idm_fold(joined)
 

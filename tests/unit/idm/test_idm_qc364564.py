@@ -257,7 +257,7 @@ class JudgeScopeTests(StoryboardEndpointTestCase):
         self.assertEqual(quality.judge_status, "pass")
         self.assertEqual(quality.finding_counts.model_dump(), {"minor": 0, "major": 0, "critical": 0})
         self.assertFalse({"Q3_practice_complete", "Q4_feedback_teaches", "Q6_alignment"} & set(quality.criteria))
-        self.assertEqual(quality.author_note, "QA tự động: không phát hiện vấn đề lớn.")
+        self.assertEqual(quality.author_note, "")  # run 2f8781d6 (A4): no "no major issue" line
         prompt = provider.calls[1]["prompt"]
         self.assertIn('"practices":[],"has_practice_slot":false', prompt)
         self.assertIn('"unit_title":"Tiêu chí bắt buộc escalate"', prompt)

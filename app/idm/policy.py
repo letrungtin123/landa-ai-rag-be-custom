@@ -164,6 +164,9 @@ IDM_UNIT_SOURCE_FLAGS_MAX_CHARS: Final = 400
 # Run 5496155c: a source page is an image page the system could not read when its unobserved images cover at least
 # this share of it (``app.idm.visual_pages``); a picture beside slide text covered 12-37 %, the picture pages 41-99 %.
 IDM_IMAGE_PAGE_MIN_SHARE: Final = 0.4
+# Run 2f8781d6: a page of at most one sentence besides its titles whose pictures cover this share is an image page too
+# (page 29: the value curve in two pictures of 37 % beside one sentence; text pages with a photo had 2-6 sentences).
+IDM_IMAGE_PAGE_SHORT_TEXT_MIN_SHARE: Final = 0.3
 # Removed blocks with the W2 reason, and definition blocks kept against the W2 proposal (QC course 364564, N4).
 IDM_NOTES_MAX_REMOVED: Final = 12
 IDM_UNIT_AUTHOR_NOTE_MAX_CHARS: Final = 1_500

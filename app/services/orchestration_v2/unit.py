@@ -30,7 +30,7 @@ from app.idm.sortable import strip_order_labels
 from app.idm.source_fallback import last_resort_builders
 from app.idm.source_locked import idm_source_faq, idm_source_grounded_single_choice, render_idm_source_locked_html
 from app.idm.storyboard import IdmUnitDeps, run_idm_unit
-from app.idm.visual_pages import evidence_needs_check
+from app.idm.visual_pages import evidence_needs_check, page_texts
 from app.infra.gemini.retry import PROVIDER_TRANSIENT_MAX_ATTEMPTS
 from app.infra.gemini.usage import combine_usage
 from app.schemas.common import AiUsage
@@ -151,7 +151,9 @@ def _idm_unit_deps(request: RagLessonAuthorUnitV2Request) -> IdmUnitDeps:
         # Run 5496155c: the note's image warning only for a page that is mostly an unread image.
         evidence_review_required=(isinstance(bundle, dict) and bundle.get("status") == "review_required"
                                   and evidence_needs_check((fact.locator for fact in contract.source_facts),
-                                                           bundle.get("review_requirements") or ())),
+                                                           bundle.get("review_requirements") or (), page_texts(
+                                                               (fact.source_page, fact.fact_text)
+                                                               for fact in contract.source_facts))),
         judge_mode=settings.idm_judge_mode,
         recoverable_errors=(LessonAuthorProposalValidationError, WorkflowFailure, ValueError, TypeError, KeyError),
         on_recoverable_error=lambda stage, code, error: report_handled_exception(

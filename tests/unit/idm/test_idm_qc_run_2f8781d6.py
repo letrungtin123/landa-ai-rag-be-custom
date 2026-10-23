@@ -9,22 +9,29 @@ from __future__ import annotations
 import html as html_lib
 import re
 import unittest
-from typing import Any
+from pathlib import Path
+from typing import Any, ClassVar
 
 from app.content.instructional_quality import clean_source_facts
+from app.idm.acronyms import explained
 from app.idm.fallback_lines import faq_topic, restore_stops, short_name, split_glued, tidy_facts
+from app.idm.faq_checks import FAQ_HYPE_CODE
 from app.idm.node_acceptance import html_quality_code
+from app.idm.qa import JudgeOutcome, SlotFinding, _code_text, build_unit_author_note
 from app.idm.quiz_letters import expand_short_item_labels
+from app.idm.quiz_text import EXPLANATION_FILLER_CODE
 from app.idm.sortable import without_order_labels
 from app.idm.source_fallback import fallback_glued_words, idm_statement_faq
 from app.idm.source_locked import render_idm_source_locked_html
 from app.idm.storyboard import IdmUnitWriter, parse_brief
+from app.idm.visual_pages import evidence_needs_check, page_texts, unread_image_pages
 from app.schemas.orchestration_v2 import RagLessonAuthorUnitV2Request
 from app.services.orchestration_v2 import unit as unit_service
 from app.services.orchestration_v2.source_locked import render_source_locked_html
-from tests.support.idm_test_support import make_runtime
+from tests.support.idm_test_support import make_runtime, rehash_contract
 from tests.support.log_support import logged_events
 from tests.unit.idm.test_idm_fallback_matrix import rehashed, unit_findings
+from tests.unit.idm.test_idm_qc_run_5496155c import region
 from tests.unit.idm.test_idm_storyboard import (
     JUDGE,
     REPAIR,
@@ -35,6 +42,7 @@ from tests.unit.idm.test_idm_storyboard import (
     escalate_body,
     escalate_writer,
     judge,
+    severity_body,
     slot_repair,
 )
 
@@ -94,6 +102,7 @@ ROWS = [
     ("Sợ bị mang tiếng chậm chạp", f"Nhân viên kho – {SOCIAL_PAIN}"),  # noqa: RUF001 - the en dash
     ("Nhẹ nhõm khi công việc", f"Nhân viên kho – {EMOTIONAL_GAIN}"),  # noqa: RUF001 - the en dash
 ]
+REPO_ROOT = Path(__file__).resolve().parents[3]
 _LABEL_RE = re.compile(r"\((?:Functional|Emotional|Social/Meaningful) (?:Job|Pain|Gain)\)")
 
 
@@ -292,6 +301,9 @@ class ProblemSlotFallbackTests(StoryboardEndpointTestCase):
         note = data["unit"]["idm_quality"]["author_note"]
         self.assertIn("1 khối dùng bản dự phòng dựng từ tài liệu", note)
         self.assertIn("Tài liệu không đủ dữ kiện để dựng khối 1 (Quiz)", note)
+        # A4: the reason in plain words, never "một kiểm tra tự động khác".
+        self.assertIn("Lý do: khối 1 (Quiz): một phương án trả lời quá ngắn hoặc thiếu nội dung.", note)
+        self.assertNotIn("kiểm tra tự động khác", note)
         self.assertEqual(unit_findings(body, data["unit"])[1], [])
 
     async def test_short_item_names_pass_once_written_out(self) -> None:
@@ -383,6 +395,119 @@ class SortableOrderLabelTests(StoryboardEndpointTestCase):
         self.assertTrue(items)
         self.assertFalse([text for text in items if re.match(r"(?i)bước\s*\d", text)])
         self.assertEqual(unit_findings({**body, "fallback_only": True}, data["unit"]), (None, []))
+
+
+class AuthorNoteTests(unittest.TestCase):
+    """A4: the unit note's lines that misled the author in run 2f8781d6."""
+
+    def note(self, **changes: Any) -> str:
+        base: dict[str, Any] = {"locale": "vi", "judge": JudgeOutcome("pass"), "deterministic_codes": [],
+                                "fallback_slots": [], "ai_drafted": False, "slot_types": ["html", "problem", "la_faq"]}
+        return build_unit_author_note(**{**base, **changes})
+
+    def test_no_major_issue_line_is_gone(self) -> None:
+        self.assertEqual(self.note(), "")
+        self.assertEqual(self.note(locale="en"), "")
+        self.assertEqual(self.note(fixed_codes=["IDM_W5_EXPLANATION_LENGTH"], remaining=[]),
+                         "Đã tự sửa: lời giải quá dài.")
+        self.assertNotIn("không phát hiện vấn đề lớn", self.note(notices=["evidence"]))
+
+    def test_an_abbreviation_with_its_full_form_before_a_dash_is_explained(self) -> None:
+        for text in ("Nhận diện khoảnh khắc sự thật (Moments of Truth - MOT) quyết định gắn bó.",
+                     "Nhận diện khoảnh khắc sự thật (Moments of Truth – MOT) quyết định gắn bó.",  # noqa: RUF001
+                     "Moments of Truth - MOT quyết định khách hàng ở lại hay rời đi.",
+                     "Khoảnh khắc sự thật (MOT) quyết định khách hàng ở lại.",
+                     "MOT (Moments of Truth) quyết định khách hàng ở lại."):
+            self.assertTrue(explained("MOT", None, [text]), text)
+        for text in ("MOT quyết định khách hàng ở lại.", "Lean - MOT là hai khái niệm.", "Bước 2 - MOT"):
+            self.assertFalse(explained("MOT", None, [text]), text)
+
+    def test_the_hype_line_names_the_words_found(self) -> None:
+        note = self.note(remaining=[SlotFinding(EXPLANATION_FILLER_CODE, 1), SlotFinding(FAQ_HYPE_CODE, 2)],
+                         hype_words={1: ["hoàn hảo"], 2: ["đập tan", "vượt trội"]})
+        self.assertIn("Nên biên tập khối 2 (Quiz): lời giải dùng chữ sáo rỗng hoặc thổi phồng («hoàn hảo»)", note)
+        self.assertIn("Nên biên tập khối 3 (Hỏi đáp): câu trả lời hỏi đáp dùng chữ thổi phồng («đập tan», «vượt trội»)",
+                      note)
+        for example in ("sinh tử", "triệt để", "tuyệt đối"):
+            self.assertNotIn(example, note)
+        bare = self.note(remaining=[SlotFinding(EXPLANATION_FILLER_CODE, 1)])
+        self.assertIn("lời giải dùng chữ sáo rỗng hoặc thổi phồng — nên thay", bare)
+        english = self.note(locale="en", remaining=[SlotFinding(FAQ_HYPE_CODE, 2)], hype_words={2: ["absolutely"]})
+        self.assertIn("FAQ answers use hype words («absolutely»)", english)
+
+    def test_the_writer_reads_the_hype_words_of_each_slot(self) -> None:
+        body = escalate_body()
+        request = RagLessonAuthorUnitV2Request.model_validate(body)
+        writer = IdmUnitWriter(request.unit_contract, parse_brief(request.unit_contract),
+                               unit_service._idm_unit_deps(request), make_runtime(None))
+        components = escalate_writer(body)["components"]
+        question = {**components["c0"], "type": "problem", "explanation": (
+            "Nguyên tắc: an toàn là tiêu chí bắt buộc.\nA - Sai vì hứa hoàn tiền trước.\nB - Đúng vì giải pháp này ăn "
+            "khớp hoàn hảo với tiêu chí an toàn.\nC - Sai vì khách VIP không đổi tiêu chí.")}
+        faq = {**components["c1"], "type": "la_faq"}
+        self.assertEqual(writer.hype_words([question, faq], ()), {0: ["hoàn hảo"]})
+        self.assertEqual(writer.hype_words([question, faq], (0,)), {})
+
+    def test_every_contract_code_has_plain_words(self) -> None:
+        codes: set[str] = set()
+        for path in ("app/services/staged_unit/validation.py", "app/services/staged_unit/provider_schemas.py",
+                     "app/idm/node_acceptance.py", "app/idm/node_acceptance_html.py",
+                     "app/idm/node_acceptance_problems.py", "app/idm/node_acceptance_widgets.py"):
+            source = (REPO_ROOT / path).read_text(encoding="utf-8")
+            codes |= set(re.findall(r'"([A-Z][A-Z0-9]*_[A-Z0-9_]{2,})"', source))
+        generic = sorted(code for code in codes - {"WORKSPACE_"}
+                         if _code_text(code, True) == "một kiểm tra tự động khác")
+        self.assertEqual(generic, [])
+        self.assertEqual(_code_text("PROBLEM_CHOICE_INVALID", True),
+                         "một phương án trả lời quá ngắn hoặc thiếu nội dung")
+        self.assertEqual(_code_text("PROBLEM_CHOICE_INVALID", False), "an answer option that is too short or empty")
+        # An unknown code still reads as before.
+        self.assertEqual(_code_text("SOMETHING_ELSE", True), "một kiểm tra tự động khác")
+
+
+class ImageCoverPageTests(unittest.TestCase):
+    """A4: the image-page warning never fires for a section cover (a title over a picture: pages 12, 45) and still
+    fires for pages whose picture holds the content (36, 39, and 29 where the value curve sits beside one sentence)."""
+
+    TEXTS: ClassVar[dict[int, list[str]]] = {
+        12: ["Row 1: | MODULE 1: THẤU HIỂU HIỆN TRẠNG",
+             "Góc nhìn Outside – In: Khách hàng thực sự đang trải qua điều gì?"],  # noqa: RUF001
+        45: ["Row 1: | BÀI TẬP VỀ NHÀ"],
+        39: ["2.4 MA TRẬN ƯU TIÊN HÀNH ĐỘNG"],
+        36: ["2.3 LỘ TRÌNH TRẢI NGHIỆM KHÁCH HÀNG (WORKBOOK)", "1", "2", "3", "4"],
+        29: ["1.5 THIẾT KẾ ĐƯỜNG CONG GIÁ TRỊ - VALUE CURVE", "Thiết kế trải nghiệm xuất sắc không phải là tăng cường "
+             "mọi thứ, mà là tập trung nguồn lực vào điểm tạo ra khác biệt."],
+        14: ["1.1. PHÂN NHÓM KHÁCH HÀNG (SEGMENTATION)", "Phân khúc là quá trình gom các khách hàng có đặc điểm chung.",
+             "Quy tắc MECE giúp các nhóm không trùng nhau và không bỏ sót ai.",
+             "Strategic Targeting chọn nhóm nào để phục vụ dựa trên giá trị."],
+    }
+
+    def regions(self) -> list[dict[str, Any]]:
+        shares = {12: [0.95], 45: [0.95], 39: [0.69], 36: [0.6], 29: [0.18, 0.19], 14: [0.35]}
+        return [{"visual_regions": [region(page, share, asset=f"{page:02d}{index}" * 21)
+                                    for index, share in enumerate(values)]} for page, values in shares.items()]
+
+    def test_covers_never_count_content_pictures_do(self) -> None:
+        self.assertEqual(unread_image_pages(self.regions(), self.TEXTS), [29, 36, 39])
+        # Without the page texts, the rule of run 5496155c.
+        self.assertEqual(unread_image_pages(self.regions()), [12, 36, 39, 45])
+        self.assertFalse(evidence_needs_check(self.regions()[:2], (), self.TEXTS))
+        self.assertTrue(evidence_needs_check(self.regions()[4:], (), self.TEXTS))
+        self.assertEqual(page_texts([(12, "a"), (None, "b"), (12, "c")]), {12: ["a", "c"]})
+
+    def test_the_unit_reads_the_texts_of_its_pages(self) -> None:
+        for page, expected in ((45, False), (39, True)):
+            body = severity_body()
+            facts = body["unit_contract"]["source_facts"]
+            for position, fact in enumerate(facts):
+                fact["source_page"] = page
+                fact["fact_text"] = self.TEXTS[page][0] if position == 0 else "OPEX"
+                fact["locator"] = {**(fact.get("locator") or {}),
+                                   "visual_regions": [region(page, 0.95 if page == 45 else 0.69)]}
+            rehash_contract(body["unit_contract"])
+            request = RagLessonAuthorUnitV2Request.model_validate(body)
+            with self.subTest(page=page):
+                self.assertEqual(unit_service._idm_unit_deps(request).evidence_review_required, expected)
 
 
 if __name__ == "__main__":

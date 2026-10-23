@@ -26,6 +26,7 @@ from app.idm.fidelity_checks import (
     SENTENCE_LENGTH_CODE,
 )
 from app.idm.mcq import ANSWER_LENGTH_CUE_CODE, QUESTION_INCOMPLETE_CODE
+from app.idm.note_codes import contract_code_text
 from app.idm.policy import IDM_UNIT_AUTHOR_NOTE_MAX_CHARS, IDM_UNIT_SOURCE_FLAGS_MAX_CHARS
 from app.idm.qa_checks import (
     ANSWER_CONTESTED_CODE,
@@ -147,6 +148,8 @@ _CRITERION_LABEL_EN: Final = {
 _SLOT_LABEL_VI: Final = SLOT_LABEL_VI
 _SLOT_LABEL_EN: Final = SLOT_LABEL_EN
 _SAFE_NOTE_CODE_RE: Final = re.compile(r"^[A-Z][A-Z0-9_]{2,95}$")
+# The hype words a note line names (words of the fixed lists of ``app.idm.policy``, never other provider text).
+_MAX_HYPE_WORDS: Final = 4
 _MAX_NOTE_CODES: Final = 6
 
 
@@ -274,6 +277,8 @@ def _code_text(code: str, vi: bool) -> str:
     texts = _CODE_TEXT_VI if vi else _CODE_TEXT_EN
     if code in texts:
         return texts[code]
+    if (contract := contract_code_text(code, vi)) is not None:  # run 2f8781d6: never "một kiểm tra tự động khác"
+        return contract
     family = next((text for prefix, text in (_CODE_FAMILY_VI if vi else _CODE_FAMILY_EN) if code.startswith(prefix)),
                   None)
     return family or ("một kiểm tra tự động khác" if vi else "another automatic check")
@@ -342,6 +347,7 @@ def build_unit_author_note(
     glued: Sequence[str] = (),
     suppositions: int = 0,
     fallback_inputs: Sequence[int] = (),
+    hype_words: Mapping[int, Sequence[str]] | None = None,
 ) -> str:
     """Template note for the unit ``implementation_notes``; no IDs, no ``<``/``>``.
 
@@ -375,15 +381,14 @@ def build_unit_author_note(
 
     vi = locale == "vi"
     problems = [finding for finding in judge.findings if finding.severity in {"major", "critical"}]
-    judged = _judge_line(judge, problems, _CRITERION_LABEL_VI if vi else _CRITERION_LABEL_EN, vi,
-                         marked=bool(review_reasons))
+    judged = _judge_line(judge, problems, _CRITERION_LABEL_VI if vi else _CRITERION_LABEL_EN, vi)
     slot_lines, named = _slot_lines(vi, slot_reasons or {}, slot_types, whole_fallback=whole_fallback,
                                     fallback_slots=fallback_slots, review_slots=review_slots,
                                     failure_codes=failure_codes, deterministic_codes=deterministic_codes,
                                     placeholder_slots=placeholder_slots, remaining=remaining,
                                     fallback_inputs=fallback_inputs)
     checks = _Checks("", [], []) if whole_fallback else _check_lines(
-        vi, deterministic_codes, remaining, fixed_codes, slot_types, named=named)
+        vi, deterministic_codes, remaining, fixed_codes, slot_types, named=named, hype_words=hype_words or {})
     # Run 5496155c: a reason says "chi tiết bên dưới" only when a line below gives the details.
     kept_line = bool(review_slots) and not whole_fallback
     detailed = {reason for reason, shown in (
@@ -392,13 +397,12 @@ def build_unit_author_note(
         (REVIEW_REASON_SERVER_EDIT, callouts_to_prose > 0 or framework_list_inserted > 0),
         (REVIEW_REASON_EXAMPLE_NUMBERS, bool(example_numbers) and not whole_fallback)) if shown}
     content = not whole_fallback
-    ok = judged == _NO_ISSUE_LINE[vi]
     # Review of dfb6db2: what the author must check first ("Cần xem"), then what to polish ("Lưu ý", "Nên biên tập"),
     # then what was done; the note's character budget only ever cuts the end.
     # The fallback and kept-slot lines lead a unit marked for review; a unit with notices only opens with them.
     first = bool(review_reasons or fallback_slots or whole_fallback)
     review = [_reasons_line(review_reasons, vi, detailed, _REVIEW_LEAD[vi]),
-              *fit_flags(source_flags, IDM_UNIT_SOURCE_FLAGS_MAX_CHARS, locale), "" if ok else judged,
+              *fit_flags(source_flags, IDM_UNIT_SOURCE_FLAGS_MAX_CHARS, locale), judged,
               *(slot_lines if first else ()), *checks.review]
     edits = [_reasons_line(notices, vi, detailed, _NOTICE_LEAD[vi]),
              *fit_flags(source_notes, IDM_UNIT_SOURCE_FLAGS_MAX_CHARS, locale, soft=True),
@@ -416,9 +420,9 @@ def build_unit_author_note(
              SCENARIO_LINE[vi] if ai_drafted and content and REVIEW_REASON_SCENARIO not in review_reasons else "",
              _acronyms_line(unexplained_acronyms, vi) if unexplained_acronyms and content else "",
              SUGGESTED_CRITERIA_LINE[vi] if suggested_criteria else "", glued_line(glued, vi) if glued else ""]
-    # Run 5496155c: "no major issue" only on a note that asks nothing else of the author ("Đã tự sửa" only informs).
-    done = [judged if ok and not any([*review, *edits]) else "", checks.fixed]
-    return sanitize_author_text(" ".join(part for part in [*review, *edits, *done] if part),
+    # Run 2f8781d6 (A4): never "QA tự động: không phát hiện vấn đề lớn." (it stood on a unit whose question gave its
+    # answer away); a clean unit's note says only what was fixed, or nothing.
+    return sanitize_author_text(" ".join(part for part in [*review, *edits, checks.fixed] if part),
                                 IDM_UNIT_AUTHOR_NOTE_MAX_CHARS)
 
 
@@ -467,18 +471,14 @@ def _slot_lines(vi: bool, reasons: Mapping[int, Sequence[str]], slot_types: Sequ
     return lines, named
 
 
-def _judge_line(judge: JudgeOutcome, problems: Sequence[Any], labels: Mapping[str, str], vi: bool, *,
-                marked: bool) -> str:
-    """The automatic review's line: its major problems, or that it found none (never on a unit ``marked`` for
-    review, QLT-9), or why it did not run."""
+def _judge_line(judge: JudgeOutcome, problems: Sequence[Any], labels: Mapping[str, str], vi: bool) -> str:
+    """The automatic review's line: its major problems, or why it did not run; nothing when it found none."""
 
     if judge.status in {"pass", "review_required", "reject"}:
         if problems:
             described = "; ".join(dict.fromkeys(labels[finding.criterion] for finding in problems[:4]))
             return (f"QA tự động: {len(problems)} vấn đề cần xem — {described}." if vi
                     else f"Automatic QA: {len(problems)} issue(s) to review — {described}.")
-        if not marked:
-            return _NO_ISSUE_LINE[vi]
     elif judge.status == "skipped_budget":
         return "QA tự động: bỏ qua do hết thời gian." if vi else "Automatic QA: skipped (time budget)."
     elif judge.status == "failed":
@@ -505,10 +505,9 @@ _PLAIN_HINT_VI: Final = {
     FAQ_INVENTED_REASON_CODE: "câu hỏi đáp tự đưa ra lý do cho một con số hoặc ngưỡng mà tài liệu không giải thích — "
                               "tác giả nên kiểm tra lại hoặc bỏ",
     # QC feedback 2026-10-21 (A1/A2): wording of the question and its feedback, to polish.
-    EXPLANATION_FILLER_CODE: "lời giải dùng chữ sáo rỗng hoặc thổi phồng (như «sinh tử», «triệt để», «tuyệt đối») — "
-                             "nên thay bằng lý do cụ thể lấy từ bài học",
-    FAQ_HYPE_CODE: "câu trả lời hỏi đáp dùng chữ thổi phồng (như «sinh tử», «triệt để», «vượt trội») — nên thay bằng "
-                   "lời giải thích cụ thể",
+    EXPLANATION_FILLER_CODE: "lời giải dùng chữ sáo rỗng hoặc thổi phồng{words} — nên thay bằng lý do cụ thể lấy từ "
+                             "bài học",
+    FAQ_HYPE_CODE: "câu trả lời hỏi đáp dùng chữ thổi phồng{words} — nên thay bằng lời giải thích cụ thể",
     EXPLANATION_LENGTH_CODE: "lời giải dài quá giới hạn — nên rút gọn: một câu nêu nguyên tắc, rồi mỗi phương án một "
                              "câu ngắn",
     QUESTION_LAYOUT_CODE: "đề câu hỏi còn dồn thành một khối — nên để một hai câu bối cảnh, mỗi ý của danh sách một "
@@ -541,10 +540,9 @@ _PLAIN_HINT_EN: Final = {
                             "has checked it",
     FAQ_INVENTED_REASON_CODE: "an FAQ item gives its own reason for a number or threshold the source does not "
                               "explain — the author should check it or remove it",
-    EXPLANATION_FILLER_CODE: "the feedback uses empty praise or hype (such as «brave», «absolute») — replace it "
-                             "with a concrete reason taken from the lesson",
-    FAQ_HYPE_CODE: "FAQ answers use hype words (such as «life-or-death», «absolutely») — replace them with a plain "
-                   "explanation",
+    EXPLANATION_FILLER_CODE: "the feedback uses empty praise or hype{words} — replace it with a concrete reason taken "
+                             "from the lesson",
+    FAQ_HYPE_CODE: "FAQ answers use hype words{words} — replace them with a plain explanation",
     EXPLANATION_LENGTH_CODE: "the feedback is over its length — shorten it: one sentence with the principle, then one "
                              "short sentence per option",
     QUESTION_LAYOUT_CODE: "the question is still one block of text — keep one or two context sentences, each list item "
@@ -682,7 +680,6 @@ _MAX_NOTE_ACRONYMS: Final = 8
 _REVIEW_LEAD: Final = {True: "Cần tác giả xem lại vì: ", False: "Needs the author's review because: "}
 _NOTICE_LEAD: Final = {True: "Lưu ý: ", False: "Note: "}
 _DETAILS_MARK: Final = {True: " (chi tiết bên dưới)", False: " (details below)"}
-_NO_ISSUE_LINE: Final = {True: "QA tự động: không phát hiện vấn đề lớn.", False: "Automatic QA: no major issue found."}
 _FIXED_LEAD: Final = {True: "Đã tự sửa:", False: "Automatically fixed:"}
 
 
@@ -713,9 +710,11 @@ class _Checks(NamedTuple):
 
 
 def _check_lines(vi: bool, deterministic_codes: Sequence[str], remaining: Sequence[SlotFinding] | None,
-                 fixed_codes: Sequence[str], slot_types: Sequence[str], *, named: Collection[str] = ()) -> _Checks:
+                 fixed_codes: Sequence[str], slot_types: Sequence[str], *, named: Collection[str] = (),
+                 hype_words: Mapping[int, Sequence[str]] | None = None) -> _Checks:
     """The "Đã tự sửa" line (settled during generation), one line per hinted finding (to check or to polish), then
-    what still warns on the returned unit and no line above names (``named``: the plain words of the slot lines)."""
+    what still warns on the returned unit and no line above names (``named``: the plain words of the slot lines).
+    ``hype_words`` (run 2f8781d6): slot -> the hype words its text uses, which their line names."""
 
     lines: list[str] = []
     polish: list[str] = []
@@ -724,13 +723,16 @@ def _check_lines(vi: bool, deterministic_codes: Sequence[str], remaining: Sequen
     hints = _REVIEW_HINT_VI if vi else _REVIEW_HINT_EN
     labels = _SLOT_LABEL_VI if vi else _SLOT_LABEL_EN
     plain = _PLAIN_HINT_VI if vi else _PLAIN_HINT_EN
-    for code, hint in [*hints.items(), *plain.items()]:
+    for code, template in [*hints.items(), *plain.items()]:
         slots = sorted({item.component_index for item in remaining or () if item.code == code})
         if not slots:
             continue
         where = ", ".join(f"{'khối' if vi else 'block'} {index + 1}"
                           + (f" ({labels[slot_types[index]]})" if index < len(slot_types)
                              and slot_types[index] in labels else "") for index in slots)
+        found = list(dict.fromkeys(word for index in slots for word in (hype_words or {}).get(index, ())))
+        hint = template.replace("{words}", f" ({', '.join(f'«{word}»' for word in found[:_MAX_HYPE_WORDS])})"
+                                if found else "")
         # QLT-9: plain words only, the code stays in ``deterministic_codes``; a wording finding is to polish.
         if code in STYLE_CODES:
             polish.append(f"Nên biên tập {where}: {hint}." if vi else f"Polish {where}: {hint}.")
