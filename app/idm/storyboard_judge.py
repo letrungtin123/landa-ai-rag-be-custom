@@ -105,14 +105,20 @@ async def judge_and_repair(writer: IdmUnitWriter, draft: _Draft, mode: JudgeMode
     finding, idm = writer.problems(repaired)
     if repaired is draft or finding is not None or any(code not in SOFT_CODES for code, _index in idm):
         return draft, judge
+    noted = len(writer.codes)  # review 7 (L1): the soft codes of a repair count only when the repair is kept
     for index in dict.fromkeys(index for _code, index in idm):
         repaired = writer.keep_for_review(repaired, index, [code for code, slot in idm if slot == index])
     repaired = writer.refresh_review_marks(repaired)
-    second = await run_judge(writer.runtime, mode=mode, plan_summary=summary, facts=facts, unit=repaired.unit,
-                             practice_slot=practice_slot, faq_slot=writer.has_faq, organization_context=background)
+    try:
+        second = await run_judge(writer.runtime, mode=mode, plan_summary=summary, facts=facts, unit=repaired.unit,
+                                 practice_slot=practice_slot, faq_slot=writer.has_faq, organization_context=background)
+    except BaseException:
+        del writer.codes[noted:]
+        raise
     if second.status in {"pass", "review_required", "reject"} and (
             blocking_count(second.findings) < blocking_count(judge.findings)):
         return repaired, second
+    del writer.codes[noted:]
     return draft, judge
 
 

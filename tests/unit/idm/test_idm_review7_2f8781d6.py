@@ -5,11 +5,14 @@ Every case is synthetic text with the shape of the reviewer's reproduction scrip
 
 from __future__ import annotations
 
+import json
+
 from app.core.errors import AppError, ServiceError
 from app.idm.node_acceptance import html_quality_code
 from app.idm.source_locked import render_idm_source_locked_html
 from tests.support.log_support import logged_events
 from tests.unit.idm.test_idm_qc_run_2f8781d6 import many_facts_body
+from tests.unit.idm.test_idm_review5_2f8781d6 import FIXED, REPEATED, writer_with
 from tests.unit.idm.test_idm_storyboard import (
     JUDGE,
     REPAIR,
@@ -19,6 +22,7 @@ from tests.unit.idm.test_idm_storyboard import (
     escalate_body,
     escalate_writer,
     judge,
+    severity_body,
 )
 
 # Review 7 (M1): a figure ends each section, so the next section's title and its repeated label are no pair the
@@ -93,3 +97,23 @@ class UndispatchedRepairTests(StoryboardEndpointTestCase):
         self.assertEqual(status, 200, data.get("detail"))
         self.assertEqual((data["usage_source"], data["usage_complete"], data["quality_state"]),
                          ("reserved_upper_bound", False, "review_required"))
+
+
+class DiscardedJudgeRepairTests(StoryboardEndpointTestCase):
+    """L1: the codes of a judge repair the second judge does not keep are never reported as fixed."""
+
+    async def test_no_fix_line_for_a_dropped_repair(self) -> None:
+        body = severity_body()
+        writer = writer_with(body, [REPEATED])
+        fixed = writer_with(body, [REPEATED, FIXED])
+        repair = {"components": {"c0": {key: value for key, value in fixed["components"]["c0"].items()
+                                        if key != "covered_source_fact_ids"}}}
+        provider = FakeGenerate(**{WRITER: [writer], REPAIR: [repair], JUDGE: [
+            judge(("Q7_cognitive_load", "major", 0)), judge(("Q7_cognitive_load", "major", 0))]})
+        with self.assertLogs("app.idm", level="INFO") as logs:
+            status, data, _ = await self.post(body, provider, mode="repair")
+        self.assertEqual(status, 200, data.get("detail"))
+        self.assertNotIn(FIXED[:30], json.dumps(data["unit"]["components"][0], ensure_ascii=False))
+        quality = logged_events(logs.records, "idm_unit_quality")[-1]
+        self.assertEqual((quality["codes"], quality["fixed_codes"]), ([], []))
+        self.assertNotIn("Đã tự sửa", data["unit"]["idm_quality"]["author_note"])
