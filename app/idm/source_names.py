@@ -24,7 +24,8 @@ tiên", "Service Blueprint" and "G-STIC" are not.
 Review 5 (M9): a tool noun turned into a verb ("sơ đồ hóa", "bản đồ hoá") names no tool; an English tool noun names one
 only after a proper name of two capitalised words at least, once the generic words of a Title Case heading are left out
 ("Value Proposition Canvas"; never "A Practical Framework", "Our Decision Framework", "Building Your Prioritization
-Matrix", "… a Simple Map").
+Matrix", "… a Simple Map"). Review 6 (L2): inside a sentence that is no Title Case heading, one proper word is enough
+("Hãy dùng Eisenhower Matrix …", "Bạn nên vẽ Empathy Map …"); a capitalised Vietnamese word before it is left out.
 """
 
 from __future__ import annotations
@@ -66,6 +67,7 @@ _EN_GENERIC: Final = frozenset({
     "make", "making", "choose", "choosing", "how", "why", "what", "when", "step", "steps", "decision", "action",
 })
 _EN_MIN_NAME_WORDS: Final = 2
+_SHORT_TOKEN_CHARS: Final = 2
 # A described qualifier says something ("hành trình", "dịch vụ"): no one or two letters.
 _MIN_DESCRIBED_CHARS: Final = 4
 _CLAUSE_RE: Final = re.compile(r"[:;,()?!.\[\]\"“”]|\s[-–—]\s")  # noqa: RUF001 - the dashes end a clause
@@ -100,6 +102,10 @@ def _phrases(clause: str) -> list[_Phrase]:
 
     tokens = _TOKEN_RE.findall(unicodedata.normalize("NFC", clause))
     lowered = [token.lower() for token in tokens]
+    # Review 6 (L2): one proper word names a tool inside a sentence ("Hãy dùng Eisenhower Matrix …"), never in a Title
+    # Case heading, where every word is capitalised ("Building Your Prioritization Matrix").
+    title_case = all(token[:1].isupper() for token in tokens
+                     if token[:1].isalpha() and token.lower() not in _STOPS and len(token) > _SHORT_TOKEN_CHARS)
     found: list[_Phrase] = []
     for index in range(len(tokens)):
         for noun in _VI_TOOLS:
@@ -126,9 +132,10 @@ def _phrases(clause: str) -> list[_Phrase]:
                 if not token[:1].isupper() or token.lower() in _STOPS:
                     break
                 before.insert(0, token)
-            while before and before[0].lower() in _EN_GENERIC:
+            # Review 6 (L2): a capitalised Vietnamese word opens the sentence, not the name ("Dùng Eisenhower Matrix").
+            while before and (before[0].lower() in _EN_GENERIC or not before[0].isascii()):
                 before.pop(0)
-            if len(before) >= _EN_MIN_NAME_WORDS:
+            if len(before) >= _EN_MIN_NAME_WORDS or (len(before) == 1 and index > 1 and not title_case):
                 found.append(_Phrase(" ".join([*before, tokens[index]]), [], "", "", ""))
     return found
 

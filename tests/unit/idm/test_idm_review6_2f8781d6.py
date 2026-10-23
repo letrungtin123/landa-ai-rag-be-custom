@@ -18,7 +18,7 @@ from app.idm.fidelity_checks import NEW_FACT_CODE, SENTENCE_COPY_CODE, SENTENCE_
 from app.idm.node_acceptance import html_quality_code
 from app.idm.qa import ANSWER_LEAK_CODE
 from app.idm.source_locked import _is_label, render_idm_source_locked_html
-from app.idm.source_names import NAME_NOT_IN_SOURCE_CODE
+from app.idm.source_names import NAME_NOT_IN_SOURCE_CODE, NameGuide
 from app.idm.storyboard_context import _Draft
 from app.idm.storyboard_repair import IdmUnitRepairSteps
 from tests.support.log_support import logged_events
@@ -223,3 +223,18 @@ class StopTests(unittest.TestCase):
         for name in ("Node.Js là", "System.Console", "TP.HCM", "Tp.Hồ Chí Minh", "Mr.Smith", "St.Petersburg",
                      "Ths.Nguyễn Văn A", "file README.Md", "v.v.Các bước", "trang www.abc.Com", "giá 3.5.Tiếp"):
             self.assertEqual(restore_stops(name), name)
+
+
+class ToolNameTests(unittest.TestCase):
+    """L2: a one-word English tool name inside a sentence is found again; a Title Case heading stays quiet."""
+
+    def test_one_word_names_mid_sentence(self) -> None:
+        source = NameGuide.build(["Hành trình trải nghiệm khách hàng gồm 5 giai đoạn.",
+                                  "Điểm chạm là nơi khách hàng tương tác với doanh nghiệp."])
+        for text, found in (("Hãy dùng Eisenhower Matrix để xếp ưu tiên.", ["Eisenhower Matrix"]),
+                            ("Dùng Eisenhower Matrix để xếp ưu tiên các điểm chạm.", ["Eisenhower Matrix"]),
+                            ("Bạn nên vẽ Empathy Map cho từng nhóm.", ["Empathy Map"]),
+                            ("Use the Eisenhower Matrix to rank touchpoints.", ["Eisenhower Matrix"]),
+                            ("Building Your Prioritization Matrix", []), ("Our Decision Framework", []),
+                            ("A Practical Framework for Touchpoints", []), ("Mapping Each Stage on a Simple Map", [])):
+            self.assertEqual(source.missing(text), found, text)
