@@ -10,6 +10,7 @@ import unittest
 from typing import Any
 
 from app.idm.quiz_letters import expand_short_item_labels
+from app.idm.source_fallback import idm_statement_faq
 from tests.support.log_support import logged_events
 from tests.unit.idm.test_idm_storyboard import (
     JUDGE,
@@ -20,6 +21,7 @@ from tests.unit.idm.test_idm_storyboard import (
     escalate_body,
     escalate_writer,
     judge,
+    rehashed_brief,
     severity_body,
     severity_writer,
     unavailable,
@@ -129,3 +131,29 @@ class ShortLabelTests(unittest.TestCase):
         for key in ("title", "explanation", "hints"):
             self.assertEqual(expanded[key], quiz[key], key)
         self.assertTrue(quiz["choices"][0]["text"] == "Ý 3")  # the input is never changed
+
+
+SAME_LABEL = ["Lưu ý quan trọng: Khách hàng VIP luôn được ưu tiên xử lý trong ngày làm việc đầu tiên.",
+              "Lưu ý quan trọng: Nhân viên không được hứa hoàn tiền trước khi phân loại xong khiếu nại."]
+
+
+class StatementFaqTests(StoryboardEndpointTestCase):
+    """M2: the last-resort FAQ asks by place, as before; never fewer items than before, never a 422 for it."""
+
+    def test_two_statements_of_one_label_give_two_items(self) -> None:
+        items = idm_statement_faq("Hỏi đáp: Xử lý khiếu nại", SAME_LABEL, locale="vi")
+        self.assertEqual(items, [
+            {"question": "Người học cần ghi nhớ gì về 'Xử lý khiếu nại'?", "answer": SAME_LABEL[0]},
+            {"question": "Điểm thứ 2 cần lưu ý trong 'Xử lý khiếu nại' là gì?", "answer": SAME_LABEL[1]}])
+
+    async def test_fallback_only_still_answers(self) -> None:
+        body = escalate_body()
+        contract = body["unit_contract"]
+        for number, fact in enumerate(contract["source_facts"]):
+            fact["fact_text"] = SAME_LABEL[number % 2] if number < 2 else f"BÀI TẬP {number}"
+        contract["idm_unit_brief"]["lesson_context_facts"] = []
+        body = rehashed_brief(body)
+        status, data, _ = await self.post({**body, "fallback_only": True})
+        self.assertEqual(status, 200, data.get("detail"))
+        self.assertEqual(data["content_origin"], "structured_fallback")
+        self.assertEqual([item["answer"] for item in data["unit"]["components"][1]["items"]], SAME_LABEL)

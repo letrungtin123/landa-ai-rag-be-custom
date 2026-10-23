@@ -326,20 +326,21 @@ class ProblemSlotFallbackTests(StoryboardEndpointTestCase):
 
 
 class FallbackFaqQuestionTests(unittest.TestCase):
-    """A2: a fallback FAQ item never quotes its own slot title ("… về 'Hỏi đáp: …'"); a statement that opens with its
-    label is asked about by that label."""
+    """A2: a fallback FAQ item never quotes its own slot title ("… về 'Hỏi đáp: …'"); review 5 (M2): a statement is
+    asked about by its place, as before, never by its own label."""
 
     STATEMENTS = ("Tầng 2: Tâm thế và kỳ vọng của khách hàng tại mỗi cột mốc của hành trình mua hàng.",
                   "Bản đồ hành trình giúp đội ngũ nhìn thấy điểm đau lớn nhất ở từng giai đoạn của khách hàng.")
 
-    def test_the_question_names_the_label_or_the_topic(self) -> None:
+    def test_the_question_names_the_topic(self) -> None:
         self.assertEqual(faq_topic("Hỏi đáp: Thực hành Bản đồ hành trình"), "Thực hành Bản đồ hành trình")
         self.assertEqual(faq_topic("FAQ: Journey map practice"), "Journey map practice")
         self.assertEqual(faq_topic("Giải đáp thắc mắc về điểm chạm"), "Giải đáp thắc mắc về điểm chạm")
         items = idm_statement_faq("Hỏi đáp: Thực hành Bản đồ hành trình", self.STATEMENTS, locale="vi")
         assert items is not None
         self.assertEqual([item["question"] for item in items], [
-            "Người học cần hiểu gì về Tầng 2?", "Điểm thứ 2 cần lưu ý trong 'Thực hành Bản đồ hành trình' là gì?"])
+            "Người học cần ghi nhớ gì về 'Thực hành Bản đồ hành trình'?",
+            "Điểm thứ 2 cần lưu ý trong 'Thực hành Bản đồ hành trình' là gì?"])
         self.assertEqual([item["answer"] for item in items], list(self.STATEMENTS))
         english = idm_statement_faq("FAQ: Journey map practice", self.STATEMENTS[1:] * 1 + (
             "The journey map shows the biggest pain point of every stage the customer goes through.",), locale="en")
