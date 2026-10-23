@@ -55,7 +55,12 @@ from app.idm.qa import (
     ungrounded_callouts,
 )
 from app.idm.qa_checks import CALLOUT_REPEAT_DROPPED, repeated_callouts, without_blocks
-from app.idm.quiz_letters import ITEM_LETTERS_NUMBERED, number_item_letters
+from app.idm.quiz_letters import (
+    ITEM_LABELS_EXPANDED,
+    ITEM_LETTERS_NUMBERED,
+    expand_short_item_labels,
+    number_item_letters,
+)
 from app.idm.quiz_text import lay_out_quiz
 from app.idm.runtime import IdmResponseInvalidError, IdmRuntime, ThinkingLevel, log_stage, record_deterministic_fallback
 from app.idm.source_fallback import lesson_statements
@@ -185,6 +190,8 @@ class IdmUnitWriterSteps:
         # there (the last resort, ``app.idm.source_fallback``).
         self.placeholder_slots = [index for index, slot in enumerate(deps.source_locked_components or ())
                                   if slot is None]
+        # Run 2f8781d6 (c2.l3.u3): the slots of a provider draft a validator finding replaced with that last resort.
+        self.last_resort_slots: set[int] = set()
         # Review of dfb6db2 (item 5): slot -> the worksheet built from its practice plan (a fallback without a form).
         self.plan_worksheets: dict[int, str] = {}
         self.budget: dict[str, Any] = self.expected["instructional_output_budget"]
@@ -249,6 +256,9 @@ class IdmUnitWriterSteps:
             component, numbered = number_item_letters(component)
             if numbered:
                 self.runtime.adjustments[ITEM_LETTERS_NUMBERED] += numbered
+            # Run 2f8781d6: an option that only names a short stem item ("Ý 1") is under the 8 characters of a choice.
+            component, expanded = expand_short_item_labels(component)
+            self.runtime.adjustments[ITEM_LABELS_EXPANDED] += expanded
             normalized, codes = normalize_single_choice(component, str(self.plans[index]["component_plan_id"]),
                                                         ordinal)
             # QC feedback A1/A2 (K1): the stem and the explanation in lines, after the options got their letters.
@@ -445,12 +455,21 @@ class IdmUnitWriterSteps:
         self.log_budget(step, level)
         return level
 
-    def fallback_component(self, index: int) -> dict[str, Any] | None:
+    def fallback_component(self, index: int, *, last_resort: bool = False) -> dict[str, Any] | None:
+        """The source-locked component of slot ``index``; with ``last_resort`` (a finding Python or Node rejects the
+        slot for), the whole-unit fallback's sentences of the lesson for a slot no source structure rebuilds, so only
+        that slot falls back (run 2f8781d6, c2.l3.u3: a too-short option sent the worksheet and the FAQ to it too)."""
+
         slots = self.deps.source_locked_components
+        source = self.deps.source_locked_unit
         if slots is None:
-            source = self.deps.source_locked_unit
             slots = source.get("components", []) if source is not None else []
         component = slots[index] if 0 <= index < len(slots) else None
+        if component is None and last_resort and index in self.placeholder_slots and source is not None:
+            whole = source.get("components") or []
+            component = whole[index] if index < len(whole) else None
+            if component is not None:
+                self.last_resort_slots.add(index)
         return dict(component) if component is not None else None
 
     def is_worksheet(self, index: int) -> bool:
@@ -502,7 +521,11 @@ class IdmUnitWriterSteps:
                    and components[index].get("html") == built}
         missing = [index for index in sorted(planned) if (practice := self.brief.components[index].practice)
                    and described_only(practice.sentence, practice.context_input) is not None]
-        return {"suggested_criteria": self.suggested_criteria(sorted(replaced - planned)), "fallback_inputs": missing}
+        # Run 2f8781d6: the slots that only repeat sentences of the lesson, in a whole-unit or a slot fallback.
+        placeholders = (self.placeholder_slots if whole_fallback
+                        else sorted(self.last_resort_slots & set(fallback_slots)))
+        return {"suggested_criteria": self.suggested_criteria(sorted(replaced - planned)), "fallback_inputs": missing,
+                "placeholder_slots": placeholders}
 
     def repeated_faq_fallback(self, index: int) -> list[str]:
         """``[FAQ_FALLBACK_REPEATED_CODE]`` when the source-locked FAQ of slot ``index`` says one sentence twice (its
@@ -521,8 +544,9 @@ class IdmUnitWriterSteps:
             })
         return [FAQ_FALLBACK_REPEATED_CODE]
 
-    def fallback_slot(self, draft: _Draft, index: int, reasons: Sequence[str] = ()) -> _Draft | None:
-        component = self.fallback_component(index)
+    def fallback_slot(self, draft: _Draft, index: int, reasons: Sequence[str] = (), *,
+                      last_resort: bool = False) -> _Draft | None:
+        component = self.fallback_component(index, last_resort=last_resort)
         if component is None:
             return None
         reasons = [*reasons, *self.repeated_faq_fallback(index)]

@@ -60,6 +60,9 @@ _ADDRESS_RE: Final = re.compile(r"://|^www\.|@", re.IGNORECASE)
 # The word before the stop: two letters at least, not after another stop ("v.v.", "e.g." keep theirs).
 _LAST_WORD_RE: Final = re.compile(r"(?<![.\w])[^\W\d_]{2,}$")
 _WORD_RE: Final = re.compile(r"[^\W\d_]+")
+# The lead of an FAQ slot's title.
+_FAQ_LEAD_RE: Final = re.compile(r"^\s*(?:hỏi\s*(?:-|–|&)?\s*đáp|câu hỏi thường gặp|faq|q\s*&\s*a)\s*[:\-–]\s*",  # noqa: RUF001
+                                 re.IGNORECASE)
 # A glued word holds a handful of syllables at most; the split search stops after this many ways.
 _MAX_SPLIT_WAYS: Final = 2
 
@@ -258,5 +261,12 @@ def tidy_facts(facts: Sequence[str]) -> list[str]:
     return [split_glued(fact, vocabulary) for fact in spaced]
 
 
-__all__ = ["LABEL_JOINER", "ORPHAN_LABEL_END_RE", "OrphanLabels", "is_section", "label_text", "prefix_repeated_labels",
-           "restore_stops", "short_name", "source_facts", "split_glued", "tidy_facts"]
+def faq_topic(title: str) -> str:
+    """An FAQ slot's title without its "Hỏi đáp:" / "FAQ:" lead, for the question of a fallback FAQ item (run
+    2f8781d6: "Người học cần ghi nhớ gì về 'Hỏi đáp: Thực hành …'?" quoted the slot's own title)."""
+
+    return _FAQ_LEAD_RE.sub("", title).strip() or title
+
+
+__all__ = ["LABEL_JOINER", "ORPHAN_LABEL_END_RE", "OrphanLabels", "faq_topic", "is_section", "label_text",
+           "prefix_repeated_labels", "restore_stops", "short_name", "source_facts", "split_glued", "tidy_facts"]

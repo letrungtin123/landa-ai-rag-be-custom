@@ -16,13 +16,14 @@ from __future__ import annotations
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from typing import Any, Final
 
-from app.content.instructional_quality import faq_answer_is_complete
+from app.content.instructional_quality import TERM_DEFINITION_RE, faq_answer_is_complete
 from app.content.learner_content_purity import component_learner_text
 from app.idm.source_locked import (
     _BULLET_RE,
     _FAQ_MAX_ITEMS,
     _FAQ_MIN_ITEMS,
     _FAQ_UNSAFE_RE,
+    _LABEL_MAX_WORDS,
     EXERCISE_RE,
     STATEMENT_END_RE,
     _choices,
@@ -129,7 +130,10 @@ def idm_statement_faq(title: str, statements: Sequence[str], *, locale: str) -> 
 
     items: list[dict[str, str]] = []
     for statement in statements:
-        if (item := _faq_item(items, "", statement, title, locale, distinct=True)) is not None:
+        # Run 2f8781d6: a statement that opens with its own label ("Tầng 2: …") is asked about by that label.
+        lead = TERM_DEFINITION_RE.match(statement)
+        label = lead.group(1).strip() if lead and len(lead.group(1).split()) <= _LABEL_MAX_WORDS else ""
+        if (item := _faq_item(items, label, statement, title, locale, distinct=True)) is not None:
             items.append(item)
         if len(items) == _FAQ_MAX_ITEMS:
             break

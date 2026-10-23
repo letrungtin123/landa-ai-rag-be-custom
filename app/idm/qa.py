@@ -448,6 +448,8 @@ def _slot_lines(vi: bool, reasons: Mapping[int, Sequence[str]], slot_types: Sequ
         explained = [index for index in fallback_slots if _codes(reasons.get(index, ()), vi)]
         if explained:
             lines.append(("Lý do: " if vi else "Reason: ") + _slot_reasons(explained, reasons, slot_types, vi) + ".")
+        if placeholder_slots:  # run 2f8781d6: a slot no source structure rebuilds falls back alone
+            lines.append(placeholder_line(_slot_reasons(placeholder_slots, {}, slot_types, vi), vi))
         if fallback_inputs:
             lines.append(fallback_input_line(_block_names(fallback_inputs, vi), vi))
     hinted = {(item.component_index, item.code) for item in remaining or ()

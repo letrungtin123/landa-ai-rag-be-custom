@@ -578,7 +578,7 @@ class IdmUnitWriter(IdmUnitRepairSteps):
             if compacted is not None:
                 draft = compacted
                 continue
-            replaced = self.fallback_slot(draft, bad, reasons)
+            replaced = self.fallback_slot(draft, bad, reasons, last_resort=finding is not None)
             if replaced is None:
                 if finding is not None:
                     return None
@@ -697,7 +697,6 @@ async def run_idm_unit(
         review_reasons=review_reasons if reviewable and not whole_fallback else (),
         unexplained_acronyms=unexplained_acronyms, notices=() if whole_fallback else notices,
         **writer.plan_worksheet_notes(components, draft.fallback_slots, whole_fallback=whole_fallback),
-        placeholder_slots=writer.placeholder_slots if whole_fallback else (),
         glued=fallback_glued_words(components, draft.fallback_slots), source_flags=writer.source_flags,
         source_notes=writer.source_notes,
         suppositions=0 if whole_fallback else writer.supposed_count(draft.fallback_slots))

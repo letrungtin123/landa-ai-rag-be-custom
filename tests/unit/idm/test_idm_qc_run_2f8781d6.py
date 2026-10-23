@@ -12,15 +12,28 @@ import unittest
 from typing import Any
 
 from app.content.instructional_quality import clean_source_facts
-from app.idm.fallback_lines import restore_stops, short_name, split_glued, tidy_facts
+from app.idm.fallback_lines import faq_topic, restore_stops, short_name, split_glued, tidy_facts
 from app.idm.node_acceptance import html_quality_code
-from app.idm.source_fallback import fallback_glued_words
+from app.idm.quiz_letters import expand_short_item_labels
+from app.idm.source_fallback import fallback_glued_words, idm_statement_faq
 from app.idm.source_locked import render_idm_source_locked_html
 from app.schemas.orchestration_v2 import RagLessonAuthorUnitV2Request
 from app.services.orchestration_v2 import unit as unit_service
 from app.services.orchestration_v2.source_locked import render_source_locked_html
+from tests.support.log_support import logged_events
 from tests.unit.idm.test_idm_fallback_matrix import rehashed, unit_findings
-from tests.unit.idm.test_idm_storyboard import StoryboardEndpointTestCase, body_for
+from tests.unit.idm.test_idm_storyboard import (
+    JUDGE,
+    REPAIR,
+    WRITER,
+    FakeGenerate,
+    StoryboardEndpointTestCase,
+    body_for,
+    escalate_body,
+    escalate_writer,
+    judge,
+    slot_repair,
+)
 
 HEADER = "Row 1: VIỆC CẦN LÀM - Mục tiêu | NỖI ĐAU - Điều cản trở | LỢI ÍCH - Điều mong đợi"
 FUNCTIONAL_JOB = "Về Chức năng (Functional Job)"
@@ -212,6 +225,108 @@ class FallbackOnlyProfileTests(StoryboardEndpointTestCase):
         self.assertEqual(label_of_rows(data["unit"]["components"][0]["html"]), dict(ROWS))
         # No glued word left, so the note names none.
         self.assertNotIn("dính liền", data["unit"]["idm_quality"]["author_note"])
+
+
+
+def item_quiz(label: str, *, names: tuple[str, ...] | None = None, extra: str = "") -> dict[str, Any]:
+    """A single-choice quiz whose options only name the stem's items "<label> 1" … "<label> 4"."""
+
+    items = "\n".join(f"- {label} {number}: Phương pháp số {number} để chia giai đoạn của hành trình."
+                      for number in range(1, 5))
+    return {"problem_type": "multiple_choice",
+            "question": f"Giả sử bạn đọc bốn cách làm sau:\n{items}\nCách nào đúng?{extra}",
+            "choices": [{"text": name, "correct": position == 0}
+                        for position, name in enumerate(names or tuple(f"{label} {n}" for n in range(1, 5)))],
+            "explanation": f"Nguyên tắc: chia theo thời gian.\nA - Đúng vì {label} 1 chia theo thời gian.\nB - Sai vì "
+                           f"{label} 2 bỏ tâm thế.\nC - Sai vì {label} 3 gộp điểm đau.\nD - Sai vì {label} 4 xếp sai."}
+
+
+class ShortItemLabelTests(unittest.TestCase):
+    """A2: an option that only names a short stem item ("Ý 1") is under the shared validator's 8 characters; the label
+    is written out in a longer noun everywhere the quiz uses it, never "Phương án"."""
+
+    def test_the_label_is_written_out_everywhere(self) -> None:
+        for label, longer in (("Ý", "Ý kiến"), ("Mục", "Mục số"), ("Câu", "Câu số"), ("Bước", "Bước số"),
+                              ("Item", "Item no.")):
+            quiz, count = expand_short_item_labels(item_quiz(label))
+            self.assertEqual(count, 12, label)
+            self.assertEqual([choice["text"] for choice in quiz["choices"]], [f"{longer} {n}" for n in range(1, 5)])
+            self.assertIn(f"- {longer} 2: Phương pháp số 2", quiz["question"])
+            self.assertIn(f"A - Đúng vì {longer} 1 chia", quiz["explanation"])
+            self.assertTrue(all(len(choice["text"]) >= 8 for choice in quiz["choices"]))
+            self.assertNotIn("Phương án", quiz["question"])
+
+    def test_left_as_written_when_it_is_not_certain(self) -> None:
+        for quiz in (item_quiz("Ý", extra=" Gợi ý: xem lại Ý 5."),  # a use names no listed item
+                     item_quiz("Ý", names=("Ý kiến 1", "Ý kiến 2", "Ý kiến 3", "Ý kiến 4")),  # no short option
+                     item_quiz("Nhóm")):  # not a short item label of the list
+            self.assertEqual(expand_short_item_labels(quiz), (quiz, 0))
+        skipped = item_quiz("Ý")
+        skipped["question"] = skipped["question"].replace("- Ý 3:", "- Ý 7:")  # items not numbered 1, 2, 3 …
+        self.assertEqual(expand_short_item_labels(skipped), (skipped, 0))
+
+
+class ProblemSlotFallbackTests(StoryboardEndpointTestCase):
+    """A2: a too-short option that the repair leaves sends only its question slot to the fallback; the FAQ keeps the AI
+    draft (run 2f8781d6, c2.l3.u3: the whole unit fell back)."""
+
+    async def test_a_short_option_sends_only_its_slot_to_the_fallback(self) -> None:
+        body = escalate_body()
+        writer = escalate_writer(body)
+        writer["components"]["c0"]["choices"][0]["text"] = "Có"
+        repair = slot_repair(writer, 0)
+        provider = FakeGenerate(**{WRITER: [writer], REPAIR: [repair], JUDGE: [judge(), judge()]})
+        with self.assertLogs("app.idm", level="INFO") as logs:
+            status, data, _ = await self.post(body, provider)
+        self.assertEqual(status, 200, data.get("detail"))
+        self.assertEqual((data["content_origin"], data["quality_state"]), ("structured_fallback", "review_required"))
+        question, faq = data["unit"]["components"]
+        self.assertTrue(question["source_locked_fallback"])
+        self.assertNotIn("source_locked_fallback", faq)
+        self.assertEqual(faq["items"], writer["components"]["c1"]["items"])
+        quality = logged_events(logs.records, "idm_unit_quality")[-1]
+        self.assertEqual((quality["whole_fallback"], quality["fallback_slots"]), (False, [0]))
+        note = data["unit"]["idm_quality"]["author_note"]
+        self.assertIn("1 khối dùng bản dự phòng dựng từ tài liệu", note)
+        self.assertIn("Tài liệu không đủ dữ kiện để dựng khối 1 (Quiz)", note)
+        self.assertEqual(unit_findings(body, data["unit"])[1], [])
+
+    async def test_short_item_names_pass_once_written_out(self) -> None:
+        body = escalate_body()
+        writer = escalate_writer(body)
+        writer["components"]["c0"].update({key: value for key, value in item_quiz("Ý").items()
+                                            if key in {"question", "choices", "explanation"}})
+        writer["components"]["c0"]["choices"] = writer["components"]["c0"]["choices"][:3]
+        writer["components"]["c0"]["explanation"] = writer["components"]["c0"]["explanation"].rsplit("\nD", 1)[0]
+        provider = FakeGenerate(**{WRITER: [writer], REPAIR: [slot_repair(writer, 0)], JUDGE: [judge(), judge()]})
+        status, data, _ = await self.post(body, provider)
+        self.assertEqual(status, 200, data.get("detail"))
+        question = data["unit"]["components"][0]
+        self.assertNotIn("source_locked_fallback", question)
+        self.assertEqual(sorted(choice["text"] for choice in question["choices"]), ["Ý kiến 1", "Ý kiến 2", "Ý kiến 3"])
+
+
+class FallbackFaqQuestionTests(unittest.TestCase):
+    """A2: a fallback FAQ item never quotes its own slot title ("… về 'Hỏi đáp: …'"); a statement that opens with its
+    label is asked about by that label."""
+
+    STATEMENTS = ("Tầng 2: Tâm thế và kỳ vọng của khách hàng tại mỗi cột mốc của hành trình mua hàng.",
+                  "Bản đồ hành trình giúp đội ngũ nhìn thấy điểm đau lớn nhất ở từng giai đoạn của khách hàng.")
+
+    def test_the_question_names_the_label_or_the_topic(self) -> None:
+        self.assertEqual(faq_topic("Hỏi đáp: Thực hành Bản đồ hành trình"), "Thực hành Bản đồ hành trình")
+        self.assertEqual(faq_topic("FAQ: Journey map practice"), "Journey map practice")
+        self.assertEqual(faq_topic("Giải đáp thắc mắc về điểm chạm"), "Giải đáp thắc mắc về điểm chạm")
+        items = idm_statement_faq("Hỏi đáp: Thực hành Bản đồ hành trình", self.STATEMENTS, locale="vi")
+        assert items is not None
+        self.assertEqual([item["question"] for item in items], [
+            "Người học cần hiểu gì về Tầng 2?", "Điểm thứ 2 cần lưu ý trong 'Thực hành Bản đồ hành trình' là gì?"])
+        self.assertEqual([item["answer"] for item in items], list(self.STATEMENTS))
+        english = idm_statement_faq("FAQ: Journey map practice", self.STATEMENTS[1:] * 1 + (
+            "The journey map shows the biggest pain point of every stage the customer goes through.",), locale="en")
+        assert english is not None
+        self.assertEqual(english[0]["question"], "What should learners remember about 'Journey map practice'?")
+        self.assertNotIn("Hỏi đáp:", " ".join(item["question"] for item in items))
 
 
 if __name__ == "__main__":

@@ -49,7 +49,7 @@ from app.content.instructional_quality import (
     source_term_definitions,
 )
 from app.idm.acronyms import keeps_capitals
-from app.idm.fallback_lines import ORPHAN_LABEL_END_RE, OrphanLabels, prefix_repeated_labels, source_facts
+from app.idm.fallback_lines import ORPHAN_LABEL_END_RE, OrphanLabels, faq_topic, prefix_repeated_labels, source_facts
 from app.idm.text import idm_fold
 from app.idm.titles import TitleCaser
 
@@ -257,7 +257,6 @@ def _cells(text: str) -> list[str]:
 
 
 def _prepare_lines(title: str, values: Iterable[Any], *, labels: bool = False) -> list[str]:
-    """``labels``: an html slot keeps its repeated row labels and cut labels (``app.idm.fallback_lines``)."""
     facts = source_facts(values, _is_label, keep_labels=labels)
     title_key = _key(title)
     lines: list[str] = []
@@ -681,7 +680,7 @@ FAQ_FALLBACK_REPEATED_CODE: Final = "IDM_W5_FAQ_FALLBACK_REPEATED"
 
 
 def _faq_question(label: str, title: str, index: int, locale: str) -> str:
-    en = locale == "en"
+    en, title = locale == "en", faq_topic(title)  # run 2f8781d6: never "… về 'Hỏi đáp: …'"
     if _FAQ_LABEL_MIN_CHARS <= len(label) <= _FAQ_LABEL_MAX_CHARS:
         return f"What should learners understand about {label}?" if en else f"Người học cần hiểu gì về {label}?"
     if index == 0:
