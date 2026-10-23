@@ -97,6 +97,29 @@ class RepositorySqlTests(unittest.TestCase):
         )
         self.assertEqual(missing, [])
 
+    def test_index_writes_and_locks_filter_by_tenant_and_kb(self) -> None:
+        # Audit 2026-10-24, L6: no write or row lock of the indexing SQL reaches a row by its document or index id
+        # alone; an upsert's update only touches a row of the same tenant and KB.
+        statements = [" ".join(sql.split()) for _line, sql in sql_calls(REPOSITORIES / "indexing.py")]
+        writes = [sql for sql in statements if re.match(r"(UPDATE|DELETE)\b", sql) or "FOR UPDATE" in sql]
+        self.assertGreaterEqual(len(writes), 7)
+        for sql in writes:
+            with self.subTest(sql=sql[:60]):
+                self.assertRegex(sql, r"\btenant_id = \$\d+::uuid")
+                self.assertRegex(sql, r"\bkb_id = \$\d+::uuid")
+        [upsert] = [sql for sql in statements if "ON CONFLICT" in sql]
+        self.assertIn("WHERE rag_document_structure_nodes.tenant_id = EXCLUDED.tenant_id "
+                      "AND rag_document_structure_nodes.kb_id = EXCLUDED.kb_id", upsert)
+
+    def test_retrieval_joins_match_the_tenant(self) -> None:
+        statements = [" ".join(sql.split()) for _line, sql in sql_calls(REPOSITORIES / "retrieval.py")]
+        joins = [join for sql in statements for join in re.findall(r"JOIN (?:rag_document_indexes|kb_documents) \w+ "
+                                                                   r"ON [^J]*?(?= JOIN| WHERE| LEFT)", sql)]
+        self.assertGreaterEqual(len(joins), 14)
+        for join in joins:
+            with self.subTest(join=join):
+                self.assertRegex(join, r"AND (\w)\.tenant_id = (c|n)\.tenant_id$")
+
     def test_privilege_parser_reads_verbs_joins_locks_and_upserts(self) -> None:
         self.assertEqual(
             table_privileges("SELECT a FROM t1 x JOIN t2 y ON y.id = x.id WHERE x.id = $1 FOR UPDATE"),

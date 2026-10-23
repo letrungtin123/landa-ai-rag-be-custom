@@ -514,7 +514,7 @@ class IndexDocumentCharacterizationTests(unittest.TestCase):
     def assert_failed(self, db: FakeDb, result: Any, reason: str) -> None:
         self.assertEqual(result, {"status": "error", "chunk_count": 0, "usage": AiUsage().model_dump(),
                                   "error_reason": reason})
-        self.assertEqual(db.args_for("mark_index_error"), [(INDEX_ID, reason)])
+        self.assertEqual(db.args_for("mark_index_error"), [(INDEX_ID, reason, TENANT_ID, KB_ID)])
         self.assertEqual(db.args_for("insert_chunk"), [])
 
     def test_content_only_document_is_learned_with_structure_table_missing(self) -> None:
@@ -548,9 +548,10 @@ class IndexDocumentCharacterizationTests(unittest.TestCase):
                                      ("commit", 1)])
         self.assertEqual(db.acquired, 2)
         self.assertEqual(db.args_for("load_document"), [(DOC_ID, TENANT_ID, KB_ID)])
-        self.assertEqual(db.args_for("supersede_running_indexes"), [(DOC_ID,)])
+        # Changed 2026-10-24 (audit L6): every write and row lock also filters by the tenant and the KB.
+        self.assertEqual(db.args_for("supersede_running_indexes"), [(DOC_ID, TENANT_ID, KB_ID)])
         self.assertEqual(db.args_for("insert_index_row"), [(TENANT_ID, KB_ID, DOC_ID, 3, "gemini-embedding-001")])
-        self.assertEqual(db.args_for("lock_index_row"), [(INDEX_ID, DOC_ID)])
+        self.assertEqual(db.args_for("lock_index_row"), [(INDEX_ID, DOC_ID, TENANT_ID, KB_ID)])
         chunk_args = db.chunk_rows()
         self.assertEqual([args[:5] for args in chunk_args], [(TENANT_ID, KB_ID, DOC_ID, INDEX_ID, n) for n in range(3)])
         contents = [args[5] for args in chunk_args]
@@ -567,11 +568,11 @@ class IndexDocumentCharacterizationTests(unittest.TestCase):
         self.assertEqual(fingerprint_kwargs["chunks"], [tuple(args[4:11]) for args in chunk_args])
         self.assertEqual((fingerprint_kwargs["embedding_model"], fingerprint_kwargs["embedding_dimensions"]),
                          ("gemini-embedding-001", 768))
-        self.assertEqual(db.args_for("activate_index"), [(INDEX_ID, DOC_ID, fingerprint, 3)])
+        self.assertEqual(db.args_for("activate_index"), [(INDEX_ID, DOC_ID, fingerprint, 3, TENANT_ID, KB_ID)])
         self.assertRegex(fingerprint, r"^[0-9a-f]{64}$")
         self.assertNotEqual(fingerprint, hashlib.sha256("\n\n".join(contents).encode()).hexdigest())
-        self.assertEqual(db.args_for("deactivate_other_indexes"), [(DOC_ID, INDEX_ID)])
-        self.assertEqual(db.args_for("delete_indexes"), [(DOC_ID, INDEX_ID)])
+        self.assertEqual(db.args_for("deactivate_other_indexes"), [(DOC_ID, INDEX_ID, TENANT_ID, KB_ID)])
+        self.assertEqual(db.args_for("delete_indexes"), [(DOC_ID, INDEX_ID, TENANT_ID, KB_ID)])
         self.assertEqual((result["status"], result["chunk_count"]), ("learned", 3))
         self.assertEqual((result["structure_source"], result["structure_node_count"], result["structure_confidence"]),
                          ("semantic_inferred", 1, 0.35))
@@ -663,7 +664,7 @@ class IndexDocumentCharacterizationTests(unittest.TestCase):
                 self.assertEqual(outcome.code, "DOCUMENT_LIMIT_EXCEEDED")
                 parsed = name == "unsafe_ooxml"
                 self.assertEqual(len(db.args_for("insert_index_row")), int(parsed))
-                expected_marks = [(INDEX_ID, "DOCUMENT_LIMIT_EXCEEDED")] if parsed else []
+                expected_marks = [(INDEX_ID, "DOCUMENT_LIMIT_EXCEEDED", TENANT_ID, KB_ID)] if parsed else []
                 self.assertEqual(db.args_for("mark_index_error"), expected_marks)
                 self.assertEqual(embedder.calls, [])
                 self.assertEqual(downloader.called, name in {"download_too_large", "unsafe_ooxml"})
@@ -720,7 +721,7 @@ class IndexDocumentCharacterizationTests(unittest.TestCase):
                 outcome, used, _, records = self.run_index(db, embedder=FakeEmbedder(error=error))
                 self.assertIsInstance(outcome, AppError)
                 self.assertEqual((outcome.code, outcome.http_status), (code, 503))
-                self.assertEqual(db.args_for("mark_index_error"), [(INDEX_ID, code)])
+                self.assertEqual(db.args_for("mark_index_error"), [(INDEX_ID, code, TENANT_ID, KB_ID)])
                 self.assertEqual((db.args_for("insert_chunk"), len(used.calls)), ([], 1))
                 self.assertEqual(records[-1].error_code, code)
                 if name == "unavailable":  # the provider's own safe message is kept
@@ -780,13 +781,14 @@ class PersistenceHelperTests(unittest.TestCase):
 
     def test_mark_index_error_noop_without_index_and_truncates_reason(self) -> None:
         db = FakeDb()
-        asyncio.run(index_repository.mark_index_error(db, None, "ignored"))
-        asyncio.run(index_repository.mark_index_error(db, "", "ignored"))
+        asyncio.run(index_repository.mark_index_error(db, None, "ignored", TENANT_ID, KB_ID))
+        asyncio.run(index_repository.mark_index_error(db, "", "ignored", TENANT_ID, KB_ID))
         self.assertEqual(db.calls, [])
-        asyncio.run(index_repository.mark_index_error(db, INDEX_ID, "r" * 1500))
+        asyncio.run(index_repository.mark_index_error(db, INDEX_ID, "r" * 1500, TENANT_ID, KB_ID))
         [(method, sql, args)] = db.calls
-        self.assertEqual((method, args[0], len(args[1])), ("execute", INDEX_ID, 1000))
-        self.assertIn("WHERE id = $1::uuid AND status = 'running'", sql)
+        self.assertEqual((method, args[0], len(args[1]), args[2:]), ("execute", INDEX_ID, 1000, (TENANT_ID, KB_ID)))
+        self.assertIn("WHERE id = $1::uuid AND tenant_id = $3::uuid AND kb_id = $4::uuid AND status = 'running'",
+                      sql)
 
     def test_structure_node_persistence_and_cleanup_variants(self) -> None:
         structure = {"nodes": [{"source_ref": "src-001", "title": "Root", "level": 0, "order": 0, "confidence": 0},

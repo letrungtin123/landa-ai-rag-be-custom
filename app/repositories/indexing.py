@@ -1,4 +1,7 @@
-"""SQL of document indexing: the source document, index rows and stored structure nodes."""
+"""SQL of document indexing: the source document, index rows and stored structure nodes.
+
+Every write and row lock also filters by the tenant and knowledge base of the document (audit 2026-10-24, L6).
+"""
 
 from __future__ import annotations
 
@@ -99,10 +102,14 @@ async def start_index_row(pool: asyncpg.Pool, row: asyncpg.Record, embedding_mod
                     completed_at = now(),
                     updated_at = now()
                 WHERE document_id = $1::uuid
+                  AND tenant_id = $2::uuid
+                  AND kb_id = $3::uuid
                   AND engine = 'self_built_rag'
                   AND status = 'running'
                 """,
             row["id"],
+            row["tenant_id"],
+            row["kb_id"],
         )
         version = await conn.fetchval(
             """
@@ -131,7 +138,7 @@ async def start_index_row(pool: asyncpg.Pool, row: asyncpg.Record, embedding_mod
         ))
 
 
-async def mark_index_error(pool: asyncpg.Pool, index_id: str | None, reason: str) -> None:
+async def mark_index_error(pool: asyncpg.Pool, index_id: str | None, reason: str, tenant_id: Any, kb_id: Any) -> None:
     if not index_id:
         return
     await pool.execute(
@@ -142,10 +149,14 @@ async def mark_index_error(pool: asyncpg.Pool, index_id: str | None, reason: str
             completed_at = now(),
             updated_at = now()
         WHERE id = $1::uuid
+          AND tenant_id = $3::uuid
+          AND kb_id = $4::uuid
           AND status = 'running'
         """,
         index_id,
         reason[:1000],
+        tenant_id,
+        kb_id,
     )
 
 
@@ -186,6 +197,8 @@ async def persist_structure_nodes_if_available(
                     confidence = EXCLUDED.confidence,
                     parser_version = EXCLUDED.parser_version,
                     metadata = EXCLUDED.metadata
+                WHERE rag_document_structure_nodes.tenant_id = EXCLUDED.tenant_id
+                  AND rag_document_structure_nodes.kb_id = EXCLUDED.kb_id
                 """,
                 [
                     (
@@ -247,7 +260,7 @@ async def delete_previous_structure_nodes_if_available(
         log_event(logger, logging.INFO, "rag_structure_nodes_unavailable", fallback="skip_old_structure_cleanup")
 
 
-async def lock_index_status(conn: SqlExecutor, index_id: Any, document_id: Any) -> Any:
+async def lock_index_status(conn: SqlExecutor, index_id: Any, document_id: Any, tenant_id: Any, kb_id: Any) -> Any:
     """Row-lock the index row inside the indexing transaction and return its status."""
     return await conn.fetchval(
         """
@@ -255,10 +268,14 @@ async def lock_index_status(conn: SqlExecutor, index_id: Any, document_id: Any) 
         FROM rag_document_indexes
         WHERE id = $1::uuid
           AND document_id = $2::uuid
+          AND tenant_id = $3::uuid
+          AND kb_id = $4::uuid
         FOR UPDATE
         """,
         index_id,
         document_id,
+        tenant_id,
+        kb_id,
     )
 
 
@@ -283,18 +300,24 @@ async def insert_chunks(conn: SqlExecutor, rows: Sequence[Sequence[Any]]) -> Non
         await conn.execute(chunk_insert_sql(len(batch)), *[value for row in batch for value in row])
 
 
-async def deactivate_other_indexes(conn: SqlExecutor, document_id: Any, index_id: Any) -> str:
+async def deactivate_other_indexes(
+    conn: SqlExecutor, document_id: Any, index_id: Any, tenant_id: Any, kb_id: Any,
+) -> str:
     """Deactivate the document's other self-built indexes."""
     return await conn.execute(
         """
         UPDATE rag_document_indexes
         SET is_active = false
         WHERE document_id = $1::uuid
+          AND tenant_id = $3::uuid
+          AND kb_id = $4::uuid
           AND engine = 'self_built_rag'
           AND id <> $2::uuid
         """,
         document_id,
         index_id,
+        tenant_id,
+        kb_id,
     )
 
 
@@ -304,6 +327,8 @@ async def mark_index_learned(
     document_id: Any,
     content_sha256: Any,
     chunk_count: Any,
+    tenant_id: Any,
+    kb_id: Any,
 ) -> str:
     """Mark the new index learned and active."""
     return await conn.execute(
@@ -318,24 +343,34 @@ async def mark_index_learned(
             updated_at = now()
         WHERE id = $1::uuid
           AND document_id = $2::uuid
+          AND tenant_id = $5::uuid
+          AND kb_id = $6::uuid
         """,
         index_id,
         document_id,
         content_sha256,
         chunk_count,
+        tenant_id,
+        kb_id,
     )
 
 
-async def delete_inactive_indexes(conn: SqlExecutor, document_id: Any, index_id: Any) -> str:
+async def delete_inactive_indexes(
+    conn: SqlExecutor, document_id: Any, index_id: Any, tenant_id: Any, kb_id: Any,
+) -> str:
     """Delete the document's inactive self-built indexes (chunks cascade)."""
     return await conn.execute(
         """
         DELETE FROM rag_document_indexes
         WHERE document_id = $1::uuid
+          AND tenant_id = $3::uuid
+          AND kb_id = $4::uuid
           AND engine = 'self_built_rag'
           AND is_active = false
           AND id <> $2::uuid
         """,
         document_id,
         index_id,
+        tenant_id,
+        kb_id,
     )

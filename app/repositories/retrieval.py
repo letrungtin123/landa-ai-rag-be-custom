@@ -1,4 +1,7 @@
-"""SQL of retrieval: learned chunks (scoped, blueprint, vector and keyword matches) and stored source structure."""
+"""SQL of retrieval: learned chunks (scoped, blueprint, vector and keyword matches) and stored source structure.
+
+Every join to the index and document rows also matches the tenant of the chunk or node (audit 2026-10-24, L6).
+"""
 
 from __future__ import annotations
 
@@ -35,8 +38,8 @@ async def fetch_scope_chunks(
                0.0::float AS keyword_score,
                'source_scope' AS method
         FROM rag_chunks c
-        JOIN rag_document_indexes r ON r.id = c.index_id
-        JOIN kb_documents d ON d.id = c.document_id
+        JOIN rag_document_indexes r ON r.id = c.index_id AND r.tenant_id = c.tenant_id
+        JOIN kb_documents d ON d.id = c.document_id AND d.tenant_id = c.tenant_id
         WHERE c.tenant_id = $1::uuid
           AND c.kb_id = $2::uuid
           AND c.document_id = $3::uuid
@@ -84,8 +87,8 @@ async def fetch_blueprint_source_chunks(
                1.0::float AS keyword_score,
                'blueprint_source_scope' AS method
         FROM rag_chunks c
-        JOIN rag_document_indexes r ON r.id = c.index_id
-        JOIN kb_documents d ON d.id = c.document_id
+        JOIN rag_document_indexes r ON r.id = c.index_id AND r.tenant_id = c.tenant_id
+        JOIN kb_documents d ON d.id = c.document_id AND d.tenant_id = c.tenant_id
         WHERE c.tenant_id = $1::uuid
           AND c.kb_id = $2::uuid
           AND c.document_id = ANY($3::uuid[])
@@ -169,8 +172,8 @@ async def _vector_matches(
                0::float AS keyword_score,
                'vector' AS method
         FROM rag_chunks c
-        JOIN rag_document_indexes r ON r.id = c.index_id
-        JOIN kb_documents d ON d.id = c.document_id
+        JOIN rag_document_indexes r ON r.id = c.index_id AND r.tenant_id = c.tenant_id
+        JOIN kb_documents d ON d.id = c.document_id AND d.tenant_id = c.tenant_id
         WHERE c.tenant_id = $1::uuid
           AND c.kb_id = $2::uuid
           AND r.engine = 'self_built_rag'
@@ -236,8 +239,8 @@ async def fetch_keyword_matches(
                )) AS keyword_score,
                'keyword' AS method
         FROM rag_chunks c
-        JOIN rag_document_indexes r ON r.id = c.index_id
-        JOIN kb_documents d ON d.id = c.document_id
+        JOIN rag_document_indexes r ON r.id = c.index_id AND r.tenant_id = c.tenant_id
+        JOIN kb_documents d ON d.id = c.document_id AND d.tenant_id = c.tenant_id
         LEFT JOIN LATERAL (
           SELECT COUNT(*)::int AS hit_count
           FROM unnest($4::text[]) AS pattern(value)
@@ -293,8 +296,8 @@ async def fetch_chunks_for_structure_rebuild(
                c.source_page,
                c.chunk_no
         FROM rag_chunks c
-        JOIN rag_document_indexes r ON r.id = c.index_id
-        JOIN kb_documents d ON d.id = c.document_id
+        JOIN rag_document_indexes r ON r.id = c.index_id AND r.tenant_id = c.tenant_id
+        JOIN kb_documents d ON d.id = c.document_id AND d.tenant_id = c.tenant_id
         WHERE c.tenant_id = $1::uuid
           AND c.kb_id = $2::uuid
           AND r.engine = 'self_built_rag'
@@ -333,8 +336,8 @@ async def fetch_structure_nodes(pool: SqlExecutor, tenant_id: Any, kb_id: Any, d
                ) AS nodes,
                ((array_agg(n.metadata ORDER BY n.sort_order))[1])::text AS metadata
         FROM rag_document_structure_nodes n
-        JOIN rag_document_indexes r ON r.id = n.index_id
-        JOIN kb_documents d ON d.id = n.document_id
+        JOIN rag_document_indexes r ON r.id = n.index_id AND r.tenant_id = n.tenant_id
+        JOIN kb_documents d ON d.id = n.document_id AND d.tenant_id = n.tenant_id
         WHERE n.tenant_id = $1::uuid
           AND n.kb_id = $2::uuid
           AND r.engine = 'self_built_rag'
@@ -360,8 +363,8 @@ async def fetch_chunk_source_structures(pool: SqlExecutor, tenant_id: Any, kb_id
                d.name AS document_name,
                c.metadata->'source_structure' AS source_structure
         FROM rag_chunks c
-        JOIN rag_document_indexes r ON r.id = c.index_id
-        JOIN kb_documents d ON d.id = c.document_id
+        JOIN rag_document_indexes r ON r.id = c.index_id AND r.tenant_id = c.tenant_id
+        JOIN kb_documents d ON d.id = c.document_id AND d.tenant_id = c.tenant_id
         WHERE c.tenant_id = $1::uuid
           AND c.kb_id = $2::uuid
           AND r.engine = 'self_built_rag'

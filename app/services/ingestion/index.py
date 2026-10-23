@@ -137,7 +137,9 @@ async def _mark_cancelled_index(pool: asyncpg.Pool, index_id: str | None, reques
         # Bounded: a hung database must not hold the cancelled request (and pool.close() at shutdown) for the full
         # command timeout; a TimeoutError is reported below as INDEX_CANCEL_NOT_RECORDED.
         await asyncio.shield(asyncio.wait_for(
-            index_repository.mark_index_error(pool, index_id, INDEX_CANCELLED_REASON), CANCEL_RECORD_TIMEOUT_SECONDS,
+            index_repository.mark_index_error(pool, index_id, INDEX_CANCELLED_REASON, request.tenant_id,
+                                              request.kb_id),
+            CANCEL_RECORD_TIMEOUT_SECONDS,
         ))
     except Exception as error:  # the cancellation goes on either way; the failed write is counted and logged
         report_handled_exception(logger, error, stage="index", outcome="INDEX_CANCEL_NOT_RECORDED",
@@ -277,7 +279,8 @@ async def _index_document(request: RagIndexRequest, pool: asyncpg.Pool) -> dict[
             rows = await service_runtime.concurrency.run_cpu(chunk_rows, row, index_id, stored_chunks, embeddings)
             async with pool.acquire() as conn:  # noqa: SIM117 - the transaction is the inner block
                 async with conn.transaction():
-                    index_status = await index_repository.lock_index_status(conn, index_id, row["id"])
+                    index_status = await index_repository.lock_index_status(conn, index_id, row["id"],
+                                                                            row["tenant_id"], row["kb_id"])
                     if index_status != "running":
                         raise ValueError(SUPERSEDED_INDEX_MESSAGE)
                     # Multi-row INSERTs inside the same transaction: one statement, one round trip and one run of
@@ -285,10 +288,13 @@ async def _index_document(request: RagIndexRequest, pool: asyncpg.Pool) -> dict[
                     await index_repository.insert_chunks(conn, rows)
                     await persist_structure_nodes_if_available(conn, row, index_id, structure)
                     await delete_previous_structure_nodes_if_available(conn, row, index_id)
-                    await index_repository.deactivate_other_indexes(conn, row["id"], index_id)
+                    await index_repository.deactivate_other_indexes(conn, row["id"], index_id, row["tenant_id"],
+                                                                    row["kb_id"])
                     # content_sha256 holds the index fingerprint (fingerprint.py) a later re-index compares.
-                    await index_repository.mark_index_learned(conn, index_id, row["id"], fingerprint, len(chunks))
-                    await index_repository.delete_inactive_indexes(conn, row["id"], index_id)
+                    await index_repository.mark_index_learned(conn, index_id, row["id"], fingerprint, len(chunks),
+                                                              row["tenant_id"], row["kb_id"])
+                    await index_repository.delete_inactive_indexes(conn, row["id"], index_id, row["tenant_id"],
+                                                                   row["kb_id"])
 
             logger.info(
                 "rag_index_completed",
@@ -314,7 +320,7 @@ async def _index_document(request: RagIndexRequest, pool: asyncpg.Pool) -> dict[
             metrics.DOCUMENT_LIMIT_REJECTIONS.labels(code=exc.code).inc()
         # rag_index_failed below carries the traceback (logger.exception).
         count_handled_exception(exc, stage="index", outcome=error_code)
-        await index_repository.mark_index_error(pool, index_id, error_code)
+        await index_repository.mark_index_error(pool, index_id, error_code, row["tenant_id"], row["kb_id"])
         logger.exception(
             "rag_index_failed",
             extra={"event": "rag_index_failed", "tenant_id": request.tenant_id,

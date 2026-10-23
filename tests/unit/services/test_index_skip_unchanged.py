@@ -87,7 +87,7 @@ def learn(row: dict[str, Any], *, download: bytes | None = None,
     """Index ``row`` on a document without an index; returns the answer and the stored fingerprint."""
     db = FakeDb(document=row)
     result, _, _ = run_index(db, request, download=download)
-    [(_, _, fingerprint, _)] = db.args_for("activate_index")
+    [(_, _, fingerprint, _, _, _)] = db.args_for("activate_index")
     return result, fingerprint
 
 
@@ -135,7 +135,7 @@ class SkipUnchangedIndexTests(unittest.TestCase):
         self.assertNotIn("skipped", result)
         self.assertEqual(len(embedder.calls), 1)
         self.assertEqual(db.labels(), ["load_document", "load_active_index", "load_active_index", *REBUILD_LABELS])
-        [(_, _, new_fingerprint, _)] = db.args_for("activate_index")
+        [(_, _, new_fingerprint, _, _, _)] = db.args_for("activate_index")
         self.assertNotEqual(new_fingerprint, old_fingerprint)
         self.assertNotIn("rag_index_skipped", events)
 
@@ -249,8 +249,9 @@ class SkipUnchangedIndexTests(unittest.TestCase):
                     self.assertEqual((deferred.code, deferred.http_status), (direct.code, direct.http_status))
                 else:
                     self.assertEqual(deferred, direct)
-                self.assertEqual(direct_db.args_for("mark_index_error"), [(INDEX_ID, "INDEX_DOCUMENT_FAILED")]
-                                 if name == "corrupt_pdf" else [(INDEX_ID, "DOCUMENT_LIMIT_EXCEEDED")])
+                self.assertEqual(direct_db.args_for("mark_index_error"),
+                                 [(INDEX_ID, "INDEX_DOCUMENT_FAILED" if name == "corrupt_pdf"
+                                   else "DOCUMENT_LIMIT_EXCEEDED", TENANT_ID, KB_ID)])
                 self.assertEqual(deferred_db.labels(), ["load_document", "load_active_index"])
                 self.assertEqual(embedder.calls, [])
                 self.assertEqual(events[-1], "rag_index_failed")
@@ -262,7 +263,7 @@ class SkipUnchangedIndexTests(unittest.TestCase):
         self.assertEqual(result, {"status": "error", "chunk_count": 0, "usage": ZERO_USAGE,
                                   "error_reason": "INDEX_DOCUMENT_FAILED"})
         self.assertEqual(len(embedder.calls), 1)
-        self.assertEqual(db.args_for("mark_index_error"), [(INDEX_ID, "INDEX_DOCUMENT_FAILED")])
+        self.assertEqual(db.args_for("mark_index_error"), [(INDEX_ID, "INDEX_DOCUMENT_FAILED", TENANT_ID, KB_ID)])
 
 
 class IndexFingerprintTests(unittest.TestCase):
@@ -340,9 +341,9 @@ class SkipResponseWireTests(unittest.TestCase):
         self.assertEqual(learned["status"], 200)
         self.assertNotIn("skipped", learned["body"])
         self.assertNotIn("skip_reason", learned["body"])
-        # mark_index_learned(index_id, document_id, fingerprint, chunk_count)
+        # mark_index_learned(index_id, document_id, fingerprint, chunk_count, tenant_id, kb_id)
         [stored] = [call["args"][2] for call in learned["db_calls"]
-                    if call["method"] == "execute" and len(call["args"]) == 4 and call["args"][0] == INDEX_ID]
+                    if call["method"] == "execute" and len(call["args"]) == 6 and call["args"][0] == INDEX_ID]
         skipped = replay(self.case(active_index(stored, learned["body"]["chunk_count"])))
         self.assertEqual(skipped["status"], 200)
         self.assertEqual(skipped["provider_calls"], [])

@@ -246,7 +246,8 @@ class IndexRuntimeTests(unittest.TestCase):
                "source_info": None, "file_path": None, "content": "Nội dung kiểm thử " * 20}
         marked: list[str] = []
 
-        async def mark(pool: Any, index_id: Any, reason: str) -> None:
+        async def mark(pool: Any, index_id: Any, reason: str, tenant_id: Any, kb_id: Any) -> None:
+            self.assertEqual((tenant_id, kb_id), (TENANT, KB))
             marked.append(reason)
 
         def slow_structure(sections: Any) -> dict[str, Any]:

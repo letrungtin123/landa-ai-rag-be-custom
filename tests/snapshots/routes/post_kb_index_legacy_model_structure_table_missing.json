@@ -112,10 +112,12 @@
    },
    {
     "method": "execute",
-    "sql_sha256": "c97874e587a461445c3db87a99616c0bfa4b84b1ae860e43bb06b43a32f3eca2",
+    "sql_sha256": "a082bd14ae8bf95382203506da9d1860c726d6f69518fe59f9b21ff98493ff90",
     "rule": null,
     "args": [
-     "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+     "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+     "11111111-1111-4111-8111-111111111111",
+     "22222222-2222-4222-8222-222222222222"
     ]
    },
    {
@@ -140,11 +142,13 @@
    },
    {
     "method": "fetchval",
-    "sql_sha256": "eeab52bb43b9f34e823660a381d44576f67c045f692e83db4fe873e4b52aeb0a",
+    "sql_sha256": "5185c93b137bf5c202185eabb70c401e323df8b3c1e68625f3f2a3b18ee458ad",
     "rule": "FOR UPDATE",
     "args": [
      "44444444-4444-4444-8444-444444444444",
-     "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+     "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+     "11111111-1111-4111-8111-111111111111",
+     "22222222-2222-4222-8222-222222222222"
     ]
    },
    {
@@ -173,7 +177,7 @@
    },
    {
     "method": "executemany",
-    "sql_sha256": "3953d352e34d0bbf8aed8f6d457ec9b23cc851c82dbb741ea74f147dbebdfb5f",
+    "sql_sha256": "f3bd5d93b77bfd1028eb9f0f6f92660a19a329c95728cc08af857205e5a73b28",
     "rule": "rag_document_structure_nodes",
     "args": [
      [
@@ -281,31 +285,37 @@
    },
    {
     "method": "execute",
-    "sql_sha256": "11eced4415d2b026795c7131d82b7ff1985c08d3cace64552388f9bef1cf1171",
+    "sql_sha256": "540841f0fd2174a452d840517b2caa0d4121bb641d023701e38c3254a7de88c3",
     "rule": null,
     "args": [
      "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
-     "44444444-4444-4444-8444-444444444444"
+     "44444444-4444-4444-8444-444444444444",
+     "11111111-1111-4111-8111-111111111111",
+     "22222222-2222-4222-8222-222222222222"
     ]
    },
    {
     "method": "execute",
-    "sql_sha256": "af95def9884deb560eebcd8294a30840387172f37f989146544be36cbc250ce4",
+    "sql_sha256": "e9cd7b66806a6393efe0973d69cd77e7f5e11b736acec05ca4b4334fc25c7679",
     "rule": null,
     "args": [
      "44444444-4444-4444-8444-444444444444",
      "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
      "4dc3eda484a818a98336d750777893ead7ea313cb2c7216254faba3b283ddb58",
-     1
+     1,
+     "11111111-1111-4111-8111-111111111111",
+     "22222222-2222-4222-8222-222222222222"
     ]
    },
    {
     "method": "execute",
-    "sql_sha256": "564e65f0a0d52d71ce74195ee8b2a72167e5a644e867e117446744e25ae68be3",
+    "sql_sha256": "92be8a0092650b0c651bb8644ff60c7ada39663c88eccbae07ed636a994a3067",
     "rule": null,
     "args": [
      "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
-     "44444444-4444-4444-8444-444444444444"
+     "44444444-4444-4444-8444-444444444444",
+     "11111111-1111-4111-8111-111111111111",
+     "22222222-2222-4222-8222-222222222222"
     ]
    }
   ],

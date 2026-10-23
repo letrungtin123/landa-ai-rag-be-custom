@@ -12,7 +12,14 @@ from typing import Any
 from unittest.mock import patch
 
 from app.services.ingestion import index as index_service
-from tests.unit.services.test_characterization_ingestion import INDEX_ID, FakeDb, document_row, index_request
+from tests.unit.services.test_characterization_ingestion import (
+    INDEX_ID,
+    KB_ID,
+    TENANT_ID,
+    FakeDb,
+    document_row,
+    index_request,
+)
 
 
 class BlockingEmbedder:
@@ -65,14 +72,14 @@ class IndexCancellationTests(unittest.TestCase):
     def test_the_row_is_marked_failed_and_the_cancellation_goes_on(self) -> None:
         db = FakeDb(document=document_row())
         events = self.run_cancelled(db)
-        self.assertEqual(db.args_for("mark_index_error"), [(INDEX_ID, "INDEX_CANCELLED")])
+        self.assertEqual(db.args_for("mark_index_error"), [(INDEX_ID, "INDEX_CANCELLED", TENANT_ID, KB_ID)])
         self.assertEqual(events[-1], "rag_index_cancelled")
         self.assertEqual(db.args_for("insert_chunk"), [])
 
     def test_a_second_cancellation_does_not_stop_the_write(self) -> None:
         db = SlowWriteDb(document=document_row())
         self.run_cancelled(db, cancels=2)
-        self.assertEqual(db.finished, [(INDEX_ID, "INDEX_CANCELLED")])
+        self.assertEqual(db.finished, [(INDEX_ID, "INDEX_CANCELLED", TENANT_ID, KB_ID)])
 
     def test_a_hung_write_gives_up_after_its_timeout(self) -> None:
         class HungWriteDb(FakeDb):
