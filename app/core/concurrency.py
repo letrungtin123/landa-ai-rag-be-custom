@@ -107,6 +107,7 @@ class ConcurrencyRuntime:
         self.extraction_executor_kind = extraction_executor
         self._thread_executor: ThreadPoolExecutor | None = None
         self._process_executor: ProcessPoolExecutor | None = None
+        self._provider_executor: ThreadPoolExecutor | None = None
         self._executor_lock = threading.Lock()
 
     def _threads(self) -> ThreadPoolExecutor:
@@ -117,6 +118,15 @@ class ConcurrencyRuntime:
                     thread_name_prefix="ai-rag-cpu",
                 )
             return self._thread_executor
+
+    def _provider_threads(self) -> ThreadPoolExecutor:
+        with self._executor_lock:
+            if self._provider_executor is None:
+                self._provider_executor = ThreadPoolExecutor(
+                    max_workers=self.provider.limit,
+                    thread_name_prefix="ai-rag-provider",
+                )
+            return self._provider_executor
 
     def _processes(self) -> ProcessPoolExecutor:
         with self._executor_lock:
@@ -137,6 +147,19 @@ class ConcurrencyRuntime:
         """Run CPU-heavy or blocking work off the event loop under the CPU limit."""
         return await self._run(self._threads(), func, *args, **kwargs)
 
+    async def run_provider_call(self, func: Callable[[], T]) -> T:
+        """Run one synchronous provider SDK call on the provider threads (audit 2026-10-24, P5).
+
+        One thread per provider slot, apart from the default executor that ``asyncio.to_thread`` shares with every
+        other blocking call: a chat call never waits for a thread behind an AI ID run's calls or a storage download.
+        The caller holds the provider slot (``WorkloadLimiter``) and bounds the await; a call whose await timed out
+        keeps its thread until the SDK's own request timeout (the same deadline) ends it.
+        """
+        loop = asyncio.get_running_loop()
+        # Copy context so request/correlation IDs and the provider stage reach logs emitted in the thread.
+        context = contextvars.copy_context()
+        return await loop.run_in_executor(self._provider_threads(), functools.partial(context.run, func))
+
     async def run_extraction(self, func: Callable[P, T], *args: P.args, **kwargs: P.kwargs) -> T:
         """Run untrusted document extraction; a process pool isolates parser crashes."""
         executor: Executor = self._processes() if self.extraction_executor_kind == "process" else self._threads()
@@ -150,6 +173,9 @@ class ConcurrencyRuntime:
             if self._process_executor is not None:
                 self._process_executor.shutdown(wait=False, cancel_futures=True)
                 self._process_executor = None
+            if self._provider_executor is not None:
+                self._provider_executor.shutdown(wait=False, cancel_futures=True)
+                self._provider_executor = None
 
 
 def deadline_seconds(milliseconds: int) -> float:

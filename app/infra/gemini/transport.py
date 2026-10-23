@@ -1,8 +1,9 @@
 """One bounded provider call: deadline, concurrency slot, transient retries, 429 waits and call metrics.
 
-The SDK is synchronous: each attempt runs in a worker thread under the request's own deadline
-(``pool.request_http_options``) and a provider slot of the process runtime's ``WorkloadLimiter``,
-which ``app.services.runtime`` installs with ``use_provider_slots`` (infra never imports services).
+The SDK is synchronous: each attempt runs on the process runtime's provider threads (one per provider slot,
+not the default executor) under the request's own deadline (``pool.request_http_options``) and a provider slot
+of its ``WorkloadLimiter``; ``app.services.runtime`` installs both with ``use_provider_slots`` (infra never
+imports services).
 Failures leave as ``ProviderError`` with a code of ``app.core.error_codes``; other SDK errors are
 re-raised unchanged after a content-free diagnostic.
 """
@@ -11,7 +12,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from time import perf_counter
 from typing import Any, Literal
@@ -33,24 +34,37 @@ HTTP_TOO_MANY_REQUESTS = 429
 HTTP_SERVER_ERROR_MIN = 500
 
 
+ProviderCallRunner = Callable[[Callable[[], Any]], Awaitable[Any]]
+
+
 @dataclass(slots=True)
 class _ProviderSlots:
     limiter: Callable[[], WorkloadLimiter] | None = None
+    runner: Callable[[], ProviderCallRunner] | None = None
 
 
 _provider_slots = _ProviderSlots()
 
 
-def use_provider_slots(limiter: Callable[[], WorkloadLimiter]) -> None:
-    """Install the provider limiter of the process runtime, read again at every attempt."""
+def use_provider_slots(limiter: Callable[[], WorkloadLimiter], runner: Callable[[], ProviderCallRunner]) -> None:
+    """Install the provider limiter and the provider-thread runner of the process runtime, read at every attempt."""
 
     _provider_slots.limiter = limiter
+    _provider_slots.runner = runner
 
 
 def provider_limiter() -> WorkloadLimiter:
     if _provider_slots.limiter is None:
         raise RuntimeError("The provider concurrency limiter is not installed (app.services.runtime).")
     return _provider_slots.limiter()
+
+
+async def run_in_provider_thread(run: Callable[[], Any]) -> Any:
+    """One synchronous SDK call on the provider threads of the process runtime."""
+
+    if _provider_slots.runner is None:
+        raise RuntimeError("The provider threads are not installed (app.services.runtime).")
+    return await _provider_slots.runner()(run)
 
 
 def _timeout_error(
@@ -197,7 +211,7 @@ async def call_provider_with_timeout(
 ) -> Any:
     """Bound provider calls and retry only transient 5xx responses once.
 
-    ``asyncio.wait_for(asyncio.to_thread(...))`` bounds this coroutine, but a
+    ``asyncio.wait_for(run_in_provider_thread(...))`` bounds this coroutine, but a
     timeout cannot prove that a synchronous Google client request already
     running in the worker thread was cancelled at HTTP level.  The request's
     own ``http_options`` timeout (``pool.request_http_options``) remains
@@ -229,7 +243,7 @@ async def call_provider_with_timeout(
         outcome = "error"
         try:
             async with provider_limiter().slot(max_wait_seconds=timeout_ms / 1000):
-                response = await asyncio.wait_for(asyncio.to_thread(run), timeout=timeout_ms / 1000)
+                response = await asyncio.wait_for(run_in_provider_thread(run), timeout=timeout_ms / 1000)
             outcome = "success"
             emit_safe_provider_telemetry(on_provider_diagnostic, {
                 "event": "provider_http_attempt_succeeded",

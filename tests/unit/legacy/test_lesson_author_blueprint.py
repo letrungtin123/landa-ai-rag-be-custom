@@ -1766,7 +1766,7 @@ class LessonAuthorBlueprintContractTests(unittest.TestCase):
 class LessonAuthorBlueprintRetryTests(unittest.IsolatedAsyncioTestCase):
     async def test_embedding_provider_quota_exhaustion_is_returned_as_non_retryable_service_error(self) -> None:
         with patch(
-            "app.infra.gemini.transport.asyncio.to_thread",
+            "app.infra.gemini.transport.run_in_provider_thread",
             side_effect=RuntimeError("429 RESOURCE_EXHAUSTED"),
         ):
             with self.assertRaises(HTTPException) as raised:
@@ -1783,7 +1783,7 @@ class LessonAuthorBlueprintRetryTests(unittest.IsolatedAsyncioTestCase):
         provider_error = RuntimeError("503 UNAVAILABLE")
         provider_error.status_code = 503
         with patch(
-            "app.infra.gemini.transport.asyncio.to_thread",
+            "app.infra.gemini.transport.run_in_provider_thread",
             side_effect=provider_error,
         ):
             with self.assertRaises(HTTPException) as raised:
@@ -1800,7 +1800,7 @@ class LessonAuthorBlueprintRetryTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_provider_quota_exhaustion_is_returned_as_non_retryable_service_error(self) -> None:
         with patch(
-            "app.infra.gemini.transport.asyncio.to_thread",
+            "app.infra.gemini.transport.run_in_provider_thread",
             side_effect=RuntimeError("429 RESOURCE_EXHAUSTED"),
         ):
             with self.assertRaises(HTTPException) as raised:

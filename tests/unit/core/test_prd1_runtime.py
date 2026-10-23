@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import asyncio
 import threading
+import time
 import unittest
+from concurrent.futures import ThreadPoolExecutor
 from types import SimpleNamespace
 from typing import Any
 from unittest.mock import MagicMock, patch
@@ -20,6 +22,7 @@ from app.core.lifespan import RuntimeState, build_lifespan
 from app.core.logging import correlation_id_var, request_id_var
 from app.core.request_context import DisconnectCancellationMiddleware, RequestContextMiddleware, route_template
 from app.infra.gemini.pool import GeminiClientPool
+from app.infra.gemini.transport import call_provider_with_timeout
 from app.services import provider as provider_service
 
 
@@ -130,6 +133,65 @@ class ConcurrencyRuntimeTests(unittest.TestCase):
         asyncio.run(runtime.run_cpu(int, "1"))
         runtime.shutdown()
         runtime.shutdown()
+
+    def test_provider_calls_run_on_their_own_threads_one_per_provider_slot(self) -> None:
+        # Audit 2026-10-24, P5: the SDK calls used the default executor that every asyncio.to_thread shares.
+        runtime = self.runtime()  # provider limit 2
+        lock = threading.Lock()
+        running = {"now": 0, "peak": 0}
+        names: set[str] = set()
+
+        def call() -> str | None:
+            with lock:
+                running["now"] += 1
+                running["peak"] = max(running["peak"], running["now"])
+                names.add(threading.current_thread().name)
+            time.sleep(0.05)
+            with lock:
+                running["now"] -= 1
+            return request_id_var.get()
+
+        async def scenario() -> list[str | None]:
+            token = request_id_var.set("req-provider")
+            try:
+                return await asyncio.gather(*(runtime.run_provider_call(call) for _ in range(6)))
+            finally:
+                request_id_var.reset(token)
+
+        try:
+            results = asyncio.run(scenario())
+            self.assertIsNotNone(runtime._provider_executor)
+        finally:
+            runtime.shutdown()
+        self.assertEqual(results, ["req-provider"] * 6)
+        self.assertEqual(running["peak"], 2)
+        self.assertTrue(names and all(name.startswith("ai-rag-provider") for name in names))
+        self.assertIsNone(runtime._provider_executor)  # shut down with the service (services.runtime.shutdown)
+
+    def test_provider_calls_do_not_wait_for_the_default_executor(self) -> None:
+        runtime = self.runtime()
+        release = threading.Event()
+
+        async def scenario() -> str:
+            asyncio.get_running_loop().set_default_executor(ThreadPoolExecutor(max_workers=1))
+            # Holds the default executor's only thread, like a long storage download or structure analysis.
+            blocked = asyncio.ensure_future(asyncio.to_thread(release.wait, 5))
+            await asyncio.sleep(0.01)
+            try:
+                return await asyncio.wait_for(runtime.run_provider_call(lambda: threading.current_thread().name), 2)
+            finally:
+                release.set()
+                await blocked
+
+        try:
+            self.assertTrue(asyncio.run(scenario()).startswith("ai-rag-provider"))
+        finally:
+            runtime.shutdown()
+
+    def test_the_transport_runs_sdk_calls_on_the_provider_threads(self) -> None:
+        name = asyncio.run(call_provider_with_timeout(lambda: threading.current_thread().name, "gemini-test",
+                                                      request_timeout_ms=5_000))
+        self.assertTrue(name.startswith("ai-rag-provider"))
 
 
 class LifespanTests(unittest.TestCase):

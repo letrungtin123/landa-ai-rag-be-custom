@@ -38,9 +38,9 @@ concurrency = ConcurrencyRuntime(
     acquire_timeout_seconds=settings.limiter_acquire_timeout_ms / 1000,
     extraction_executor=settings.extraction_executor,
 )
-# Provider calls take their slots from this runtime's limiter, looked up at every attempt so a
-# replaced ``concurrency`` (tests) is the one in use.
-gemini_transport.use_provider_slots(lambda: concurrency.provider)
+# Provider calls take their slots from this runtime's limiter and run on its provider threads, both looked up at
+# every attempt so a replaced ``concurrency`` (tests) is the one in use.
+gemini_transport.use_provider_slots(lambda: concurrency.provider, lambda: concurrency.run_provider_call)
 
 
 db_pool: asyncpg.Pool | None = None
