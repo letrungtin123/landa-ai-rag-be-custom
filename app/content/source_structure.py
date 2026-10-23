@@ -24,10 +24,16 @@ ROMAN_HEADING_RE = re.compile(
     r"^\s*([IVXLCDM]{1,8})[.)]\s+(.{3,220}?)\s*$",
     re.UNICODE,
 )
+# The parser reads a table-of-contents line with toc_line_parts, which returns the groups of this pattern's match
+# in linear time: run directly, the pattern backtracks over long lines (a line of dots is quadratic, a run of
+# white space that _clean_line keeps, such as U+2003, cubic; 2,000 of them took 11 s).
 TOC_LINE_RE = re.compile(
     r"^\s*(.+?)(?:\.{2,}|\s{2,})\s*(\d{1,4})\s*$",
     re.UNICODE,
 )
+_SPACE_RUN_RE = re.compile(r"\s*")
+_DIGIT_RUN_RE = re.compile(r"\d*")
+_DOT_RUN_RE = re.compile(r"\.*")
 TOC_PAGE_ONLY_RE = re.compile(r"^\s*(\d{1,4})\s*$", re.UNICODE)
 NUMBERED_ENTRY_RE = re.compile(
     r"^\s*((?:\d+\.)*\d+|[IVXLCDM]{1,8})(?:[.)]\s*|\s{2,})(.*)$",
@@ -43,8 +49,10 @@ SOURCE_RANGE_SUFFIX_RE = re.compile(
     r"|[-\u2013\u2014]\s*(?:(?:slides?|trang|pages?)\s+)?\d{1,4})\s*\)\s*$",
     re.IGNORECASE | re.UNICODE,
 )
+# The title is "((?:.*\S)?)\s*$": everything up to the last non-space character, as "(.*?)\s*$" captured, but
+# without trying the end of the line again after every character of a long inner white-space run (quadratic).
 CHAPTER_HEADING_RE = re.compile(
-    r"^\s*(chương|chuong|chapter|phần|phan|part)\s+([0-9IVXLCDM]+)\s*[:.)-]?\s*(.*?)\s*$",
+    r"^\s*(chương|chuong|chapter|phần|phan|part)\s+([0-9IVXLCDM]+)\s*[:.)-]?\s*((?:.*\S)?)\s*$",
     re.IGNORECASE | re.UNICODE,
 )
 
@@ -114,7 +122,7 @@ def _has_toc_signal(text: str) -> bool:
     lines = [_clean_line(line) for line in text.splitlines()]
     numbered_count = sum(1 for line in lines if NUMBERED_ENTRY_RE.match(line))
     slide_count = sum(1 for line in lines if SLIDE_RANGE_RE.search(line))
-    dotted_count = sum(1 for line in lines if TOC_LINE_RE.match(line))
+    dotted_count = sum(1 for line in lines if toc_line_parts(line) is not None)
     page_only_count = sum(1 for line in lines if TOC_PAGE_ONLY_RE.fullmatch(line))
     # Require both a numbered sequence and page/slide evidence so a normal
     # numbered body list is not promoted to an authoritative outline.
@@ -158,7 +166,7 @@ def _chapter_table_with_body_anchors(material: list[Any]) -> tuple[list[dict[str
         if (
             any(marker(line) for line in lines)
             and len(labels) >= 2
-            and not any(TOC_LINE_RE.match(line) for line in lines)
+            and not any(toc_line_parts(line) is not None for line in lines)
         ):
             tables[page] = labels
     if not tables:
@@ -238,16 +246,60 @@ def _parse_explicit_heading(line: str, page: int | None) -> tuple[str, int, str 
     return None
 
 
-def _parse_toc_line(line: str) -> tuple[str, int | None] | None:
-    match = TOC_LINE_RE.match(line)
-    if not match:
+def _run_start(run: re.Pattern[str], reverse: str, end: int) -> int:
+    """Start of the longest run of ``run``'s characters that ends at ``end`` (``reverse`` is the line reversed)."""
+
+    offset = len(reverse) - end
+    match = run.match(reverse, offset)
+    return end - (match.end() - offset) if match else end
+
+
+def toc_line_parts(line: str) -> tuple[str, str] | None:
+    """``TOC_LINE_RE.match(line).groups()`` (title, page digits), or ``None`` when it does not match; linear time.
+
+    The pattern's end is fixed: white space, 1 to 4 digits, white space, preceded by a leader of two or more dots
+    or two or more white-space characters. That gives the positions where the leader may start (at most two
+    ranges). The lazy title then ends at the first of them after the title's start, which is the end of the
+    leading white space, or one character earlier and so on when nothing comes after it, as the regex backtracks.
+    A title never holds a line break (".").
+    """
+
+    reverse = line[::-1]
+    end = _run_start(_SPACE_RUN_RE, reverse, len(line))
+    digits = _run_start(_DIGIT_RUN_RE, reverse, end)
+    if not 1 <= end - digits <= 4:
         return None
-    title = _clean_line(match.group(1))
+    gap = _run_start(_SPACE_RUN_RE, reverse, digits)
+    dots = _run_start(_DOT_RUN_RE, reverse, gap)
+    leaders = [(low, high) for low, high in ((dots, gap - 2), (gap, digits - 2)) if low <= high]
+    if not leaders:
+        return None
+    lead_match = _SPACE_RUN_RE.match(line)
+    lead = lead_match.end() if lead_match else 0
+    newline = line.find("\n", lead)
+    stop = len(line) if newline < 0 else newline
+    for start in range(lead, -1, -1):
+        if start < lead and line[start] == "\n":
+            stop = start
+        if stop < leaders[0][0]:
+            break  # every earlier start meets the same line break before any leader
+        for low, high in leaders:
+            title_end = max(low, start + 1)
+            if title_end <= min(high, stop):
+                return line[start:title_end], line[digits:end]
+    return None
+
+
+def _parse_toc_line(line: str) -> tuple[str, int | None] | None:
+    parts = toc_line_parts(line)
+    if parts is None:
+        return None
+    title = _clean_line(parts[0])
     if not title or len(title) < 3 or len(title) > MAX_NODE_TITLE_CHARS:
         return None
     if _normalise(title) in {_normalise(marker) for marker in TOC_MARKERS}:
         return None
-    return title, int(match.group(2))
+    return title, int(parts[1])
 
 
 def _toc_candidate(

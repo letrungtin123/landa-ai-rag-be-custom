@@ -72,7 +72,7 @@ FACT_TOKENS = (
     "1", "12", "2024", "Quy trình", "kết thúc", "ệ", "Đ", "ữ", "x", "Row 1:", "=", "→", "trang thiết bị",
 )
 FACT_CHARS = " \t-–—,;:|.!?[]()abĐệ1#"  # noqa: RUF001 - the glyph is intended
-RAW_CHARS = " \t\n\x0b  -–—,;:|.!?ab1"  # noqa: RUF001 - the glyph is intended
+RAW_CHARS = " \t\n\x0b\N{NO-BREAK SPACE}\N{EM SPACE}-–—,;:|.!?ab1"  # noqa: RUF001 - the glyph is intended
 LOCATOR_TOKENS = ("trang", "Trang", "page", "SLIDE", "chunk", "đoạn nguồn", "muc  nguon", "số", "so", "number", "no.",
                   "no", "#", ":", "-", " ", "  ", "   ", "\t", "\n", "1", "12", "1234567", "x", "a", "_", "(", ")")
 
