@@ -136,6 +136,22 @@ class HmacSecurityTests(unittest.IsolatedAsyncioTestCase):
             with self.assertRaises(AppError):
                 await authenticate(build_request(TEST_BODY, headers=signed_headers()), cache=cache)
 
+    async def test_a_timestamp_of_other_digits_is_a_401_not_a_500(self) -> None:
+        # Starlette reads header bytes as latin-1: b"\xb2" is SUPERSCRIPT TWO, which str.isdigit() accepted and
+        # int() rejected (ValueError, an unhandled 500). Thirteen ASCII digits are no Unix time in seconds either.
+        for raw in (b"\xb2", b"1791417600\xb2", "\N{ARABIC-INDIC DIGIT ONE}".encode(), b"1" * 13, b"", b"-1"):
+            headers = [(name.lower().encode(), value.encode()) for name, value in signed_headers().items()
+                       if name != HMAC_TIMESTAMP_HEADER] + [(HMAC_TIMESTAMP_HEADER.lower().encode(), raw)]
+            request = build_request(TEST_BODY, headers={})
+            request.scope["headers"] = headers
+            with (
+                self.subTest(timestamp=raw),
+                patch("app.core.security.time.time", return_value=float(TEST_TIMESTAMP)),
+                self.assertRaises(AppError) as caught,
+            ):
+                await authenticate(request)
+            self.assertEqual((caught.exception.code, caught.exception.http_status), ("UNAUTHORIZED", 401))
+
     async def test_rotated_key_is_accepted(self) -> None:
         second_secret = "rotated-secret-0123456789"
         headers = signed_headers(key_id="kid2", secret=second_secret)

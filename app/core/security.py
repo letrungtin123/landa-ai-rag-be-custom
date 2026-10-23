@@ -21,6 +21,9 @@ HMAC_SIGNATURE_HEADER = "X-Landa-Signature"
 HMAC_REQUEST_ID_HEADER = "X-Landa-Request-Id"
 TOKEN_HEADER = "X-Landa-AI-Service-Token"  # noqa: S105 - HTTP header name, not a token.
 HEX_SIGNATURE_PATTERN = re.compile(r"^[0-9a-f]{64}$")
+# ASCII digits only: str.isdigit() also accepts other scripts' digits and SUPERSCRIPT TWO, which int() rejects (an
+# unsigned request then ended in an unhandled 500 instead of 401). Twelve digits hold any Unix time in seconds.
+HMAC_TIMESTAMP_PATTERN = re.compile(r"[0-9]{1,12}")
 MINIMUM_HMAC_SECRET_LENGTH = 16
 
 
@@ -123,7 +126,8 @@ async def _hmac_is_valid(
     signature = request.headers.get(HMAC_SIGNATURE_HEADER, "").lower()
     request_id = request.headers.get(HMAC_REQUEST_ID_HEADER, "")
     credential = credentials.get(key_id)
-    if credential is None or not timestamp.isdigit() or not HEX_SIGNATURE_PATTERN.fullmatch(signature):
+    if (credential is None or not HMAC_TIMESTAMP_PATTERN.fullmatch(timestamp)
+            or not HEX_SIGNATURE_PATTERN.fullmatch(signature)):
         return False
     try:
         UUID(request_id)
