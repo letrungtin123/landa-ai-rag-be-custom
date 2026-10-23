@@ -262,9 +262,6 @@ _SHORT_LABEL: Final = r"(?i:ý|mục|câu|bước|item|point)"
 _SHORT_ITEM_RE: Final = re.compile(rf"^([ \t]*[-–•*][ \t]+)({_SHORT_LABEL})[ \t]+(\d{{1,2}})([ \t]*:)",  # noqa: RUF001
                                    re.MULTILINE)
 _SHORT_USE_RE: Final = re.compile(rf"({_SHORT_LABEL})[ \t]+(\d{{1,2}})")
-# Review 6 (L6): the words after which the explanation or a hint names a listed item ("A - Đúng vì Ý 3 …").
-_LABEL_LEADS: Final = ("vì|của|như|lại|chọn|là|và|hoặc|với|thấy|xem|theo|because|of|like|choose|is|and|or|with"
-                       "|see")
 
 
 def expand_short_item_labels(component: dict[str, Any]) -> tuple[dict[str, Any], int]:
@@ -272,8 +269,9 @@ def expand_short_item_labels(component: dict[str, Any]) -> tuple[dict[str, Any],
     số 2:") at the start of the stem's item lines and in the options that are only such a name ("Ý 1"), and how many
     of them changed; ``(component, 0)`` unless an option is such a name under 8 characters, the stem lists the items
     1, 2 … under that one label, and every option that is such a name names a listed item. Never a word inside a
-    sentence (review 5, M1); review 6 (L6): the explanation and the hints name the items as the options do, where they
-    write the label as the stem does ("Ý 3", never "lưu ý 2") at a line start or after "vì", "của", "lại" …."""
+    sentence (review 5, M1); review 6 (L6), review 7 (L7): the explanation and the hints name the items as the
+    options do, wherever they write a listed item as a whole word with the label as the stem does ("Ý 3", "Bước 3";
+    never "lưu ý 2")."""
 
     kind = str(component.get("problem_type") or "multiple_choice").strip().lower()
     question = component.get("question")
@@ -311,13 +309,12 @@ def expand_short_item_labels(component: dict[str, Any]) -> tuple[dict[str, Any],
         result["choices"][position]["text"] = f"{noun(match.group(1))} {match.group(2)}{text[match.end():]}"
         count += 1
     written = {match.group(2) for match in _SHORT_ITEM_RE.finditer(stem)}
-    use = re.compile(rf"(^|(?<!\w)(?:{_LABEL_LEADS}) )({'|'.join(map(re.escape, sorted(written)))}) (\d{{1,2}})(?!\w)",
-                     re.MULTILINE)
+    use = re.compile(rf"(?<!\w)({'|'.join(map(re.escape, sorted(written)))}) (\d{{1,2}})(?!\w)")
 
     def rename(match: re.Match[str]) -> str:
-        if int(match.group(3)) not in numbers:
+        if int(match.group(2)) not in numbers:
             return match.group(0)
-        return f"{match.group(1)}{noun(match.group(2))} {match.group(3)}"
+        return f"{noun(match.group(1))} {match.group(2)}"
 
     for key in ("explanation", "hints"):
         value = result.get(key)

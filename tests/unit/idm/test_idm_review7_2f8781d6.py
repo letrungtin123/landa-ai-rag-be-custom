@@ -11,6 +11,7 @@ import unittest
 from app.core.errors import AppError, ServiceError
 from app.idm.fallback_lines import restore_stops
 from app.idm.node_acceptance import html_quality_code
+from app.idm.quiz_letters import expand_short_item_labels
 from app.idm.slot_words import exercise_details
 from app.idm.source_locked import render_idm_source_locked_html
 from app.idm.source_names import NameGuide
@@ -156,3 +157,22 @@ class TranslatedToolNameTests(unittest.TestCase):
                             ("Eisenhower Matrix: xếp ưu tiên công việc", ["Eisenhower Matrix"]),
                             ("Building Your Prioritization Matrix", [])):
             self.assertEqual(source.missing(text), found, text)
+
+
+class WholeLabelRenameTests(unittest.TestCase):
+    """L7: the explanation and the hints rename every whole "Bước 3" / "Ý 3" as the stem does, in the whole line."""
+
+    def test_every_use_of_a_line(self) -> None:
+        items = "\n".join(f"- Bước {number}: {text}" for number, text in enumerate(
+            ("Tiếp nhận yêu cầu.", "Phân loại mức độ.", "Xử lý và phản hồi.", "Đóng hồ sơ."), 1))
+        question = {"problem_type": "multiple_choice", "title": "Thứ tự xử lý",
+                    "question": f"Giả sử bạn nhận một khiếu nại. Quy trình gồm:\n{items}\nBước nào làm trước?",
+                    "choices": [{"text": f"Bước {number}", "correct": number == 2} for number in (2, 1, 3, 4)],
+                    "hints": ["Bước 2 luôn đi trước Bước 3."],
+                    "explanation": "Nguyên tắc: phân loại trước khi xử lý.\nA - Đúng vì Bước 2 phải làm trước Bước 3.\n"
+                                   "B - Sai vì Bước 1 đã xong.\nC - Sai vì Bước 3 cần biết mức độ.\nD - Bước 4 sai."}
+        expanded, _count = expand_short_item_labels(question)
+        lines = expanded["explanation"].splitlines()
+        self.assertEqual(lines[1], "A - Đúng vì Bước số 2 phải làm trước Bước số 3.")
+        self.assertEqual(lines[4], "D - Bước số 4 sai.")
+        self.assertEqual(expanded["hints"], ["Bước số 2 luôn đi trước Bước số 3."])
