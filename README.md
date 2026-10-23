@@ -231,6 +231,8 @@ Secrets are `SecretStr` and never logged; `.env.example` holds placeholders.
 | `AI_RAG_LESSON_AUTHOR_SCOPE_MAX_CHUNKS` | int | `48` | >= 1, <= 5000 |
 | `AI_RAG_SOURCE_COVERAGE_CANONICAL_MAX_CHARS` | int | `1000000` | >= 10000, <= 50000000 |
 | `AI_RAG_SOURCE_MAP_ARCHITECT_CONTEXT_MAX_CHARS` | int | `48000` | >= 1000, <= 2000000 |
+| `AI_RAG_VECTOR_EF_SEARCH` | int | `40` | >= 0, <= 1000 |
+| `AI_RAG_VECTOR_ITERATIVE_SCAN` | `off` \| `strict_order` | `strict_order` |  |
 | `AI_RAG_RETRIEVAL_CANDIDATE_MULTIPLIER` | int | `4` | >= 1, <= 50 |
 | `AI_RAG_RETRIEVAL_MIN_SCORE` | number | `0.25` | >= -1.0, <= 1.0 |
 | `AI_RAG_RETRIEVAL_KEYWORD_MIN_SCORE` | number | `0.5` | >= 0.0, <= 1.0 |

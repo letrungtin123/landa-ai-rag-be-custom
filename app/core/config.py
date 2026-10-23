@@ -486,6 +486,16 @@ class Settings(BaseSettings):
         ge=1_000,
         le=2_000_000,
     )
+    # Per-query HNSW settings of the vector search (audit 2026-10-24, P3). The index covers every tenant and the
+    # tenant/KB/active-index filters apply after it, so a scan that stops at ef_search candidates (pgvector default
+    # 40) can return fewer rows than asked: measured on the local database, 14 of 32. hnsw.ef_search is raised to
+    # the query's row limit (at least this value, at most pgvector's 1,000) and, with pgvector 0.8 or later, the
+    # scan goes on in exact distance order (strict_order) until the limit is met. 0 sends no per-query setting.
+    vector_ef_search: int = Field(default=40, validation_alias="AI_RAG_VECTOR_EF_SEARCH", ge=0, le=1_000)
+    vector_iterative_scan: Literal["off", "strict_order"] = Field(
+        default="strict_order",
+        validation_alias="AI_RAG_VECTOR_ITERATIVE_SCAN",
+    )
     retrieval_candidate_multiplier: int = Field(
         default=4,
         validation_alias="AI_RAG_RETRIEVAL_CANDIDATE_MULTIPLIER",

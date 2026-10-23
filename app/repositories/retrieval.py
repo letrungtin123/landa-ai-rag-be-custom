@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal
+
+import asyncpg
 
 from app.repositories.executor import SqlExecutor
 
@@ -105,7 +107,46 @@ async def fetch_blueprint_source_chunks(
 
 
 async def fetch_vector_matches(
-    pool: SqlExecutor,
+    pool: asyncpg.Pool,
+    tenant_id: Any,
+    kb_id: Any,
+    document_ids: Any,
+    embedding: Any,
+    limit: Any,
+    embedding_model: Any,
+    embedding_dimensions: Any,
+    *,
+    ef_search: int,
+    iterative_scan: Literal["off", "strict_order"],
+) -> list[Any]:
+    """Nearest learned chunks to one query embedding, the HNSW scan tuned for this query (audit 2026-10-24, P3).
+
+    ``ef_search`` 0 runs the query with the database's settings. Otherwise ``hnsw.ef_search`` and, when the
+    installed pgvector has it (0.8+), ``hnsw.iterative_scan`` are set for this transaction only: one pooled
+    connection, set_config(..., true), then the query.
+    """
+    args = (tenant_id, kb_id, document_ids, embedding, limit, embedding_model, embedding_dimensions)
+    if ef_search <= 0:
+        return await _vector_matches(pool, *args)
+    async with pool.acquire() as conn, conn.transaction():
+        # The vector literal loads pgvector's library while this statement is parsed, so hnsw.iterative_scan is
+        # defined exactly when the installed pgvector has it; an older pgvector gets ef_search only.
+        await conn.execute(
+            """
+            SELECT set_config('hnsw.ef_search', $1::text, true),
+                   CASE WHEN $2::text <> 'off' AND current_setting('hnsw.iterative_scan', true) IS NOT NULL
+                        THEN set_config('hnsw.iterative_scan', $2::text, true)
+                   END
+            FROM (SELECT '[1]'::vector) AS loaded
+            """,
+            str(ef_search),
+            iterative_scan,
+        )
+        return await _vector_matches(conn, *args)
+
+
+async def _vector_matches(
+    executor: SqlExecutor,
     tenant_id: Any,
     kb_id: Any,
     document_ids: Any,
@@ -114,8 +155,7 @@ async def fetch_vector_matches(
     embedding_model: Any,
     embedding_dimensions: Any,
 ) -> list[Any]:
-    """Nearest learned chunks to one query embedding."""
-    return await pool.fetch(
+    return await executor.fetch(
         """
         SELECT c.content,
                c.source_page,

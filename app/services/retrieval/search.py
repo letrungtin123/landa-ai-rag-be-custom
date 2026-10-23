@@ -43,6 +43,16 @@ from app.services.text import clean_text
 
 logger = logging.getLogger(SERVICE_LOGGER_NAME)
 
+# pgvector's upper bound of hnsw.ef_search.
+HNSW_MAX_EF_SEARCH = 1_000
+
+
+def hnsw_ef_search(limit: int) -> int:
+    """hnsw.ef_search of a vector query returning ``limit`` rows: at least the limit (0: no per-query setting)."""
+    if settings.vector_ef_search <= 0:
+        return 0
+    return min(HNSW_MAX_EF_SEARCH, max(settings.vector_ef_search, limit))
+
 
 async def load_target_source_scope_chunks(
     pool: asyncpg.Pool,
@@ -155,6 +165,8 @@ async def retrieve_chunks(
                 candidate_limit,
                 normalize_embedding_model(request.embedding_model),
                 request.embedding_dimensions,
+                ef_search=hnsw_ef_search(candidate_limit),
+                iterative_scan=settings.vector_iterative_scan,
             )
         )
 

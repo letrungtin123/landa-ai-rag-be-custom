@@ -70,6 +70,15 @@
   },
   "db_calls": [
    {
+    "method": "execute",
+    "sql_sha256": "3eab4f3415c64aa6ee450cb73c70f8e49951cc68e7984ee7ee11edc45d5b9a81",
+    "rule": null,
+    "args": [
+     "40",
+     "strict_order"
+    ]
+   },
+   {
     "method": "fetch",
     "sql_sha256": "c443d3ab8606b5eb25668269df284e67de9a3abaa73fc34a99ca1aaa39b84b03",
     "rule": null,
