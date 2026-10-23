@@ -11,6 +11,7 @@ from __future__ import annotations
 from fastapi import FastAPI
 from fastapi.exceptions import RequestValidationError
 
+from app.api import deps as api_deps
 from app.api.routes import chat as chat_routes
 from app.api.routes import health as health_routes
 from app.api.routes import kb as kb_routes
@@ -33,6 +34,7 @@ from app.core.lifespan import build_lifespan
 from app.core.logging import configure_application_logging
 from app.core.middleware import RequestBodyLimitMiddleware
 from app.core.request_context import DisconnectCancellationMiddleware, RequestContextMiddleware
+from app.core.security import AuthHeaderPrecheckMiddleware
 from app.services import runtime as service_runtime
 from app.services.meta import API_VERSION
 
@@ -73,9 +75,16 @@ def create_app() -> FastAPI:
             grace_seconds=settings.shutdown_grace_seconds,
         ),
     )
-    # add_middleware wraps outward: request context (outermost) -> body limit ->
-    # disconnect cancellation (buffers the already size-checked body) -> routes.
+    # add_middleware wraps outward: request context (outermost) -> body limit -> auth header precheck (refuses a
+    # protected request whose headers already fail, before any body is read) -> disconnect cancellation (buffers
+    # the already size-checked body) -> routes.
     application.add_middleware(DisconnectCancellationMiddleware)
+    application.add_middleware(
+        AuthHeaderPrecheckMiddleware,
+        routes=application.router.routes,
+        dependency=api_deps.require_internal_token,
+        precheck=api_deps.internal_auth_header_rejection,
+    )
     application.add_middleware(
         RequestBodyLimitMiddleware,
         max_request_bytes=settings.max_request_bytes,

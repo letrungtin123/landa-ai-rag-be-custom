@@ -7,18 +7,21 @@ import re
 import threading
 import time
 from collections import OrderedDict
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
-from typing import Literal
+from typing import Any, Literal
 from uuid import UUID
 
 from fastapi import Request
+from fastapi.routing import APIRoute
 from starlette.datastructures import Headers
+from starlette.routing import BaseRoute, Match
 
 from app.core import metrics
 from app.core.config import AuthMode
-from app.core.errors import AppError
+from app.core.errors import AppError, app_error_handler
 from app.core.logging import SECRET_PATTERNS, redact_secret_like_values
-from app.core.request_context import route_template
+from app.core.request_context import AsgiMessage, Receive, Send, route_template
 
 logger = logging.getLogger(__name__)
 
@@ -289,6 +292,87 @@ async def require_internal_auth(
     raise auth_rejected(request, _rejection_reason(auth_mode, bool(token), hmac_rejection))
 
 
+def auth_header_rejection(
+    request: Request,
+    *,
+    auth_mode: AuthMode,
+    service_token: str,
+    hmac_secrets: str,
+    accept_v1_signature: bool,
+) -> AuthRejection | None:
+    """The refusal ``require_internal_auth`` reaches from the headers alone, or ``None`` when it needs more.
+
+    The same decision on the checks it runs before the clock skew, the body and the replay cache (in their order,
+    so the reason is the one it would log); a request that passes them is left to ``require_internal_auth``.
+    """
+
+    token = request.headers.get(TOKEN_HEADER, "")
+    if auth_mode in {"token", "token_or_hmac"} and _token_is_valid(token, service_token):
+        return None
+    credentials = parse_hmac_secrets(hmac_secrets)
+    hmac_rejection: AuthRejection = "not_configured"
+    if auth_mode in {"hmac", "token_or_hmac"} and credentials:
+        signed = _signed_request(request.headers, credentials, accept_v1_signature=accept_v1_signature)
+        if not isinstance(signed, str):
+            return None
+        hmac_rejection = signed
+    return _rejection_reason(auth_mode, bool(token), hmac_rejection)
+
+
+class AuthHeaderPrecheckMiddleware:
+    """Refuse a protected request whose headers alone fail authentication before anything reads its body.
+
+    The route's auth dependency runs after DisconnectCancellationMiddleware has buffered the whole body (up to
+    24 MiB), so any caller could make the service read that much without a valid key (security audit 2026-10-24,
+    L4). Placed inside RequestContextMiddleware (request id, access log, metrics) and outside the body buffering,
+    this answers the dependency's own refusal (same reason, log line, counter and 401 bytes) for a request to a
+    route that depends on ``dependency``. Everything else passes through; the dependency still authenticates what
+    passes here (clock skew, signature, replay).
+    """
+
+    def __init__(
+        self,
+        app: Any,
+        *,
+        routes: Sequence[BaseRoute],
+        dependency: Callable[..., Any],
+        precheck: Callable[[Request], AuthRejection | None],
+    ) -> None:
+        self.app = app
+        # The application's own route list (filled as routes register), searched like the router does.
+        self.routes = routes
+        self.dependency = dependency
+        self.precheck = precheck
+
+    def _protected_route(self, scope: AsgiMessage) -> APIRoute | None:
+        for route in self.routes:
+            match, _child_scope = route.matches(scope)
+            if match is not Match.FULL:
+                continue
+            if not isinstance(route, APIRoute):
+                return None
+            # An override of the dependency (app.dependency_overrides) replaces its check, as it does in FastAPI.
+            overrides = getattr(route.dependency_overrides_provider, "dependency_overrides", {})
+            if self.dependency in overrides or not any(
+                    dependant.call is self.dependency for dependant in route.dependant.dependencies):
+                return None
+            return route
+        return None
+
+    async def __call__(self, scope: AsgiMessage, receive: Receive, send: Send) -> None:
+        route = self._protected_route(scope) if scope.get("type") == "http" else None
+        if route is not None:
+            request = Request(scope)
+            reason = self.precheck(request)
+            if reason is not None:
+                # As if the router had matched it: the access log and the metrics name the route template.
+                scope["route"] = route
+                response = await app_error_handler(request, auth_rejected(request, reason))
+                await response(scope, receive, send)
+                return
+        await self.app(scope, receive, send)
+
+
 __all__ = [
     "HMAC_KEY_ID_HEADER",
     "HMAC_REQUEST_ID_HEADER",
@@ -297,7 +381,9 @@ __all__ = [
     "HMAC_SIGNATURE_VERSION_HEADER",
     "HMAC_TIMESTAMP_HEADER",
     "SECRET_PATTERNS",
+    "AuthHeaderPrecheckMiddleware",
     "ReplayCache",
+    "auth_header_rejection",
     "parse_hmac_secrets",
     "redact_secret_like_values",
     "require_configured_service_auth",

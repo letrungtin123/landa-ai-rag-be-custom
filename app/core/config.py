@@ -98,6 +98,17 @@ class Settings(BaseSettings):
         ge=1,
         le=600,
     )
+    # uvicorn answers a plain 503 ("Service Unavailable", no app code runs) to a new request while this many
+    # connections are open, idle keep-alive ones included, or this many requests run (security audit 2026-10-24,
+    # L4): a ceiling on what a flood of connections can hold. Far above the real load: the provider, index and CPU
+    # limiters (8 / 2 / up to 4 by default) bound the actual work and answer SERVICE_BUSY, and a long IDM request
+    # holds one connection.
+    limit_concurrency: int = Field(
+        default=128,
+        validation_alias="AI_RAG_LIMIT_CONCURRENCY",
+        ge=16,
+        le=100_000,
+    )
     # Reported by GET /v1/meta; the container image sets it from the git sha.
     build_sha: str = Field(default="unknown", validation_alias="AI_RAG_BUILD_SHA", max_length=64)
     readiness_db_timeout_ms: int = Field(

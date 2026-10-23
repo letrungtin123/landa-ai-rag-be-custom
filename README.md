@@ -98,7 +98,9 @@ bounded repair, then deterministic source-locked content marked for review. Prom
   timestamp exactly as sent). A request without the version header is v1, signed over
   `{timestamp}\n{METHOD}\n{path}\n{sha256_hex(body)}`; it is accepted only while
   `AI_RAG_HMAC_ACCEPT_V1_SIGNATURE` is true and counted in `ai_rag_auth_legacy_accepted_total`. Any other version
-  is refused. `AI_RAG_SERVICE_HMAC_SECRETS` is `kid:secret[,kid:secret]`.
+  is refused. `AI_RAG_SERVICE_HMAC_SECRETS` is `kid:secret[,kid:secret]`. A request whose headers already fail
+  (missing, unknown key id, malformed timestamp, signature, request id or version) is refused before its body is
+  read, with the same 401. uvicorn answers a plain 503 above `AI_RAG_LIMIT_CONCURRENCY` open connections.
 - Errors: `{"detail": {"code": "STABLE_CODE", "message": "safe text", "correlation_id": "..."}}`. Transient
   failures (`AI_PROVIDER_UNAVAILABLE`, `AI_PROVIDER_RATE_LIMITED`, `AI_PROVIDER_TIMEOUT`, `SERVICE_BUSY`,
   `DATABASE_NOT_READY`) are 503/504 so the backend's durable workers retry; `AI_PROVIDER_QUOTA_EXHAUSTED` stops
@@ -153,6 +155,7 @@ Secrets are `SecretStr` and never logged; `.env.example` holds placeholders.
 | `AI_RAG_FORWARDED_ALLOW_IPS` | text | `127.0.0.1` |  |
 | `AI_RAG_SHUTDOWN_GRACE_SECONDS` | int | `60` | >= 1, <= 600 |
 | `AI_RAG_KEEP_ALIVE_TIMEOUT_SECONDS` | int | `75` | >= 1, <= 600 |
+| `AI_RAG_LIMIT_CONCURRENCY` | int | `128` | >= 16, <= 100000 |
 | `AI_RAG_BUILD_SHA` | text | `unknown` | length <= 64 |
 | `AI_RAG_READINESS_DB_TIMEOUT_MS` | int | `1000` | >= 100, <= 10000 |
 | `AI_RAG_MAX_CONCURRENT_PROVIDER_CALLS` | int | `8` | >= 1, <= 256 |

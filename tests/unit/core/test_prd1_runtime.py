@@ -610,6 +610,15 @@ class EntrypointTests(unittest.TestCase):
         self.assertEqual(options["forwarded_allow_ips"], "10.0.0.1")
         self.assertTrue(options["proxy_headers"])
 
+    def test_uvicorn_caps_open_connections_and_running_requests(self) -> None:
+        # Audit 2026-10-24, L4: a generous ceiling, far above the provider (8), index (2) and CPU limiters.
+        with patch.dict("os.environ", {}, clear=True):
+            self.assertEqual(uvicorn_options(Settings(environment="test"))["limit_concurrency"], 128)
+        self.assertEqual(uvicorn_options(Settings(AI_RAG_LIMIT_CONCURRENCY=300))["limit_concurrency"], 300)
+        for invalid in (0, 15, 100_001):
+            with self.subTest(invalid=invalid), self.assertRaises(ValueError):
+                Settings(AI_RAG_LIMIT_CONCURRENCY=invalid)
+
     def test_metrics_exposition_lists_service_metrics(self) -> None:
         body, content_type = metrics.render_metrics()
         self.assertIn(b"ai_rag_http_requests_total", body)

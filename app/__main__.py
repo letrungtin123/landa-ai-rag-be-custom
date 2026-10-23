@@ -62,6 +62,7 @@ def uvicorn_options(value: Settings) -> dict[str, Any]:
         "forwarded_allow_ips": value.forwarded_allow_ips,
         "timeout_keep_alive": value.keep_alive_timeout_seconds,
         "timeout_graceful_shutdown": value.shutdown_grace_seconds,
+        "limit_concurrency": value.limit_concurrency,
         "log_level": "info",
         "log_config": uvicorn_log_config(),
         "access_log": False,
