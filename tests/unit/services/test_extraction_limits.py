@@ -16,6 +16,7 @@ from unittest.mock import patch
 
 import pymupdf
 from docx import Document
+from openpyxl import Workbook
 
 from app.core.config import Settings
 from app.core.document_limits import validate_ooxml_archive
@@ -72,7 +73,8 @@ class XmlBudgetTests(unittest.TestCase):
         with patch.dict(os.environ, {}, clear=True):
             defaults = Settings(environment="test")
         self.assertEqual((defaults.max_ooxml_uncompressed_bytes, defaults.max_ooxml_xml_bytes,
-                          defaults.max_extracted_chars), (64 * KIB * KIB, 12 * KIB * KIB, 10_000_000))
+                          defaults.max_xlsx_xml_bytes, defaults.max_extracted_chars),
+                         (64 * KIB * KIB, 12 * KIB * KIB, 32 * KIB * KIB, 10_000_000))
         path = self.dir / "photos.docx"
         document = Document()
         document.add_paragraph("Ảnh hiện trường")
@@ -84,6 +86,22 @@ class XmlBudgetTests(unittest.TestCase):
                                max_xml_bytes=defaults.max_ooxml_xml_bytes, max_entries=defaults.max_ooxml_entries,
                                max_compression_ratio=defaults.max_ooxml_compression_ratio)
         self.assertEqual(extraction.extract_sections(path, path.name)[0].text, "Ảnh hiện trường")
+
+    def test_a_workbook_uses_its_own_xml_budget(self) -> None:
+        # A normal export (staff list, product catalogue) is mostly XML: it must not meet the DOCX/PPTX budget.
+        path = self.dir / "danh-sach.xlsx"
+        workbook = Workbook()
+        sheet = workbook.active
+        for row in range(200):
+            sheet.append([row, f"Nhân viên {row}", "Phòng Kinh doanh khu vực phía Nam " * 2])
+        workbook.save(path)
+        xml_bytes = sum(info.file_size for info in zipfile.ZipFile(path).infolist() if info.filename.endswith(".xml"))
+        with patch.object(extraction.settings, "max_ooxml_xml_bytes", xml_bytes // 2), \
+                patch.object(extraction.settings, "max_xlsx_xml_bytes", xml_bytes * 2):
+            self.assertIn("Nhân viên 199", extraction.extract_sections(path, path.name)[0].text)
+        with patch.object(extraction.settings, "max_xlsx_xml_bytes", xml_bytes // 2), \
+                self.assertRaises(DocumentLimitError):
+            extraction.extract_sections(path, path.name)
 
 
 class ExtractedCharacterLimitTests(unittest.TestCase):
@@ -136,6 +154,26 @@ class ExtractedCharacterLimitTests(unittest.TestCase):
             extraction.extract_sections(path, path.name)
         with patch.object(extraction.settings, "max_extracted_chars", length):
             self.assertEqual(len(extraction.extract_sections(path, path.name)[0].text), length)
+
+    def test_a_workbook_stops_at_the_row_that_crosses_the_limit(self) -> None:
+        path = self.dir / "ghi-chu.xlsx"
+        workbook = Workbook()
+        sheet = workbook.active
+        for row in range(50):
+            sheet.append([f"Ghi chú dòng {row}: " + "nội dung " * 10])
+        workbook.save(path)
+        rows: list[int] = []
+        original = extraction.assert_extracted_chars
+
+        def count(value: int) -> None:
+            rows.append(value)
+            original(value)
+
+        with patch.object(extraction.settings, "max_extracted_chars", 500), \
+                patch.object(extraction, "assert_extracted_chars", side_effect=count), \
+                self.assertRaises(DocumentLimitError):
+            extraction.extract_xlsx(path)
+        self.assertLess(len(rows), 10)  # stopped while streaming, long before the 50th row
 
 
 if __name__ == "__main__":

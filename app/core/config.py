@@ -324,6 +324,15 @@ class Settings(BaseSettings):
         ge=1_024,
         le=2 * 1024 * 1024 * 1024,
     )
+    # .xlsx worksheets are streamed (openpyxl read_only): 199,200 cells with 12.6 MB of XML took +114 MB, 15 MB took
+    # +159 MB, less than a 300-page DOCX within max_ooxml_xml_bytes. AI_RAG_MAX_XLSX_CELLS and the extracted-character
+    # cap bound a workbook; this budget replaces max_ooxml_xml_bytes for .xlsx only.
+    max_xlsx_xml_bytes: int = Field(
+        default=32 * 1024 * 1024,
+        validation_alias="AI_RAG_MAX_XLSX_XML_BYTES",
+        ge=1_024,
+        le=2 * 1024 * 1024 * 1024,
+    )
     max_ooxml_entries: int = Field(
         default=10_000,
         validation_alias="AI_RAG_MAX_OOXML_ENTRIES",

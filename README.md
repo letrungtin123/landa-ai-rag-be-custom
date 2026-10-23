@@ -193,6 +193,7 @@ Secrets are `SecretStr` and never logged; `.env.example` holds placeholders.
 | `AI_RAG_MAX_DOCUMENT_PAGES` | int | `1000` | >= 1, <= 10000 |
 | `AI_RAG_MAX_OOXML_UNCOMPRESSED_BYTES` | int | `67108864` | >= 1024, <= 2147483648 |
 | `AI_RAG_MAX_OOXML_XML_BYTES` | int | `12582912` | >= 1024, <= 2147483648 |
+| `AI_RAG_MAX_XLSX_XML_BYTES` | int | `33554432` | >= 1024, <= 2147483648 |
 | `AI_RAG_MAX_OOXML_ENTRIES` | int | `10000` | >= 1, <= 100000 |
 | `AI_RAG_MAX_OOXML_COMPRESSION_RATIO` | number | `100.0` | >= 1.0, <= 1000.0 |
 | `AI_RAG_MAX_XLSX_CELLS` | int | `200000` | >= 1, <= 5000000 |

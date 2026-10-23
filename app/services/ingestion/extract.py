@@ -401,6 +401,7 @@ def extract_xlsx(path: Path) -> list[ExtractedSection]:
     workbook = load_workbook(str(path), read_only=True, data_only=False)
     sections: list[ExtractedSection] = []
     cell_count = 0
+    text_chars = 0
     try:
         for sheet in workbook.worksheets:
             values: list[list[Any]] = []
@@ -409,6 +410,9 @@ def extract_xlsx(path: Path) -> list[ExtractedSection]:
                 cell_count += len(row_values)
                 if cell_count > settings.max_xlsx_cells:
                     raise DocumentLimitError()
+                # Counted while streaming: a sheet of huge inline strings stops here, not after it is all in memory.
+                text_chars += sum(len(value) for value in row_values if isinstance(value, str))
+                assert_extracted_chars(text_chars)
                 values.append(row_values)
             text = clean_text(_render_structured_table(values, coordinate_labels=True))
             if text:
@@ -518,7 +522,7 @@ def extract_sections(path: Path, file_name: str) -> list[ExtractedSection]:
         path,
         suffix=ext,
         max_uncompressed_bytes=settings.max_ooxml_uncompressed_bytes,
-        max_xml_bytes=settings.max_ooxml_xml_bytes,
+        max_xml_bytes=settings.max_xlsx_xml_bytes if ext == ".xlsx" else settings.max_ooxml_xml_bytes,
         max_entries=settings.max_ooxml_entries,
         max_compression_ratio=settings.max_ooxml_compression_ratio,
     )
