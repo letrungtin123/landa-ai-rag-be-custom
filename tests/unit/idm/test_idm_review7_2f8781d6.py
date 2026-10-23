@@ -6,9 +6,11 @@ Every case is synthetic text with the shape of the reviewer's reproduction scrip
 from __future__ import annotations
 
 import json
+import unittest
 
 from app.core.errors import AppError, ServiceError
 from app.idm.node_acceptance import html_quality_code
+from app.idm.slot_words import exercise_details
 from app.idm.source_locked import render_idm_source_locked_html
 from tests.support.log_support import logged_events
 from tests.unit.idm.test_idm_qc_run_2f8781d6 import many_facts_body
@@ -117,3 +119,13 @@ class DiscardedJudgeRepairTests(StoryboardEndpointTestCase):
         quality = logged_events(logs.records, "idm_unit_quality")[-1]
         self.assertEqual((quality["codes"], quality["fixed_codes"]), ([], []))
         self.assertNotIn("Đã tự sửa", data["unit"]["idm_quality"]["author_note"])
+
+
+class NamedExerciseTests(unittest.TestCase):
+    """L2: "Thực hành: …" and "Thảo luận: …" open an exercise again."""
+
+    def test_a_bare_exercise_header(self) -> None:
+        self.assertEqual(exercise_details(["Thực hành: chia nhóm 4 người, thảo luận trong 15 phút về một khách hàng."]),
+                         ["15 phút"])
+        self.assertEqual(exercise_details(["Thảo luận: Các nhóm làm việc trong 20 phút, trình bày theo nhóm."]),
+                         ["20 phút", "theo nhóm"])

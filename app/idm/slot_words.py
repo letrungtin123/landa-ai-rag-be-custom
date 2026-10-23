@@ -12,7 +12,8 @@ Review 5 (M8): a fact is an exercise only when it opens as one ("BÀI TẬP …"
 "Nhiệm vụ thực hành …"), never because it mentions "về nhà" or "thảo luận" ("… để được về nhà đúng giờ", "Trưởng nhóm
 thảo luận với khách hàng trong 30 phút đầu …"); and its homework or group wording counts in a slot only after an
 exercise word ("Bài tập về nhà theo nhóm …"), never in "gom khách hàng theo nhóm có đặc điểm chung". Review 6 (L9):
-"Thực hành …" or "Thảo luận …" opens an exercise only as a named one ("Thực hành Bộ lọc Dự án: Các Team …"), never a
+"Thực hành …" or "Thảo luận …" opens an exercise only before a colon ("Thực hành Bộ lọc Dự án: Các Team …"; review 7
+L2: "Thực hành: …"), never a
 work rule ("Thực hành 5S tại quầy trong 10 phút đầu mỗi ca"); "làm việc theo nhóm" is no exercise wording.
 """
 
@@ -31,7 +32,7 @@ from app.idm.text import EvidenceIndex, idm_fold
 
 # A classroom exercise of the slides, accent-folded: how it opens.
 _EXERCISE_START_RE: Final = re.compile(r"^\W*(?:nhiem vu\s+)?(?:(?:bai tap|cau hoi thao luan|homework|exercise"
-                                       r"|discussion|group work)(?!\w)|(?:thuc hanh|thao luan)\b[^:.]{1,60}:)")
+                                       r"|discussion|group work)(?!\w)|(?:thuc hanh|thao luan)\b[^:.]{0,60}:)")
 # What belongs to the exercise, not to the work: its time, the count to pick, the group or homework wording.
 _DETAIL_RE: Final = re.compile(r"(?<![\w.])(?:\d{1,3}\s*(?:phút|minutes?|mins?)|đúng\s+\d{1,2}|exactly\s+\d{1,2}"
                                r"|về nhà|homework|theo nhóm|in (?:groups|teams))(?!\w)", re.IGNORECASE)
