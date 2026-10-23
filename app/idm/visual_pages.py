@@ -135,8 +135,9 @@ def _min_share(texts: Sequence[str] | None, starts: Collection[str] = ()) -> flo
 
 
 def _section_starts(locators: Sequence[Mapping[str, Any]]) -> dict[int, set[str]]:
-    """Page -> the folded section titles (``scope_title``) of the facts whose regions sit on it; review 7 (L9): each
-    part of a breadcrumb title ("Khóa học … > MODULE 2: …"; ``source_snapshot`` joins a heading path by ``_CRUMB``)."""
+    """Page -> the folded section titles (``scope_title``) of the facts whose regions sit on it; review 7 (L9), review 8
+    (L4): the last part of a breadcrumb title ("Khóa học … > MODULE 2: …"; ``source_snapshot`` joins a heading path by
+    ``_CRUMB``), never a parent's part, which a page inside that part repeats as its running header."""
 
     starts: dict[int, set[str]] = defaultdict(set)
     for locator in locators:
@@ -144,8 +145,8 @@ def _section_starts(locators: Sequence[Mapping[str, Any]]) -> dict[int, set[str]
         regions = locator.get("visual_regions")
         for region in regions if isinstance(regions, list) and isinstance(title, str) else []:
             if isinstance(region, Mapping) and (page := _page(region)) is not None:
-                starts[page].update(idm_fold(_ROW_MARK_RE.sub("", " ".join(part.split())).strip(" |"))
-                                    for part in str(title).split(_CRUMB))
+                part = str(title).split(_CRUMB)[-1]
+                starts[page].add(idm_fold(_ROW_MARK_RE.sub("", " ".join(part.split())).strip(" |")))
     return starts
 
 

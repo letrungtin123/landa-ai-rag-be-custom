@@ -13,7 +13,9 @@ from app.idm.node_acceptance import html_quality_code
 from app.idm.quiz_letters import expand_short_item_labels
 from app.idm.source_locked import render_idm_source_locked_html
 from app.idm.source_names import NameGuide
+from app.idm.visual_pages import unread_image_pages
 from tests.unit.idm.test_idm_qc_run_2f8781d6 import many_facts_body
+from tests.unit.idm.test_idm_qc_run_5496155c import region
 from tests.unit.idm.test_idm_storyboard import (
     StoryboardEndpointTestCase,
 )
@@ -152,6 +154,21 @@ class TwoWordFullFormTests(unittest.TestCase):
         source = ["Trải nghiệm khách hàng (CX) là cách khách cảm nhận doanh nghiệp."]
         self.assertFalse(explained("CX", None, ["Chăm sóc khách hàng - CX là trọng tâm."], source_texts=source))
         self.assertFalse(explained("CX", None, ["Customer Journey - CX là trọng tâm."]))
+
+
+class BreadcrumbLastPartTests(unittest.TestCase):
+    """L4: only the last part of a breadcrumb scope title starts the page's section, so a picture page inside a module
+    keeps its warning."""
+
+    def test_a_page_inside_a_module_warns(self) -> None:
+        texts = {44: ["MODULE 2: CHIẾN LƯỢC"]}
+        crumb = f" {chr(0x203A)} "
+        for scope, warned in ((crumb.join(("Khóa học Trải nghiệm khách hàng", "MODULE 2: CHIẾN LƯỢC",
+                                           "2.1 Phân tích SWOT")), [44]),
+                              (crumb.join(("MODULE 2: CHIẾN LƯỢC", "2.1 Phân tích SWOT")), [44]),
+                              (crumb.join(("Khóa học Trải nghiệm khách hàng", "MODULE 2: CHIẾN LƯỢC")), [])):
+            locator = {"scope_title": scope, "visual_regions": [region(44, 0.92, asset="44a" * 21)]}
+            self.assertEqual(unread_image_pages([locator], texts), warned, scope)
 
 
 if __name__ == "__main__":
