@@ -20,6 +20,7 @@ from app.idm.node_acceptance import html_quality_code
 from app.idm.prompts_unit import example_opening
 from app.idm.qa import ANSWER_LEAK_CODE
 from app.idm.quiz_letters import expand_short_item_labels
+from app.idm.slot_words import classroom_words, exercise_details
 from app.idm.source_locked import _is_label, render_idm_source_locked_html
 from app.idm.source_names import NAME_NOT_IN_SOURCE_CODE, NameGuide
 from app.idm.storyboard_context import _Draft
@@ -330,3 +331,27 @@ class OpeningTests(unittest.TestCase):
             for opening in {example_opening(path, locale) for path in paths}:
                 self.assertTrue(" bạn" in opening or "you" in opening.lower(), opening)
         self.assertEqual(example_opening(paths[7], "vi"), example_opening(paths[7], "vi"))
+
+
+class ClassroomWorkWordTests(unittest.TestCase):
+    """L8 and L9: a work rule that opens with "Thực hành …" or "Thảo luận …" is no exercise, "làm việc theo nhóm" is no
+    exercise wording, and a detail an approved practice sentence keeps is no note."""
+
+    def test_work_rules_are_quiet(self) -> None:
+        details = exercise_details(["Thực hành 5S tại quầy trong 10 phút đầu mỗi ca làm việc.",
+                                    "Thảo luận với khách hàng trong 15 phút đầu để hiểu đúng nhu cầu.",
+                                    "Bài tập về nhà theo nhóm: chọn đúng 2 sáng kiến cho công ty của bạn."])
+        self.assertEqual(details, ["về nhà", "theo nhóm", "đúng 2"])
+        teaching = html_slot(("Quy trình tại quầy", [
+            block("paragraph", "Mỗi ca, nhân viên thực hành 5S tại quầy trong 10 phút đầu."),
+            block("paragraph", "Hãy thảo luận với khách hàng trong 15 phút đầu để hiểu đúng nhu cầu."),
+            block("paragraph", "Nhân viên làm việc theo nhóm để xử lý các đơn hàng lớn.")]))
+        self.assertEqual(classroom_words([teaching], (), details), {})
+        # A named exercise ("Thực hành Bộ lọc Dự án: …") still is one.
+        self.assertEqual(exercise_details(["Thực hành Bộ lọc Dự án: Các Team chỉ chọn ra đúng 2 sáng kiến."]),
+                         ["đúng 2"])
+
+    def test_a_count_the_approved_practice_keeps(self) -> None:
+        facts = ["BÀI TẬP 10 phút", "Thực hành Bộ lọc Dự án: Các Team chỉ chọn ra đúng 2 sáng kiến."]
+        self.assertEqual(exercise_details(facts, ["Người học chọn đúng 2 sáng kiến cho công ty của mình."]),
+                         ["10 phút"])
