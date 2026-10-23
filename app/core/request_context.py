@@ -26,6 +26,10 @@ CORRELATION_ID_HEADER = b"x-correlation-id"
 LANDA_REQUEST_ID_HEADER = b"x-landa-request-id"
 SAFE_ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$")
 OPERATIONAL_PATHS = frozenset({"/healthz", "/readyz", "/metrics"})
+# The method label of the HTTP metrics: any client can send any method token, so anything else counts as OTHER
+# and the label set stays bounded (security audit 2026-10-24, L3).
+METRIC_METHODS = frozenset({"GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"})
+OTHER_METHOD = "OTHER"
 HTTP_STATUS_SERVER_ERROR = 500
 
 
@@ -38,6 +42,10 @@ def _header(headers: list[tuple[bytes, bytes]], name: bytes) -> str | None:
                 return None
             return text if SAFE_ID_PATTERN.fullmatch(text) else None
     return None
+
+
+def method_label(method: str) -> str:
+    return method if method in METRIC_METHODS else OTHER_METHOD
 
 
 def route_template(scope: MutableMapping[str, Any]) -> str:
@@ -94,8 +102,9 @@ class RequestContextMiddleware:
                 self.state.end_request()
             duration = perf_counter() - started
             route = route_template(scope)
-            metrics.HTTP_REQUESTS.labels(route=route, method=method, status=str(status_code)).inc()
-            metrics.HTTP_REQUEST_DURATION.labels(route=route, method=method).observe(duration)
+            label = method_label(method)
+            metrics.HTTP_REQUESTS.labels(route=route, method=label, status=str(status_code)).inc()
+            metrics.HTTP_REQUEST_DURATION.labels(route=route, method=label).observe(duration)
             if not operational:
                 logger.info(
                     "http_request_completed",

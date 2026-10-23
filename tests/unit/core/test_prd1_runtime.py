@@ -240,6 +240,23 @@ class RequestContextMiddlewareTests(unittest.TestCase):
         self.run_middleware(http_scope(), status=201)
         self.assertEqual(metric_value("ai_rag_http_requests_total", labels), before + 1)
 
+    def test_unknown_methods_share_one_metric_label(self) -> None:
+        # Any client can send any method token; each one used to add new series (audit 2026-10-24, L3).
+        other = {"route": "/v1/chat", "method": "OTHER", "status": "200"}
+        before = metric_value("ai_rag_http_requests_total", other)
+        for method in ("X" + "Q" * 30, "get", "PROPFIND", "post"):
+            self.run_middleware(http_scope(method=method))
+        self.assertEqual(metric_value("ai_rag_http_requests_total", other), before + 4)
+        methods = {sample.labels["method"] for family in metrics.REGISTRY.collect()
+                   if family.name.startswith("ai_rag_http_request") for sample in family.samples
+                   if "method" in sample.labels}
+        self.assertLessEqual(methods, {"GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS", "OTHER"})
+        for method in ("GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"):
+            labels = {"route": "/v1/chat", "method": method, "status": "200"}
+            before = metric_value("ai_rag_http_requests_total", labels)
+            self.run_middleware(http_scope(method=method))
+            self.assertEqual(metric_value("ai_rag_http_requests_total", labels), before + 1)
+
     def test_route_template_never_uses_unmatched_raw_paths(self) -> None:
         self.assertEqual(route_template({"path": "/v1/kb/123"}), "unmatched")
         self.assertEqual(route_template({"path": "/healthz"}), "/healthz")
