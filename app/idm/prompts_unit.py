@@ -104,6 +104,14 @@ _REPEAT_RULE: Final = """\
   template's row labels (and blank-cell guidance) in the worked example table. When several sections share the same
   row labels (profiles, cases, layers), put the label in the section heading or start it with the section's name
   ("Người gác cổng - Chức năng"), never an identical label twice."""
+# Run 2f8781d6 (B7): the course was for sales and marketing staff, yet only 4 of 12 questions put the learner in that
+# role, 4 made the leadership the actor and the source's own association ("hội viên", "Ban Giao thương") stayed the
+# setting.
+_ROLE_RULE: Final = """\
+- Quiz and worksheet scenarios put the learner ("bạn" / "you") in the role TARGET_AUDIENCE names, in the learner's own
+  business setting (their company, their customers); other actors (the leadership, the source's own organisation, its
+  members or departments) appear only as the customer or a stakeholder, never as the one who acts or decides; the
+  facts and names the unit teaches stay as the source states them."""
 # N9 and QC feedback 2026-10-21 (A3): a callout quotes the source and adds a point its slot does not already make.
 _CALLOUT_RULE: Final = """\
 - A "warning" block is shown to the learner as a quotation/callout: use it only for a rule, warning or
@@ -206,9 +214,10 @@ Writing rules (learner-facing, {locale_name(locale)}):
 - Use drafted scenarios/examples only where the brief marks them ai_drafted (a practice with scenario_origin
   ai_drafted, or a slot with "examples": "ai_drafted"); they never add rules, numbers or names, and their main person
   has the learner's own role (TARGET_AUDIENCE), never one of another level (no team lead in a course for executives).
-  Vary how examples and cases open (not every one "Một CEO …": "Giả sử bạn …", "Tại một doanh nghiệp …", "Ban điều
-  hành của …"){opening_line}. A drafted case is a supposition ("Giả sử …", "Hãy hình dung …"), never told as a real
+  Vary how examples and cases open (not every one "Giả sử bạn …": "Hãy hình dung bạn …", "Tại một doanh nghiệp
+  …"){opening_line}. A drafted case is a supposition ("Giả sử …", "Hãy hình dung …"), never told as a real
   past event ("Trong quý vừa qua …", "Năm ngoái, …"; the server writes "Giả sử" before such an opening).
+{_ROLE_RULE}
 - The course is self-paced e-learning: no classroom instructions (no "trước khi rời lớp/học phần", "thảo luận nhóm
   tại lớp", "giảng viên sẽ …").
 - An abbreviation the learner may not know gets its full form in brackets the first time this unit uses it, only as
@@ -280,12 +289,13 @@ HTML SLOT FORMAT (type "html"). The server renders the HTML itself and rejects a
 
 
 # QLT-9 (QC run ffaf7318: 12 of 14 drafted examples opened "Một CEO …"): each unit is written alone, so the server
-# gives it one opening, chosen from the unit's place in the course.
+# gives it one opening, chosen from the unit's place in the course. Run 2f8781d6 (B7): every opening puts the learner in
+# the case (no leadership as the actor; no "Trong quý vừa qua", which became "Giả sử trong quý vừa qua").
 _EXAMPLE_OPENINGS: Final[dict[str, tuple[str, ...]]] = {
-    "vi": ("Giả sử bạn …", "Tại một doanh nghiệp …", "Ban điều hành của một công ty …", "Hãy hình dung …",
-           "Trong quý vừa qua, …", "Một CEO …"),
-    "en": ("Suppose you …", "At a company …", "The leadership team of a company …", "Imagine …", "Last quarter, …",
-           "A CEO …"),
+    "vi": ("Giả sử bạn …", "Tại một doanh nghiệp …", "Hãy hình dung bạn …", "Trong công việc hằng ngày, bạn …",
+           "Bạn vừa nhận được …", "Giả sử tuần này bạn …"),
+    "en": ("Suppose you …", "At a company …", "Imagine you …", "In your daily work, you …", "You have just received …",
+           "Suppose this week you …"),
 }
 
 

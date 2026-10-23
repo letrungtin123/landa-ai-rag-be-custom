@@ -237,7 +237,7 @@ class DesignTests(unittest.TestCase):
         openings = [example_opening(path, "vi") for path in paths]
         self.assertEqual(openings, [example_opening(path, "vi") for path in paths])
         self.assertGreaterEqual(len(set(openings)), 4)
-        self.assertLessEqual(openings.count("Một CEO …"), len(openings) // 3)
+        self.assertLessEqual(openings.count("Giả sử bạn …"), len(openings) // 3)
         brief = IdmUnitBriefV1.model_validate(severity_body()["unit_contract"]["idm_unit_brief"])
         prompt = unit_writer_prompt("vi", course_title="C", audience=brief.target_audience, lesson_title="L",
                                     lesson_objective="O", practice_sentences=[], previous_title=None, next_title=None,

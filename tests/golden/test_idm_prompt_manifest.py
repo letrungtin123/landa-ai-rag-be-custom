@@ -180,6 +180,11 @@ HASH_HISTORY: tuple[tuple[str, str], ...] = (
     # IDM_W5_ANSWER_ITEM_LENGTH_CUE) and the measured item lengths of the second one (slot_hint).
     ("331d73ab0e4fb2a078ff4a04a09b50988b6d5538adf5eb4204591dbed6b8efe3",
      "A key in the words just above, or the longest item, is repaired once"),
+    # Run 2f8781d6 (B7): quiz and worksheet scenarios put the learner in the audience's role, other actors are only the
+    # customer or a stakeholder (_ROLE_RULE); the openings the server gives a unit all put the learner in the case (no
+    # leadership as the actor, no "Trong quý vừa qua").
+    ("9bc40a2dac26e6c7561903530554cdd2847b2e6d91ab690ad24f4e24004c357f",
+     "Scenarios put the learner in the audience's role"),
 )
 PROMPT_NAME = re.compile(r"(prompt|_rules?$|_suffix$|rule_lines?$|_hint$|^rule_line$|_cue_line$)")
 

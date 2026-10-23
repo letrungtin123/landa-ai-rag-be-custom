@@ -9,12 +9,14 @@ from __future__ import annotations
 import unittest
 from typing import Any
 
+from app.idm import prompts_unit
 from app.idm.answer_near import ANSWER_ITEM_LENGTH_CODE, ANSWER_NEAR_EXAMPLE_CODE, item_length_cue, near_example
 from app.idm.qa import STYLE_CODES
 from app.idm.qa_checks import advisory_slot_findings
 from app.idm.storyboard_context import _REVIEW_FIRST_CODES, _REVIEW_ONLY_CODES, _TARGETED_REPAIR_CODES
 from app.idm.storyboard_repair import SECOND_REPAIR_CODES
 from tests.support.log_support import logged_events
+from tests.unit.idm.test_idm_qc_run_2f8781d6 import writer_prompt_of
 from tests.unit.idm.test_idm_storyboard import (
     JUDGE,
     REPAIR,
@@ -160,6 +162,24 @@ class NearExampleEndpointTests(StoryboardEndpointTestCase):
         repair_prompt = next(call["prompt"] for call in provider.calls if call["family"] == REPAIR)
         self.assertIn("IDM_W5_ANSWER_NEAR_EXAMPLE", repair_prompt)
         self.assertIn("change the case details and the wording", repair_prompt)
+
+
+class LearnerRoleTests(unittest.TestCase):
+    """B7: quiz and worksheet scenarios put the learner in the audience's role; other actors are only the customer or a
+    stakeholder; every server-chosen opening puts the learner in the case."""
+
+    def test_the_writer_is_told_and_the_openings_follow(self) -> None:
+        prompt = writer_prompt_of(escalate_body())
+        self.assertIn(prompts_unit._ROLE_RULE, prompt)
+        self.assertIn("in the role TARGET_AUDIENCE names, in the learner's own\n  business setting", prompt)
+        self.assertIn("appear only as the customer or a stakeholder", prompt)
+        self.assertNotIn('"Ban điều\n  hành của …"', prompt)
+        openings = {prompts_unit.example_opening(f"chapter_{c}.lesson_{l}.unit_{u}", locale)
+                    for c in range(1, 4) for l in range(1, 5) for u in range(1, 4) for locale in ("vi", "en")}  # noqa: E741
+        for opening in openings:
+            self.assertFalse(any(word in opening for word in ("Ban điều hành", "CEO", "quý vừa qua", "leadership",
+                                                              "Last quarter")), opening)
+        self.assertGreaterEqual(len(openings), 8)
 
 
 if __name__ == "__main__":
