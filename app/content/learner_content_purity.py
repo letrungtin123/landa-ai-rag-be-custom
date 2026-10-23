@@ -14,9 +14,12 @@ _FILE_NAME_RE = re.compile(
     r"(?<![\w.-])[^\n<>]{0,160}?\.(?:pdf|pptx?|docx?|xlsx?|csv|txt|rtf)(?![\w.-])",
     re.IGNORECASE,
 )
+# The white-space gaps are possessive ("*+"): the optional word, the separator and the digits never start with white
+# space, so giving white space back never makes a match. With "*" the engine tried every split of a long space run
+# (cubic): removed furniture such as "(trang 1) (trang 2) ..." leaves such runs after "trang" (audit 2026-10-24, H2).
 _SOURCE_LOCATOR_RE = re.compile(
     r"\b(?:trang|page|slide|chunk|đoạn\s+nguồn|doan\s+nguon|mục\s+nguồn|muc\s+nguon)"
-    r"\s*(?:số|so|number|no\.?|#)?\s*[:#-]?\s*\d{1,6}\b",
+    r"\s*+(?:số|so|number|no\.?|#)?\s*+[:#-]?\s*+\d{1,6}\b",
     re.IGNORECASE,
 )
 _SOURCE_ATTRIBUTION_RE = re.compile(
@@ -68,6 +71,21 @@ _WRAPPED_SOURCE_FURNITURE_RE = re.compile(
     r"(?:\s*[,;/|]\s*(?:(?:trang|page|slide|chunk)\s*)?\d{1,6})*)\s*[\])]",
     re.IGNORECASE,
 )
+# The separator clean-up of sanitize_source_fact_for_learner, in linear time (audit 2026-10-24, H2). Each pattern
+# matches exactly what its plain form matched (the same pattern without the look-behind and without "+" after "*"),
+# so the cleaned fact is the same for every input (tests/unit/content/test_learner_content_purity_regex.py):
+# - a match can only start where a run of its characters starts: inside a run every start gives the same answer as
+#   the run's first character, which the scan reaches first. The look-behind skips the starts inside a run; before,
+#   each one read to the end of the run (quadratic on the space runs that removed furniture leaves).
+# - the white space around a separator is possessive ("*+"): a separator is never white space, so giving white space
+#   back never makes a match. Before, the edge pattern tried every split of a spaced dash line (exponential: 20
+#   spaced dashes took 0.2 s, 40 would take days).
+_SPACE_BEFORE_PUNCTUATION_RE = re.compile(r"(?<!\s)\s+([,.;:!?])")
+_SEPARATOR_RUN_RE = re.compile(r"(?<![\s,;:|])(?:\s*+[,;:|]\s*+){2,}")
+_TRAILING_DASH_RE = re.compile(r"(?<!\s)\s+(?:[-–—]\s*)$")  # noqa: RUF001 - the glyph is intended
+_EDGE_SEPARATORS_RE = re.compile(
+    r"^(?:\s*+[-–—,:;|]\s*+)+|(?<![\s\-–—,:;|])(?:\s*+[-–—,:;|]\s*+)+$"  # noqa: RUF001 - the glyph is intended
+)
 _DANGLING_PROVENANCE_ONLY_RE = re.compile(
     r"^(?:(?:xem|see|tham\s+khảo|tham\s+khao|refer(?:\s+to)?)\s+)?"
     r"(?:(?:nội\s+dung|noi\s+dung|content)\s+)?(?:tại|tai|ở|o|at|on|in)?\s*$",
@@ -114,10 +132,10 @@ def sanitize_source_fact_for_learner(value: Any) -> str:
     text = _SOURCE_LOCATOR_RE.sub(" ", text)
     text = _SOURCE_ATTRIBUTION_RE.sub(" ", text)
     text = re.sub(r"[\[(]\s*[\])]", " ", text)
-    text = re.sub(r"\s+([,.;:!?])", r"\1", text)
-    text = re.sub(r"(?:\s*[,;:|]\s*){2,}", "; ", text)
-    text = re.sub(r"\s+(?:[-–—]\s*)$", "", text)  # noqa: RUF001 - the glyph is intended
-    text = re.sub(r"^(?:\s*[-–—,:;|]\s*)+|(?:\s*[-–—,:;|]\s*)+$", "", text)  # noqa: RUF001 - the glyph is intended
+    text = _SPACE_BEFORE_PUNCTUATION_RE.sub(r"\1", text)
+    text = _SEPARATOR_RUN_RE.sub("; ", text)
+    text = _TRAILING_DASH_RE.sub("", text)
+    text = _EDGE_SEPARATORS_RE.sub("", text)
     text = re.sub(r"\s+", " ", text).strip()
     if not text or _DANGLING_PROVENANCE_ONLY_RE.fullmatch(text.strip(" .,:;!?-–—")):  # noqa: RUF001 - the glyph is intended
         return ""
