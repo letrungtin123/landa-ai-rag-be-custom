@@ -12,6 +12,7 @@ from typing import Literal
 from uuid import UUID
 
 from fastapi import Request
+from starlette.datastructures import Headers
 
 from app.core import metrics
 from app.core.config import AuthMode
@@ -25,6 +26,9 @@ HMAC_KEY_ID_HEADER = "X-Landa-Key-Id"
 HMAC_TIMESTAMP_HEADER = "X-Landa-Timestamp"
 HMAC_SIGNATURE_HEADER = "X-Landa-Signature"
 HMAC_REQUEST_ID_HEADER = "X-Landa-Request-Id"
+# "2": the signature covers the key id and the request id as well (security audit 2026-10-24, M1). Absent: v1.
+HMAC_SIGNATURE_VERSION_HEADER = "X-Landa-Signature-Version"
+HMAC_SIGNATURE_V2 = "2"
 TOKEN_HEADER = "X-Landa-AI-Service-Token"  # noqa: S105 - HTTP header name, not a token.
 HEX_SIGNATURE_PATTERN = re.compile(r"^[0-9a-f]{64}$")
 # ASCII digits only: str.isdigit() also accepts other scripts' digits and SUPERSCRIPT TWO, which int() rejects (an
@@ -32,15 +36,31 @@ HEX_SIGNATURE_PATTERN = re.compile(r"^[0-9a-f]{64}$")
 HMAC_TIMESTAMP_PATTERN = re.compile(r"[0-9]{1,12}")
 MINIMUM_HMAC_SECRET_LENGTH = 16
 # Why a request was refused: the bounded reason of the auth_rejected log line and of ai_rag_auth_rejections_total
-# (audit 2026-10-24, O5). Never a header value, a key id or a secret.
+# (audit 2026-10-24, O5). Never a header value, a key id or a secret. "bad_version": an unknown signature version;
+# "legacy_signature": a v1 signature while AI_RAG_HMAC_ACCEPT_V1_SIGNATURE is false.
 AuthRejection = Literal["missing_header", "unknown_key", "bad_timestamp", "bad_signature", "bad_request_id",
-                        "clock_skew", "replay", "bad_token", "not_configured"]
+                        "bad_version", "legacy_signature", "clock_skew", "replay", "bad_token", "not_configured"]
+SignatureVersion = Literal["1", "2"]
+# The reason of the auth_accepted log line and of ai_rag_auth_legacy_accepted_total: a request let in by a path
+# that is being retired, so operators can see its traffic reach 0 before turning it off.
+LEGACY_SIGNATURE = "legacy_signature"
 
 
 @dataclass(frozen=True, slots=True)
 class HmacCredential:
     key_id: str
     secret: str
+
+
+@dataclass(frozen=True, slots=True)
+class _SignedRequest:
+    """The HMAC headers of a request that passed every check that needs no clock and no body."""
+
+    credential: HmacCredential
+    timestamp: str
+    signature: str
+    request_id: str
+    version: SignatureVersion
 
 
 class ReplayCache:
@@ -100,6 +120,25 @@ def sign_hmac_request(secret: str, timestamp: str, method: str, path: str, body:
     ).hexdigest()
 
 
+def hmac_v2_canonical_message(  # noqa: PLR0917 - the lines of the canonical message, in their order
+    key_id: str, request_id: str, timestamp: str, method: str, path: str, body: bytes,
+) -> bytes:
+    """``v2``, the key id, the request id and the timestamp exactly as sent, METHOD, path, sha256 of the body."""
+
+    body_digest = hashlib.sha256(body).hexdigest()
+    return f"v2\n{key_id}\n{request_id}\n{timestamp}\n{method.upper()}\n{path}\n{body_digest}".encode()
+
+
+def sign_hmac_v2_request(  # noqa: PLR0917 - the secret, then the lines of the canonical message in their order
+    secret: str, key_id: str, request_id: str, timestamp: str, method: str, path: str, body: bytes,
+) -> str:
+    return hmac.new(
+        secret.encode(),
+        hmac_v2_canonical_message(key_id, request_id, timestamp, method, path, body),
+        hashlib.sha256,
+    ).hexdigest()
+
+
 def require_configured_service_auth(
     *,
     auth_mode: AuthMode,
@@ -124,19 +163,18 @@ def _token_is_valid(received: str, expected: str) -> bool:
     return hmac.compare_digest(received.encode(), expected.encode())
 
 
-async def _hmac_rejection(
-    request: Request,
+def _signed_request(
+    headers: Headers,
     credentials: dict[str, HmacCredential],
     *,
-    clock_skew_seconds: int,
-    replay_cache: ReplayCache,
-) -> AuthRejection | None:
-    """``None`` when a configured key signed the request (its request id is then spent), else why not."""
+    accept_v1_signature: bool,
+) -> _SignedRequest | AuthRejection:
+    """The checks that need neither the clock nor the body, in their order: the first failing one, or the headers."""
 
-    key_id = request.headers.get(HMAC_KEY_ID_HEADER, "")
-    timestamp = request.headers.get(HMAC_TIMESTAMP_HEADER, "")
-    signature = request.headers.get(HMAC_SIGNATURE_HEADER, "").lower()
-    request_id = request.headers.get(HMAC_REQUEST_ID_HEADER, "")
+    key_id = headers.get(HMAC_KEY_ID_HEADER, "")
+    timestamp = headers.get(HMAC_TIMESTAMP_HEADER, "")
+    signature = headers.get(HMAC_SIGNATURE_HEADER, "").lower()
+    request_id = headers.get(HMAC_REQUEST_ID_HEADER, "")
     if not (key_id and timestamp and signature and request_id):
         return "missing_header"
     credential = credentials.get(key_id)
@@ -150,20 +188,48 @@ async def _hmac_rejection(
         UUID(request_id)
     except (ValueError, AttributeError):
         return "bad_request_id"
+    version: SignatureVersion
+    sent_version = headers.get(HMAC_SIGNATURE_VERSION_HEADER)
+    if sent_version is None:
+        if not accept_v1_signature:
+            return "legacy_signature"
+        version = "1"
+    elif sent_version == HMAC_SIGNATURE_V2:
+        version = "2"
+    else:
+        return "bad_version"
+    return _SignedRequest(credential=credential, timestamp=timestamp, signature=signature, request_id=request_id,
+                          version=version)
+
+
+async def _hmac_rejection(
+    request: Request,
+    credentials: dict[str, HmacCredential],
+    *,
+    clock_skew_seconds: int,
+    replay_cache: ReplayCache,
+    accept_v1_signature: bool,
+) -> tuple[AuthRejection | None, SignatureVersion | None]:
+    """``None`` when a configured key signed the request (its request id is then spent), else why not; and the
+    signature version once the headers name one."""
+
+    signed = _signed_request(request.headers, credentials, accept_v1_signature=accept_v1_signature)
+    if isinstance(signed, str):
+        return signed, None
     current = int(time.time())
-    if abs(current - int(timestamp)) > clock_skew_seconds:
-        return "clock_skew"
+    if abs(current - int(signed.timestamp)) > clock_skew_seconds:
+        return "clock_skew", signed.version
     body = await request.body()
-    expected = sign_hmac_request(
-        credential.secret,
-        timestamp,
-        request.method,
-        request.url.path,
-        body,
-    )
-    if not hmac.compare_digest(signature.encode(), expected.encode()):
-        return "bad_signature"
-    return None if replay_cache.consume(request_id, now=float(current)) else "replay"
+    secret = signed.credential.secret
+    if signed.version == HMAC_SIGNATURE_V2:
+        expected = sign_hmac_v2_request(secret, signed.credential.key_id, signed.request_id, signed.timestamp,
+                                        request.method, request.url.path, body)
+    else:
+        expected = sign_hmac_request(secret, signed.timestamp, request.method, request.url.path, body)
+    if not hmac.compare_digest(signed.signature.encode(), expected.encode()):
+        return "bad_signature", signed.version
+    # The request id is spent only once the signature is valid, so a forged request cannot burn a real one.
+    return (None if replay_cache.consume(signed.request_id, now=float(current)) else "replay"), signed.version
 
 
 def _rejection_reason(auth_mode: AuthMode, token_sent: bool, hmac_rejection: AuthRejection) -> AuthRejection:
@@ -175,6 +241,15 @@ def _rejection_reason(auth_mode: AuthMode, token_sent: bool, hmac_rejection: Aut
     return hmac_rejection
 
 
+def auth_rejected(request: Request, reason: AuthRejection) -> AppError:
+    """Count and log a refusal; the error every refusal answers with (one 401 body for every reason)."""
+
+    metrics.AUTH_REJECTIONS.labels(reason=reason).inc()
+    logger.warning("auth_rejected", extra={"event": "auth_rejected", "reason": reason,
+                                           "route": route_template(request.scope)})
+    return AppError("UNAUTHORIZED", 401, "Unauthorized AI RAG service request.")
+
+
 async def require_internal_auth(
     request: Request,
     *,
@@ -183,6 +258,7 @@ async def require_internal_auth(
     hmac_secrets: str,
     clock_skew_seconds: int,
     replay_ttl_seconds: int,
+    accept_v1_signature: bool,
     replay_cache: ReplayCache | None = None,
 ) -> None:
     token = request.headers.get(TOKEN_HEADER, "")
@@ -194,26 +270,30 @@ async def require_internal_auth(
     active_cache = replay_cache or _replay_cache
     active_cache.ttl_seconds = replay_ttl_seconds
     hmac_rejection: AuthRejection | None = "not_configured"
+    version: SignatureVersion | None = None
     if auth_mode in {"hmac", "token_or_hmac"} and credentials:
-        hmac_rejection = await _hmac_rejection(
+        hmac_rejection, version = await _hmac_rejection(
             request,
             credentials,
             clock_skew_seconds=clock_skew_seconds,
             replay_cache=active_cache,
+            accept_v1_signature=accept_v1_signature,
         )
+    if hmac_rejection is None and version == "1":
+        metrics.AUTH_LEGACY_ACCEPTED.labels(reason=LEGACY_SIGNATURE).inc()
+        logger.info("auth_accepted", extra={"event": "auth_accepted", "reason": LEGACY_SIGNATURE,
+                                            "route": route_template(request.scope)})
     if hmac_rejection is None or (auth_mode == "token_or_hmac" and token_valid):
         return
-    reason = _rejection_reason(auth_mode, bool(token), hmac_rejection)
-    metrics.AUTH_REJECTIONS.labels(reason=reason).inc()
-    logger.warning("auth_rejected", extra={"event": "auth_rejected", "reason": reason,
-                                           "route": route_template(request.scope)})
-    raise AppError("UNAUTHORIZED", 401, "Unauthorized AI RAG service request.")
+    raise auth_rejected(request, _rejection_reason(auth_mode, bool(token), hmac_rejection))
 
 
 __all__ = [
     "HMAC_KEY_ID_HEADER",
     "HMAC_REQUEST_ID_HEADER",
     "HMAC_SIGNATURE_HEADER",
+    "HMAC_SIGNATURE_V2",
+    "HMAC_SIGNATURE_VERSION_HEADER",
     "HMAC_TIMESTAMP_HEADER",
     "SECRET_PATTERNS",
     "ReplayCache",
@@ -222,4 +302,5 @@ __all__ = [
     "require_configured_service_auth",
     "require_internal_auth",
     "sign_hmac_request",
+    "sign_hmac_v2_request",
 ]

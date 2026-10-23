@@ -275,12 +275,17 @@ class Settings(BaseSettings):
         ge=30,
         le=900,
     )
+    # Kept at least twice the clock skew (validate_startup_settings): a signed request is accepted for 2 x the skew.
     auth_replay_ttl_seconds: int = Field(
         default=600,
         validation_alias="AI_RAG_AUTH_REPLAY_TTL_SECONDS",
         ge=60,
         le=3_600,
     )
+    # HMAC v1 signatures (no key id and no request id in the signed message, security audit 2026-10-24 M1) are
+    # accepted only while this is true: the transition to v2. Each accepted one is logged and counted
+    # (ai_rag_auth_legacy_accepted_total{reason="legacy_signature"}); set false once that stays at 0.
+    hmac_accept_v1_signature: bool = Field(default=True, validation_alias="AI_RAG_HMAC_ACCEPT_V1_SIGNATURE")
 
     max_request_bytes: int = Field(
         default=16 * 1024 * 1024,
@@ -541,6 +546,10 @@ def validate_startup_settings(value: Settings) -> None:
     missing = missing_required_setting_names(value)
     if missing:
         raise RuntimeError(f"Missing required environment variables: {', '.join(missing)}")
+    if value.auth_replay_ttl_seconds < 2 * value.auth_clock_skew_seconds:
+        # A signed request is accepted while its timestamp is within the skew on either side of the clock, so its
+        # request id must stay in the replay cache for twice the skew or it can be sent again.
+        raise RuntimeError("AI_RAG_AUTH_REPLAY_TTL_SECONDS must be at least twice AI_RAG_AUTH_CLOCK_SKEW_SECONDS.")
     if value.host == "0.0.0.0" and value.auth_mode == "token":  # noqa: S104 - comparison, not a bind.
         log_event(logger, logging.WARNING, "ai_rag_public_bind_without_hmac", host=value.host,
                   auth_mode=value.auth_mode)

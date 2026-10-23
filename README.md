@@ -91,9 +91,13 @@ bounded repair, then deterministic source-locked content marked for review. Prom
   (`/v1/lesson-author/orchestration-v2/source-snapshot`, `/course-skeleton`, `/chapter-shard`, `/unit`).
 - Auth: `AI_RAG_AUTH_MODE` `hmac` (target), `token` or `token_or_hmac` (rotation). HMAC headers
   `X-Landa-Key-Id`, `X-Landa-Timestamp` (Unix seconds, skew `AI_RAG_AUTH_CLOCK_SKEW_SECONDS`),
-  `X-Landa-Request-Id` (a new UUID per send; replays are refused for `AI_RAG_AUTH_REPLAY_TTL_SECONDS`),
-  `X-Landa-Signature` = lowercase hex HMAC-SHA256 of `{timestamp}\n{METHOD}\n{path}\n{sha256_hex(body)}`.
-  `AI_RAG_SERVICE_HMAC_SECRETS` is `kid:secret[,kid:secret]`.
+  `X-Landa-Request-Id` (a new UUID per send; replays are refused for `AI_RAG_AUTH_REPLAY_TTL_SECONDS`, which
+  must be at least twice the skew), `X-Landa-Signature-Version: 2` and `X-Landa-Signature` = lowercase hex
+  HMAC-SHA256 of `v2\n{key_id}\n{request_id}\n{timestamp}\n{METHOD}\n{path}\n{sha256_hex(body)}` (ids and
+  timestamp exactly as sent). A request without the version header is v1, signed over
+  `{timestamp}\n{METHOD}\n{path}\n{sha256_hex(body)}`; it is accepted only while
+  `AI_RAG_HMAC_ACCEPT_V1_SIGNATURE` is true and counted in `ai_rag_auth_legacy_accepted_total`. Any other version
+  is refused. `AI_RAG_SERVICE_HMAC_SECRETS` is `kid:secret[,kid:secret]`.
 - Errors: `{"detail": {"code": "STABLE_CODE", "message": "safe text", "correlation_id": "..."}}`. Transient
   failures (`AI_PROVIDER_UNAVAILABLE`, `AI_PROVIDER_RATE_LIMITED`, `AI_PROVIDER_TIMEOUT`, `SERVICE_BUSY`,
   `DATABASE_NOT_READY`) are 503/504 so the backend's durable workers retry; `AI_PROVIDER_QUOTA_EXHAUSTED` stops
@@ -187,6 +191,7 @@ Secrets are `SecretStr` and never logged; `.env.example` holds placeholders.
 | `AI_RAG_SERVICE_HMAC_SECRETS` | secret | empty |  |
 | `AI_RAG_AUTH_CLOCK_SKEW_SECONDS` | int | `300` | >= 30, <= 900 |
 | `AI_RAG_AUTH_REPLAY_TTL_SECONDS` | int | `600` | >= 60, <= 3600 |
+| `AI_RAG_HMAC_ACCEPT_V1_SIGNATURE` | bool | `true` |  |
 | `AI_RAG_MAX_REQUEST_BYTES` | int | `16777216` | >= 1024, <= 67108864 |
 | `AI_RAG_IDM_MAX_REQUEST_BYTES` | int | `25165824` | >= 1024, <= 67108864 |
 | `AI_RAG_MAX_DOCUMENT_BYTES` | int | `52428800` | >= 1024, <= 536870912 |

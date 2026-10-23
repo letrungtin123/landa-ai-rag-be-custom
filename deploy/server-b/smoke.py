@@ -27,9 +27,11 @@ from app.core.security import (
     HMAC_KEY_ID_HEADER,
     HMAC_REQUEST_ID_HEADER,
     HMAC_SIGNATURE_HEADER,
+    HMAC_SIGNATURE_V2,
+    HMAC_SIGNATURE_VERSION_HEADER,
     HMAC_TIMESTAMP_HEADER,
     parse_hmac_secrets,
-    sign_hmac_request,
+    sign_hmac_v2_request,
 )
 
 
@@ -57,11 +59,14 @@ def _signed_headers(path: str) -> dict[str, str] | None:
         return None
     credential = next(iter(credentials.values()))
     timestamp = str(int(time.time()))
+    request_id = str(uuid.uuid4())
     return {
         HMAC_KEY_ID_HEADER: credential.key_id,
         HMAC_TIMESTAMP_HEADER: timestamp,
-        HMAC_REQUEST_ID_HEADER: str(uuid.uuid4()),
-        HMAC_SIGNATURE_HEADER: sign_hmac_request(credential.secret, timestamp, "GET", path, b""),
+        HMAC_REQUEST_ID_HEADER: request_id,
+        HMAC_SIGNATURE_VERSION_HEADER: HMAC_SIGNATURE_V2,
+        HMAC_SIGNATURE_HEADER: sign_hmac_v2_request(credential.secret, credential.key_id, request_id, timestamp,
+                                                    "GET", path, b""),
     }
 
 

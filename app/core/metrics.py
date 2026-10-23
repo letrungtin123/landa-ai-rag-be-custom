@@ -122,6 +122,14 @@ AUTH_REJECTIONS = Counter(
     ("reason",),
     registry=REGISTRY,
 )
+# Internal requests let in by an authentication path that is being retired (reason "legacy_signature": an HMAC v1
+# signature); it reaching 0 is the signal to set AI_RAG_HMAC_ACCEPT_V1_SIGNATURE=false.
+AUTH_LEGACY_ACCEPTED = Counter(
+    "ai_rag_auth_legacy_accepted_total",
+    "Internal requests accepted through a deprecated authentication path, by reason.",
+    ("reason",),
+    registry=REGISTRY,
+)
 DEADLINE_EXCEEDED = Counter(
     "ai_rag_deadline_exceeded_total",
     "Requests stopped by their overall deadline, by route template.",
