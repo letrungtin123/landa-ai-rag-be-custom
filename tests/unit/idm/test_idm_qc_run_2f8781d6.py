@@ -260,19 +260,20 @@ class ShortItemLabelTests(unittest.TestCase):
     """A2: an option that only names a short stem item ("Ý 1") is under the shared validator's 8 characters; the label
     is written out in a longer noun everywhere the quiz uses it, never "Phương án"."""
 
-    def test_the_label_is_written_out_everywhere(self) -> None:
+    def test_the_label_is_written_out_in_the_items_and_options(self) -> None:
         for label, longer in (("Ý", "Ý kiến"), ("Mục", "Mục số"), ("Câu", "Câu số"), ("Bước", "Bước số"),
                               ("Item", "Item no.")):
             quiz, count = expand_short_item_labels(item_quiz(label))
-            self.assertEqual(count, 12, label)
+            self.assertEqual(count, 8, label)
             self.assertEqual([choice["text"] for choice in quiz["choices"]], [f"{longer} {n}" for n in range(1, 5)])
             self.assertIn(f"- {longer} 2: Phương pháp số 2", quiz["question"])
-            self.assertIn(f"A - Đúng vì {longer} 1 chia", quiz["explanation"])
+            # Review 5 (M1): never a word inside a sentence; the explanation is left as written.
+            self.assertEqual(quiz["explanation"], item_quiz(label)["explanation"])
             self.assertTrue(all(len(choice["text"]) >= 8 for choice in quiz["choices"]))
             self.assertNotIn("Phương án", quiz["question"])
 
     def test_left_as_written_when_it_is_not_certain(self) -> None:
-        for quiz in (item_quiz("Ý", extra=" Gợi ý: xem lại Ý 5."),  # a use names no listed item
+        for quiz in (item_quiz("Ý", names=("Ý 1", "Ý 2", "Ý 3", "Ý 5")),  # an option names no listed item
                      item_quiz("Ý", names=("Ý kiến 1", "Ý kiến 2", "Ý kiến 3", "Ý kiến 4")),  # no short option
                      item_quiz("Nhóm")):  # not a short item label of the list
             self.assertEqual(expand_short_item_labels(quiz), (quiz, 0))

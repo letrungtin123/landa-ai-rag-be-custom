@@ -250,65 +250,63 @@ def number_item_letters(component: dict[str, Any]) -> tuple[dict[str, Any], int]
 
 # Run 2f8781d6 (c2.l3.u3): the writer and its repair both answered options that only named a stem item ("Ý 1"), shorter
 # than the shared validator's 8 characters (PROBLEM_CHOICE_INVALID, a rule Node shares), and the whole unit fell back.
-# A short item label of the stem is written out in a longer noun that still is not the options' own ("phương án"),
-# everywhere the quiz uses it, only when every use of it names a listed item.
+# A short item label of the stem is written out in a longer noun that still is not the options' own ("phương án").
+# Review 5 (M1): only the stem's item labels ("- Ý 3:" at a line start) and the options that are exactly such a name
+# change, never a word inside a sentence ("cần lưu ý 2 điều" became "lưu ý kiến 2 điều").
 ITEM_LABELS_EXPANDED: Final = "w5_problem_item_labels_expanded"
 # The shared validator's shortest choice (``validation.validate_staged_unit_content``, PROBLEM_CHOICE_INVALID).
 _MIN_CHOICE_CHARS: Final = 8
 _LONGER_LABELS: Final = {"ý": "ý kiến", "mục": "mục số", "câu": "câu số", "bước": "bước số", "item": "item no.",
                          "point": "point no."}
 _SHORT_LABEL: Final = r"(?i:ý|mục|câu|bước|item|point)"
-_SHORT_ITEM_RE: Final = re.compile(rf"^[ \t]*[-–•*][ \t]+({_SHORT_LABEL})[ \t]+(\d{{1,2}})[ \t]*:", re.MULTILINE)  # noqa: RUF001
-_SHORT_USE_RE: Final = re.compile(rf"(?<!\w)({_SHORT_LABEL})[ \t]+(\d{{1,2}})(?!\w)")
+_SHORT_ITEM_RE: Final = re.compile(rf"^([ \t]*[-–•*][ \t]+)({_SHORT_LABEL})[ \t]+(\d{{1,2}})([ \t]*:)",  # noqa: RUF001
+                                   re.MULTILINE)
+_SHORT_USE_RE: Final = re.compile(rf"({_SHORT_LABEL})[ \t]+(\d{{1,2}})")
 
 
 def expand_short_item_labels(component: dict[str, Any]) -> tuple[dict[str, Any], int]:
-    """``component`` with the short label of its stem items ("Ý 1", "Mục 2") written out ("Ý kiến 1", "Mục số 2") in
-    the stem, the choices, the explanation, the hints and the title, and how many uses changed; ``(component, 0)``
-    unless an option is only such an item name under 8 characters, the stem lists the items 1, 2 … under that one
-    label, and every use of the label in the quiz names a listed item."""
+    """``component`` with the short label of its stem items ("- Ý 1:", "- Mục 2:") written out ("- Ý kiến 1:", "- Mục
+    số 2:") at the start of the stem's item lines and in the options that are only such a name ("Ý 1"), and how many
+    of them changed; ``(component, 0)`` unless an option is such a name under 8 characters, the stem lists the items
+    1, 2 … under that one label, and every option that is such a name names a listed item. Nothing else of the quiz
+    changes (review 5, M1)."""
 
     kind = str(component.get("problem_type") or "multiple_choice").strip().lower()
     question = component.get("question")
     choices = component.get("choices")
     if kind not in _SINGLE_CHOICE_TYPES or not isinstance(question, str) or not isinstance(choices, list):
         return component, 0
-    listed = [(match.group(1).lower(), int(match.group(2)))
-              for match in _SHORT_ITEM_RE.finditer(unicodedata.normalize("NFC", question))]
+    stem = unicodedata.normalize("NFC", question)
+    listed = [(match.group(2).lower(), int(match.group(3))) for match in _SHORT_ITEM_RE.finditer(stem)]
     labels = {label for label, _number in listed}
     numbers = [number for _label, number in listed]
     if len(labels) != 1 or len(numbers) < _MIN_ITEMS or numbers != list(range(1, len(numbers) + 1)):
         return component, 0
     label = labels.pop()
-    texts = _texts(component)
-    names = [" ".join(str(choice.get("text") or "").split()).strip(" .:;,") for choice in choices
-             if isinstance(choice, dict)]
-    short = [name for name in names if len(name) < _MIN_CHOICE_CHARS and (match := _SHORT_USE_RE.fullmatch(name))
-             and match.group(1).lower() == label and int(match.group(2)) in numbers]
-    uses = [match for _key, _position, text in texts for match in _SHORT_USE_RE.finditer(text)
-            if match.group(1).lower() == label]
-    if not short or any(int(match.group(2)) not in numbers for match in uses):
-        return component, 0
     longer = _LONGER_LABELS[label]
 
-    def rename(match: re.Match[str]) -> str:
-        if match.group(1).lower() != label:
-            return match.group(0)
-        noun = longer[:1].upper() + longer[1:] if match.group(1)[:1].isupper() else longer
-        return f"{noun} {match.group(2)}"
+    def noun(written: str) -> str:
+        return longer[:1].upper() + longer[1:] if written[:1].isupper() else longer
 
+    # The options that are only an item name of the label ("Ý 3", "Ý 3."), with the name's place in their text.
+    named: dict[int, re.Match[str]] = {}
+    for position, choice in enumerate(choices):
+        text = unicodedata.normalize("NFC", str(choice.get("text") or "")) if isinstance(choice, dict) else ""
+        match = _SHORT_USE_RE.fullmatch(text.strip(" .:;,"))
+        if match is not None and match.group(1).lower() == label:
+            named[position] = match
+    if (not any(len(match.group(0)) < _MIN_CHOICE_CHARS for match in named.values())
+            or any(int(match.group(2)) not in numbers for match in named.values())):
+        return component, 0
     result = {**component, "choices": [dict(choice) if isinstance(choice, dict) else choice for choice in choices]}
-    if isinstance(component.get("hints"), list):
-        result["hints"] = list(component["hints"])
-    for key, position, text in texts:
-        renamed = _SHORT_USE_RE.sub(rename, unicodedata.normalize("NFC", text))
-        if position is None:
-            result[key] = renamed
-        elif key == "choices":
-            result[key][position]["text"] = renamed
-        else:
-            result[key][position] = renamed
-    return result, len(uses)
+    result["question"], count = _SHORT_ITEM_RE.subn(
+        lambda match: f"{match.group(1)}{noun(match.group(2))} {match.group(3)}{match.group(4)}"
+        if match.group(2).lower() == label else match.group(0), stem)
+    for position, match in named.items():
+        text = unicodedata.normalize("NFC", str(choices[position].get("text") or "")).strip(" .:;,")
+        result["choices"][position]["text"] = f"{noun(match.group(1))} {match.group(2)}{text[match.end():]}"
+        count += 1
+    return result, count
 
 
 __all__ = ["ITEM_LABELS_EXPANDED", "ITEM_LETTERS_NUMBERED", "expand_short_item_labels", "number_item_letters",

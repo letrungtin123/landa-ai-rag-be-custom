@@ -6,8 +6,10 @@ Every case is synthetic text with the shape of the reviewer's reproduction scrip
 from __future__ import annotations
 
 import json
+import unittest
 from typing import Any
 
+from app.idm.quiz_letters import expand_short_item_labels
 from tests.support.log_support import logged_events
 from tests.unit.idm.test_idm_storyboard import (
     JUDGE,
@@ -101,3 +103,29 @@ class SoftFindingRepairTests(StoryboardEndpointTestCase):
         status, data, _ = await self.post(body, provider)
         self.assertEqual(status, 200, data.get("detail"))
         self.assertEqual(data["usage_source"], "reserved_upper_bound")
+
+
+class ShortLabelTests(unittest.TestCase):
+    """M1: only the stem's item labels and the options that are only such a name are written out."""
+
+    def test_words_inside_sentences_stay(self) -> None:
+        items = "\n".join(f"- Ý {number}: {text}" for number, text in enumerate(
+            ("Gọi lại cho khách trong ngày.", "Gửi thư xin lỗi theo mẫu chuẩn.", "Chuyển ngay cho quản lý cấp cao.",
+             "Hẹn khách mang máy đến cửa hàng."), 1))
+        quiz = {"problem_type": "multiple_choice", "title": "Chú ý 3 điểm khi xử lý",
+                "question": f"Giả sử khách báo máy sấy bốc khói. Bạn cân nhắc bốn ý (gợi ý 2 cách):\n{items}\n"
+                            "Ý nào đúng?",
+                "choices": [{"text": f"Ý {number}", "correct": number == 3} for number in (3, 1, 2, 4)],
+                "hints": ["Đồng ý 1 lần là đủ."],
+                "explanation": "Nguyên tắc: cần lưu ý 2 điều: an toàn trước, rồi mới tới bồi thường.\nA - Đúng vì Ý 3 "
+                               "chuyển ngay.\nB - Sai vì Ý 1 chậm.\nC - Sai vì Ý 2 chưa xử lý.\nD - Sai vì Ý 4 chậm."}
+        expanded, count = expand_short_item_labels(quiz)
+        self.assertEqual(count, 8)
+        self.assertEqual([choice["text"] for choice in expanded["choices"]],
+                         ["Ý kiến 3", "Ý kiến 1", "Ý kiến 2", "Ý kiến 4"])
+        self.assertIn("\n- Ý kiến 3: Chuyển ngay cho quản lý cấp cao.", expanded["question"])
+        self.assertIn("(gợi ý 2 cách)", expanded["question"])
+        self.assertIn("\nÝ nào đúng?", expanded["question"])
+        for key in ("title", "explanation", "hints"):
+            self.assertEqual(expanded[key], quiz[key], key)
+        self.assertTrue(quiz["choices"][0]["text"] == "Ý 3")  # the input is never changed
