@@ -194,6 +194,12 @@ HASH_HISTORY: tuple[tuple[str, str], ...] = (
     # (IDM_W5_NAME_NOT_IN_SOURCE) and its rename hint, the phrases found (slot_hint).
     ("f702034dc57dbc3a46687ac2fb2c4d472b5ebbe1cdaaad0690f4d63c3cd230ba",
      "A tool name the source does not use is repaired once"),
+    # Review 5 (L4): every server-chosen case opening is a supposition with the learner in it (no "Tại một doanh nghiệp
+    # …", no "Bạn vừa nhận được …" told as real), the quiz shape example too; _ROLE_RULE says the learner acts or
+    # decides and names the actors outside the audience's role; _SELF_PACED_RULE keeps a count an approved
+    # PRACTICE_TASKS sentence states.
+    ("4c60bd519f81637bdcc85e0dcc6ced089ab0605b87ad07796ba82d486da8cf25",
+     "Case openings are suppositions with the learner; role rule unambiguous"),
 )
 PROMPT_NAME = re.compile(r"(prompt|_rules?$|_suffix$|rule_lines?$|_hint$|^rule_line$|_cue_line$)")
 

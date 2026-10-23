@@ -181,13 +181,17 @@ class LearnerRoleTests(unittest.TestCase):
         prompt = writer_prompt_of(escalate_body())
         self.assertIn(prompts_unit._ROLE_RULE, prompt)
         self.assertIn("in the role TARGET_AUDIENCE names, in the learner's own\n  business setting", prompt)
-        self.assertIn("appear only as the customer or a stakeholder", prompt)
+        self.assertIn("appear only as the\n  customer or a stakeholder", prompt)
+        self.assertIn("the learner is the one who acts or decides", prompt)
         self.assertNotIn('"Ban điều\n  hành của …"', prompt)
         openings = {prompts_unit.example_opening(f"chapter_{c}.lesson_{l}.unit_{u}", locale)
                     for c in range(1, 4) for l in range(1, 5) for u in range(1, 4) for locale in ("vi", "en")}  # noqa: E741
         for opening in openings:
             self.assertFalse(any(word in opening for word in ("Ban điều hành", "CEO", "quý vừa qua", "leadership",
                                                               "Last quarter")), opening)
+            # Review 5 (L4): every opening is a supposition with the learner in it.
+            self.assertTrue(opening.startswith(("Giả sử", "Hãy hình dung", "Suppose", "Imagine")), opening)
+            self.assertTrue(" bạn" in opening or " you" in opening.replace("your", "you"), opening)
         self.assertGreaterEqual(len(openings), 8)
 
 

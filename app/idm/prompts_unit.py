@@ -69,7 +69,7 @@ _QUIZ_TEXT_RULE: Final = f"""\
   "dũng cảm", "đập tan", "triệt để", "khổng lồ", "tuyệt đối", "vượt trội", "Say No", "brave", "absolutely"; only a
   quoted name of a source concept keeps its words); at most {IDM_MCQ_EXPLANATION_MAX_CHARS} characters in all. The
   shape, in JSON:
-  "question": "Tại một doanh nghiệp, ba nhóm khách hàng như sau:\\n- Nhóm X: …\\n- Nhóm Y: …\\nBạn nên làm gì?"
+  "question": "Giả sử doanh nghiệp của bạn có ba nhóm khách hàng như sau:\\n- Nhóm X: …\\n- Nhóm Y: …\\nBạn nên làm gì?"
   "explanation": "Nguyên tắc: …\\nA - Sai vì …\\nB - Đúng vì …\\nC - Sai vì …\""""
 # A worksheet slot (role practice). A5 (owner decision 2026-10-22): criteria the AI suggested because the source states
 # none restate what the lesson teaches. Run 5496155c: the learner reads "Tự kiểm tra" only; the author note says the
@@ -109,17 +109,18 @@ _REPEAT_RULE: Final = """\
 # setting.
 _ROLE_RULE: Final = """\
 - Quiz and worksheet scenarios put the learner ("bạn" / "you") in the role TARGET_AUDIENCE names, in the learner's own
-  business setting (their company, their customers); other actors (the leadership, the source's own organisation, its
-  members or departments) appear only as the customer or a stakeholder, never as the one who acts or decides; the
-  facts and names the unit teaches stay as the source states them."""
+  business setting (their company, their customers): the learner is the one who acts or decides. Actors outside that
+  role (the source's own organisation, its members or departments, a level the audience is not) appear only as the
+  customer or a stakeholder; the facts and names the unit teaches stay as the source states them."""
 # Run 2f8781d6 (B8): "BÀI TẬP 10 phút … chọn ra đúng 2 sáng kiến" became "đội ngũ cần 10 phút phản biện", "gồm đúng 2
 # sáng kiến" (the server notes what is left: app.idm.slot_words).
 _SELF_PACED_RULE: Final = """\
 - The course is self-paced e-learning: no classroom instructions (no "trước khi rời lớp/học phần", "thảo luận nhóm
   tại lớp", "giảng viên sẽ …"). A classroom exercise of the facts ("BÀI TẬP 10 phút …", "Câu hỏi thảo luận …", "Bài
   tập về nhà theo nhóm") becomes a self-paced practice on the learner's own company: teach the method it practises and
-  drop its time limit, the number of items it picks and its group, discussion or homework wording; never write them as
-  rules of real work ("đội ngũ cần 10 phút phản biện", "chọn đúng 2 sáng kiến")."""
+  drop its time limit, its group, discussion or homework wording and the number of items it picks (unless a
+  PRACTICE_TASKS sentence keeps that number); never write them as rules of real work ("đội ngũ cần 10 phút phản
+  biện", "chọn đúng 2 sáng kiến")."""
 # N9 and QC feedback 2026-10-21 (A3): a callout quotes the source and adds a point its slot does not already make.
 _CALLOUT_RULE: Final = """\
 - A "warning" block is shown to the learner as a quotation/callout: use it only for a rule, warning or
@@ -222,8 +223,8 @@ Writing rules (learner-facing, {locale_name(locale)}):
 - Use drafted scenarios/examples only where the brief marks them ai_drafted (a practice with scenario_origin
   ai_drafted, or a slot with "examples": "ai_drafted"); they never add rules, numbers or names, and their main person
   has the learner's own role (TARGET_AUDIENCE), never one of another level (no team lead in a course for executives).
-  Vary how examples and cases open (not every one "Giả sử bạn …": "Hãy hình dung bạn …", "Tại một doanh nghiệp
-  …"){opening_line}. A drafted case is a supposition ("Giả sử …", "Hãy hình dung …"), never told as a real
+  Vary how examples and cases open (not every one "Giả sử bạn …": "Hãy hình dung bạn …", "Giả sử khách hàng của
+  bạn …"){opening_line}. A drafted case is a supposition ("Giả sử …", "Hãy hình dung …"), never told as a real
   past event ("Trong quý vừa qua …", "Năm ngoái, …"; the server writes "Giả sử" before such an opening).
 {_ROLE_RULE}
 {_SELF_PACED_RULE}
@@ -297,12 +298,13 @@ HTML SLOT FORMAT (type "html"). The server renders the HTML itself and rejects a
 
 # QLT-9 (QC run ffaf7318: 12 of 14 drafted examples opened "Một CEO …"): each unit is written alone, so the server
 # gives it one opening, chosen from the unit's place in the course. Run 2f8781d6 (B7): every opening puts the learner in
-# the case (no leadership as the actor; no "Trong quý vừa qua", which became "Giả sử trong quý vừa qua").
+# the case (no leadership as the actor; no "Trong quý vừa qua", which became "Giả sử trong quý vừa qua"). Review 5 (L4):
+# each one a supposition with the learner in it (no "Tại một doanh nghiệp …", no "Bạn vừa nhận được …" told as real).
 _EXAMPLE_OPENINGS: Final[dict[str, tuple[str, ...]]] = {
-    "vi": ("Giả sử bạn …", "Tại một doanh nghiệp …", "Hãy hình dung bạn …", "Trong công việc hằng ngày, bạn …",
-           "Bạn vừa nhận được …", "Giả sử tuần này bạn …"),
-    "en": ("Suppose you …", "At a company …", "Imagine you …", "In your daily work, you …", "You have just received …",
-           "Suppose this week you …"),
+    "vi": ("Giả sử bạn …", "Hãy hình dung bạn …", "Giả sử khách hàng của bạn …",
+           "Giả sử trong công việc hằng ngày, bạn …", "Giả sử bạn vừa nhận được …", "Giả sử tuần này bạn …"),
+    "en": ("Suppose you …", "Imagine you …", "Suppose your customer …", "Suppose that in your daily work you …",
+           "Suppose you have just received …", "Suppose this week you …"),
 }
 
 

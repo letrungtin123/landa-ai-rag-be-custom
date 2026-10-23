@@ -48,8 +48,8 @@
   "escalate": [
    {
     "schema": "StagedInstancePayloadUnitIdmWire",
-    "sha256": "ac6e5bb48342e0bbdb782a25c624b06deb4bb48839ab6d601e168356750097ae",
-    "chars": 22808
+    "sha256": "f1634f2dc3a254bfcab8d4c9ff48b3d8debb9e3b7ce0255ef6f4adb1270b9213",
+    "chars": 22908
    },
    {
     "schema": "IdmJudgeResponseV1IdmWire",
@@ -60,8 +60,8 @@
   "severity": [
    {
     "schema": "StagedInstancePayloadUnitIdmWire",
-    "sha256": "b67d319ee85573cd913b0db6aaec817236e96be3189e13e9006e0091176e6166",
-    "chars": 20608
+    "sha256": "50fa747286ea90cc8817a3afbe19961ea43a723fcf49b079662b5d2f397eb4ac",
+    "chars": 20705
    },
    {
     "schema": "IdmJudgeResponseV1IdmWire",
@@ -72,37 +72,37 @@
   "writer_unavailable": [
    {
     "schema": "StagedInstancePayloadUnitIdmWire",
-    "sha256": "b67d319ee85573cd913b0db6aaec817236e96be3189e13e9006e0091176e6166",
-    "chars": 20608
+    "sha256": "50fa747286ea90cc8817a3afbe19961ea43a723fcf49b079662b5d2f397eb4ac",
+    "chars": 20705
    }
   ],
   "missing_slot": [
    {
     "schema": "StagedInstancePayloadUnitIdmWire",
-    "sha256": "b67d319ee85573cd913b0db6aaec817236e96be3189e13e9006e0091176e6166",
-    "chars": 20608
+    "sha256": "50fa747286ea90cc8817a3afbe19961ea43a723fcf49b079662b5d2f397eb4ac",
+    "chars": 20705
    },
    {
     "schema": "StagedInstancePayloadUnitIdmWire",
-    "sha256": "34ff7478ddc42b029701dfffdb4a9d339cda20a3ab7afece5d5a4a4b97fa1ba0",
-    "chars": 20935
+    "sha256": "ea2adf2516df616e51aaf93f1ad63c19354045ca032688c9377b3beaba7c043f",
+    "chars": 21032
    }
   ],
   "semantic_null": [
    {
     "schema": "StagedInstancePayloadUnitIdmWire",
-    "sha256": "b67d319ee85573cd913b0db6aaec817236e96be3189e13e9006e0091176e6166",
-    "chars": 20608
+    "sha256": "50fa747286ea90cc8817a3afbe19961ea43a723fcf49b079662b5d2f397eb4ac",
+    "chars": 20705
    },
    {
     "schema": "StagedMultiRepairIdmWire",
-    "sha256": "1064d60d108f003617571fc81a85302fc2406f2a945b98d65d840e1b3c61374f",
-    "chars": 21601
+    "sha256": "666b8d57d8067e2e40001da5fdef83420dfe6b47b83c9add28621c7e6350bb09",
+    "chars": 21698
    },
    {
     "schema": "StagedMultiRepairIdmWire",
-    "sha256": "1064d60d108f003617571fc81a85302fc2406f2a945b98d65d840e1b3c61374f",
-    "chars": 21601
+    "sha256": "666b8d57d8067e2e40001da5fdef83420dfe6b47b83c9add28621c7e6350bb09",
+    "chars": 21698
    }
   ]
  },
@@ -120,12 +120,12 @@
    "chars": 12
   },
   "example_opening/vi/chapter_1.lesson_2.unit_1": {
-   "sha256": "78deb7dba28bf489565bf81d1d04e9cbc7284aa93cdf097ca7661fbaef2702df",
-   "chars": 22
+   "sha256": "2f6b8bb35d10334783bab26668c44c542a350dea43bf3a308486deab6e119f47",
+   "chars": 19
   },
   "example_opening/vi/chapter_3.lesson_1.unit_2": {
-   "sha256": "78deb7dba28bf489565bf81d1d04e9cbc7284aa93cdf097ca7661fbaef2702df",
-   "chars": 22
+   "sha256": "2f6b8bb35d10334783bab26668c44c542a350dea43bf3a308486deab6e119f47",
+   "chars": 19
   },
   "locale_name/en": {
    "sha256": "ba118bf7fc9c1aedc1edb28a0aa86e0b43b681f222af6616e13c43be87815b06",
@@ -140,12 +140,12 @@
    "chars": 13
   },
   "example_opening/en/chapter_1.lesson_2.unit_1": {
-   "sha256": "b10fad54795db17c22e8755e481cda4d9d440b38c117f7f1bcd78613cd5e93ba",
-   "chars": 14
+   "sha256": "3f31af2d716fefde6157d19ae0408b6fbb370a0b6f8ed34ed35db3f26f170775",
+   "chars": 13
   },
   "example_opening/en/chapter_3.lesson_1.unit_2": {
-   "sha256": "b10fad54795db17c22e8755e481cda4d9d440b38c117f7f1bcd78613cd5e93ba",
-   "chars": 14
+   "sha256": "3f31af2d716fefde6157d19ae0408b6fbb370a0b6f8ed34ed35db3f26f170775",
+   "chars": 13
   },
   "fact_lines": {
    "sha256": "15d47ebf67117b4d8610485b7b3b6565388e16d9341ac2a8773175ff65e02496",
@@ -346,8 +346,8 @@
    "escalate": [
     {
      "schema": "StagedInstancePayloadUnitIdmWire",
-     "sha256": "34875633b550b08b4a2655d69c960ac73120aee51ef1bb3e5802a54ddc006b30",
-     "chars": 23958
+     "sha256": "02cb5f06af1acd4e44caba37cac380f7fe3ccf655884473885d5141f3b83ae9e",
+     "chars": 24058
     },
     {
      "schema": "IdmJudgeResponseV1IdmWire",
@@ -358,8 +358,8 @@
    "severity": [
     {
      "schema": "StagedInstancePayloadUnitIdmWire",
-     "sha256": "2a3ac6ad3da164c81af5d8383a2b259393ddbbf11bb9677287a81421b06eeb83",
-     "chars": 21758
+     "sha256": "f57bb525213552e40072ebdc12ffe61020ec513510af2c0d4931c1412847cbae",
+     "chars": 21855
     },
     {
      "schema": "IdmJudgeResponseV1IdmWire",
