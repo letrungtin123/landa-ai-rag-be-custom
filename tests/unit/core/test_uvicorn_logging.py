@@ -94,6 +94,16 @@ class UvicornLoggingTests(unittest.TestCase):
         self.assertIn("<redacted>", first["message"])
         self.assertEqual(second["message"], "Started server process [1234]")
 
+    def test_lines_are_named_uvicorn_log_without_the_colour_copy(self) -> None:
+        stream = self.configure()
+        # uvicorn passes an ANSI-coloured copy of its message as the extra field color_message.
+        logging.getLogger("uvicorn.error").info("Uvicorn running on %s", "http://127.0.0.1:8010",
+                                                extra={"color_message": "Uvicorn running on \x1b[1m%s\x1b[0m"})
+        line = json.loads(stream.getvalue().splitlines()[-1])
+        self.assertEqual((line["event"], line["message"]),
+                         ("uvicorn_log", "Uvicorn running on http://127.0.0.1:8010"))
+        self.assertNotIn("color_message", line)
+
     def test_uvicorn_accepts_the_options(self) -> None:
         with patch.dict(os.environ, {}, clear=True):
             options = uvicorn_options(Settings(environment="test"))
@@ -102,7 +112,8 @@ class UvicornLoggingTests(unittest.TestCase):
         self.assertEqual(config.log_level, "info")
         handler = logging.getLogger("uvicorn").handlers[0]
         self.assertEqual(type(handler.formatter).__name__, "JsonFormatter")
-        self.assertEqual([type(item).__name__ for item in handler.filters], ["SecretRedactionFilter"])
+        self.assertEqual([type(item).__name__ for item in handler.filters],
+                         ["UvicornEventFilter", "SecretRedactionFilter"])
         self.assertFalse(logging.getLogger("uvicorn.error").handlers)  # it propagates to "uvicorn"
 
 

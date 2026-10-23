@@ -6,12 +6,26 @@ works under PM2, a container or a plain shell on any OS.
 
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 import uvicorn
 
 from app.core.config import Settings, settings
 from app.core.logging import JsonFormatter, SecretRedactionFilter
+
+UVICORN_EVENT = "uvicorn_log"
+
+
+class UvicornEventFilter(logging.Filter):
+    """Names uvicorn's lines ``uvicorn_log`` (the formatter would take the message's first word, e.g. "Started")
+    and drops ``color_message``, uvicorn's ANSI-coloured copy of the message."""
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        if not getattr(record, "event", None):
+            record.event = UVICORN_EVENT
+        record.__dict__.pop("color_message", None)
+        return True
 
 
 def uvicorn_log_config() -> dict[str, Any]:
@@ -25,11 +39,11 @@ def uvicorn_log_config() -> dict[str, Any]:
     return {
         "version": 1,
         "disable_existing_loggers": False,
-        "filters": {"redact_secrets": {"()": SecretRedactionFilter}},
+        "filters": {"redact_secrets": {"()": SecretRedactionFilter}, "uvicorn_event": {"()": UvicornEventFilter}},
         "formatters": {"json": {"()": JsonFormatter}},
         "handlers": {
-            "default": {"class": "logging.StreamHandler", "formatter": "json", "filters": ["redact_secrets"],
-                        "stream": "ext://sys.stderr"},
+            "default": {"class": "logging.StreamHandler", "formatter": "json",
+                        "filters": ["uvicorn_event", "redact_secrets"], "stream": "ext://sys.stderr"},
         },
         "loggers": {
             "uvicorn": {"handlers": ["default"], "level": "INFO", "propagate": False},
