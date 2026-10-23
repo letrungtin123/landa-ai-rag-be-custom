@@ -5,10 +5,31 @@ Every case is synthetic text with the shape of the reviewer's reproduction scrip
 
 from __future__ import annotations
 
+import json
 import unittest
+from collections import Counter
+from types import SimpleNamespace
+from typing import Any
 
+from app.idm.answer_near import ANSWER_NEAR_EXAMPLE_CODE
+from app.idm.fidelity_checks import NEW_FACT_CODE, SENTENCE_COPY_CODE, SENTENCE_LENGTH_CODE
 from app.idm.node_acceptance import html_quality_code
+from app.idm.qa import ANSWER_LEAK_CODE
 from app.idm.source_locked import _is_label, render_idm_source_locked_html
+from app.idm.source_names import NAME_NOT_IN_SOURCE_CODE
+from app.idm.storyboard_context import _Draft
+from app.idm.storyboard_repair import IdmUnitRepairSteps
+from tests.support.log_support import logged_events
+from tests.unit.idm.test_idm_review5_2f8781d6 import FIXED, REPEATED, writer_with
+from tests.unit.idm.test_idm_storyboard import (
+    JUDGE,
+    REPAIR,
+    WRITER,
+    FakeGenerate,
+    StoryboardEndpointTestCase,
+    judge,
+    severity_body,
+)
 
 
 class DashLineTests(unittest.TestCase):
@@ -63,3 +84,70 @@ class PrefixTests(unittest.TestCase):
         self.assertIn("<h3>Bước 2 - Mục tiêu</h3>", bare)
         for html_text in (parts, bare):
             self.assertIsNone(html_quality_code(html_text))
+
+
+class JudgeRepairSoftTests(StoryboardEndpointTestCase):
+    """M3: a soft finding never drops a judge repair (judge mode "repair", the default)."""
+
+    async def test_a_judge_repair_is_kept_when_the_quiz_turns_soft(self) -> None:
+        body = severity_body()
+        writer = writer_with(body, [REPEATED])
+        fixed = writer_with(body, [REPEATED, FIXED])
+        repair = {"components": {"c0": {key: value for key, value in fixed["components"]["c0"].items()
+                                        if key != "covered_source_fact_ids"}}}
+        provider = FakeGenerate(**{WRITER: [writer], REPAIR: [repair],
+                                   JUDGE: [judge(("Q7_cognitive_load", "major", 0)), judge()]})
+        with self.assertLogs("app.idm", level="INFO") as logs:
+            status, data, _ = await self.post(body, provider, mode="repair")
+        self.assertEqual(status, 200, data.get("detail"))
+        self.assertEqual(provider.names.count(JUDGE), 2)  # the second judge ran on the kept repair
+        self.assertIn(FIXED[:30], json.dumps(data["unit"]["components"][0], ensure_ascii=False))
+        self.assertEqual((data["content_origin"], data["quality_state"]), ("provider_validated", "validated"))
+        quality = logged_events(logs.records, "idm_unit_quality")[-1]
+        self.assertEqual(quality["remaining_codes"], [ANSWER_NEAR_EXAMPLE_CODE])
+        self.assertIn("Nên biên tập khối 2 (Quiz): đáp án đúng", data["unit"]["idm_quality"]["author_note"])
+
+
+class _Guard(IdmUnitRepairSteps):
+    """The real ``guard_repair`` over stubbed slot findings (review 6, ``h1_guard.py``)."""
+
+    def __init__(self, findings: dict[str, dict[int, set[str]]]) -> None:
+        self.findings = findings
+        self.runtime = SimpleNamespace(adjustments=Counter(), correlation_id=None)  # type: ignore[assignment]
+        self.contract = SimpleNamespace(unit_path="u")  # type: ignore[assignment]
+
+    def slot_findings(self, draft: _Draft, *, advisory: bool = True) -> tuple[Any, Any, bool]:
+        del advisory
+        return {}, {index: frozenset(codes) for index, codes in self.findings[draft.unit["tag"]].items()}, True
+
+    def is_worksheet(self, index: int) -> bool:
+        del index
+        return False
+
+
+class SoftGuardTests(unittest.TestCase):
+    """M4 (lead's rule): soft findings are ignored both ways; the other findings decide as before the round."""
+
+    def decide(self, before_codes: dict[int, set[str]], after_codes: dict[int, set[str]], *, html: bool,
+               question: bool) -> str:
+        def draft(tag: str, changed_html: bool, changed_quiz: bool) -> _Draft:
+            return _Draft({"tag": tag, "components": [{"html": "h1" if changed_html else "h0"},
+                                                      {"q": "q1" if changed_quiz else "q0"}]}, [])
+
+        before, after = draft("before", False, False), draft("after", html, question)
+        kept = _Guard({"before": before_codes, "after": after_codes}).guard_repair(before, after, "w5")
+        return "kept" if kept is after else "dropped" if kept is before else "slot"
+
+    def test_soft_codes_count_neither_way(self) -> None:
+        near, name = ANSWER_NEAR_EXAMPLE_CODE, NAME_NOT_IN_SOURCE_CODE
+        cases = [  # (before, after, html changed, quiz changed, decision)
+            ({1: {near}}, {1: {SENTENCE_LENGTH_CODE}}, False, True, "dropped"),  # S1: no credit for a soft fix
+            ({0: {name}}, {0: {SENTENCE_COPY_CODE}}, True, False, "dropped"),  # S1b
+            ({0: {SENTENCE_LENGTH_CODE}}, {0: {SENTENCE_LENGTH_CODE, name}}, True, False, "kept"),  # S2: no blame
+            ({0: {NEW_FACT_CODE}}, {0: {NEW_FACT_CODE, name}}, True, False, "kept"),  # S2b
+            ({0: {SENTENCE_COPY_CODE}}, {1: {ANSWER_LEAK_CODE}}, True, False, "dropped"),  # S3: a hard finding
+            ({0: {SENTENCE_COPY_CODE}}, {1: {near}}, True, False, "kept"),  # S4 (H1)
+            ({0: {SENTENCE_COPY_CODE}}, {1: {NEW_FACT_CODE}}, True, False, "dropped"),  # S5
+        ]
+        for before, after, html, question, decision in cases:
+            self.assertEqual(self.decide(before, after, html=html, question=question), decision, (before, after))
