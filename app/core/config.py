@@ -306,9 +306,21 @@ class Settings(BaseSettings):
         ge=1,
         le=10_000,
     )
+    # Memory of one DOCX/PPTX/XLSX extraction (measured 2026-10-24 on the production interpreter): about 15 MB per
+    # MB of XML (python-docx and python-pptx build every XML part as a whole tree; openpyxl 6 to 13) and about 2 MB
+    # per MB of media. 64 MB in all with at most 12 MB of XML keeps one extraction near 300 MB above the service's
+    # ~150 MB, so two concurrent ones stay under PM2's 768 MB restart. Pictures do not compress, so a document within
+    # AI_RAG_MAX_DOCUMENT_BYTES keeps its media below the total.
     max_ooxml_uncompressed_bytes: int = Field(
-        default=200 * 1024 * 1024,
+        default=64 * 1024 * 1024,
         validation_alias="AI_RAG_MAX_OOXML_UNCOMPRESSED_BYTES",
+        ge=1_024,
+        le=2 * 1024 * 1024 * 1024,
+    )
+    # The part of that total whose content starts like XML (app.core.document_limits.validate_ooxml_archive).
+    max_ooxml_xml_bytes: int = Field(
+        default=12 * 1024 * 1024,
+        validation_alias="AI_RAG_MAX_OOXML_XML_BYTES",
         ge=1_024,
         le=2 * 1024 * 1024 * 1024,
     )
@@ -329,6 +341,14 @@ class Settings(BaseSettings):
         validation_alias="AI_RAG_MAX_XLSX_CELLS",
         ge=1,
         le=5_000_000,
+    )
+    # Text one document may yield (every page, slide and sheet): bounds the chunks, embeddings and rows of one index
+    # job. A 1,000-page book is about 3 million characters.
+    max_extracted_chars: int = Field(
+        default=10_000_000,
+        validation_alias="AI_RAG_MAX_EXTRACTED_CHARS",
+        ge=1_000,
+        le=500_000_000,
     )
     libreoffice_timeout_seconds: int = Field(
         default=120,

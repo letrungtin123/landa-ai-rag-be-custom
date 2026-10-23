@@ -41,6 +41,7 @@ class DocumentLimitTests(unittest.TestCase):
                 validate_ooxml_archive(
                     path,
                     max_uncompressed_bytes=200_000,
+                    max_xml_bytes=200_000,
                     max_entries=10,
                     max_compression_ratio=10,
                 )

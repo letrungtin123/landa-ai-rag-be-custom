@@ -237,11 +237,20 @@ def _visual_prompt_text(page_text: str) -> str | None:
     return value[:600] or None
 
 
+def assert_extracted_chars(count: int) -> None:
+    """Text of one document stays within AI_RAG_MAX_EXTRACTED_CHARS (chunks, embeddings and rows of one index job)."""
+
+    if count > settings.max_extracted_chars:
+        raise DocumentLimitError()
+
+
 def extract_pdf(path: Path) -> list[ExtractedSection]:
     # Parse from memory: after a failed open PyMuPDF keeps the file handle alive on
     # Windows, which blocks temp-dir cleanup, leaves the upload on disk and masks
     # the real parser error. The size is already bounded by assert_document_size.
     data = path.read_bytes()
+    # A PDF can hold far more text than its size suggests (compressed streams): stop at the limit page by page.
+    extracted_chars = 0
     try:
         import pymupdf  # noqa: PLC0415 - parser library, loaded on first use
 
@@ -252,6 +261,8 @@ def extract_pdf(path: Path) -> list[ExtractedSection]:
             visual_regions_by_page = collect_pdf_visual_regions(document)
             for index, page in enumerate(document, start=1):
                 text, metadata = _pdf_page_content(page)
+                extracted_chars += len(text)
+                assert_extracted_chars(extracted_chars)
                 if text:
                     visual_regions = visual_regions_by_page.get(index, [])
                     prompt_text = _visual_prompt_text(text)
@@ -272,8 +283,11 @@ def extract_pdf(path: Path) -> list[ExtractedSection]:
     if len(reader.pages) > settings.max_document_pages:
         raise DocumentLimitError()
     sections = []
+    extracted_chars = 0
     for index, page in enumerate(reader.pages, start=1):
         text = clean_text(page.extract_text() or "")
+        extracted_chars += len(text)
+        assert_extracted_chars(extracted_chars)
         if text:
             sections.append(ExtractedSection(text=text, page=index))
     if sections:
@@ -417,27 +431,34 @@ def extract_xlsx(path: Path) -> list[ExtractedSection]:
 def extract_xls(path: Path) -> list[ExtractedSection]:
     import xlrd  # noqa: PLC0415 - parser library, loaded on first use
 
-    workbook = xlrd.open_workbook(str(path))
+    # on_demand: one sheet is parsed at a time and unloaded after use (not the whole workbook at open), and its
+    # size is checked before its values are read.
+    workbook = xlrd.open_workbook(str(path), on_demand=True)
     sections: list[ExtractedSection] = []
     cell_count = 0
-    for sheet in workbook.sheets():
-        cell_count += sheet.nrows * sheet.ncols
-        if cell_count > settings.max_xlsx_cells:
-            raise DocumentLimitError()
-        values = [sheet.row_values(row_index) for row_index in range(sheet.nrows)]
-        text = clean_text(_render_structured_table(values, coordinate_labels=True))
-        if text:
-            sections.append(ExtractedSection(
-                text=text,
-                section=sheet.name,
-                metadata={
-                    "extraction_version": STRUCTURED_EXTRACTION_VERSION,
-                    "content_kinds": ["table"],
-                    "table_count": 1,
-                    "heading_candidates": [{"title": sheet.name[:220], "level": 1}],
-                    "reading_order": "row_major_with_coordinates",
-                },
-            ))
+    try:
+        for sheet_index in range(workbook.nsheets):
+            sheet = workbook.sheet_by_index(sheet_index)
+            cell_count += sheet.nrows * sheet.ncols
+            if cell_count > settings.max_xlsx_cells:
+                raise DocumentLimitError()
+            values = [sheet.row_values(row_index) for row_index in range(sheet.nrows)]
+            text = clean_text(_render_structured_table(values, coordinate_labels=True))
+            if text:
+                sections.append(ExtractedSection(
+                    text=text,
+                    section=sheet.name,
+                    metadata={
+                        "extraction_version": STRUCTURED_EXTRACTION_VERSION,
+                        "content_kinds": ["table"],
+                        "table_count": 1,
+                        "heading_candidates": [{"title": sheet.name[:220], "level": 1}],
+                        "reading_order": "row_major_with_coordinates",
+                    },
+                ))
+            workbook.unload_sheet(sheet_index)
+    finally:
+        workbook.release_resources()
     return sections
 
 
@@ -471,7 +492,10 @@ def extract_doc(path: Path) -> list[ExtractedSection]:
 
 
 def extract_plain_text(path: Path) -> list[ExtractedSection]:
-    return [ExtractedSection(text=clean_text(decode_bytes(path.read_bytes())))]
+    text = decode_bytes(path.read_bytes())
+    # Checked before cleaning, which copies the whole text several times.
+    assert_extracted_chars(len(text))
+    return [ExtractedSection(text=clean_text(text))]
 
 
 def index_document_temp_path(temp_dir: str, document_id: str, original_name: str | None) -> Path:
@@ -494,6 +518,7 @@ def extract_sections(path: Path, file_name: str) -> list[ExtractedSection]:
         path,
         suffix=ext,
         max_uncompressed_bytes=settings.max_ooxml_uncompressed_bytes,
+        max_xml_bytes=settings.max_ooxml_xml_bytes,
         max_entries=settings.max_ooxml_entries,
         max_compression_ratio=settings.max_ooxml_compression_ratio,
     )
@@ -516,4 +541,5 @@ def extract_sections(path: Path, file_name: str) -> list[ExtractedSection]:
     sections = [section for section in sections if clean_text(section.text)]
     if not sections:
         raise ValueError("Không trích xuất được nội dung từ tài liệu.")
+    assert_extracted_chars(sum(len(section.text) for section in sections))
     return sections

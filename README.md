@@ -191,10 +191,12 @@ Secrets are `SecretStr` and never logged; `.env.example` holds placeholders.
 | `AI_RAG_IDM_MAX_REQUEST_BYTES` | int | `25165824` | >= 1024, <= 67108864 |
 | `AI_RAG_MAX_DOCUMENT_BYTES` | int | `52428800` | >= 1024, <= 536870912 |
 | `AI_RAG_MAX_DOCUMENT_PAGES` | int | `1000` | >= 1, <= 10000 |
-| `AI_RAG_MAX_OOXML_UNCOMPRESSED_BYTES` | int | `209715200` | >= 1024, <= 2147483648 |
+| `AI_RAG_MAX_OOXML_UNCOMPRESSED_BYTES` | int | `67108864` | >= 1024, <= 2147483648 |
+| `AI_RAG_MAX_OOXML_XML_BYTES` | int | `12582912` | >= 1024, <= 2147483648 |
 | `AI_RAG_MAX_OOXML_ENTRIES` | int | `10000` | >= 1, <= 100000 |
 | `AI_RAG_MAX_OOXML_COMPRESSION_RATIO` | number | `100.0` | >= 1.0, <= 1000.0 |
 | `AI_RAG_MAX_XLSX_CELLS` | int | `200000` | >= 1, <= 5000000 |
+| `AI_RAG_MAX_EXTRACTED_CHARS` | int | `10000000` | >= 1000, <= 500000000 |
 | `AI_RAG_LIBREOFFICE_TIMEOUT_SECONDS` | int | `120` | >= 5, <= 600 |
 | `AI_RAG_CHUNK_MAX_CHARS` | int | `3200` | >= 100, <= 100000 |
 | `AI_RAG_CHUNK_OVERLAP_CHARS` | int | `350` | >= 0, <= 50000 |

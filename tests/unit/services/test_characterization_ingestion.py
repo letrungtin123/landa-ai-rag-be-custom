@@ -326,18 +326,39 @@ class ExtractorCharacterizationTests(TempDirTestCase):
 
     def test_extract_xls_reads_xlrd_sheets_and_enforces_cell_limit(self) -> None:
         rows = [["Level", "", "Owner"], [1.0, "", "Supervisor"]]
-        sheets = [SimpleNamespace(name="Levels", nrows=2, ncols=3, row_values=lambda index: list(rows[index])),
-                  SimpleNamespace(name="Blank", nrows=0, ncols=0, row_values=lambda index: [])]
+        read: list[str] = []
+
+        def sheet(name: str, nrows: int, ncols: int) -> SimpleNamespace:
+            def row_values(index: int) -> list[Any]:
+                read.append(name)
+                return list(rows[index])
+
+            return SimpleNamespace(name=name, nrows=nrows, ncols=ncols, row_values=row_values)
+
+        def workbook() -> Mock:
+            book = Mock(nsheets=2)
+            book.sheet_by_index.side_effect = [sheet("Levels", 2, 3), sheet("Blank", 0, 0)]
+            return book
+
         path = self.dir / "legacy.xls"
         path.write_bytes(b"xls placeholder")
-        with patch("xlrd.open_workbook", return_value=SimpleNamespace(sheets=lambda: sheets)) as opener:
+        book = workbook()
+        with patch("xlrd.open_workbook", return_value=book) as opener:
             [section] = extraction.extract_xls(path)
-            opener.assert_called_once_with(str(path))
-            # Characterized: xlrd numeric cells are rendered as floats ("1.0").
-            self.assertEqual(section.text, "[TABLE]\nRow 1: A1=Level | C1=Owner\nRow 2: A2=1.0 | C2=Supervisor")
-            self.assertEqual((section.section, section.metadata["content_kinds"]), ("Levels", ["table"]))
-            with patch.object(main.settings, "max_xlsx_cells", 5), self.assertRaises(DocumentLimitError):
-                extraction.extract_xls(path)  # nrows * ncols = 6 is checked before reading values
+        # Changed 2026-10-24 (audit M3): sheets load one at a time (on_demand) and are unloaded after use.
+        opener.assert_called_once_with(str(path), on_demand=True)
+        self.assertEqual([call.args for call in book.unload_sheet.call_args_list], [(0,), (1,)])
+        book.release_resources.assert_called_once_with()
+        # Characterized: xlrd numeric cells are rendered as floats ("1.0").
+        self.assertEqual(section.text, "[TABLE]\nRow 1: A1=Level | C1=Owner\nRow 2: A2=1.0 | C2=Supervisor")
+        self.assertEqual((section.section, section.metadata["content_kinds"]), ("Levels", ["table"]))
+        read.clear()
+        book = workbook()
+        with patch("xlrd.open_workbook", return_value=book), patch.object(main.settings, "max_xlsx_cells", 5), \
+                self.assertRaises(DocumentLimitError):
+            extraction.extract_xls(path)  # nrows * ncols = 6 is checked before reading values
+        self.assertEqual(read, [])
+        book.release_resources.assert_called_once_with()
 
     def test_extract_doc_converts_with_libreoffice_then_reads_docx(self) -> None:
         path = self.dir / "legacy.doc"
