@@ -11,6 +11,7 @@ from collections import Counter
 from types import SimpleNamespace
 from typing import Any
 
+from app.core.errors import ServiceError
 from app.idm.answer_near import ANSWER_NEAR_EXAMPLE_CODE
 from app.idm.fidelity_checks import NEW_FACT_CODE, SENTENCE_COPY_CODE, SENTENCE_LENGTH_CODE
 from app.idm.node_acceptance import html_quality_code
@@ -27,8 +28,11 @@ from tests.unit.idm.test_idm_storyboard import (
     WRITER,
     FakeGenerate,
     StoryboardEndpointTestCase,
+    escalate_body,
+    escalate_writer,
     judge,
     severity_body,
+    unavailable,
 )
 
 
@@ -151,3 +155,52 @@ class SoftGuardTests(unittest.TestCase):
         ]
         for before, after, html, question, decision in cases:
             self.assertEqual(self.decide(before, after, html=html, question=question), decision, (before, after))
+
+
+def timeout() -> ServiceError:
+    return ServiceError(status_code=504, detail={"code": "AI_PROVIDER_TIMEOUT", "message": "private"})
+
+
+class SoftRepairUsageTests(StoryboardEndpointTestCase):
+    """M5 (lead's rule): a dispatched provider call that failed is unknown usage, so the backend charges the reserved
+    ceiling (usage_source reserved_upper_bound, usage_complete false, which Node only takes as a reviewable
+    structured draft); the judge still runs and the AI draft stays."""
+
+    async def test_a_failed_soft_repair_reports_unknown_usage(self) -> None:
+        for failures in ([timeout(), timeout()], [unavailable(), unavailable()]):
+            body = escalate_body()
+            writer = escalate_writer(body)
+            writer["components"]["c0"]["question"] = (
+                "Một khách hàng VIP gọi đến vì sản phẩm gây chập điện, khiếu nại liên quan đến an toàn. Bạn nên làm "
+                "gì trước tiên?")
+            provider = FakeGenerate(**{WRITER: [writer], REPAIR: failures, JUDGE: [judge()]})
+            status, data, _ = await self.post(body, provider)
+            with self.subTest(failure=failures[0].detail["code"]):
+                self.assertEqual(status, 200, data.get("detail"))
+                self.assertEqual((data["usage_source"], data["usage_complete"]), ("reserved_upper_bound", False))
+                self.assertEqual((data["content_origin"], data["quality_state"]),
+                                 ("structured_fallback", "review_required"))
+                self.assertEqual(provider.names.count(JUDGE), 1)  # the judge still ran
+                self.assertNotIn("source_locked_fallback", data["unit"]["components"][0])
+                failed = [event for event in data["attempt_trace"] if event["outcome"] == "failed"]
+                self.assertTrue(failed and all(event["provider_dispatched"] for event in failed))
+
+    async def test_an_undispatched_soft_repair_reports_the_provider_usage(self) -> None:
+        # A repair the time left does not allow is never sent: nothing unknown, the unit keeps the provider lane.
+        body = escalate_body()
+        writer = escalate_writer(body)
+        writer["components"]["c0"]["question"] = (
+            "Một khách hàng VIP gọi đến vì sản phẩm gây chập điện, khiếu nại liên quan đến an toàn. Bạn nên làm gì "
+            "trước tiên?")
+        provider = FakeGenerate(**{WRITER: [writer], JUDGE: [judge()]})
+        from app.idm import storyboard  # noqa: PLC0415 - patched for this case only
+
+        original = storyboard.repair_thinking_for
+        storyboard.repair_thinking_for = lambda *args, **kwargs: None  # type: ignore[assignment]
+        try:
+            status, data, _ = await self.post(body, provider)
+        finally:
+            storyboard.repair_thinking_for = original
+        self.assertEqual(status, 200, data.get("detail"))
+        self.assertEqual(provider.names.count(REPAIR), 0)
+        self.assertEqual((data["usage_source"], data["usage_complete"]), ("provider", True))

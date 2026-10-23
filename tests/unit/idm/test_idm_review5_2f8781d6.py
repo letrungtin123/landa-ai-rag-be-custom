@@ -85,7 +85,7 @@ class SoftFindingRepairTests(StoryboardEndpointTestCase):
         self.assertNotIn("source_locked_fallback", data["unit"]["components"][0])
         self.assertIn("Đã tự sửa: phần lý thuyết lặp lại cùng một đoạn", data["unit"]["idm_quality"]["author_note"])
 
-    async def test_a_failed_soft_repair_leaves_the_unit_as_it_was(self) -> None:
+    async def test_a_failed_soft_repair_keeps_the_draft_and_the_judge(self) -> None:
         body = escalate_body()
         writer = escalate_writer(body)
         writer["components"]["c0"]["question"] = (
@@ -95,17 +95,17 @@ class SoftFindingRepairTests(StoryboardEndpointTestCase):
         with self.assertLogs("app.idm", level="INFO") as logs:
             status, data, _ = await self.post(body, provider)
         self.assertEqual(status, 200, data.get("detail"))
-        # Old code: structured_fallback / review_required / reserved_upper_bound, and the judge never ran.
+        # Old code: the judge never ran ("QA tự động: không chạy được"). Review 6 (M5, the lead's billing rule): the two
+        # dispatched calls that failed leave the usage unknown, so the unit is reported with the reserved ceiling and,
+        # as Node requires for that, as a reviewable draft.
         self.assertEqual((data["content_origin"], data["quality_state"], data["usage_source"]),
-                         ("provider_validated", "validated", "provider"))
+                         ("structured_fallback", "review_required", "reserved_upper_bound"))
         self.assertEqual(provider.names.count(JUDGE), 1)
         self.assertNotIn("source_locked_fallback", data["unit"]["components"][0])
         quality = logged_events(logs.records, "idm_unit_quality")[-1]
-        self.assertEqual(quality["failure_codes"], [])
+        self.assertEqual(quality["failure_codes"], ["AI_PROVIDER_UNAVAILABLE"])
         note = data["unit"]["idm_quality"]["author_note"]
         self.assertIn("Nên biên tập khối 1 (Quiz): đáp án đúng", note)
-        self.assertNotIn("Sửa tự động không thành công", note)
-        self.assertNotIn("Cần tác giả xem lại", note)
         self.assertNotIn("không chạy được", note)
 
     async def test_a_failed_hard_repair_still_marks_the_unit(self) -> None:

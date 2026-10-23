@@ -406,7 +406,7 @@ class IdmUnitWriter(IdmUnitRepairSteps):
         """One repair call at the thinking level the time left allows, or none (R3); ``(draft, repaired)``.
 
         A failed repair (budget, provider, invalid answer) leaves the draft for the per-slot settlement (review 5, M6:
-        a provider failure of a repair of soft findings only leaves the unit as it was, ``repair_failed``)."""
+        a provider failure of a repair of soft findings only lets the later calls run, ``repair_failed``)."""
 
         before = self.provider_state()
         level = repair_thinking_for(self.runtime.remaining_seconds(), targeted=targeted, preferred=THINKING_W5)

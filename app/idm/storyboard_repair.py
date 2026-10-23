@@ -15,8 +15,9 @@ review-level finding the writer's answer did not have (a new number or name, a q
   left (``retry_level``).
 * P7: an FAQ slot whose findings are all wording ones is settled without a repair call (``without_style_faq``): such
   repairs flipped its question types.
-* Review 5 (M6): a transient provider failure of a repair call for soft findings only leaves the unit as if the call
-  had not been made: the AI draft with its edit note, the judge still runs, the usage stays the provider's
+* Review 5 (M6), review 6 (M5): a transient provider failure of a repair call for soft findings only keeps the AI draft
+  with its edit note and lets the judge run; the failed dispatched call's usage stays unknown, so the unit is reported
+  with the reserved ceiling (``reserved_upper_bound``) and only as a reviewable draft, the backend's rule
   (``repair_failed``).
 
 Codes, slot indexes and counts only reach the logs, never learner text.
@@ -217,21 +218,21 @@ class IdmUnitRepairSteps(IdmUnitWriterSteps):
             self.runtime.adjustments["w5_faq_style_repair_skipped"] += len(style_only)
         return [(code, index) for code, index in issues if index not in style_only]
 
-    def provider_state(self) -> tuple[str | None, bool]:
-        """The task's provider failure and whether its usage is complete, before a repair call (``repair_failed``)."""
+    def provider_state(self) -> str | None:
+        """The task's provider failure before a repair call (``repair_failed``)."""
 
-        return self.runtime.provider_failure_code, self.runtime.usage.complete
+        return self.runtime.provider_failure_code
 
-    def repair_failed(self, code: str, issues: Sequence[tuple[str, int]], before: tuple[str | None, bool]) -> None:
-        """A transient provider failure ``code`` of the repair call for ``issues`` (``before``: ``provider_state``
-        before it) is a failure code of the unit. Review 5 (M6): a call that only repaired soft findings
-        (``SOFT_CODES``) leaves the task as it was instead, so the judge still runs and the unit keeps the provider
-        lane; the soft findings stay edit notes."""
+    def repair_failed(self, code: str, issues: Sequence[tuple[str, int]], before: str | None) -> None:
+        """A transient provider failure ``code`` of the repair call for ``issues`` is a failure code of the unit; the
+        dispatched call's usage stays unknown (``idm_generate``), so the backend charges the reserved ceiling (review
+        6, M5: never complete usage for a failed call). Review 5 (M6): a call that only repaired soft findings
+        (``SOFT_CODES``) does not stop the later calls (``before``: ``provider_state`` before it), so the judge still
+        runs and the soft findings stay edit notes."""
 
         if issues and all(issue in SOFT_CODES for issue, _index in issues):
-            self.runtime.provider_failure_code, self.runtime.usage.complete = before
+            self.runtime.provider_failure_code = before
             self.runtime.adjustments["w5_soft_repair_failed"] += 1
-            return
         self.failure_codes.append(code)
 
     def retry_level(self, error: IdmProviderError, *, targeted: bool, preferred: ThinkingLevel,
