@@ -11,6 +11,7 @@ import unittest
 from app.idm.node_acceptance import html_quality_code
 from app.idm.quiz_letters import expand_short_item_labels
 from app.idm.source_locked import render_idm_source_locked_html
+from app.idm.source_names import NameGuide
 from tests.unit.idm.test_idm_qc_run_2f8781d6 import many_facts_body
 from tests.unit.idm.test_idm_storyboard import (
     StoryboardEndpointTestCase,
@@ -116,6 +117,25 @@ class LabelWordTests(unittest.TestCase):
                                       "B - Sai.\nC - Sai.\nD - Sai.")
         self.assertEqual(expand_short_item_labels(steps)[0]["explanation"].splitlines()[0],
                          "Nguyên tắc: Bước số 1 luôn trước Bước số 2; quy trình 5 Bước 3 phút.")
+
+
+class EnglishHeadingTests(unittest.TestCase):
+    """L2: a Title Case English heading with a subtitle, and an English gloss of a Vietnamese name the source writes,
+    name no tool; a name at the start of a sentence still does."""
+
+    def test_headings_and_glosses(self) -> None:
+        guide = NameGuide.build(["Ma trận ưu tiên giúp sắp xếp công việc.", "Bản đồ thấu cảm gồm bốn ô.",
+                                 "Ma trận SWOT giúp …"])
+        for text in ("Building Your Prioritization Matrix: a quick guide",
+                     "Building Your Prioritization Matrix: hướng dẫn từng bước", "Bản đồ thấu cảm (Empathy Map)",
+                     "Ma trận ưu tiên (Priority Matrix)", "Bản Đồ Thấu Cảm (Empathy Map)"):
+            self.assertEqual(guide.missing(text), [], text)
+        for text, found in (("Empathy Map giúp gì cho bạn?", ["Empathy Map"]),
+                            ("Eisenhower Matrix: xếp việc theo mức gấp", ["Eisenhower Matrix"]),
+                            ("Hãy dùng Eisenhower Matrix để xếp việc", ["Eisenhower Matrix"]),
+                            ("Bản đồ thấu cảm (Eisenhower Matrix)", ["Eisenhower Matrix"]),
+                            ("Ma trận thấu cảm (Empathy Matrix)", ["Ma trận thấu cảm", "Empathy Matrix"])):
+            self.assertEqual(guide.missing(text), found, text)
 
 
 if __name__ == "__main__":

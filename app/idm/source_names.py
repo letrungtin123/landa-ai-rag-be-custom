@@ -144,8 +144,11 @@ def _phrases(clause: str, title_case: bool) -> list[_Phrase]:
             while before and (before[0].lower() in _EN_GENERIC or not before[0].isascii()):
                 before.pop(0)
             # Review 6 (L2), review 7 (L5): one proper word is a name outside a Title Case heading, also at the start
-            # of a clause ("Empathy Map giúp gì?"); its words are kept to read the source's Vietnamese form.
-            if len(before) >= _EN_MIN_NAME_WORDS or (len(before) == 1 and not title_case):
+            # of a clause ("Empathy Map giúp gì?"); its words are kept to read the source's Vietnamese form. Review 8
+            # (L2): after other words the clause itself must be no Title Case heading ("Building Your Prioritization
+            # Matrix: a quick guide"); at the start of a clause the whole text must be none.
+            heading = title_case if index == 1 else _title_case(clause)
+            if len(before) >= _EN_MIN_NAME_WORDS or (len(before) == 1 and not heading):
                 found.append(_Phrase(" ".join([*before, tokens[index]]), [], "", "", " ".join(before)))
     return found
 
@@ -175,20 +178,34 @@ class NameGuide:
         missing: list[str] = []
         text, start = text or "", 0
         title_case = _title_case(text)
+        glossed: set[str] = set()
         for match in [*_CLAUSE_RE.finditer(text), None]:
             end = match.start() if match is not None else len(text)
             clause, start = text[start:end], match.end() if match is not None else end
             # "Sơ đồ dịch vụ (Service Blueprint)": a plain description glossed by the source's own name.
             gloss = _GLOSS_RE.match(text, end)
             if gloss is not None and gloss.group(1)[:1].isupper() and _key(gloss.group(1)) in self.source:
+                glossed = set()
                 continue
+            nouns: set[str] = set()
             for phrase in _phrases(clause, title_case):
-                if (_key(phrase.text) in self.source or (phrase.name and _key(phrase.name) in self.source)
-                        or any(_code_like(token) and _key(token) in self.source for token in phrase.after)
-                        or self.describes(phrase) or self.translated(phrase)):
-                    continue
-                missing.append(phrase.text)
+                if self.written(phrase):
+                    nouns.add(phrase.noun)
+                elif phrase.noun or phrase.text.split()[-1].lower() not in glossed:
+                    missing.append(phrase.text)
+            # Review 8 (L2): an English name in brackets right after a Vietnamese tool name the source writes is its
+            # gloss ("Bản đồ thấu cảm (Empathy Map)"), when its tool noun is that one's ("map" for "bản đồ").
+            opens = match is not None and match.group(0) == "("
+            glossed = {english for english, vietnamese in _EN_TO_VI.items() if opens and nouns & set(vietnamese)}
         return _distinct(missing)
+
+    def written(self, phrase: _Phrase) -> bool:
+        """The source writes ``phrase``, its English name, a code after it, the words it describes or its Vietnamese
+        form."""
+
+        return (_key(phrase.text) in self.source or bool(phrase.name and _key(phrase.name) in self.source)
+                or any(_code_like(token) and _key(token) in self.source for token in phrase.after)
+                or self.describes(phrase) or self.translated(phrase))
 
     def translated(self, phrase: _Phrase) -> bool:
         """Review 7 (L5): an English tool name the source writes with its Vietnamese tool noun ("SWOT Matrix" for "Ma
