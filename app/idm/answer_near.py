@@ -28,7 +28,10 @@ Review 5 (M7): the two option measures count only when the case names the passag
 that passage the key does not hold (its row label or condition: "tầng Hậu trường", "nỗi đau ở tầng cảm xúc", "vai trò
 của tư duy phản biện"). A question that gives a new case and asks the learner to apply a taught rule ("máy sấy vừa mua
 bốc khói" for "khiếu nại liên quan đến an toàn sản phẩm phải được chuyển ngay cho quản lý cấp cao …") is the normal
-design, never a finding, whether the key copies or rewords the rule's action (``_named_by_case``).
+design, never a finding, whether the key copies or rewords the rule's action (``_named_by_case``). Review 6 (L4): only
+when the question brings a case of its own (words no passage above holds, beyond the frame of a question); a knowledge
+check that asks "Theo bài học, phát biểu nào đúng?" while its key copies the lesson is measured as before
+(``_own_case``).
 
 Calibrated on the run's 11 provider questions (the 5 leaking ones caught, the good c1.l2.u2 and c1.l1.u2 not) and
 checked on the 23 questions of two earlier runs of the same source. Pure functions; thresholds in ``app.idm.policy``.
@@ -66,6 +69,13 @@ _SENTENCE_RE: Final = re.compile(r"(?<=[.!?;])\s+")
 _MIN_OPTIONS: Final = 2
 _MIN_ITEMS: Final = 3
 _TEXT_KINDS: Final = frozenset({"paragraph", "task", "warning"})
+# Review 6 (L4): the words of a question's frame, accent-folded ("Theo bài học, phát biểu nào đúng?" has no case).
+_FRAME_WORDS: Final = frozenset({
+    "theo", "bai", "hoc", "khoa", "phat", "bieu", "nhan", "dinh", "dieu", "nao", "sau", "day", "dung", "sai", "quy",
+    "trinh", "cong", "ty", "noi", "mo", "ta", "cau", "tra", "loi", "chon", "phuong", "an", "nhat", "ban",
+    "which", "statement", "statements", "true", "correct", "false", "following", "according", "lesson", "course",
+    "process", "company", "rule", "rules", "best", "describes", "describe", "option", "answer", "choose",
+})
 NearKind = Literal["option", "item", "case", "stem"]
 
 
@@ -137,6 +147,13 @@ def _case(question: str) -> str:
     return " ".join(line for line in question.splitlines() if not line.strip().startswith("-"))
 
 
+def _own_case(case: str, passages_: Sequence[str]) -> bool:
+    """Review 6 (L4): the question brings words of its own, beyond its frame and the passages above."""
+
+    shown = {word for passage in passages_ for word in content_words(passage)}
+    return any(word not in shown and word not in _FRAME_WORDS for word in content_words(case))
+
+
 def _named_by_case(case: str, passages_: Sequence[str], key: str) -> bool:
     """Review 5 (M7): the case names one of ``passages_`` (the ones the key copies) by a word pair of it the key does
     not hold: the question asks for that passage, so the key is found by its words."""
@@ -157,6 +174,12 @@ def near_example(component: Mapping[str, Any], html_before: Sequence[Mapping[str
     shown_texts = passages(html_before)
     shown = [_tokens(passage) for passage in shown_texts]
     stated = _case(str(component.get("question") or ""))
+    has_case = _own_case(stated, shown_texts)
+
+    def asked(copied: Sequence[str]) -> bool:
+        """Review 6 (L4): a question without a case of its own is measured as before review 5 (M7)."""
+
+        return not has_case or _named_by_case(stated, copied, texts[key])
     others = [index for index in range(len(texts)) if index != key]
     words = [_tokens(text) for text in texts]
 
@@ -172,7 +195,7 @@ def near_example(component: Mapping[str, Any], html_before: Sequence[Mapping[str
     copied = [text for passage, text in zip(shown, shown_texts, strict=True) if _run(words[key], passage)[0] == key_run]
     if (key_run >= IDM_ANSWER_NEAR_RUN_WORDS and len(content_words(" ".join(run_words)))
             >= IDM_ANSWER_NEAR_RUN_CONTENT_WORDS and key_run > max(longest(index)[0] for index in others)
-            and _named_by_case(stated, copied, texts[key])):
+            and asked(copied)):
         return "item" if named else "option"
     content = [set(content_words(text)) for text in texts]
 
@@ -185,7 +208,7 @@ def near_example(component: Mapping[str, Any], html_before: Sequence[Mapping[str
     best = share(key)
     if (len(content[key]) >= IDM_ANSWER_NEAR_MIN_KEY_WORDS and best >= IDM_ANSWER_NEAR_MIN_SHARE
             and best - max(share(index) for index in others) >= IDM_ANSWER_NEAR_MIN_MARGIN
-            and _named_by_case(stated, [text for text in shown_texts if shared(key, text) == best], texts[key])):
+            and asked([text for text in shown_texts if shared(key, text) == best])):
         return "item" if named else "option"
     case = _tokens(stated)
     own = _bigrams(texts[key]) - set().union(*(_bigrams(texts[index]) for index in others))
