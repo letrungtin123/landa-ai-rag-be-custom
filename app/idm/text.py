@@ -442,7 +442,7 @@ def _vowel_groups(base: str) -> int:
 
 def glued_words(text: str) -> list[str]:
     """The words of ``text`` that hold two Vietnamese syllables or more without a space ("bộchân", "từchối"), in
-    order and without repeats. Only reported, never split: where the space goes is a guess."""
+    order and without repeats. Split only where the facts show how (``app.idm.fallback_lines.split_glued``)."""
 
     found = []
     for word in _LETTERS_RE.findall(unicodedata.normalize("NFC", text)):

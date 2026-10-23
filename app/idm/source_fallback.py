@@ -7,7 +7,8 @@ the whole unit had no fallback and a provider failure broke it. The whole-unit f
 of a provider draft) then uses complete sentences the lesson states, without adding a claim: a question asks whether
 the lesson states one (the two wrong options say what the lesson does not: the opposite, or nothing), an FAQ answers
 with them. The unit is marked for the author's review and its note says these slots are placeholders to rewrite, and
-names the words the PDF glued together that a fallback slot shows (never split: where the space goes is a guess).
+names the words the PDF glued together that a fallback slot still shows (``fallback_lines`` splits one only where the
+slot's facts show how).
 """
 
 from __future__ import annotations
@@ -166,7 +167,7 @@ def placeholder_line(where: str, vi: bool) -> str:
 
 
 def glued_line(words: Sequence[str], vi: bool) -> str:
-    """Words of the PDF without their spaces, kept as written in a fallback slot (never split by guessing)."""
+    """Words of the PDF without their spaces that a fallback slot keeps as written (never split by guessing)."""
 
     shown = ", ".join(f"«{word}»" for word in list(dict.fromkeys(words))[:_MAX_GLUED_WORDS])
     rest = len(dict.fromkeys(words)) - _MAX_GLUED_WORDS

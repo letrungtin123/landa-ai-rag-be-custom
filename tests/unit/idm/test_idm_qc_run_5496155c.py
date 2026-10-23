@@ -360,7 +360,10 @@ class SourceLockedSlideTextTests(unittest.TestCase):
         self.assertIn("<ul><li>VIỆC CẦN LÀM - Mục tiêu</li>", html)
         self.assertIn("Về Ý nghĩa / Xã hội (Social/Meaningful Job):</strong> Được cấp trên tin tưởng", html)
         self.assertIn("Về Chức năng (Functional Pain):</strong> Bị &quot;bủa vây&quot; bởi hồ sơ", html)
-        self.assertIn("<p>Sợ bị coi là một &quot;nút thắt&quot; (bottleneck) làm chậm tiến độ của cả phòng.</p>", html)
+        # Run 2f8781d6 (N1): the cut label's end gets back the one label start the slide cut the same way, so the row
+        # stays under its own layer (it used to lose its label and read as part of the row above).
+        self.assertIn("<p><strong>Về Ý nghĩa / Xã hội (Social/Meaningful Pain):</strong> Sợ bị coi là một &quot;nút "
+                      "thắt&quot; (bottleneck) làm chậm tiến độ của cả phòng.</p>", html)
         self.assertNotIn("<h3>", html)
 
 

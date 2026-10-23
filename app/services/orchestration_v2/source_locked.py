@@ -218,6 +218,7 @@ def build_orchestration_v2_source_locked_components(
     single_choice_builder: Callable[..., dict[str, Any] | None] = build_source_grounded_single_choice,
     diagram_builder: Callable[..., dict[str, Any] | None] | None = None,
     faq_builder: Callable[..., list[dict[str, str]] | None] | None = None,
+    keep_repeats: bool = False,
 ) -> list[dict[str, Any] | None]:
     """One source-locked component per server-owned plan slot, in plan order.
 
@@ -225,14 +226,17 @@ def build_orchestration_v2_source_locked_components(
     type deterministically (for example a prose-only ``problem`` or a ``la_faq``
     without explicit source conditions). Other slots stay usable on their own.
     The defaults are the legacy builders; IDM units inject their own variants
-    (``app.idm.source_locked``) so legacy output stays byte-identical.
+    (``app.idm.source_locked``) so legacy output stays byte-identical. ``keep_repeats`` (IDM): the html renderer gets
+    the slot's facts as written, repeats included, and settles them itself (run 2f8781d6: the row labels three
+    profiles share were dropped as repeats, so rows sat under another profile's labels).
     """
 
     fact_by_id = {fact.fact_key: fact.fact_text for fact in contract.source_facts}
     return [_orchestration_v2_source_locked_component(contract, plan, fact_by_id, locale,
                                                       html_renderer=html_renderer,
                                                       single_choice_builder=single_choice_builder,
-                                                      diagram_builder=diagram_builder, faq_builder=faq_builder)
+                                                      diagram_builder=diagram_builder, faq_builder=faq_builder,
+                                                      keep_repeats=keep_repeats)
             for plan in contract.component_plan]
 
 
@@ -245,6 +249,7 @@ def complete_source_locked_components(
     faq_builder: Callable[..., list[dict[str, str]] | None],
     html_renderer: Callable[..., str] = render_source_locked_html,
     diagram_builder: Callable[..., dict[str, Any] | None] | None = None,
+    keep_repeats: bool = False,
 ) -> list[dict[str, Any] | None]:
     """``components`` with each slot no source structure rebuilt (``None``) built again by the given last-resort
     builders: the inventory of the whole-unit fallback only (an IDM unit keeps ``components`` for the fallback of one
@@ -253,7 +258,7 @@ def complete_source_locked_components(
     fact_by_id = {fact.fact_key: fact.fact_text for fact in contract.source_facts}
     return [component if component is not None else _orchestration_v2_source_locked_component(
         contract, plan, fact_by_id, locale, html_renderer=html_renderer, single_choice_builder=single_choice_builder,
-        diagram_builder=diagram_builder, faq_builder=faq_builder)
+        diagram_builder=diagram_builder, faq_builder=faq_builder, keep_repeats=keep_repeats)
         for plan, component in zip(contract.component_plan, components, strict=True)]
 
 
@@ -267,6 +272,7 @@ def _orchestration_v2_source_locked_component(
     single_choice_builder: Callable[..., dict[str, Any] | None] = build_source_grounded_single_choice,
     diagram_builder: Callable[..., dict[str, Any] | None] | None = None,
     faq_builder: Callable[..., list[dict[str, str]] | None] | None = None,
+    keep_repeats: bool = False,
 ) -> dict[str, Any] | None:
     evidence_fact_ids = list(dict.fromkeys([
         *plan.source_fact_ids,
@@ -300,7 +306,8 @@ def _orchestration_v2_source_locked_component(
     if plan.type == "html":
         component["html"] = _orchestration_v2_source_locked_html(
             title,
-            fact_texts,
+            [fact_by_id[fact_id] for fact_id in evidence_fact_ids if fact_id in fact_by_id] if keep_repeats
+            else fact_texts,
             locale,
             plan.required_artifacts,
             renderer=html_renderer,

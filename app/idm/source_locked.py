@@ -13,7 +13,7 @@ pipeline and stay byte-identical (spec §11.6); IDM units get these variants thr
   capitals): a line is joined to the next ones until its brackets close, a cell of a table
   row the PDF broke over several lines ends at its "|" and loses its list marker, a table
   of a header row alone is a list, a stray "*" goes, and a heading in capitals is written
-  in sentence case (codes and abbreviations keep theirs). Glued words stay as written.
+  in sentence case (codes and abbreviations keep theirs). Run 2f8781d6: ``app.idm.fallback_lines``.
 * Single choice: the question names the term as the source wrote it (never its crossword
   answer form), shows at most four options and explains why the other options are wrong.
 * FAQ: explicit source conditions first (the legacy rule), then labelled source definitions
@@ -49,6 +49,7 @@ from app.content.instructional_quality import (
     source_term_definitions,
 )
 from app.idm.acronyms import keeps_capitals
+from app.idm.fallback_lines import ORPHAN_LABEL_END_RE, OrphanLabels, prefix_repeated_labels, source_facts
 from app.idm.text import idm_fold
 from app.idm.titles import TitleCaser
 
@@ -109,9 +110,6 @@ _CLOSING_MARKS: Final = "\"')" + chr(0x201D)
 _QUOTE_LEAD_RE: Final = re.compile(r"\b(?:cau|loi|rang|noi|hoi|chu|khau hieu|thong diep|cum tu|says?|said|asks?"
                                    r"|asked|phrase|words?|slogan)$")
 _WORD_MARKS: Final = ".,;:!?()[]\"'" + chr(0x201C) + chr(0x201D)
-# The end of a label whose start the PDF reader lost ("Pain): Sợ bị coi là …" after a repeated label line was dropped as
-# a duplicate): the text after it is kept, the cut word goes.
-_ORPHAN_LABEL_END_RE: Final = re.compile(r"^[^\W\d_]+\)[ \t]*:[ \t]*(?=\S)")
 # A line whose brackets stay open is joined to at most this many following lines, this long in all.
 _BRACKET_JOIN_LINES: Final = 4
 _BRACKET_JOIN_CHARS: Final = 400
@@ -258,12 +256,13 @@ def _cells(text: str) -> list[str]:
     return [cell for part in _CELL_SEPARATOR_RE.split(text) if (cell := _CELL_MARKER_RE.sub("", part.strip()))]
 
 
-def _prepare_lines(title: str, values: Iterable[Any]) -> list[str]:
-    facts = clean_source_facts([normalize_visible_text(value) for value in values], preserve_table_numeric=True)
+def _prepare_lines(title: str, values: Iterable[Any], *, labels: bool = False) -> list[str]:
+    """``labels``: an html slot keeps its repeated row labels and cut labels (``app.idm.fallback_lines``)."""
+    facts = source_facts(values, _is_label, keep_labels=labels)
     title_key = _key(title)
     lines: list[str] = []
     repeats: list[str] = []
-    joined = 0
+    joined, orphans = 0, OrphanLabels()
     for fact in facts:
         text = normalize_visible_text(_STAR_RE.sub(" ", _EMPHASIS_RE.sub(r"\1", fact)))
         key = _key(text)
@@ -287,10 +286,11 @@ def _prepare_lines(title: str, values: Iterable[Any]) -> list[str]:
         # A table row keeps its cells: "Row 2: 1. CHỨC NĂNG" is no step "1.".
         for raw in (cell for value in _cells(text)
                     for cell in ([value] if TABLE_ROW_RE.match(value) else _split_inline_steps(value))):
-            part = (_ORPHAN_LABEL_END_RE.sub("", raw)
-                    if _open_brackets(raw) < 0 and not (lines and _closes(lines[-1], raw, joined)) else raw)
+            orphan = _open_brackets(raw) < 0 and not (lines and _closes(lines[-1], raw, joined))
+            part = (orphans.restore(raw) if labels else ORPHAN_LABEL_END_RE.sub("", raw)) if orphan else raw
             if lines and (_continues(lines[-1], part) or _continues_row(lines[-1], part)
                           or _closes(lines[-1], part, joined)):
+                orphans.note(lines[-1], part)
                 lines[-1] = f"{lines[-1]} {part}"
                 joined += 1
             else:
@@ -298,7 +298,7 @@ def _prepare_lines(title: str, values: Iterable[Any]) -> list[str]:
                 joined = 0
     # A unit whose only fact repeats its title still shows that fact (the shared validator
     # requires visible source text beyond the title).
-    return lines or repeats
+    return prefix_repeated_labels(lines or repeats, _is_label) if labels else lines or repeats
 
 
 def _row_cells(row: str) -> list[str]:
@@ -439,7 +439,7 @@ def render_idm_source_locked_html(
     # The shared validator counts <li> inside <ol>; when the plan requires an ordered list,
     # lone numbered lines keep the legacy list form so the required artifact is preserved.
     keep_single_ordered = "ordered_list" in required
-    lines = _prepare_lines(title, values)
+    lines = _prepare_lines(title, values, labels=True)
     names = _Names.of(lines)
     parts = [f"<h2>{html.escape(title)}</h2>"]
     index = 0

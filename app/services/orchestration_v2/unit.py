@@ -125,13 +125,13 @@ def _idm_unit_deps(request: RagLessonAuthorUnitV2Request) -> IdmUnitDeps:
     source_locked_components = build_orchestration_v2_source_locked_components(
         contract, request.locale, html_renderer=render_idm_source_locked_html,
         single_choice_builder=idm_source_grounded_single_choice, diagram_builder=idm_source_step_diagram,
-        faq_builder=idm_source_faq)
+        faq_builder=idm_source_faq, keep_repeats=True)
     # The whole-unit fallback (fallback_only, a provider failure) needs every slot: a question or FAQ slot no source
     # structure rebuilds gets a statement of the lesson there (run 5496155c: 9 of 10 units answered 422 before).
     question, faq = last_resort_builders([fact.fact_text for fact in contract.source_facts], contract.idm_unit_brief)
     whole_components = complete_source_locked_components(
         contract, request.locale, source_locked_components, single_choice_builder=question, faq_builder=faq,
-        html_renderer=render_idm_source_locked_html, diagram_builder=idm_source_step_diagram)
+        html_renderer=render_idm_source_locked_html, diagram_builder=idm_source_step_diagram, keep_repeats=True)
     return IdmUnitDeps(
         build_instance_model=build_staged_instance_response_model,
         bind_instance_payload=bind_staged_instance_payload,
