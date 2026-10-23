@@ -13,6 +13,7 @@ from app.idm.answer_near import ANSWER_NEAR_EXAMPLE_CODE, near_example
 from app.idm.fallback_lines import restore_stops
 from app.idm.node_acceptance import html_quality_code
 from app.idm.quiz_letters import expand_short_item_labels
+from app.idm.slot_words import classroom_words, exercise_details
 from app.idm.sortable import without_order_labels
 from app.idm.source_fallback import idm_statement_faq
 from app.idm.source_locked import render_idm_source_locked_html
@@ -318,3 +319,28 @@ class RuleApplicationTests(unittest.TestCase):
         named = quiz("Khiếu nại liên quan đến an toàn sản phẩm thì bạn làm gì trước?",
                      ["Chuyển ngay cho quản lý cấp cao xử lý trong vòng hai giờ", *self.DISTRACTORS])
         self.assertEqual(near_example(named, [self.RULE]), "option")
+
+
+class ClassroomWordTests(unittest.TestCase):
+    """M8: only a fact that opens as an exercise gives details, and its homework or group wording counts only after an
+    exercise word."""
+
+    def test_a_mention_is_no_exercise(self) -> None:
+        details = exercise_details([
+            "Sở hữu các tính năng tự động hóa \"1 chạm\", giúp họ cắt giảm được 1-2 tiếng làm việc bù đầu mỗi ngày để "
+            "được về nhà đúng giờ.",
+            "Trưởng nhóm thảo luận với khách hàng trong 30 phút đầu để chốt phạm vi dự án."])
+        self.assertEqual(details, [])
+        teaching = html_slot(("Người dùng muốn gì?", [block("paragraph", "Họ muốn về nhà đúng giờ. Trưởng nhóm cần 30 "
+                                                                         "phút đầu để chốt phạm vi.")]))
+        self.assertEqual(classroom_words([teaching], (), details), {})
+
+    def test_group_wording_counts_only_in_an_exercise(self) -> None:
+        details = exercise_details(["Bài tập về nhà theo nhóm: hoàn thiện bản đồ hành trình cho dự án của bạn.",
+                                    "Thực hành Bộ lọc: các nhóm chỉ chọn ra đúng 2 sáng kiến trong 10 phút."])
+        self.assertEqual(details, ["về nhà", "theo nhóm", "đúng 2", "10 phút"])
+        ordinary = html_slot(("Phân khúc", [block("paragraph", "Phân khúc là gom khách hàng theo nhóm có đặc điểm "
+                                                               "chung, để về nhà đúng giờ.")]))
+        exercise = html_slot(("Đồ án", [block("paragraph", "Bài tập về nhà theo nhóm yêu cầu đội ngũ hoàn thiện đồ án; "
+                                                          "chọn đúng 2 sáng kiến.")]))
+        self.assertEqual(classroom_words([ordinary, exercise], (), details), {1: ["về nhà", "theo nhóm", "đúng 2"]})

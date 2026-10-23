@@ -7,6 +7,11 @@ biện", "gồm đúng 2 sáng kiến"). The writer is told to turn such an exer
 carries its time limit, its count to pick or its group or homework wording outside a worksheet is an edit note, never a
 failure (``classroom_words``). Only details an exercise of the unit's facts states count, so a rule of the work ("phản
 hồi trong 30 phút") is never named.
+
+Review 5 (M8): a fact is an exercise only when it opens as one ("BÀI TẬP …", "Câu hỏi thảo luận …", "Thực hành …",
+"Nhiệm vụ thực hành …"), never because it mentions "về nhà" or "thảo luận" ("… để được về nhà đúng giờ", "Trưởng nhóm
+thảo luận với khách hàng trong 30 phút đầu …"); and its homework or group wording counts in a slot only after an
+exercise word ("Bài tập về nhà theo nhóm …"), never in "gom khách hàng theo nhóm có đặc điểm chung".
 """
 
 from __future__ import annotations
@@ -20,15 +25,20 @@ from app.idm.acronyms import learner_texts
 from app.idm.faq_checks import FaqChecker
 from app.idm.policy import FAQ_COMPONENT_TYPE
 from app.idm.quiz_text import EXPLANATION_FILLER_CODE, explanation_report, lay_out_quiz
-from app.idm.source_locked import EXERCISE_RE
 from app.idm.text import EvidenceIndex, idm_fold
 
-# A classroom exercise of the slides, accent-folded: its opening (``EXERCISE_RE``) or one of these words anywhere.
-_EXERCISE_WORDS_RE: Final = re.compile(r"(?<!\w)(?:bai tap|thao luan|ve nha|homework|exercise|discussion)(?!\w)")
+# A classroom exercise of the slides, accent-folded: how it opens.
+_EXERCISE_START_RE: Final = re.compile(r"^\W*(?:nhiem vu\s+)?(?:bai tap|cau hoi thao luan|thao luan|thuc hanh|homework"
+                                       r"|exercise|discussion|group work)(?!\w)")
 # What belongs to the exercise, not to the work: its time, the count to pick, the group or homework wording.
 _DETAIL_RE: Final = re.compile(r"(?<![\w.])(?:\d{1,3}\s*(?:phút|minutes?|mins?)|đúng\s+\d{1,2}|exactly\s+\d{1,2}"
                                r"|về nhà|homework|theo nhóm|in (?:groups|teams))(?!\w)", re.IGNORECASE)
 _MAX_WORDS: Final = 4
+# The homework or group wording of an exercise, and the exercise words it must follow in a slot (within a few words).
+_WORDING: Final = frozenset({"về nhà", "homework", "theo nhóm", "in groups", "in teams"})
+_EXERCISE_LEAD: Final = (r"(?<!\w)(?:bài tập|thảo luận|thực hành|nhiệm vụ|dự án|làm việc|làm|homework|exercise"
+                         r"|discussion|assignment|work)(?:\W+\w+){0,4}?\W+")
+_ALONE: Final = r"(?<![\w.])"
 
 
 def _normal(text: str) -> str:
@@ -40,8 +50,7 @@ def exercise_details(fact_texts: Iterable[str]) -> list[str]:
 
     found: list[str] = []
     for text in fact_texts:
-        folded = idm_fold(text)
-        if EXERCISE_RE.match(folded) or _EXERCISE_WORDS_RE.search(folded):
+        if _EXERCISE_START_RE.match(idm_fold(text)):
             found.extend(_normal(match.group(0)) for match in _DETAIL_RE.finditer(_normal(text)))
     return list(dict.fromkeys(found))
 
@@ -54,7 +63,8 @@ def classroom_words(components: Sequence[Any], exempt: Collection[int], details:
         if index in exempt or not isinstance(component, dict) or not details:
             continue
         text = _normal(" ".join(learner_texts(component)))
-        words = [detail for detail in details if re.search(rf"(?<![\w.]){re.escape(detail)}(?!\w)", text)]
+        words = [detail for detail in details if re.search(
+            (_EXERCISE_LEAD if detail in _WORDING else _ALONE) + re.escape(detail) + r"(?!\w)", text)]
         if words:
             found[index] = words[:_MAX_WORDS]
     return found
