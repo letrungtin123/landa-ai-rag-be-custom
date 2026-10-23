@@ -17,6 +17,7 @@ from app.idm.slot_words import classroom_words, exercise_details
 from app.idm.sortable import without_order_labels
 from app.idm.source_fallback import idm_statement_faq
 from app.idm.source_locked import render_idm_source_locked_html
+from app.idm.source_names import NameGuide
 from app.idm.visual_pages import evidence_needs_check, unread_image_pages
 from tests.support.log_support import logged_events
 from tests.unit.idm.test_idm_qc_run_5496155c import region
@@ -344,3 +345,25 @@ class ClassroomWordTests(unittest.TestCase):
         exercise = html_slot(("Đồ án", [block("paragraph", "Bài tập về nhà theo nhóm yêu cầu đội ngũ hoàn thiện đồ án; "
                                                           "chọn đúng 2 sáng kiến.")]))
         self.assertEqual(classroom_words([ordinary, exercise], (), details), {1: ["về nhà", "theo nhóm", "đúng 2"]})
+
+
+class ToolNameTests(unittest.TestCase):
+    """M9: a tool noun as a verb and the generic words of an English Title Case heading name no tool."""
+
+    def test_the_reviewer_s_headings_are_quiet(self) -> None:
+        vietnamese = NameGuide.build(["Hành trình trải nghiệm khách hàng gồm 5 giai đoạn: nhận biết, cân nhắc, mua.",
+                                      "Điểm chạm là nơi khách hàng tương tác với doanh nghiệp."])
+        for title in ("Sơ đồ hóa hành trình khách hàng", "Sơ đồ hoá điểm chạm của khách hàng",
+                      "Bản đồ hoá các điểm chạm", "Ma trận hóa ưu tiên"):
+            self.assertEqual(vietnamese.missing(title), [], title)
+        english = NameGuide.build(["A customer journey has five stages: awareness, consideration and purchase.",
+                                   "Prioritise the touchpoints that matter most to the customer."])
+        for heading in ("A Practical Framework for Touchpoints", "Building Your Prioritization Matrix",
+                        "Mapping Each Stage on a Simple Map", "Our Decision Framework", "Use the Framework"):
+            self.assertEqual(english.missing(heading), [], heading)
+
+    def test_a_name_the_source_does_not_use_is_still_found(self) -> None:
+        source = NameGuide.build(["Bản đồThấu cảm (Empathy Map) giúp hiểu điều khách hàng nghĩ và cảm nhận."])
+        self.assertEqual(source.missing("Khung ma trận thấu cảm và 3 tầng nhận thức"), ["ma trận thấu cảm"])
+        self.assertEqual(source.missing("The Value Proposition Canvas"), ["Value Proposition Canvas"])
+        self.assertEqual(source.missing("Building the Customer Journey Map"), ["Customer Journey Map"])

@@ -20,6 +20,11 @@ the source writes ("hành trình") is a plain description, unless the source giv
 ("bản đồ thấu cảm" for "ma trận thấu cảm": the name of a different tool); an English name is a proper name and must be
 written as it is. On the run's titles: "ma trận thấu cảm" is caught; "Bản đồ hành trình", "Bộ lọc Dự án", "Ma trận ưu
 tiên", "Service Blueprint" and "G-STIC" are not.
+
+Review 5 (M9): a tool noun turned into a verb ("sơ đồ hóa", "bản đồ hoá") names no tool; an English tool noun names one
+only after a proper name of two capitalised words at least, once the generic words of a Title Case heading are left out
+("Value Proposition Canvas"; never "A Practical Framework", "Our Decision Framework", "Building Your Prioritization
+Matrix", "… a Simple Map").
 """
 
 from __future__ import annotations
@@ -51,6 +56,16 @@ _GENERIC: Final = frozenset({"thời gian", "giờ"})
 _QUALIFIER_WORDS: Final = 2
 _NAME_WINDOW: Final = 4
 _EN_NAME_WORDS: Final = 3
+# Review 5 (M9): a Vietnamese tool noun as a verb, and the generic words of an English Title Case heading.
+_VERB_MARKS: Final = frozenset({"hóa", "hoá"})
+_EN_GENERIC: Final = frozenset({
+    "a", "an", "the", "our", "your", "their", "my", "his", "her", "its", "this", "that", "these", "those", "each",
+    "every", "any", "all", "one", "new", "simple", "practical", "basic", "good", "great", "effective", "quick", "easy",
+    "complete", "full", "key", "main", "core", "general", "standard", "custom", "final", "first", "next", "build",
+    "building", "use", "using", "create", "creating", "apply", "applying", "map", "mapping", "design", "designing",
+    "make", "making", "choose", "choosing", "how", "why", "what", "when", "step", "steps", "decision", "action",
+})
+_EN_MIN_NAME_WORDS: Final = 2
 # A described qualifier says something ("hành trình", "dịch vụ"): no one or two letters.
 _MIN_DESCRIBED_CHARS: Final = 4
 _CLAUSE_RE: Final = re.compile(r"[:;,()?!.\[\]\"“”]|\s[-–—]\s")  # noqa: RUF001 - the dashes end a clause
@@ -98,7 +113,7 @@ def _phrases(clause: str) -> list[_Phrase]:
                     break
                 qualifier.append(token)
             nested = any(" ".join(lowered[start:start + len(other.split())]) == other for other in _VI_TOOLS)
-            if (not qualifier or nested or " ".join(qualifier).lower() in _GENERIC
+            if (not qualifier or nested or " ".join(qualifier).lower() in _GENERIC or lowered[start] in _VERB_MARKS
                     or (noun in _WEAK_TOOLS and not qualifier[0][:1].isupper())):
                 continue
             # A tool the source names in English after it ("sơ đồ Service Blueprint") is named by that name.
@@ -111,7 +126,9 @@ def _phrases(clause: str) -> list[_Phrase]:
                 if not token[:1].isupper() or token.lower() in _STOPS:
                     break
                 before.insert(0, token)
-            if before:
+            while before and before[0].lower() in _EN_GENERIC:
+                before.pop(0)
+            if len(before) >= _EN_MIN_NAME_WORDS:
                 found.append(_Phrase(" ".join([*before, tokens[index]]), [], "", "", ""))
     return found
 
