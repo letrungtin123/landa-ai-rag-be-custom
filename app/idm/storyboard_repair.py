@@ -47,6 +47,8 @@ from app.idm.storyboard_steps import IdmUnitWriterSteps
 
 # The transient provider failures a repair is sent again after; SERVICE_BUSY is this service's own limiter.
 RETRIED_REPAIR_CODES: Final = frozenset({"AI_PROVIDER_TIMEOUT", "AI_PROVIDER_UNAVAILABLE"})
+# Review 7 (M2): the provider failures this service raises before a request leaves it (its own provider limiter).
+UNDISPATCHED_CODES: Final = frozenset({"SERVICE_BUSY"})
 # The findings a second targeted repair is spent on (owner P3).
 SECOND_REPAIR_CODES: Final = frozenset({ANSWER_LEAK_CODE, NEW_FACT_CODE, ANSWER_CONTESTED_CODE})
 # The key of a shared-validator finding whose path names no slot.
@@ -218,21 +220,29 @@ class IdmUnitRepairSteps(IdmUnitWriterSteps):
             self.runtime.adjustments["w5_faq_style_repair_skipped"] += len(style_only)
         return [(code, index) for code, index in issues if index not in style_only]
 
-    def provider_state(self) -> str | None:
-        """The task's provider failure before a repair call (``repair_failed``)."""
+    def provider_state(self) -> tuple[str | None, bool, int]:
+        """The task's provider failure, whether its usage is complete and how many repairs were sent again, before a
+        repair call (``repair_failed``)."""
 
-        return self.runtime.provider_failure_code
+        return (self.runtime.provider_failure_code, self.runtime.usage.complete,
+                self.runtime.adjustments["w5_repair_retried"])
 
-    def repair_failed(self, code: str, issues: Sequence[tuple[str, int]], before: str | None) -> None:
+    def repair_failed(self, code: str, issues: Sequence[tuple[str, int]], before: tuple[str | None, bool, int]) -> None:
         """A transient provider failure ``code`` of the repair call for ``issues`` is a failure code of the unit; the
         dispatched call's usage stays unknown (``idm_generate``), so the backend charges the reserved ceiling (review
         6, M5: never complete usage for a failed call). Review 5 (M6): a call that only repaired soft findings
         (``SOFT_CODES``) does not stop the later calls (``before``: ``provider_state`` before it), so the judge still
-        runs and the soft findings stay edit notes."""
+        runs and the soft findings stay edit notes. Review 7 (M2): such a call this service refused before sending it
+        (``UNDISPATCHED_CODES``, and no attempt of it sent again) leaves the usage of the calls sent as it was, and the
+        unit as it was."""
 
+        failure, complete, retried = before
         if issues and all(issue in SOFT_CODES for issue, _index in issues):
-            self.runtime.provider_failure_code = before
+            self.runtime.provider_failure_code = failure
             self.runtime.adjustments["w5_soft_repair_failed"] += 1
+            if code in UNDISPATCHED_CODES and self.runtime.adjustments["w5_repair_retried"] == retried:
+                self.runtime.usage.complete = complete
+                return
         self.failure_codes.append(code)
 
     def retry_level(self, error: IdmProviderError, *, targeted: bool, preferred: ThinkingLevel,

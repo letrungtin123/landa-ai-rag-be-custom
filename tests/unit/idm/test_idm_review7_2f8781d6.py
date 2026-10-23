@@ -5,11 +5,20 @@ Every case is synthetic text with the shape of the reviewer's reproduction scrip
 
 from __future__ import annotations
 
+from app.core.errors import AppError, ServiceError
 from app.idm.node_acceptance import html_quality_code
 from app.idm.source_locked import render_idm_source_locked_html
+from tests.support.log_support import logged_events
 from tests.unit.idm.test_idm_qc_run_2f8781d6 import many_facts_body
 from tests.unit.idm.test_idm_storyboard import (
+    JUDGE,
+    REPAIR,
+    WRITER,
+    FakeGenerate,
     StoryboardEndpointTestCase,
+    escalate_body,
+    escalate_writer,
+    judge,
 )
 
 # Review 7 (M1): a figure ends each section, so the next section's title and its repeated label are no pair the
@@ -43,3 +52,44 @@ class FallbackDuplicateTests(StoryboardEndpointTestCase):
         status, data, provider = await self.post(body)
         self.assertEqual((status, provider.calls), (200, []), data.get("detail"))
         self.assertEqual((data["content_origin"], data["quality_state"]), ("structured_fallback", "review_required"))
+
+
+def busy() -> AppError:
+    return AppError("SERVICE_BUSY", 503, "The AI service is busy. Please retry shortly.")
+
+
+class UndispatchedRepairTests(StoryboardEndpointTestCase):
+    """M2: a soft-only repair this service's own limiter refuses (SERVICE_BUSY, never sent) leaves the provider usage
+    of the calls that were sent and the unit validated; the soft finding stays an edit note."""
+
+    async def test_a_busy_soft_repair_keeps_the_provider_lane(self) -> None:
+        body = escalate_body()
+        writer = escalate_writer(body)
+        writer["components"]["c0"]["question"] = (
+            "Một khách hàng VIP gọi đến vì sản phẩm gây chập điện, khiếu nại liên quan đến an toàn. Bạn nên làm gì "
+            "trước tiên?")
+        provider = FakeGenerate(**{WRITER: [writer], REPAIR: [busy()], JUDGE: [judge()]})
+        with self.assertLogs("app.idm", level="INFO") as logs:
+            status, data, _ = await self.post(body, provider)
+        self.assertEqual(status, 200, data.get("detail"))
+        self.assertEqual((data["content_origin"], data["quality_state"], data["usage_source"], data["usage_complete"]),
+                         ("provider_validated", "validated", "provider", True))
+        self.assertEqual(provider.names.count(JUDGE), 1)
+        self.assertEqual(logged_events(logs.records, "idm_unit_quality")[-1]["failure_codes"], [])
+        note = data["unit"]["idm_quality"]["author_note"]
+        self.assertIn("Nên biên tập khối 1 (Quiz): đáp án đúng", note)
+        self.assertNotIn("Cần tác giả xem lại", note)
+
+    async def test_a_sent_attempt_before_the_refusal_stays_unknown(self) -> None:
+        # A timed-out attempt was sent, then its retry was refused: the first call's usage is unknown (review 6, M5).
+        body = escalate_body()
+        writer = escalate_writer(body)
+        writer["components"]["c0"]["question"] = (
+            "Một khách hàng VIP gọi đến vì sản phẩm gây chập điện, khiếu nại liên quan đến an toàn. Bạn nên làm gì "
+            "trước tiên?")
+        timeout = ServiceError(status_code=504, detail={"code": "AI_PROVIDER_TIMEOUT", "message": "private"})
+        provider = FakeGenerate(**{WRITER: [writer], REPAIR: [timeout, busy()], JUDGE: [judge()]})
+        status, data, _ = await self.post(body, provider)
+        self.assertEqual(status, 200, data.get("detail"))
+        self.assertEqual((data["usage_source"], data["usage_complete"], data["quality_state"]),
+                         ("reserved_upper_bound", False, "review_required"))
