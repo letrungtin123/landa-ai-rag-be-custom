@@ -16,8 +16,10 @@ from app.idm.quiz_letters import expand_short_item_labels
 from app.idm.slot_words import exercise_details
 from app.idm.source_locked import render_idm_source_locked_html
 from app.idm.source_names import NameGuide
+from app.idm.visual_pages import unread_image_pages
 from tests.support.log_support import logged_events
 from tests.unit.idm.test_idm_qc_run_2f8781d6 import many_facts_body
+from tests.unit.idm.test_idm_qc_run_5496155c import region
 from tests.unit.idm.test_idm_review5_2f8781d6 import FIXED, REPEATED, writer_with
 from tests.unit.idm.test_idm_storyboard import (
     JUDGE,
@@ -186,3 +188,15 @@ class PairedTailTests(unittest.TestCase):
         source = ["Trải nghiệm khách hàng (CX) là cách khách cảm nhận doanh nghiệp."]
         self.assertFalse(explained("CX", None, ["Chăm sóc khách hàng - CX là trọng tâm."], source_texts=source))
         self.assertTrue(explained("CX", None, ["Trải nghiệm khách hàng - CX là trọng tâm."], source_texts=source))
+
+
+class BreadcrumbScopeTests(unittest.TestCase):
+    """L9: the snapshot writes a scope title as a breadcrumb ("Khóa học … > MODULE 2: …", joined by a single right
+    angle quote); its last part starts the section."""
+
+    def test_the_breadcrumb_counts(self) -> None:
+        texts = {43: ["MODULE 2: CHIẾN LƯỢC"]}
+        for scope, warned in ((f"Khóa học Trải nghiệm khách hàng {chr(0x203A)} MODULE 2: CHIẾN LƯỢC", []),
+                              ("MODULE 2: CHIẾN LƯỢC", []), ("Confidential", [43])):
+            locator = {"scope_title": scope, "visual_regions": [region(43, 0.92, asset="43a" * 21)]}
+            self.assertEqual(unread_image_pages([locator], texts), warned, scope)
