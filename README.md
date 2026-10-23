@@ -108,6 +108,9 @@ bounded repair, then deterministic source-locked content marked for review. Prom
 - `GET /v1/meta` reports the build sha, `contracts` (orchestration V2 contract 2, `idm-1`, IDM contract 3,
   `idm-prompt-1`, index request 2; the backend compares these keys at worker startup), the schema-check result
   and `prompt_templates_hash`, a hash of the IDM prompt template sources that changes with every prompt edit.
+  `in_flight` counts the requests being served (`total`, and `by_route_class`: `ai_id`, `chat`,
+  `knowledge_base`, `lesson_author_legacy`, `other`; `/v1/meta` and the health and metrics probes are not
+  counted): a deploy restarts the process once `total` is 0, so no AI ID or index request is cut.
 - The backend's cross-language tests run this checkout (`tests/idm_contract_bridge.py`,
   `python -c "from app.main import ..."`): keep the names re-exported by `app/main.py`.
 - Database: the service never runs DDL. It reads 9 columns of `kb_documents` and owns `rag_document_indexes`,

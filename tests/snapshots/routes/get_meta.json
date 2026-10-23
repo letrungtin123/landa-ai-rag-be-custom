@@ -33,7 +33,17 @@
     "missing": [],
     "checked_at": null
    },
-   "prompt_templates_hash": "51778961dfb330237d43b8873634b2e2e6f7a9397dd2d0139265dd32e0c450b3"
+   "prompt_templates_hash": "51778961dfb330237d43b8873634b2e2e6f7a9397dd2d0139265dd32e0c450b3",
+   "in_flight": {
+    "total": 0,
+    "by_route_class": {
+     "ai_id": 0,
+     "chat": 0,
+     "knowledge_base": 0,
+     "lesson_author_legacy": 0,
+     "other": 0
+    }
+   }
   },
   "db_calls": [],
   "provider_calls": [],

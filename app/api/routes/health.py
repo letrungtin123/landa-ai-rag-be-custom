@@ -56,7 +56,8 @@ async def readyz() -> JSONResponse:
 
 
 async def service_meta() -> ServiceMetaResponse:
-    """Build and contract identity so the backend can detect a version skew between servers."""
+    """Build and contract identity so the backend can detect a version skew between servers, and the requests in
+    flight so a deploy can wait for none."""
     build_sha = settings.build_sha.strip()
     return ServiceMetaResponse.model_validate({
         "service": SERVICE_NAME,
@@ -70,6 +71,7 @@ async def service_meta() -> ServiceMetaResponse:
         "database": {"state": service_runtime.database.state if service_runtime.database is not None else "idle"},
         "schema_check": service_runtime.schema_guard.summary(),
         "prompt_templates_hash": prompt_templates_hash(),
+        "in_flight": service_runtime.runtime_state.in_flight_summary(),
     })
 
 

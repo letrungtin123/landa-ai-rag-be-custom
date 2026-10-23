@@ -408,6 +408,52 @@ class EndpointTests(unittest.TestCase):
         with patch.object(main.settings, "build_sha", "bad sha <script>"):
             self.assertEqual(self.request("GET", "/v1/meta", headers=headers).json()["build_sha"], "unknown")
 
+    def test_meta_reports_the_requests_in_flight_per_route_class(self) -> None:
+        # Audit 2026-10-24, O1: a deploy polls /v1/meta and restarts the service once in_flight.total is 0.
+        headers = {"X-Landa-AI-Service-Token": TOKEN}
+        idle = {"total": 0, "by_route_class": {"ai_id": 0, "chat": 0, "knowledge_base": 0,
+                                               "lesson_author_legacy": 0, "other": 0}}
+
+        class BlockingPool:
+            def __init__(self) -> None:
+                self.entered = asyncio.Event()
+                self.release = asyncio.Event()
+
+            async def _block(self, *_args: Any) -> Any:
+                self.entered.set()
+                await self.release.wait()
+                return "DELETE 0"
+
+            fetch = fetchrow = fetchval = execute = _block
+
+            @asynccontextmanager
+            async def acquire(self) -> AsyncIterator[BlockingPool]:
+                yield self
+
+            @asynccontextmanager
+            async def transaction(self) -> AsyncIterator[BlockingPool]:
+                yield self
+
+        async def scenario() -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
+            pool = BlockingPool()
+            runtime_service.db_pool = pool  # type: ignore[assignment]
+            async with httpx.AsyncClient(transport=httpx.ASGITransport(app=main.app), base_url="http://test") as client:
+                before = (await client.get("/v1/meta", headers=headers)).json()["in_flight"]
+                deleting = asyncio.create_task(client.post(
+                    "/v1/kb/delete", headers=headers,
+                    json={"tenant_id": "11111111-1111-4111-8111-111111111111",
+                          "kb_id": "22222222-2222-4222-8222-222222222222"}))
+                await asyncio.wait_for(pool.entered.wait(), 5)
+                during = (await client.get("/v1/meta", headers=headers)).json()["in_flight"]
+                pool.release.set()
+                await deleting
+                after = (await client.get("/v1/meta", headers=headers)).json()["in_flight"]
+            return before, during, after
+
+        before, during, after = asyncio.run(scenario())
+        self.assertEqual((before, after), (idle, idle))
+        self.assertEqual(during, {"total": 1, "by_route_class": {**idle["by_route_class"], "knowledge_base": 1}})
+
     def test_routes_answer_database_not_ready_while_the_pool_reconnects(self) -> None:
         response = self.request("POST", "/v1/kb/delete", headers={"X-Landa-AI-Service-Token": TOKEN},
                                 json={"tenant_id": "11111111-1111-4111-8111-111111111111",

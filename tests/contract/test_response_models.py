@@ -45,6 +45,8 @@ CASES: list[tuple[str, TypeAdapter[Any], dict[str, Any]]] = [
         "database": {"state": "idle"},
         "schema_check": {"status": "ok", "code": None, "missing_count": 0, "missing": [], "checked_at": 1.5},
         "prompt_templates_hash": "c" * 64,
+        "in_flight": {"total": 2, "by_route_class": {"ai_id": 1, "chat": 0, "knowledge_base": 1,
+                                                     "lesson_author_legacy": 0, "other": 0}},
     }),
     ("index_learned", INDEX_DOCUMENT_RESPONSE, {
         "status": "learned", "chunk_count": 2, "structure_source": None, "structure_confidence": 0,

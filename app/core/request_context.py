@@ -13,7 +13,7 @@ from time import perf_counter
 from typing import Any
 
 from app.core import metrics
-from app.core.lifespan import RuntimeState
+from app.core.lifespan import OTHER_ROUTE_CLASS, RuntimeState
 from app.core.logging import correlation_id_var, request_id_var
 
 logger = logging.getLogger(__name__)
@@ -27,6 +27,16 @@ CORRELATION_ID_HEADER = b"x-correlation-id"
 LANDA_REQUEST_ID_HEADER = b"x-landa-request-id"
 SAFE_ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$")
 OPERATIONAL_PATHS = frozenset({"/healthz", "/readyz", "/metrics"})
+# Not counted in flight either: /v1/meta reports the count (a deploy polls it until no request is in flight).
+UNCOUNTED_PATHS = OPERATIONAL_PATHS | {"/v1/meta"}
+# Path prefix -> route class of the in-flight counters (app.core.lifespan.IN_FLIGHT_ROUTE_CLASSES); first match wins.
+IN_FLIGHT_ROUTE_PREFIXES = (
+    ("/v1/lesson-author/orchestration-v2/", "ai_id"),
+    ("/v1/lesson-author/org-context/", "ai_id"),
+    ("/v1/lesson-author/", "lesson_author_legacy"),
+    ("/v1/chat", "chat"),
+    ("/v1/kb/", "knowledge_base"),
+)
 # The method label of the HTTP metrics: any client can send any method token, so anything else counts as OTHER
 # and the label set stays bounded (security audit 2026-10-24, L3).
 METRIC_METHODS = frozenset({"GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"})
@@ -69,6 +79,12 @@ def method_label(method: str) -> str:
     return method if method in METRIC_METHODS else OTHER_METHOD
 
 
+def in_flight_route_class(path: str) -> str:
+    """The route class a request to ``path`` counts under while it is in flight (bounded: "other" else)."""
+    return next((route_class for prefix, route_class in IN_FLIGHT_ROUTE_PREFIXES if path.startswith(prefix)),
+                OTHER_ROUTE_CLASS)
+
+
 def route_template(scope: MutableMapping[str, Any]) -> str:
     """Return the matched route template, never a raw path (bounded label cardinality)."""
     route = scope.get("route")
@@ -100,6 +116,8 @@ class RequestContextMiddleware:
         path = str(scope.get("path") or "")
         method = str(scope.get("method") or "GET")
         operational = path in OPERATIONAL_PATHS
+        counted = path not in UNCOUNTED_PATHS
+        route_class = in_flight_route_class(path)
         status_code = HTTP_STATUS_SERVER_ERROR
         error_body = bytearray()
         escaped_error = False
@@ -118,16 +136,16 @@ class RequestContextMiddleware:
                 error_body.extend(bytes(message.get("body", b""))[:ERROR_BODY_CAPTURE_BYTES - len(error_body)])
             await send(message)
 
-        if not operational:
-            self.state.begin_request()
+        if counted:
+            self.state.begin_request(route_class)
         try:
             await self.app(scope, receive, send_with_context)
         except Exception:
             escaped_error = True
             raise
         finally:
-            if not operational:
-                self.state.end_request()
+            if counted:
+                self.state.end_request(route_class)
             duration = perf_counter() - started
             route = route_template(scope)
             label = method_label(method)

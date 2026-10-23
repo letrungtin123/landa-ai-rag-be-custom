@@ -234,6 +234,36 @@ class RequestContextMiddlewareTests(unittest.TestCase):
         _, seen = self.run_middleware(http_scope(path="/healthz", method="GET"), state=state)
         self.assertEqual(seen["in_flight"], 0)
 
+    def test_counts_in_flight_work_per_route_class_but_not_the_meta_poll(self) -> None:
+        # Audit 2026-10-24, O1: /v1/meta reports these counts, so it is not counted itself.
+        state = RuntimeState()
+        seen: list[dict[str, Any]] = []
+
+        async def app(scope: dict[str, Any], receive: Any, send: Any) -> None:
+            seen.append(state.in_flight_summary())
+            await send({"type": "http.response.start", "status": 200, "headers": []})
+            await send({"type": "http.response.body", "body": b"{}"})
+
+        async def receive() -> dict[str, Any]:
+            return {"type": "http.request", "body": b"", "more_body": False}
+
+        async def send(message: dict[str, Any]) -> None:
+            return None
+
+        paths = ["/v1/lesson-author/orchestration-v2/unit", "/v1/lesson-author/org-context/distill",
+                 "/v1/lesson-author/proposal", "/v1/chat", "/v1/kb/documents/index", "/v1/unknown", "/v1/meta",
+                 "/healthz", "/metrics"]
+        for path in paths:
+            asyncio.run(RequestContextMiddleware(app, state=state)(http_scope(path=path), receive, send))
+        busy = [{name: count for name, count in summary["by_route_class"].items() if count} for summary in seen]
+        self.assertEqual(busy, [{"ai_id": 1}, {"ai_id": 1}, {"lesson_author_legacy": 1}, {"chat": 1},
+                                {"knowledge_base": 1}, {"other": 1}, {}, {}, {}])
+        self.assertEqual([summary["total"] for summary in seen], [1, 1, 1, 1, 1, 1, 0, 0, 0])
+        self.assertEqual(state.in_flight_summary()["total"], 0)
+        self.assertEqual(set(state.in_flight_summary()["by_route_class"].values()), {0})
+        state.begin_request("not-a-class")
+        self.assertEqual(state.in_flight_summary()["by_route_class"]["other"], 1)
+
     def test_records_metrics_with_route_template(self) -> None:
         labels = {"route": "/v1/chat", "method": "POST", "status": "201"}
         before = metric_value("ai_rag_http_requests_total", labels)
