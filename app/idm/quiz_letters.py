@@ -262,6 +262,14 @@ _SHORT_LABEL: Final = r"(?i:ý|mục|câu|bước|item|point)"
 _SHORT_ITEM_RE: Final = re.compile(rf"^([ \t]*[-–•*][ \t]+)({_SHORT_LABEL})[ \t]+(\d{{1,2}})([ \t]*:)",  # noqa: RUF001
                                    re.MULTILINE)
 _SHORT_USE_RE: Final = re.compile(rf"({_SHORT_LABEL})[ \t]+(\d{{1,2}})")
+# Review 8 (L1): a label written in lower case names an item only at a line start or after these words ("vì ý 3"),
+# never after one it makes a word with ("lưu ý 2", "danh mục 2"); no label is renamed next to a word in capitals ("LƯU
+# Ý 2 ĐIỀU") or after a count ("5 Bước 3 phút").
+_LABEL_LEADS: Final = frozenset({"vì", "của", "như", "lại", "chọn", "là", "và", "hoặc", "với", "thấy", "xem", "theo",
+                                 "trước", "sau", "because", "of", "like", "choose", "is", "and", "or", "with", "see",
+                                 "before", "after"})
+_WORD_BEFORE_RE: Final = re.compile(r"(\w+)[ \t]+$")
+_WORD_AFTER_RE: Final = re.compile(r"[ \t]+(\w+)")
 
 
 def expand_short_item_labels(component: dict[str, Any]) -> tuple[dict[str, Any], int]:
@@ -271,7 +279,8 @@ def expand_short_item_labels(component: dict[str, Any]) -> tuple[dict[str, Any],
     1, 2 … under that one label, and every option that is such a name names a listed item. Never a word inside a
     sentence (review 5, M1); review 6 (L6), review 7 (L7): the explanation and the hints name the items as the
     options do, wherever they write a listed item as a whole word with the label as the stem does ("Ý 3", "Bước 3";
-    never "lưu ý 2")."""
+    never "lưu ý 2"); review 8 (L1): a lower-case label only at a line start or after a lead word ("vì ý 3"), and
+    never next to a word in capitals or after a count."""
 
     kind = str(component.get("problem_type") or "multiple_choice").strip().lower()
     question = component.get("question")
@@ -312,7 +321,12 @@ def expand_short_item_labels(component: dict[str, Any]) -> tuple[dict[str, Any],
     use = re.compile(rf"(?<!\w)({'|'.join(map(re.escape, sorted(written)))}) (\d{{1,2}})(?!\w)")
 
     def rename(match: re.Match[str]) -> str:
-        if int(match.group(2)) not in numbers:
+        before = _WORD_BEFORE_RE.search(match.string, 0, match.start())
+        after = _WORD_AFTER_RE.match(match.string, match.end())
+        near = [found.group(1) for found in (before, after) if found is not None]
+        if (int(match.group(2)) not in numbers or any(word.isupper() and len(word) > 1 for word in near)
+                or (before is not None and before.group(1).isdigit())
+                or (match.group(1).islower() and before is not None and before.group(1).lower() not in _LABEL_LEADS)):
             return match.group(0)
         return f"{noun(match.group(1))} {match.group(2)}"
 

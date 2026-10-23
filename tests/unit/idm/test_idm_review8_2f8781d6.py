@@ -9,6 +9,7 @@ import itertools
 import unittest
 
 from app.idm.node_acceptance import html_quality_code
+from app.idm.quiz_letters import expand_short_item_labels
 from app.idm.source_locked import render_idm_source_locked_html
 from tests.unit.idm.test_idm_qc_run_2f8781d6 import many_facts_body
 from tests.unit.idm.test_idm_storyboard import (
@@ -79,6 +80,42 @@ class NumberedLabelTests(StoryboardEndpointTestCase):
             status, data, provider = await self.post({**many_facts_body(facts), "fallback_only": True})
             self.assertEqual((status, provider.calls), (200, []), data.get("detail"))
             self.assertEqual(data["content_origin"], "structured_fallback")
+
+
+def labelled_quiz(label: str, explanation: str, hints: list[str] | None = None) -> dict[str, object]:
+    items = "\n".join(f"- {label} {number}: {text}" for number, text in enumerate(
+        ("Gọi lại cho khách trong ngày.", "Gửi thư xin lỗi theo mẫu chuẩn.", "Chuyển ngay cho quản lý cấp cao.",
+         "Hẹn khách mang máy đến cửa hàng."), 1))
+    return {"problem_type": "multiple_choice",
+            "question": f"Giả sử khách báo máy sấy bốc khói. Bạn cân nhắc bốn ý:\n{items}\nPhương án nào đúng?",
+            "choices": [{"text": f"{label} {number}", "correct": number == 3} for number in (3, 1, 2, 4)],
+            "explanation": explanation, "hints": hints or []}
+
+
+class LabelWordTests(unittest.TestCase):
+    """L1: a word that only shares the label ("lưu ý 2", "Chú ý 2", "LƯU Ý 2", "5 Bước 3 phút") never changes."""
+
+    def test_lower_case_stem_label(self) -> None:
+        quiz = labelled_quiz("ý", "Nguyên tắc: cần lưu ý 2 điều: an toàn trước.\nA - Đúng vì ý 3 an toàn.\nB - Sai.\n"
+                                  "C - Sai.\nD - Sai.", ["Chú ý 2 điều trước khi chọn."])
+        out, _count = expand_short_item_labels(quiz)
+        self.assertEqual(out["explanation"].splitlines()[:2],
+                         ["Nguyên tắc: cần lưu ý 2 điều: an toàn trước.", "A - Đúng vì ý kiến 3 an toàn."])
+        self.assertEqual(out["hints"], ["Chú ý 2 điều trước khi chọn."])
+        listed = labelled_quiz("mục", "Nguyên tắc: xem danh mục 2 trong sổ tay.\nA - Đúng vì mục 3 an toàn.\nB - Sai.\n"
+                                      "C - Sai.\nD - Sai.")
+        self.assertEqual(expand_short_item_labels(listed)[0]["explanation"].splitlines()[:2],
+                         ["Nguyên tắc: xem danh mục 2 trong sổ tay.", "A - Đúng vì mục số 3 an toàn."])
+
+    def test_capitals_and_counts_stay(self) -> None:
+        quiz = labelled_quiz("Ý", "Nguyên tắc: LƯU Ý 2 ĐIỀU QUAN TRỌNG.\nA - Đúng vì Ý 3 an toàn.\nB - Sai.\nC - Sai.\n"
+                                  "D - Sai.")
+        self.assertEqual(expand_short_item_labels(quiz)[0]["explanation"].splitlines()[:2],
+                         ["Nguyên tắc: LƯU Ý 2 ĐIỀU QUAN TRỌNG.", "A - Đúng vì Ý kiến 3 an toàn."])
+        steps = labelled_quiz("Bước", "Nguyên tắc: Bước 1 luôn trước Bước 2; quy trình 5 Bước 3 phút.\nA - Đúng.\n"
+                                      "B - Sai.\nC - Sai.\nD - Sai.")
+        self.assertEqual(expand_short_item_labels(steps)[0]["explanation"].splitlines()[0],
+                         "Nguyên tắc: Bước số 1 luôn trước Bước số 2; quy trình 5 Bước 3 phút.")
 
 
 if __name__ == "__main__":
