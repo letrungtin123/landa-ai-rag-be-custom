@@ -37,7 +37,10 @@ TASK: Week 1 - build the SME Content Map for ONE section of the source.
    - intent: "know" (what the learner needs to know), "do" (what the learner must perform),
      "decide" (a decision with criteria/exceptions).
    - support_role (only for supporting blocks, otherwise null): example | common_mistake | checklist | job_aid |
-     practice_material.
+     practice_material. A classroom exercise, discussion question or homework of the slides ("BÀI TẬP 10 phút",
+     "Câu hỏi thảo luận 5 phút", "Bài tập về nhà theo nhóm") is practice_material and its summary says it is a
+     classroom exercise: its time limit, the number of items to pick and its group, discussion or homework wording
+     belong to that exercise, never to the rules of the work.
    - content_kind and how to chunk it:
      concept -> one concept or a group of concepts serving one question;
      procedure -> one stage / group of steps with the same purpose (NOT one block per step);

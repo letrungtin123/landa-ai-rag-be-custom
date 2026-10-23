@@ -151,12 +151,30 @@ def faq_inferred_line(inferred: Mapping[int, int], slot_types: Sequence[str], vi
                  f"{total} answer(s) ({where}).")
 
 
+def classroom_line(details: Mapping[int, Sequence[str]], slot_types: Sequence[str], vi: bool) -> str:
+    """Run 2f8781d6 (B8): the slots that still carry the time limit, the count or the group or homework wording of a
+    classroom exercise of the source ("10 phút", "đúng 2"), an edit note."""
+
+    labels = SLOT_LABEL_VI if vi else SLOT_LABEL_EN
+    where = ", ".join(f"{'khối' if vi else 'block'} {index + 1}" + (f" ({labels[slot_types[index]]})"
+                      if index < len(slot_types) and slot_types[index] in labels else "") for index in sorted(details))
+    words = ", ".join(f"«{word}»" for word in dict.fromkeys(word for index in sorted(details)
+                                                           for word in details[index]))
+    return (f"Nên biên tập {where}: còn chi tiết của bài tập trên lớp trong tài liệu ({words}) — nên viết thành bài "
+            "tự luyện trên công ty của người học, bỏ thời lượng, số lượng phải chọn và cách làm theo nhóm hoặc ở nhà."
+            if vi else
+            f"Polish {where}: details of a classroom exercise of the source remain ({words}) — make it a self-paced "
+            "practice on the learner's own company, without its time limit, the number to pick and the group or "
+            "homework wording.")
+
+
 __all__ = [
     "SCENARIO_LINE",
     "SLOT_LABEL_EN",
     "SLOT_LABEL_VI",
     "SUGGESTED_CRITERIA_LINE",
     "callout_lines",
+    "classroom_line",
     "drafted_examples_line",
     "dropped_faq_lines",
     "example_numbers_line",

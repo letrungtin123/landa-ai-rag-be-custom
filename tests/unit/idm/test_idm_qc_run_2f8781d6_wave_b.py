@@ -11,10 +11,16 @@ from typing import Any
 
 from app.idm import prompts_unit
 from app.idm.answer_near import ANSWER_ITEM_LENGTH_CODE, ANSWER_NEAR_EXAMPLE_CODE, item_length_cue, near_example
-from app.idm.qa import STYLE_CODES
+from app.idm.prompts_course import w1_section_prompt
+from app.idm.qa import STYLE_CODES, JudgeOutcome, build_unit_author_note
 from app.idm.qa_checks import advisory_slot_findings
+from app.idm.slot_words import classroom_words, exercise_details
+from app.idm.storyboard import IdmUnitWriter, parse_brief
 from app.idm.storyboard_context import _REVIEW_FIRST_CODES, _REVIEW_ONLY_CODES, _TARGETED_REPAIR_CODES
 from app.idm.storyboard_repair import SECOND_REPAIR_CODES
+from app.schemas.orchestration_v2 import RagLessonAuthorUnitV2Request
+from app.services.orchestration_v2 import unit as unit_service
+from tests.support.idm_test_support import make_runtime, rehash_contract
 from tests.support.log_support import logged_events
 from tests.unit.idm.test_idm_qc_run_2f8781d6 import writer_prompt_of
 from tests.unit.idm.test_idm_storyboard import (
@@ -181,6 +187,78 @@ class LearnerRoleTests(unittest.TestCase):
                                                               "Last quarter")), opening)
         self.assertGreaterEqual(len(openings), 8)
 
+
+EXERCISE_FACTS = [
+    "BÀI TẬP 10 phút",
+    "Thực hành Bộ lọc: các nhóm được phát 5 yêu cầu của khách hàng và chỉ chọn ra đúng 2 sáng kiến khả thi nhất.",
+    "Câu hỏi thảo luận 5 phút: đội của bạn đang phân nhóm khách hàng thế nào?",
+    "Bài tập về nhà theo nhóm: hoàn thiện bản đồ hành trình cho dự án của bạn.",
+    "Nhân viên phản hồi khiếu nại của khách hàng trong 30 phút.",
+]
+
+
+class ClassroomExerciseTests(unittest.TestCase):
+    """B8: a classroom exercise of the source becomes a self-paced practice; what still carries its time limit, its
+    count or its group or homework wording outside a worksheet is an edit note, never a failure."""
+
+    def test_only_the_exercises_details_count(self) -> None:
+        details = exercise_details(EXERCISE_FACTS)
+        self.assertEqual(details, ["10 phút", "đúng 2", "5 phút", "về nhà", "theo nhóm"])
+        self.assertNotIn("30 phút", details)  # a rule of the work, not of an exercise
+        teaching = html(("Bộ lọc dự án dùng thế nào?", [paragraph(
+            "Đội ngũ cần 10 phút phản biện và chọn đúng 2 sáng kiến. Nhân viên phản hồi khách trong 30 phút.")]))
+        worksheet = html(("Nhiệm vụ", [{"kind": "task", "text": "Trong 10 phút, chọn đúng 2 sáng kiến.",
+                                         "items": [], "rows": []}]))
+        self.assertEqual(classroom_words([teaching, worksheet], {1}, details), {0: ["10 phút", "đúng 2"]})
+        self.assertEqual(classroom_words([teaching], (), []), {})
+
+    def test_the_note_names_them(self) -> None:
+        note = build_unit_author_note(locale="vi", judge=JudgeOutcome("pass"), deterministic_codes=[],
+                                      fallback_slots=[], ai_drafted=False, slot_types=["html", "la_faq"],
+                                      classroom={0: ["10 phút", "đúng 2"], 1: ["theo nhóm"]})
+        self.assertEqual(note, "Nên biên tập khối 1 (Lý thuyết), khối 2 (Hỏi đáp): còn chi tiết của bài tập trên lớp "
+                               "trong tài liệu («10 phút», «đúng 2», «theo nhóm») — nên viết thành bài tự luyện trên "
+                               "công ty của người học, bỏ thời lượng, số lượng phải chọn và cách làm theo nhóm hoặc ở "
+                               "nhà.")
+
+    def test_the_writer_reads_the_unit_s_exercises(self) -> None:
+        body = escalate_body()
+        facts = body["unit_contract"]["source_facts"]
+        facts[0]["fact_text"] = EXERCISE_FACTS[1]
+        rehash_contract(body["unit_contract"])
+        request = RagLessonAuthorUnitV2Request.model_validate(body)
+        writer = IdmUnitWriter(request.unit_contract, parse_brief(request.unit_contract),
+                               unit_service._idm_unit_deps(request), make_runtime(None))
+        components = escalate_writer(body)["components"]
+        faq = {**components["c1"], "type": "la_faq", "items": [
+            {"question": "Vì sao chỉ chọn hai sáng kiến?", "answer": "Vì bài tập yêu cầu chọn đúng 2 sáng kiến."},
+            *components["c1"]["items"][1:]]}
+        notes = writer.slot_notes([{**components["c0"], "type": "problem"}, faq], [], whole_fallback=False)
+        self.assertEqual(notes["classroom"], {1: ["đúng 2"]})
+
+    def test_the_prompts_say_so(self) -> None:
+        self.assertIn("is practice_material and its summary says it is a\n     classroom exercise",
+                      w1_section_prompt("vi", project_context={}, section_id="s1", section_title_path="T",
+                                        facts=[("k1", "Một ý.", None)]))
+        self.assertIn(prompts_unit._SELF_PACED_RULE, writer_prompt_of(escalate_body()))
+
+
+
+class ClassroomEndpointTests(StoryboardEndpointTestCase):
+    """B8 end to end: the note line reaches the unit; nothing is repaired or replaced for it."""
+
+    async def test_the_note_line_reaches_the_unit(self) -> None:
+        body = escalate_body()
+        body["unit_contract"]["source_facts"][0]["fact_text"] = EXERCISE_FACTS[1]
+        rehash_contract(body["unit_contract"])
+        writer = escalate_writer(body)
+        writer["components"]["c0"]["explanation"] += " Nhóm chỉ chọn đúng 2 sáng kiến."
+        provider = FakeGenerate(**{WRITER: [writer], REPAIR: [slot_repair(writer, 0)] * 2, JUDGE: [judge(), judge()]})
+        status, data, _ = await self.post(body, provider)
+        self.assertEqual(status, 200, data.get("detail"))
+        self.assertIn("còn chi tiết của bài tập trên lớp trong tài liệu («đúng 2»)",
+                      data["unit"]["idm_quality"]["author_note"])
+        self.assertNotIn("source_locked_fallback", data["unit"]["components"][0])
 
 if __name__ == "__main__":
     unittest.main()

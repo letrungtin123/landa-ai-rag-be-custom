@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import json
 from collections import Counter
-from collections.abc import Collection, Sequence
+from collections.abc import Sequence
 from typing import Any
 
 from app.content.ordered_learning_content import bind_provider_semantic_versions
@@ -62,8 +62,9 @@ from app.idm.quiz_letters import (
     expand_short_item_labels,
     number_item_letters,
 )
-from app.idm.quiz_text import EXPLANATION_FILLER_CODE, explanation_report, lay_out_quiz
+from app.idm.quiz_text import lay_out_quiz
 from app.idm.runtime import IdmResponseInvalidError, IdmRuntime, ThinkingLevel, log_stage, record_deterministic_fallback
+from app.idm.slot_words import classroom_words, exercise_details, hype_words
 from app.idm.sortable import ORDER_LABELS_STRIPPED, without_order_labels
 from app.idm.source_fallback import lesson_statements
 from app.idm.source_flags import unit_flags
@@ -149,6 +150,8 @@ class IdmUnitWriterSteps:
         self.titles = TitleCaser.from_texts([*given, *plan_texts])
         # QLT-8: the full forms the facts give ("SPD (Standard Product Dev)") and the server's short list.
         self.acronyms = AcronymGuide.build(given, runtime.locale)
+        # Run 2f8781d6 (B8): the time limits, counts and group or homework wording of the facts' classroom exercises.
+        self.exercise_details = exercise_details(fact.fact_text for fact in contract.source_facts)
         self.acronyms_explained = 0
         # A unit or html slot title that names "N <items>" promises an overview of all N items (QC 364564, N5). The
         # items come from the unit's facts or, for an orientation unit whose blocks only introduce the framework,
@@ -523,7 +526,8 @@ class IdmUnitWriterSteps:
         """The note's facts of the slots. Review of dfb6db2 (item 5): the self-check the learner sees has AI-suggested
         criteria in a provider worksheet and in a fallback built from the practice plan (never in a form or source
         fallback); and the plan worksheets whose input data the plan only describes. Run 2f8781d6: the slots that
-        only repeat sentences of the lesson, and the hype words of each provider slot (``hype_words``)."""
+        only repeat sentences of the lesson, the hype words of each provider slot and the details of a classroom
+        exercise of the facts a non-worksheet slot still carries (``app.idm.slot_words``)."""
 
         replaced = set(range(len(self.plans))) if whole_fallback else set(fallback_slots)
         planned = {index for index in replaced if (built := self.plan_worksheets.get(index)) is not None
@@ -534,27 +538,11 @@ class IdmUnitWriterSteps:
         # Run 2f8781d6: the slots that only repeat sentences of the lesson, in a whole-unit or a slot fallback.
         placeholders = (self.placeholder_slots if whole_fallback
                         else sorted(self.last_resort_slots & set(fallback_slots)))
+        worksheets = {index for index in range(len(self.plans)) if self.is_worksheet(index)}
         return {"suggested_criteria": self.suggested_criteria(sorted(replaced - planned)), "fallback_inputs": missing,
-                "placeholder_slots": placeholders, "hype_words": self.hype_words(components, replaced)}
-
-    def hype_words(self, components: Sequence[Any], exempt: Collection[int]) -> dict[int, list[str]]:
-        """Run 2f8781d6 (A4): slot -> the empty-praise or hype words of its explanation or FAQ answers (words of the
-        fixed lists, ``quiz_text.filler_phrases`` and ``FaqChecker.hype``), for the note line that names them."""
-
-        found: dict[int, list[str]] = {}
-        for index, component in enumerate(components):
-            if index in exempt or not isinstance(component, dict):
-                continue
-            if component.get("type") == "problem":
-                words = explanation_report(lay_out_quiz(dict(component))[0], self.evidence).get(
-                    EXPLANATION_FILLER_CODE, [])
-            elif component.get("type") == FAQ_COMPONENT_TYPE:
-                words = self.faq.hype(component)
-            else:
-                continue
-            if words:
-                found[index] = list(words)
-        return found
+                "placeholder_slots": placeholders,
+                "hype_words": hype_words(components, replaced, self.evidence, self.faq),
+                "classroom": classroom_words(components, replaced | worksheets, self.exercise_details)}
 
     def repeated_faq_fallback(self, index: int) -> list[str]:
         """``[FAQ_FALLBACK_REPEATED_CODE]`` when the source-locked FAQ of slot ``index`` says one sentence twice (its

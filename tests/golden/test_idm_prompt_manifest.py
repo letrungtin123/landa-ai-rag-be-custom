@@ -185,6 +185,11 @@ HASH_HISTORY: tuple[tuple[str, str], ...] = (
     # leadership as the actor, no "Trong quý vừa qua").
     ("9bc40a2dac26e6c7561903530554cdd2847b2e6d91ab690ad24f4e24004c357f",
      "Scenarios put the learner in the audience's role"),
+    # Run 2f8781d6 (B8): the W1 map files a classroom exercise of the slides as practice_material whose time limit,
+    # count and group or homework wording belong to the exercise; the W5 writer turns it into a self-paced practice on
+    # the learner's company, never into rules of real work (_SELF_PACED_RULE).
+    ("85ecb0aca4762ebed4c28094192f7b3efa5a78b9632d4326e72c4db65fcdcee8",
+     "A classroom exercise becomes a self-paced practice, never a work rule"),
 )
 PROMPT_NAME = re.compile(r"(prompt|_rules?$|_suffix$|rule_lines?$|_hint$|^rule_line$|_cue_line$)")
 

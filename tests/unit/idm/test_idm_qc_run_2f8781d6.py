@@ -22,6 +22,7 @@ from app.idm.prompts_unit import rule_line
 from app.idm.qa import JudgeOutcome, SlotFinding, _code_text, build_unit_author_note
 from app.idm.quiz_letters import expand_short_item_labels
 from app.idm.quiz_text import EXPLANATION_FILLER_CODE
+from app.idm.slot_words import hype_words
 from app.idm.sortable import without_order_labels
 from app.idm.source_fallback import fallback_glued_words, idm_statement_faq
 from app.idm.source_locked import render_idm_source_locked_html
@@ -447,8 +448,8 @@ class AuthorNoteTests(unittest.TestCase):
             "Nguyên tắc: an toàn là tiêu chí bắt buộc.\nA - Sai vì hứa hoàn tiền trước.\nB - Đúng vì giải pháp này ăn "
             "khớp hoàn hảo với tiêu chí an toàn.\nC - Sai vì khách VIP không đổi tiêu chí.")}
         faq = {**components["c1"], "type": "la_faq"}
-        self.assertEqual(writer.hype_words([question, faq], ()), {0: ["hoàn hảo"]})
-        self.assertEqual(writer.hype_words([question, faq], (0,)), {})
+        self.assertEqual(hype_words([question, faq], (), writer.evidence, writer.faq), {0: ["hoàn hảo"]})
+        self.assertEqual(hype_words([question, faq], (0,), writer.evidence, writer.faq), {})
 
     def test_every_contract_code_has_plain_words(self) -> None:
         codes: set[str] = set()

@@ -93,6 +93,7 @@ from app.idm.quiz_text import (
     QUESTION_TWICE_CODE,
     QUIZ_STYLE_CODES,
 )
+from app.idm.review_hints import REVIEW_HINT_EN, REVIEW_HINT_VI
 from app.idm.source_fallback import glued_line, placeholder_line
 from app.idm.source_flags import fit_flags
 from app.idm.source_locked import FAQ_FALLBACK_REPEATED_CODE
@@ -103,6 +104,7 @@ from app.idm.unit_note_lines import (
     SLOT_LABEL_VI,
     SUGGESTED_CRITERIA_LINE,
     callout_lines,
+    classroom_line,
     drafted_examples_line,
     dropped_faq_lines,
     example_numbers_line,
@@ -351,6 +353,7 @@ def build_unit_author_note(
     suppositions: int = 0,
     fallback_inputs: Sequence[int] = (),
     hype_words: Mapping[int, Sequence[str]] | None = None,
+    classroom: Mapping[int, Sequence[str]] | None = None,
 ) -> str:
     """Template note for the unit ``implementation_notes``; no IDs, no ``<``/``>``.
 
@@ -422,7 +425,8 @@ def build_unit_author_note(
              # A source-locked unit carries no drafted scenario; the review reason already says it when it is one.
              SCENARIO_LINE[vi] if ai_drafted and content and REVIEW_REASON_SCENARIO not in review_reasons else "",
              _acronyms_line(unexplained_acronyms, vi) if unexplained_acronyms and content else "",
-             SUGGESTED_CRITERIA_LINE[vi] if suggested_criteria else "", glued_line(glued, vi) if glued else ""]
+             SUGGESTED_CRITERIA_LINE[vi] if suggested_criteria else "", glued_line(glued, vi) if glued else "",
+             classroom_line(classroom, slot_types, vi) if classroom and content else ""]
     # Run 2f8781d6 (A4): never "QA tự động: không phát hiện vấn đề lớn." (it stood on a unit whose question gave its
     # answer away); a clean unit's note says only what was fixed, or nothing.
     return sanitize_author_text(" ".join(part for part in [*review, *edits, checks.fixed] if part),
@@ -576,62 +580,8 @@ _PLAIN_HINT_EN: Final = {
 }
 
 
-_REVIEW_HINT_VI: Final = {
-    ANSWER_LEAK_CODE: "một phương án gần như chép lại ví dụ hoặc nội dung ngay trước câu hỏi — người học có thể "
-                      "chọn theo trí nhớ thay vì áp dụng tiêu chí",
-    ANSWER_LENGTH_CUE_CODE: "đáp án đúng dài hơn hẳn các phương án khác — người học có thể đoán theo độ dài",
-    ANSWER_CONTESTED_CODE: "tình huống của câu hỏi cũng khớp tiêu chí mà bài học (bảng, danh sách hoặc phần hỏi đáp) "
-                           "nêu cho một phương án khác — cần sửa tình huống để chỉ một phương án đúng",
-    CALLOUT_UNGROUNDED_CODE: "khung trích dẫn/lưu ý nêu điều không tìm thấy trong tài liệu — chỉ giữ khi tác giả đã "
-                             "kiểm tra, hoặc đổi thành đoạn văn thường",
-    FAQ_RESTATES_HTML_CODE: "câu hỏi đáp chỉ nhắc lại nội dung vừa học — nên thay bằng ngộ nhận, trường hợp đặc biệt "
-                            "hoặc tình huống nếu… thì",
-    FAQ_TITLE_MISMATCH_CODE: "tiêu đề phần hỏi đáp không khớp các câu hỏi bên trong",
-    SOURCE_ARTIFACT_CODE: "có dòng hoặc ô bảng bị cắt dở như trong tài liệu PDF (ví dụ \"Best-in\", \"(KPI /\") — "
-                          "cần viết lại cho trọn ý",
-    FRAMEWORK_INCOMPLETE_CODE: "tiêu đề nêu một khung gồm nhiều thành phần nhưng nội dung chưa liệt kê đủ các thành "
-                               "phần đó — bổ sung bản đồ tổng quan hoặc đổi tiêu đề theo nội dung",
-    QUESTION_INCOMPLETE_CODE: "đề câu hỏi bị cụt, chưa có câu hỏi ở cuối — cần viết lại cho trọn câu hỏi",
-    # Run 5496155c: a worksheet that names data it does not give cannot be done.
-    WORKSHEET_INPUT_CODE: "phiếu thực hành nhắc tới dữ liệu để làm bài (danh sách, nội dung phỏng vấn, các yêu cầu) "
-                          "nhưng không đưa dữ liệu đó — cần bổ sung để người học làm được bài",
-    EXAMPLE_REUSE_CODE: "ví dụ mẫu của phiếu thực hành giải chính các mục dữ liệu đầu vào của bài tập nên đã cho sẵn "
-                        "đáp án — cần đổi ví dụ sang trường hợp khác",
-    # QC feedback 2026-10-21 (A1): the feedback must tell the learner why each option is right or wrong.
-    EXPLANATION_LAYOUT_CODE: "lời giải chưa theo bố cục: một dòng nêu nguyên tắc, rồi mỗi phương án một dòng «A - Đúng "
-                             "vì …» hoặc «A - Sai vì …» — cần viết lại để người học thấy vì sao đúng, vì sao sai",
-    EXPLANATION_VERDICT_CODE: "lời giải ghi một phương án là đúng hoặc sai ngược với đáp án — cần sửa cho khớp đáp án",
-    EXPLANATION_RESTATES_CODE: "lời giải chỉ chép lại nội dung phương án, chưa nêu lý do — cần nêu vì sao đúng hoặc "
-                               "sai dựa trên bài học",
-}
-_REVIEW_HINT_EN: Final = {
-    ANSWER_LEAK_CODE: "an option nearly copies the example or text shown right before the question — learners can "
-                      "match it instead of applying the criterion",
-    ANSWER_LENGTH_CUE_CODE: "the correct option is much longer than the others — learners can guess it by length",
-    ANSWER_CONTESTED_CODE: "the question's case also meets the criteria the unit (its table, list or FAQ) gives for "
-                           "another option — change the case so only one option is correct",
-    CALLOUT_UNGROUNDED_CODE: "a quotation or callout states something not found in the source — keep it only once "
-                             "the author has checked it, or turn it into a plain paragraph",
-    FAQ_RESTATES_HTML_CODE: "FAQ items only repeat what was just taught — replace them with a misconception, an edge "
-                            "case or a what-if",
-    FAQ_TITLE_MISMATCH_CODE: "the FAQ title does not match its questions",
-    SOURCE_ARTIFACT_CODE: "a list item or table cell ends cut as the PDF line did (\"Best-in\", \"(KPI /\") — "
-                          "complete it",
-    FRAMEWORK_INCOMPLETE_CODE: "the title names a framework of several items but the content does not list all of "
-                               "them — add the overview or retitle it to what it teaches",
-    QUESTION_INCOMPLETE_CODE: "the question stops before it asks anything — write the question out in full",
-    WORKSHEET_INPUT_CODE: "the worksheet refers to data to work on (a list, an interview, requests) but does not give "
-                          "it — add it so learners can do the task",
-    EXAMPLE_REUSE_CODE: "the worksheet's worked example solves the task's own input entries, so it gives the answer "
-                        "away — move the example to another case",
-    EXPLANATION_LAYOUT_CODE: "the feedback is not laid out as one line with the principle, then one line per option "
-                             "(«A - Correct because …» or «A - Incorrect because …») — rewrite it so learners see why "
-                             "each option is right or wrong",
-    EXPLANATION_VERDICT_CODE: "the feedback calls an option right or wrong against the answer key — make it match the "
-                              "key",
-    EXPLANATION_RESTATES_CODE: "the feedback only repeats the option, it gives no reason — say why it is right or "
-                               "wrong from what the lesson taught",
-}
+_REVIEW_HINT_VI: Final = REVIEW_HINT_VI
+_REVIEW_HINT_EN: Final = REVIEW_HINT_EN
 
 # QLT-8 (QC run 0a11aa9e: 3 units marked "Cần xem" without a reason): why a unit needs the author's review, in plain
 # words, one per reason the server marks it for. Reasons another note line explains in detail say "chi tiết bên dưới".

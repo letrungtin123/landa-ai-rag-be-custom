@@ -112,6 +112,14 @@ _ROLE_RULE: Final = """\
   business setting (their company, their customers); other actors (the leadership, the source's own organisation, its
   members or departments) appear only as the customer or a stakeholder, never as the one who acts or decides; the
   facts and names the unit teaches stay as the source states them."""
+# Run 2f8781d6 (B8): "BÀI TẬP 10 phút … chọn ra đúng 2 sáng kiến" became "đội ngũ cần 10 phút phản biện", "gồm đúng 2
+# sáng kiến" (the server notes what is left: app.idm.slot_words).
+_SELF_PACED_RULE: Final = """\
+- The course is self-paced e-learning: no classroom instructions (no "trước khi rời lớp/học phần", "thảo luận nhóm
+  tại lớp", "giảng viên sẽ …"). A classroom exercise of the facts ("BÀI TẬP 10 phút …", "Câu hỏi thảo luận …", "Bài
+  tập về nhà theo nhóm") becomes a self-paced practice on the learner's own company: teach the method it practises and
+  drop its time limit, the number of items it picks and its group, discussion or homework wording; never write them as
+  rules of real work ("đội ngũ cần 10 phút phản biện", "chọn đúng 2 sáng kiến")."""
 # N9 and QC feedback 2026-10-21 (A3): a callout quotes the source and adds a point its slot does not already make.
 _CALLOUT_RULE: Final = """\
 - A "warning" block is shown to the learner as a quotation/callout: use it only for a rule, warning or
@@ -218,8 +226,7 @@ Writing rules (learner-facing, {locale_name(locale)}):
   …"){opening_line}. A drafted case is a supposition ("Giả sử …", "Hãy hình dung …"), never told as a real
   past event ("Trong quý vừa qua …", "Năm ngoái, …"; the server writes "Giả sử" before such an opening).
 {_ROLE_RULE}
-- The course is self-paced e-learning: no classroom instructions (no "trước khi rời lớp/học phần", "thảo luận nhóm
-  tại lớp", "giảng viên sẽ …").
+{_SELF_PACED_RULE}
 - An abbreviation the learner may not know gets its full form in brackets the first time this unit uses it, only as
   SOURCE_FACTS write it; never invent a full form.
 - LESSON_CONTEXT_FACTS are read-only background from earlier units; use them for consistency and for the
