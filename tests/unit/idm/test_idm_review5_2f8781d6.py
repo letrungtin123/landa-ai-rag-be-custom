@@ -15,7 +15,9 @@ from app.idm.quiz_letters import expand_short_item_labels
 from app.idm.sortable import without_order_labels
 from app.idm.source_fallback import idm_statement_faq
 from app.idm.source_locked import render_idm_source_locked_html
+from app.idm.visual_pages import evidence_needs_check, unread_image_pages
 from tests.support.log_support import logged_events
+from tests.unit.idm.test_idm_qc_run_5496155c import region
 from tests.unit.idm.test_idm_storyboard import (
     JUDGE,
     REPAIR,
@@ -245,3 +247,24 @@ class SortableNumberTests(unittest.TestCase):
                            "Điểm đau trọng yếu từng giai đoạn"], 3))
         # Source steps numbered from 9 still give their order away.
         self.assertEqual(self.texts([f"Bước {n}: Thực hiện việc số {n} của quy trình" for n in (10, 9, 11)])[1], 3)
+
+
+class ImagePageCoverTests(unittest.TestCase):
+    """M5: only a certain section cover loses the image-page warning; chart labels or a plain title keep it."""
+
+    @staticmethod
+    def regions(*pages: tuple[int, float]) -> list[dict[str, Any]]:
+        return [{"visual_regions": [region(page, share, asset=f"{page:02d}a" * 21)]} for page, share in pages]
+
+    def test_only_a_section_cover_is_left_out(self) -> None:
+        texts = {12: ["Row 1; MODULE 1: THẤU HIỂU HIỆN TRẠNG",  # the run's fact form of its cover page
+                      "Góc nhìn Outside – In: Khách hàng thực sự đang trải qua điều gì?"],  # noqa: RUF001
+                 45: ["Row 1: | BÀI TẬP VỀ NHÀ"],
+                 30: ["OPEX", "CAPEX", "ROI"],  # a chart whose only text is its labels
+                 31: ["BẢN ĐỒ HÀNH TRÌNH KHÁCH HÀNG"],  # a plain title over a journey-map picture
+                 32: ["Module 2: chiến lược và chiến thuật"],  # not a title in capitals: not certain
+                 33: ["MODULE 3: TRIỂN KHAI", "Lộ trình ba tháng", "Các mốc kiểm tra"]}  # two lines under it
+        regions = self.regions((12, 0.95), (45, 0.95), (30, 0.92), (31, 0.88), (32, 0.9), (33, 0.9))
+        self.assertEqual(unread_image_pages(regions, texts), [30, 31, 32, 33])
+        self.assertTrue(evidence_needs_check(regions[2:4], (), texts))
+        self.assertFalse(evidence_needs_check(regions[:2], (), texts))

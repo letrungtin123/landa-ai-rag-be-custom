@@ -9,8 +9,13 @@ were recorded (``legacy_review_required``) keeps the notice, since nothing tells
 
 Run 2f8781d6 (A4): the warning fired for two section cover pages (a title over a picture: pages 12, 45) and missed a
 page whose picture holds its content beside one sentence (page 29: two pictures of 37 % in all). With the unit's fact
-texts of each page (``page_texts``), a page that shows only an unnumbered title is a cover and never counts, and a page
-with at most one sentence besides its titles counts from ``IDM_IMAGE_PAGE_SHORT_TEXT_MIN_SHARE``.
+texts of each page (``page_texts``), a section cover never counts, and a page with at most one sentence besides its
+titles counts from ``IDM_IMAGE_PAGE_SHORT_TEXT_MIN_SHARE``.
+
+Review 5 (M5): a cover only when it is certain: no sentence, no numbered title, an opening title in capitals that names
+a section ("MODULE 1: THẤU HIỆN TRẠNG", "BÀI TẬP VỀ NHÀ", "PHẦN 2 …") and at most one subtitle. A picture page whose
+only text is chart labels ("OPEX", "CAPEX", "ROI") or a plain title ("BẢN ĐỒ HÀNH TRÌNH KHÁCH HÀNG") keeps the
+warning, by the rule of run 5496155c when its words are only marks.
 
 Reads only the fact locators and texts the backend already sends (``visual_regions`` of
 ``app.content.source_readiness``).
@@ -36,7 +41,12 @@ _VISUAL_REQUIREMENTS: Final = ("VISUAL_OBSERVATION_REQUIRED:", "VISUAL_INFERENCE
 _TITLE_MAX_WORDS: Final = 14
 _MARK_MAX_WORDS: Final = 2
 _STATEMENT_END_RE: Final = re.compile(r"[.!…]\W*$")
-_ROW_MARK_RE: Final = re.compile(r"^\s*row\s+\d+\s*:\s*\|?\s*", re.IGNORECASE)
+_ROW_MARK_RE: Final = re.compile(r"^\s*row\s+\d+\s*[:;]\s*\|?\s*", re.IGNORECASE)
+# Review 5 (M5): the opening title of a section cover, in capitals, and the subtitle it may have.
+_COVER_OPENER_RE: Final = re.compile(r"^(?:module|phần|chương|chuyên đề|buổi|bài tập|part|chapter|section|session)\b",
+                                     re.IGNORECASE)
+_COVER_CAPITALS_SHARE: Final = 0.6
+_COVER_MAX_TITLES: Final = 2
 # A numbered section title ("1.5 THIẾT KẾ …", "2.4 MA TRẬN …"): a content page of the deck, never its cover.
 _NUMBERED_TITLE_RE: Final = re.compile(r"^\d+(?:\.\d+)+\.?\s+\S")
 
@@ -92,17 +102,26 @@ def page_texts(facts: Iterable[tuple[Any, str]]) -> dict[int, list[str]]:
     return pages
 
 
+def _cover_opener(line: str) -> bool:
+    letters = [char for char in line if char.isalpha()]
+    return (bool(_COVER_OPENER_RE.match(line)) and bool(letters)
+            and sum(char.isupper() for char in letters) / len(letters) >= _COVER_CAPITALS_SHARE)
+
+
 def _min_share(texts: Sequence[str] | None) -> float | None:
-    """The share of unread images from which a page with ``texts`` counts; ``None`` for a cover page (only an unnumbered
-    title); without its texts, ``IDM_IMAGE_PAGE_MIN_SHARE``."""
+    """The share of unread images from which a page with ``texts`` counts; ``None`` for a section cover (module
+    docstring); without its texts, or with marks only, ``IDM_IMAGE_PAGE_MIN_SHARE``."""
 
     if texts is None:
         return IDM_IMAGE_PAGE_MIN_SHARE
     lines = [_ROW_MARK_RE.sub("", " ".join(text.split())).strip(" |") for text in texts]
     lines = [line for line in lines if len(line.split()) > _MARK_MAX_WORDS]
+    if not lines:
+        return IDM_IMAGE_PAGE_MIN_SHARE
     titles = [line for line in lines if len(line.split()) <= _TITLE_MAX_WORDS and not _STATEMENT_END_RE.search(line)]
     body = len(lines) - len(titles)
-    if not body and not any(_NUMBERED_TITLE_RE.match(title) for title in titles):
+    if (not body and len(titles) <= _COVER_MAX_TITLES and _cover_opener(titles[0])
+            and not any(_NUMBERED_TITLE_RE.match(title) for title in titles)):
         return None
     return IDM_IMAGE_PAGE_SHORT_TEXT_MIN_SHARE if body <= 1 else IDM_IMAGE_PAGE_MIN_SHARE
 
