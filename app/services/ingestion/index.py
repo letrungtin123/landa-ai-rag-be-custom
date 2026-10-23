@@ -53,6 +53,7 @@ RETRYABLE_PROVIDER_HTTP_STATUSES = frozenset({429, 502, 503, 504})
 SUPERSEDED_INDEX_MESSAGE = "Phiên học tài liệu đã bị thay thế bởi phiên mới hơn."
 # error_reason of an index row whose request was cancelled (caller disconnected, service stopping).
 INDEX_CANCELLED_REASON = "INDEX_CANCELLED"
+CANCEL_RECORD_TIMEOUT_SECONDS = 10.0
 
 
 def retryable_provider_failure(exc: BaseException) -> AppError | None:
@@ -116,7 +117,11 @@ async def _mark_cancelled_index(pool: asyncpg.Pool, index_id: str | None, reques
     if index_id is None:
         return
     try:
-        await asyncio.shield(index_repository.mark_index_error(pool, index_id, INDEX_CANCELLED_REASON))
+        # Bounded: a hung database must not hold the cancelled request (and pool.close() at shutdown) for the full
+        # command timeout; a TimeoutError is reported below as INDEX_CANCEL_NOT_RECORDED.
+        await asyncio.shield(asyncio.wait_for(
+            index_repository.mark_index_error(pool, index_id, INDEX_CANCELLED_REASON), CANCEL_RECORD_TIMEOUT_SECONDS,
+        ))
     except Exception as error:  # the cancellation goes on either way; the failed write is counted and logged
         report_handled_exception(logger, error, stage="index", outcome="INDEX_CANCEL_NOT_RECORDED",
                                  tenant_id=request.tenant_id, document_id=request.document_id, index_id=index_id)

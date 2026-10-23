@@ -74,6 +74,19 @@ class IndexCancellationTests(unittest.TestCase):
         self.run_cancelled(db, cancels=2)
         self.assertEqual(db.finished, [(INDEX_ID, "INDEX_CANCELLED")])
 
+    def test_a_hung_write_gives_up_after_its_timeout(self) -> None:
+        class HungWriteDb(FakeDb):
+            async def execute(self, sql: str, *args: Any) -> str:
+                if "error_reason = $2" in sql:
+                    await asyncio.Event().wait()
+                return await super().execute(sql, *args)
+
+        db = HungWriteDb(document=document_row())
+        with patch.object(index_service, "CANCEL_RECORD_TIMEOUT_SECONDS", 0.05):
+            events = self.run_cancelled(db)
+        self.assertEqual(events[-1], "broad_exception_handled")
+        self.assertNotIn("rag_index_cancelled", events)
+
     def test_a_failed_write_is_reported_and_the_cancellation_still_goes_on(self) -> None:
         db = FakeDb(document=document_row(), errors={"error_reason = $2": OSError("database gone")})
         events = self.run_cancelled(db)
