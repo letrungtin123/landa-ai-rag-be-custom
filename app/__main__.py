@@ -11,6 +11,32 @@ from typing import Any
 import uvicorn
 
 from app.core.config import Settings, settings
+from app.core.logging import JsonFormatter, SecretRedactionFilter
+
+
+def uvicorn_log_config() -> dict[str, Any]:
+    """uvicorn's own loggers through the service's JSON formatter and secret filter (security audit 2026-10-24, L1).
+
+    After the app has answered 500, Starlette re-raises the exception and ``uvicorn.error`` logs it; uvicorn's
+    default formatter wrote the whole traceback with the exception's message (provider text, request values, a
+    key in a URL) to the PM2 log. The JSON line carries the exception type and code frames only, never the message.
+    """
+
+    return {
+        "version": 1,
+        "disable_existing_loggers": False,
+        "filters": {"redact_secrets": {"()": SecretRedactionFilter}},
+        "formatters": {"json": {"()": JsonFormatter}},
+        "handlers": {
+            "default": {"class": "logging.StreamHandler", "formatter": "json", "filters": ["redact_secrets"],
+                        "stream": "ext://sys.stderr"},
+        },
+        "loggers": {
+            "uvicorn": {"handlers": ["default"], "level": "INFO", "propagate": False},
+            "uvicorn.error": {"level": "INFO"},
+            "uvicorn.access": {"handlers": ["default"], "level": "INFO", "propagate": False},
+        },
+    }
 
 
 def uvicorn_options(value: Settings) -> dict[str, Any]:
@@ -23,6 +49,7 @@ def uvicorn_options(value: Settings) -> dict[str, Any]:
         "timeout_keep_alive": value.keep_alive_timeout_seconds,
         "timeout_graceful_shutdown": value.shutdown_grace_seconds,
         "log_level": "info",
+        "log_config": uvicorn_log_config(),
         "access_log": False,
     }
 
