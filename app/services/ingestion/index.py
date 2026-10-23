@@ -22,7 +22,7 @@ from app.core.document_limits import (
     document_source_suffix,
 )
 from app.core.errors import AppError, DocumentLimitError, ServiceError
-from app.core.handled_exceptions import count_handled_exception
+from app.core.handled_exceptions import count_handled_exception, report_handled_exception
 from app.core.logging import SERVICE_LOGGER_NAME
 from app.infra.gemini.calls import normalize_embedding_model
 from app.infra.gemini.errors import http_error_detail
@@ -51,6 +51,8 @@ RETRYABLE_PROVIDER_HTTP_STATUSES = frozenset({429, 502, 503, 504})
 
 # A newer index of the same document started while this one ran: the newer one wins.
 SUPERSEDED_INDEX_MESSAGE = "Phiên học tài liệu đã bị thay thế bởi phiên mới hơn."
+# error_reason of an index row whose request was cancelled (caller disconnected, service stopping).
+INDEX_CANCELLED_REASON = "INDEX_CANCELLED"
 
 
 def retryable_provider_failure(exc: BaseException) -> AppError | None:
@@ -106,6 +108,24 @@ async def _claim_deferred_index(
         if str(current["index_id"]) == reusable_index_id:
             return await index_repository.start_index_row(pool, row, embedding_model)
     raise ValueError(SUPERSEDED_INDEX_MESSAGE)
+
+
+async def _mark_cancelled_index(pool: asyncpg.Pool, index_id: str | None, request: RagIndexRequest) -> None:
+    """Close the index row of a cancelled request: shielded, so a second cancellation cannot stop the write."""
+
+    if index_id is None:
+        return
+    try:
+        await asyncio.shield(index_repository.mark_index_error(pool, index_id, INDEX_CANCELLED_REASON))
+    except Exception as error:  # the cancellation goes on either way; the failed write is counted and logged
+        report_handled_exception(logger, error, stage="index", outcome="INDEX_CANCEL_NOT_RECORDED",
+                                 tenant_id=request.tenant_id, document_id=request.document_id, index_id=index_id)
+        return
+    logger.warning(
+        "rag_index_cancelled",
+        extra={"event": "rag_index_cancelled", "tenant_id": request.tenant_id,
+               "document_id": request.document_id, "index_id": index_id},
+    )
 
 
 async def index_document(request: RagIndexRequest, pool: asyncpg.Pool) -> dict[str, Any]:
@@ -259,6 +279,11 @@ async def _index_document(request: RagIndexRequest, pool: asyncpg.Pool) -> dict[
                        "document_id": request.document_id, "chunk_count": len(chunks)},
             )
             return {**learned, "usage": embedding_usage.model_dump()}
+    except asyncio.CancelledError:
+        # The caller disconnected or the service is stopping. ``except Exception`` below never sees a
+        # cancellation, so the row stayed "running" and the next request embedded everything again (audit O2).
+        await _mark_cancelled_index(pool, index_id, request)
+        raise
     except Exception as exc:
         retryable = retryable_provider_failure(exc)
         if isinstance(exc, TimeoutError) and deadline.expired():
