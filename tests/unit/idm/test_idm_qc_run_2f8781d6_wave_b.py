@@ -189,8 +189,10 @@ class LearnerRoleTests(unittest.TestCase):
         for opening in openings:
             self.assertFalse(any(word in opening for word in ("Ban điều hành", "CEO", "quý vừa qua", "leadership",
                                                               "Last quarter")), opening)
-            # Review 5 (L4): every opening is a supposition with the learner in it.
-            self.assertTrue(opening.startswith(("Giả sử", "Hãy hình dung", "Suppose", "Imagine")), opening)
+            # Review 5 (L4), review 6 (L8): every opening is a supposition with the learner in it, in several forms.
+            self.assertTrue(opening.startswith(("Giả sử", "Hãy hình dung", "Nếu", "Trong vai trò của mình, nếu",
+                                                "Hãy đặt mình", "Suppose", "Imagine", "If", "In your role, if",
+                                                "Picture yourself")), opening)
             self.assertTrue(" bạn" in opening or " you" in opening.replace("your", "you"), opening)
         self.assertGreaterEqual(len(openings), 8)
 

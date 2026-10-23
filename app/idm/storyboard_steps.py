@@ -156,7 +156,8 @@ class IdmUnitWriterSteps:
         self.names = NameGuide.build([*given, *(str(fact.locator.get("scope_title") or "")
                                                 for fact in contract.source_facts)])
         # Run 2f8781d6 (B8): the time limits, counts and group or homework wording of the facts' classroom exercises.
-        self.exercise_details = exercise_details(fact.fact_text for fact in contract.source_facts)
+        self.exercise_details = exercise_details((fact.fact_text for fact in contract.source_facts),
+                                                 brief.lesson_practice_sentences)
         self.acronyms_explained = 0
         # A unit or html slot title that names "N <items>" promises an overview of all N items (QC 364564, N5). The
         # items come from the unit's facts or, for an orientation unit whose blocks only introduce the framework,

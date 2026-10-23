@@ -17,6 +17,7 @@ from app.idm.answer_near import ANSWER_NEAR_EXAMPLE_CODE, near_example
 from app.idm.fallback_lines import restore_stops
 from app.idm.fidelity_checks import NEW_FACT_CODE, SENTENCE_COPY_CODE, SENTENCE_LENGTH_CODE
 from app.idm.node_acceptance import html_quality_code
+from app.idm.prompts_unit import example_opening
 from app.idm.qa import ANSWER_LEAK_CODE
 from app.idm.quiz_letters import expand_short_item_labels
 from app.idm.source_locked import _is_label, render_idm_source_locked_html
@@ -315,3 +316,17 @@ class ExpandedLabelTests(unittest.TestCase):
                                      "C - Sai vì Ý kiến 2 chưa xử lý.", "D - Sai vì Ý kiến 4 chậm."])
         self.assertEqual(expanded["hints"], ["Xem lại Ý kiến 3: an toàn trước."])
         self.assertEqual(expanded["title"], question["title"])
+
+
+class OpeningTests(unittest.TestCase):
+    """L8: the server's case openings vary (not mostly "Giả sử"), each a supposition with the learner in it."""
+
+    def test_openings_vary(self) -> None:
+        paths = [f"chapter_{c}.lesson_{l}.unit_{u}" for c in range(1, 9) for l in range(1, 7) for u in range(1, 5)]  # noqa: E741
+        openings = [example_opening(path, "vi") for path in paths]
+        self.assertLessEqual(sum(opening.startswith("Giả sử") for opening in openings) / len(openings), 0.4)
+        self.assertGreaterEqual(len(set(openings)), 5)
+        for locale in ("vi", "en"):
+            for opening in {example_opening(path, locale) for path in paths}:
+                self.assertTrue(" bạn" in opening or "you" in opening.lower(), opening)
+        self.assertEqual(example_opening(paths[7], "vi"), example_opening(paths[7], "vi"))

@@ -45,14 +45,17 @@ def _normal(text: str) -> str:
     return " ".join(unicodedata.normalize("NFC", text).lower().split())
 
 
-def exercise_details(fact_texts: Iterable[str]) -> list[str]:
-    """The details of the classroom exercises among ``fact_texts`` ("10 phút", "đúng 2", "về nhà", "theo nhóm")."""
+def exercise_details(fact_texts: Iterable[str], kept: Iterable[str] = ()) -> list[str]:
+    """The details of the classroom exercises among ``fact_texts`` ("10 phút", "đúng 2", "về nhà", "theo nhóm"), but
+    the ones an approved practice sentence keeps (``kept``: the lesson's PRACTICE_TASKS, review 6 L8)."""
 
     found: list[str] = []
     for text in fact_texts:
         if _EXERCISE_START_RE.match(idm_fold(text)):
             found.extend(_normal(match.group(0)) for match in _DETAIL_RE.finditer(_normal(text)))
-    return list(dict.fromkeys(found))
+    approved = " ".join(_normal(sentence) for sentence in kept)
+    return [detail for detail in dict.fromkeys(found) if not re.search(rf"(?<![\w.]){re.escape(detail)}(?!\w)",
+                                                                       approved)]
 
 
 def classroom_words(components: Sequence[Any], exempt: Collection[int], details: Sequence[str]) -> dict[int, list[str]]:

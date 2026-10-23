@@ -200,6 +200,11 @@ HASH_HISTORY: tuple[tuple[str, str], ...] = (
     # PRACTICE_TASKS sentence states.
     ("4c60bd519f81637bdcc85e0dcc6ced089ab0605b87ad07796ba82d486da8cf25",
      "Case openings are suppositions with the learner; role rule unambiguous"),
+    # Review 6 (L8): the server's case openings come in six forms with the learner in them ("Giả sử bạn …", "Nếu bạn
+    # …", "Hãy đặt mình vào tình huống: bạn …" …), so about one unit in three opens with "Giả sử"; the writing rule
+    # names the new forms.
+    ("51778961dfb330237d43b8873634b2e2e6f7a9397dd2d0139265dd32e0c450b3",
+     "Case openings vary across six hypothetical forms"),
 )
 PROMPT_NAME = re.compile(r"(prompt|_rules?$|_suffix$|rule_lines?$|_hint$|^rule_line$|_cue_line$)")
 
