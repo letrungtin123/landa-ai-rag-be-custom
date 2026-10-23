@@ -42,6 +42,9 @@ NAME_NOT_IN_SOURCE_CODE: Final = "IDM_W5_NAME_NOT_IN_SOURCE"
 # Read with accents ("số đo", "bán đồ" are no tools); the title is AI-written, so never glued.
 _VI_TOOLS: Final = ("ma trận", "bản đồ", "khung", "mô hình", "bộ lọc", "sơ đồ")
 _EN_TOOLS: Final = frozenset({"canvas", "map", "matrix", "framework"})
+# Review 7 (L5): the Vietnamese tool nouns of the English ones, as the source may write a name ("Ma trận SWOT").
+_EN_TO_VI: Final = {"matrix": ("ma trận",), "map": ("bản đồ", "sơ đồ"), "canvas": ("khung",),
+                    "framework": ("khung", "mô hình")}
 # Function words that end a qualifier (with accents: "cấp độ" goes on, "đó" stops).
 _STOPS: Final = frozenset({
     "và", "của", "cho", "trong", "theo", "với", "để", "gồm", "là", "khi", "từ", "tới", "đến", "giữa", "các", "những",
@@ -97,15 +100,20 @@ class _Phrase(NamedTuple):
     qualifier: str  # the words after the Vietnamese tool noun
 
 
-def _phrases(clause: str) -> list[_Phrase]:
-    """The named tool phrases of one clause of a title or heading."""
+def _title_case(text: str) -> bool:
+    """Review 6 (L2): a Title Case heading, where every word is capitalised ("Building Your Prioritization Matrix");
+    review 7 (L5): read over the whole title or heading, not one clause of it ("Eisenhower Matrix: xếp ưu tiên …")."""
+
+    tokens = _TOKEN_RE.findall(unicodedata.normalize("NFC", text))
+    return all(token[:1].isupper() for token in tokens
+               if token[:1].isalpha() and token.lower() not in _STOPS and len(token) > _SHORT_TOKEN_CHARS)
+
+
+def _phrases(clause: str, title_case: bool) -> list[_Phrase]:
+    """The named tool phrases of one clause of a title or heading (``title_case``: of the whole text)."""
 
     tokens = _TOKEN_RE.findall(unicodedata.normalize("NFC", clause))
     lowered = [token.lower() for token in tokens]
-    # Review 6 (L2): one proper word names a tool inside a sentence ("Hãy dùng Eisenhower Matrix …"), never in a Title
-    # Case heading, where every word is capitalised ("Building Your Prioritization Matrix").
-    title_case = all(token[:1].isupper() for token in tokens
-                     if token[:1].isalpha() and token.lower() not in _STOPS and len(token) > _SHORT_TOKEN_CHARS)
     found: list[_Phrase] = []
     for index in range(len(tokens)):
         for noun in _VI_TOOLS:
@@ -135,8 +143,10 @@ def _phrases(clause: str) -> list[_Phrase]:
             # Review 6 (L2): a capitalised Vietnamese word opens the sentence, not the name ("Dùng Eisenhower Matrix").
             while before and (before[0].lower() in _EN_GENERIC or not before[0].isascii()):
                 before.pop(0)
-            if len(before) >= _EN_MIN_NAME_WORDS or (len(before) == 1 and index > 1 and not title_case):
-                found.append(_Phrase(" ".join([*before, tokens[index]]), [], "", "", ""))
+            # Review 6 (L2), review 7 (L5): one proper word is a name outside a Title Case heading, also at the start
+            # of a clause ("Empathy Map giúp gì?"); its words are kept to read the source's Vietnamese form.
+            if len(before) >= _EN_MIN_NAME_WORDS or (len(before) == 1 and not title_case):
+                found.append(_Phrase(" ".join([*before, tokens[index]]), [], "", "", " ".join(before)))
     return found
 
 
@@ -164,6 +174,7 @@ class NameGuide:
 
         missing: list[str] = []
         text, start = text or "", 0
+        title_case = _title_case(text)
         for match in [*_CLAUSE_RE.finditer(text), None]:
             end = match.start() if match is not None else len(text)
             clause, start = text[start:end], match.end() if match is not None else end
@@ -171,13 +182,20 @@ class NameGuide:
             gloss = _GLOSS_RE.match(text, end)
             if gloss is not None and gloss.group(1)[:1].isupper() and _key(gloss.group(1)) in self.source:
                 continue
-            for phrase in _phrases(clause):
+            for phrase in _phrases(clause, title_case):
                 if (_key(phrase.text) in self.source or (phrase.name and _key(phrase.name) in self.source)
                         or any(_code_like(token) and _key(token) in self.source for token in phrase.after)
-                        or self.describes(phrase)):
+                        or self.describes(phrase) or self.translated(phrase)):
                     continue
                 missing.append(phrase.text)
         return _distinct(missing)
+
+    def translated(self, phrase: _Phrase) -> bool:
+        """Review 7 (L5): an English tool name the source writes with its Vietnamese tool noun ("SWOT Matrix" for "Ma
+        trận SWOT")."""
+
+        nouns = _EN_TO_VI.get(phrase.text.split()[-1].lower(), ()) if not phrase.noun and phrase.qualifier else ()
+        return any(_key(f"{noun} {phrase.qualifier}") in self.source for noun in nouns)
 
     def describes(self, phrase: _Phrase) -> bool:
         """A Vietnamese tool noun before words the source writes, which no other tool noun of the source takes: a

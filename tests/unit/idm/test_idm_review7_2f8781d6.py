@@ -13,6 +13,7 @@ from app.idm.fallback_lines import restore_stops
 from app.idm.node_acceptance import html_quality_code
 from app.idm.slot_words import exercise_details
 from app.idm.source_locked import render_idm_source_locked_html
+from app.idm.source_names import NameGuide
 from tests.support.log_support import logged_events
 from tests.unit.idm.test_idm_qc_run_2f8781d6 import many_facts_body
 from tests.unit.idm.test_idm_review5_2f8781d6 import FIXED, REPEATED, writer_with
@@ -142,3 +143,16 @@ class LowerCaseStopTests(unittest.TestCase):
             self.assertEqual(restore_stops(glued), mended)
         for name in ("Tp.Hồ Chí Minh", "Mr.Smith", "Ths.Nguyễn Văn A", "St.Petersburg", "Node.Js là"):
             self.assertEqual(restore_stops(name), name)
+
+
+class TranslatedToolNameTests(unittest.TestCase):
+    """L5: an English tool name the source writes with its Vietnamese tool noun ("Ma trận SWOT") is the source's; a
+    one-word name at the start of a clause is caught."""
+
+    def test_names(self) -> None:
+        source = NameGuide.build(["Ma trận SWOT giúp đánh giá điểm mạnh và điểm yếu.", "Bản đồ thấu cảm gồm 4 ô."])
+        for text, found in (("Áp dụng SWOT Matrix cho sản phẩm mới", []), ("Phân tích SWOT Matrix", []),
+                            ("Empathy Map giúp gì cho bạn?", ["Empathy Map"]),
+                            ("Eisenhower Matrix: xếp ưu tiên công việc", ["Eisenhower Matrix"]),
+                            ("Building Your Prioritization Matrix", [])):
+            self.assertEqual(source.missing(text), found, text)
