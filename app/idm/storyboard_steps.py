@@ -42,6 +42,7 @@ from app.idm.node_acceptance import AcceptanceFinding, acceptance_log, node_acce
 from app.idm.org_context import plan_terms
 from app.idm.org_grounding import withheld_details
 from app.idm.policy import FAQ_COMPONENT_TYPE, FAQ_DEEP_TYPES, IDM_FAQ_MIN_ITEMS, WORKSHEET_COMPONENT_TYPE
+from app.idm.prompts_unit import new_fact_hint
 from app.idm.qa import (
     CALLOUT_TO_PROSE_CODE,
     CALLOUT_UNGROUNDED_CODE,
@@ -69,6 +70,7 @@ from app.idm.sortable import ORDER_LABELS_STRIPPED, without_order_labels
 from app.idm.source_fallback import lesson_statements
 from app.idm.source_flags import unit_flags
 from app.idm.source_locked import FAQ_FALLBACK_REPEATED_CODE, faq_answers_repeat
+from app.idm.source_names import NAME_NOT_IN_SOURCE_CODE, NameGuide
 from app.idm.storyboard_context import (
     _MAX_LOGGED_DETAILS,
     _MS,
@@ -150,6 +152,9 @@ class IdmUnitWriterSteps:
         self.titles = TitleCaser.from_texts([*given, *plan_texts])
         # QLT-8: the full forms the facts give ("SPD (Standard Product Dev)") and the server's short list.
         self.acronyms = AcronymGuide.build(given, runtime.locale)
+        # Run 2f8781d6 (B9): the names a title or heading may give a tool: the facts' and their source sections' titles.
+        self.names = NameGuide.build([*given, *(str(fact.locator.get("scope_title") or "")
+                                                for fact in contract.source_facts)])
         # Run 2f8781d6 (B8): the time limits, counts and group or homework wording of the facts' classroom exercises.
         self.exercise_details = exercise_details(fact.fact_text for fact in contract.source_facts)
         self.acronyms_explained = 0
@@ -330,6 +335,8 @@ class IdmUnitWriterSteps:
             return input_hint(missing_input(component))
         if code == EXAMPLE_REUSE_CODE:
             return reuse_hint(reused_entries(component))
+        if code == NAME_NOT_IN_SOURCE_CODE:
+            return new_fact_hint(self.names.slot_names(component))
         if code == ANSWER_ITEM_LENGTH_CODE and (lengths := item_length_cue(component)) is not None:
             return (f" (the item the correct option names has {lengths[0]} characters, the longest other item "
                     f"{lengths[1]})")
@@ -419,7 +426,7 @@ class IdmUnitWriterSteps:
         idm = [(item.code, item.component_index)
                for item in deterministic_slot_findings(draft.unit, self.brief, self.owned_text, self.evidence,
                                                        self.framework, fidelity=self.fidelity, faq_check=self.faq,
-                                                       fact_rows=self.fact_rows)
+                                                       fact_rows=self.fact_rows, names=self.names)
                if item.component_index not in exempt]
         return finding, idm
 
@@ -539,10 +546,14 @@ class IdmUnitWriterSteps:
         placeholders = (self.placeholder_slots if whole_fallback
                         else sorted(self.last_resort_slots & set(fallback_slots)))
         worksheets = {index for index in range(len(self.plans)) if self.is_worksheet(index)}
+        names = {index: found for index, component in enumerate(components) if index not in replaced
+                 and isinstance(component, dict) and (found := self.names.slot_names(component))}
+        titles = [*self.names.missing(self.contract.unit_title), *self.names.missing(self.brief.lesson_title)]
         return {"suggested_criteria": self.suggested_criteria(sorted(replaced - planned)), "fallback_inputs": missing,
                 "placeholder_slots": placeholders,
                 "hype_words": hype_words(components, replaced, self.evidence, self.faq),
-                "classroom": classroom_words(components, replaced | worksheets, self.exercise_details)}
+                "classroom": classroom_words(components, replaced | worksheets, self.exercise_details),
+                "name_words": names, "title_names": list(dict.fromkeys(titles))}
 
     def repeated_faq_fallback(self, index: int) -> list[str]:
         """``[FAQ_FALLBACK_REPEATED_CODE]`` when the source-locked FAQ of slot ``index`` says one sentence twice (its

@@ -84,7 +84,8 @@ class IdmUnitRepairSteps(IdmUnitWriterSteps):
         rules = ([(finding.code, _slot_of(finding))] if finding is not None else
                  [(item.code, item.component_index) for item in self.node_acceptance(draft)])
         checks = deterministic_slot_findings(draft.unit, self.brief, self.owned_text, self.evidence, self.framework,
-                                             fidelity=self.fidelity, faq_check=self.faq, fact_rows=self.fact_rows)
+                                             fidelity=self.fidelity, faq_check=self.faq, fact_rows=self.fact_rows,
+                                             names=self.names)
         notes = advisory_slot_findings(draft.unit) if advisory else []
         return (_by_slot(rules, draft.fallback_slots),
                 _by_slot([(item.code, item.component_index) for item in [*checks, *notes]], draft.fallback_slots),

@@ -676,7 +676,8 @@ async def run_idm_unit(
     # N8: "still warns" is recomputed on the returned unit; codes settled on the way are listed apart.
     remaining = [] if whole_fallback else await runtime.run_cpu(
         final_unit_findings, draft.unit, brief, writer.owned_text, writer.evidence, draft.fallback_slots,
-        framework=writer.framework, fidelity=writer.fidelity, faq=writer.faq, fact_rows=writer.fact_rows)
+        framework=writer.framework, fidelity=writer.fidelity, faq=writer.faq, fact_rows=writer.fact_rows,
+        names=writer.names)
     # FAQ answers that explain beyond the words of their facts: the SME checks they add no rule (QLT-5 D).
     inferred = {} if whole_fallback else writer.faq.inferred_counts(components, draft.fallback_slots)
     fixed = [] if whole_fallback else settled_codes(

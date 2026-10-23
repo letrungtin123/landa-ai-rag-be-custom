@@ -190,6 +190,10 @@ HASH_HISTORY: tuple[tuple[str, str], ...] = (
     # the learner's company, never into rules of real work (_SELF_PACED_RULE).
     ("85ecb0aca4762ebed4c28094192f7b3efa5a78b9632d4326e72c4db65fcdcee8",
      "A classroom exercise becomes a self-paced practice, never a work rule"),
+    # Run 2f8781d6 (B9): the repair rule of a tool named in a slot title or heading by words the facts do not use
+    # (IDM_W5_NAME_NOT_IN_SOURCE) and its rename hint, the phrases found (slot_hint).
+    ("f702034dc57dbc3a46687ac2fb2c4d472b5ebbe1cdaaad0690f4d63c3cd230ba",
+     "A tool name the source does not use is repaired once"),
 )
 PROMPT_NAME = re.compile(r"(prompt|_rules?$|_suffix$|rule_lines?$|_hint$|^rule_line$|_cue_line$)")
 

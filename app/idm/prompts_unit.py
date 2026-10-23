@@ -445,6 +445,11 @@ UNIT_RULE_TEXT: Final[dict[str, str]] = {
                           "explanation) in new words or about a different case so the learner must apply the "
                           "criterion, and give every distractor the same footing in what was taught; keep the earlier "
                           "html as it is",
+    # Run 2f8781d6 (B9): a tool named by words SOURCE_FACTS do not use (app.idm.source_names), repaired once.
+    "IDM_W5_NAME_NOT_IN_SOURCE": "the slot title or a section heading names a tool, model, matrix, map or framework "
+                                 "by words SOURCE_FACTS never use (quoted after \"new:\"): give it the name the facts "
+                                 "use, or say plainly what it is, the same in every title and heading of the slot; "
+                                 "keep the content",
     # Run 2f8781d6 (B6): soft give-aways (app.idm.answer_near), repaired once.
     "IDM_W5_ANSWER_NEAR_EXAMPLE": "the correct option, or the listed item it names, repeats the words of the example, "
                                   "table row, list item or case right before it (or the case names the need in the "

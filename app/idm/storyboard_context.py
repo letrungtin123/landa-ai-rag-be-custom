@@ -44,6 +44,7 @@ from app.idm.qa import (
 )
 from app.idm.quiz_text import QUIZ_CODES, QUIZ_REVIEW_CODES
 from app.idm.runtime import IdmStageError
+from app.idm.source_names import NAME_NOT_IN_SOURCE_CODE
 from app.idm.worksheet_input import EXAMPLE_REUSE_CODE, WORKSHEET_INPUT_CODE
 from app.instructional_density import INSTRUCTIONAL_DENSITY_POLICY_VERSION
 
@@ -77,13 +78,14 @@ _REVIEW_FIRST_CODES: Final = frozenset({WORKSHEET_INCOMPLETE_CODE, WORKSHEET_INP
                                         CALLOUT_UNGROUNDED_CODE, FAQ_RESTATES_HTML_CODE, FAQ_TITLE_MISMATCH_CODE,
                                         FRAMEWORK_INCOMPLETE_CODE, SOURCE_ARTIFACT_CODE, VERBATIM_COPY_CODE,
                                         *FIDELITY_CODES, *FAQ_VALUE_CODES, *QUIZ_REVIEW_CODES, FAQ_HYPE_CODE,
-                                        ANSWER_NEAR_EXAMPLE_CODE,
+                                        ANSWER_NEAR_EXAMPLE_CODE, NAME_NOT_IN_SOURCE_CODE,
                                         EXAMPLE_REUSE_CODE})
 # Findings whose repair is dropped when it breaks a shared or Node rule: they end as review notes anyway.
 # Run 5496155c: a worksheet repair that adds its input data but breaks a rule (the length budget) is dropped too.
 # Run 2f8781d6 (B6): so is a key the words right above give away (soft: repaired once, then an edit note).
 _REVIEW_ONLY_CODES: Final = frozenset({*FIDELITY_CODES, *FAQ_VALUE_CODES, *QUIZ_REVIEW_CODES, WORKSHEET_INPUT_CODE,
-                                       FAQ_HYPE_CODE, EXAMPLE_REUSE_CODE, ANSWER_NEAR_EXAMPLE_CODE})
+                                       FAQ_HYPE_CODE, EXAMPLE_REUSE_CODE, ANSWER_NEAR_EXAMPLE_CODE,
+                                       NAME_NOT_IN_SOURCE_CODE})
 # Findings a deterministic step settles when the repair does not (a list inserted, an FAQ item dropped, a callout
 # turned into prose, a review note): their repair alone is a targeted one, a scoped rewrite at low thinking. QC run
 # ab8d67e1 (R3): two leak repairs at medium thinking were cut by the unit deadline.
@@ -92,7 +94,7 @@ _TARGETED_REPAIR_CODES: Final = frozenset({FRAMEWORK_INCOMPLETE_CODE, ANSWER_LEN
                                            ANSWER_CONTESTED_CODE, FAQ_RESTATES_HTML_CODE, FAQ_TITLE_MISMATCH_CODE,
                                            CALLOUT_UNGROUNDED_CODE, SOURCE_ARTIFACT_CODE, QUESTION_INCOMPLETE_CODE,
                                            *FIDELITY_CODES, *FAQ_VALUE_CODES, *QUIZ_CODES, FAQ_HYPE_CODE,
-                                           ANSWER_NEAR_EXAMPLE_CODE, ANSWER_ITEM_LENGTH_CODE})
+                                           ANSWER_NEAR_EXAMPLE_CODE, ANSWER_ITEM_LENGTH_CODE, NAME_NOT_IN_SOURCE_CODE})
 # A non-targeted repair that would not finish before the unit deadline is not started (R3).
 REPAIR_SKIPPED_CODE: Final = "IDM_W5_REPAIR_SKIPPED_BUDGET"
 _FALLBACK_INVALID: Final = "ORCHESTRATION_V2_UNIT_FALLBACK_INVALID"

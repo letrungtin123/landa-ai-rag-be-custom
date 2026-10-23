@@ -15,6 +15,7 @@ from app.idm.prompts_course import w1_section_prompt
 from app.idm.qa import STYLE_CODES, JudgeOutcome, build_unit_author_note
 from app.idm.qa_checks import advisory_slot_findings
 from app.idm.slot_words import classroom_words, exercise_details
+from app.idm.source_names import NAME_NOT_IN_SOURCE_CODE, NameGuide
 from app.idm.storyboard import IdmUnitWriter, parse_brief
 from app.idm.storyboard_context import _REVIEW_FIRST_CODES, _REVIEW_ONLY_CODES, _TARGETED_REPAIR_CODES
 from app.idm.storyboard_repair import SECOND_REPAIR_CODES
@@ -32,6 +33,8 @@ from tests.unit.idm.test_idm_storyboard import (
     escalate_body,
     escalate_writer,
     judge,
+    severity_body,
+    severity_writer,
     slot_repair,
 )
 
@@ -243,7 +246,6 @@ class ClassroomExerciseTests(unittest.TestCase):
         self.assertIn(prompts_unit._SELF_PACED_RULE, writer_prompt_of(escalate_body()))
 
 
-
 class ClassroomEndpointTests(StoryboardEndpointTestCase):
     """B8 end to end: the note line reaches the unit; nothing is repaired or replaced for it."""
 
@@ -259,6 +261,137 @@ class ClassroomEndpointTests(StoryboardEndpointTestCase):
         self.assertIn("còn chi tiết của bài tập trên lớp trong tài liệu («đúng 2»)",
                       data["unit"]["idm_quality"]["author_note"])
         self.assertNotIn("source_locked_fallback", data["unit"]["components"][0])
+
+
+# Synthetic source lines with the shapes of the run's tool names (the PDF glues words: "Bản đồThấu cảm").
+NAME_SOURCE = [
+    "Bản đồThấu cảm (Empathy Map) giúp hiểu điều khách hàng nghĩ và cảm nhận.",
+    "Hồ sơ khách hàng B2B gồm công việc, nỗi đau và lợi ích của từng vai trò.",
+    "Bản đồ hành trình khách hàng (Customer Journey Map) gồm 5 bước.",
+    "Bộlọc Dự án giúp chọn sáng kiến khả thi.",
+    "Ma trận ưu tiên xếp sáng kiến theo hai trục.",
+    "Service Blueprint chia dịch vụ thành ba tầng.",
+    "G-STIC: Goal, Strategy, Tactics, Implementation, Control.",
+]
+
+
+class SourceNameTests(unittest.TestCase):
+    """B9: a tool named in a title or a heading by words the source does not use is caught; the source's own names,
+    glued or not, plain words and time frames are not."""
+
+    def test_the_run_s_titles(self) -> None:
+        names = NameGuide.build(NAME_SOURCE)
+        self.assertEqual(names.missing("Ma trận thấu cảm: công việc, nỗi đau và lợi ích"), ["Ma trận thấu cảm"])
+        self.assertEqual(names.missing("Ma trận thấu cảm (công việc, nỗi đau)"), ["Ma trận thấu cảm"])
+        self.assertEqual(names.missing("Value Proposition Canvas cho khách hàng"), ["Value Proposition Canvas"])
+        # Words the source does not write after a tool noun: a new name.
+        self.assertEqual(names.missing("Ma trận năng lực ba tầng"), ["Ma trận năng lực"])
+        self.assertEqual(names.missing("Bản đồ ưu tiên"), ["Bản đồ ưu tiên"])  # the source's "ma trận ưu tiên"
+        # Words the source writes after a tool noun no other tool takes: a plain description.
+        for title in ("Sơ đồ dịch vụ ba tầng", "Bản đồ hành trình 4 tầng", "Lập bản đồ hành trình khách hàng",
+                      "Bộ lọc Dự án chọn sáng kiến", "Ma trận ưu tiên hai trục",
+                      "Sơ đồ Service Blueprint ba tầng", "Sơ đồ dịch vụ (Service Blueprint) ba tầng",
+                      "Khung quản trị G-STIC cho dự án", "G-STIC là gì?", "Bản đồ thấu cảm khách hàng",
+                      "Customer Journey Map", "Khung thời gian 90 ngày", "Mô hình đóng gói giải pháp",
+                      "Khách hàng B2B cần gì?", ""):
+            self.assertEqual(names.missing(title), [], title)
+
+    def test_a_slot_s_title_and_headings(self) -> None:
+        names = NameGuide.build(NAME_SOURCE)
+        component = {**html(("Ma trận thấu cảm gồm những tầng nào?", [paragraph("Ba tầng.")]),
+                            ("Bản đồ hành trình dùng khi nào?", [paragraph("Khi cần.")]),
+                            ("Khi nào dùng ma trận thấu cảm?", [paragraph("Khi cần.")])),
+                     "title": "Value Proposition Canvas"}
+        self.assertEqual(names.slot_names(component), ["Value Proposition Canvas", "Ma trận thấu cảm"])
+        self.assertEqual(names.slot_names(quiz("Ma trận thấu cảm có mấy tầng?", ["Ba tầng", "Hai tầng"])), [])
+
+    def test_it_is_soft(self) -> None:
+        # Repaired once at low thinking, then an edit note; never a fallback, never a second repair.
+        self.assertIn(NAME_NOT_IN_SOURCE_CODE, _TARGETED_REPAIR_CODES)
+        self.assertIn(NAME_NOT_IN_SOURCE_CODE, STYLE_CODES)
+        self.assertIn(NAME_NOT_IN_SOURCE_CODE, _REVIEW_FIRST_CODES)
+        self.assertIn(NAME_NOT_IN_SOURCE_CODE, _REVIEW_ONLY_CODES)
+        self.assertNotIn(NAME_NOT_IN_SOURCE_CODE, SECOND_REPAIR_CODES)
+        self.assertIn(NAME_NOT_IN_SOURCE_CODE, prompts_unit.UNIT_RULE_TEXT)
+
+    def test_the_title_line(self) -> None:
+        for locale, line in (("vi", "Tên bài hoặc tên bài học dùng «Ma trận thấu cảm», tên này không có trong tài "
+                                    "liệu — nên đổi theo tên tài liệu dùng."),
+                             ("en", "The unit or lesson title uses «Ma trận thấu cảm», a name the source does not use "
+                                    "— rename it as the source does.")):
+            note = build_unit_author_note(locale=locale, judge=JudgeOutcome("pass"), deterministic_codes=[],
+                                          fallback_slots=[], ai_drafted=False, slot_types=["html", "problem"],
+                                          title_names=["Ma trận thấu cảm", "Ma trận thấu cảm"])
+            self.assertEqual(note, line)
+        whole = build_unit_author_note(locale="vi", judge=JudgeOutcome("pass"), deterministic_codes=[],
+                                       fallback_slots=[0, 1], ai_drafted=False, slot_types=["html", "problem"],
+                                       whole_fallback=True, title_names=["Ma trận thấu cảm"])
+        self.assertNotIn("Ma trận thấu cảm", whole)
+
+    def test_the_writer_reads_the_unit_s_titles(self) -> None:
+        body = severity_body()
+        body["unit_contract"]["unit_title"] = "Ma trận rủi ro của khiếu nại"
+        rehash_contract(body["unit_contract"])
+        request = RagLessonAuthorUnitV2Request.model_validate(body)
+        writer = IdmUnitWriter(request.unit_contract, parse_brief(request.unit_contract),
+                               unit_service._idm_unit_deps(request), make_runtime(None))
+        components = severity_writer(body)["components"]
+        renamed = {**components["c0"], "type": "html", "title": "Ma trận khẩn cấp khiếu nại"}
+        # The facts' "cấp độ" after a tool noun is a description, never a finding.
+        self.assertEqual(writer.names.missing("Ma trận cấp độ khiếu nại"), [])
+        notes = writer.slot_notes([renamed, {**components["c1"], "type": "problem"}], [], whole_fallback=False)
+        self.assertEqual(notes["title_names"], ["Ma trận rủi ro"])
+        self.assertEqual(notes["name_words"], {0: ["Ma trận khẩn cấp"]})
+        self.assertEqual(writer.slot_notes([renamed, components["c1"]], [0], whole_fallback=False)["name_words"], {})
+        self.assertEqual(writer.slot_hint(NAME_NOT_IN_SOURCE_CODE, renamed), ' (new: "Ma trận khẩn cấp")')
+
+
+class SourceNameEndpointTests(StoryboardEndpointTestCase):
+    """B9 end to end: one targeted repair with the rename hint; a name the repair keeps stays the AI's, with an edit
+    note naming it; a renamed slot is settled."""
+
+    @staticmethod
+    def renamed_writer(body: dict[str, Any]) -> dict[str, Any]:
+        writer = severity_writer(body)
+        writer["components"]["c0"]["title"] = "Ma trận khẩn cấp khiếu nại"
+        return writer
+
+    async def test_repaired_once_then_an_edit_note(self) -> None:
+        body = severity_body()
+        writer = self.renamed_writer(body)
+        provider = FakeGenerate(**{WRITER: [writer], REPAIR: [slot_repair(writer, 0)], JUDGE: [judge(), judge()]})
+        with self.assertLogs("app.idm", level="INFO") as logs:
+            status, data, _ = await self.post(body, provider)
+        self.assertEqual(status, 200, data.get("detail"))
+        self.assertEqual(provider.names.count(REPAIR), 1)
+        self.assertEqual((data["content_origin"], data["quality_state"]), ("provider_validated", "validated"))
+        self.assertNotIn("source_locked_fallback", data["unit"]["components"][0])
+        quality = logged_events(logs.records, "idm_unit_quality")[-1]
+        self.assertIn(NAME_NOT_IN_SOURCE_CODE, quality["remaining_codes"])
+        note = data["unit"]["idm_quality"]["author_note"]
+        self.assertIn("Nên biên tập khối 1 (Lý thuyết): tên («Ma trận khẩn cấp») không có trong tài liệu — nên dùng "
+                      "đúng tên tài liệu gọi công cụ, mô hình hoặc bảng đó", note)
+        self.assertNotIn("IDM_", note)
+        repair_prompt = next(call["prompt"] for call in provider.calls if call["family"] == REPAIR)
+        self.assertIn("IDM_W5_NAME_NOT_IN_SOURCE", repair_prompt)
+        self.assertIn('(new: "Ma trận khẩn cấp")', repair_prompt)
+        self.assertIn("give it the name the facts use", repair_prompt)
+
+    async def test_a_renamed_slot_is_settled(self) -> None:
+        body = severity_body()
+        writer = self.renamed_writer(body)
+        fixed = slot_repair(writer, 0, title="Dấu hiệu của từng cấp độ")
+        provider = FakeGenerate(**{WRITER: [writer], REPAIR: [fixed], JUDGE: [judge(), judge()]})
+        with self.assertLogs("app.idm", level="INFO") as logs:
+            status, data, _ = await self.post(body, provider)
+        self.assertEqual(status, 200, data.get("detail"))
+        self.assertEqual(data["unit"]["components"][0]["title"], "Dấu hiệu của từng cấp độ")
+        quality = logged_events(logs.records, "idm_unit_quality")[-1]
+        self.assertNotIn(NAME_NOT_IN_SOURCE_CODE, quality["remaining_codes"])
+        note = data["unit"]["idm_quality"]["author_note"]
+        self.assertIn("Đã tự sửa: tên công cụ không có trong tài liệu.", note)
+        self.assertNotIn("Nên biên tập khối 1", note)
+
 
 if __name__ == "__main__":
     unittest.main()

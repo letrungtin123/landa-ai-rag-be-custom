@@ -168,6 +168,18 @@ def classroom_line(details: Mapping[int, Sequence[str]], slot_types: Sequence[st
             "homework wording.")
 
 
+def title_names_line(names: Sequence[str], vi: bool) -> str:
+    """Run 2f8781d6 (B9): the unit's or the lesson's title names a tool by words the source does not use."""
+
+    shown = ", ".join(f"«{name}»" for name in list(dict.fromkeys(names))[:_MAX_TITLE_NAMES])
+    return (f"Tên bài hoặc tên bài học dùng {shown}, tên này không có trong tài liệu — nên đổi theo tên tài liệu dùng."
+            if vi else f"The unit or lesson title uses {shown}, a name the source does not use — rename it as the "
+                       "source does.")
+
+
+_MAX_TITLE_NAMES: Final = 3
+
+
 __all__ = [
     "SCENARIO_LINE",
     "SLOT_LABEL_EN",
@@ -182,5 +194,6 @@ __all__ = [
     "faq_inferred_line",
     "framework_line",
     "supposition_line",
+    "title_names_line",
     "worksheet_line",
 ]

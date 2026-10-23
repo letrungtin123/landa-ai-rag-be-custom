@@ -97,6 +97,7 @@ from app.idm.review_hints import REVIEW_HINT_EN, REVIEW_HINT_VI
 from app.idm.source_fallback import glued_line, placeholder_line
 from app.idm.source_flags import fit_flags
 from app.idm.source_locked import FAQ_FALLBACK_REPEATED_CODE
+from app.idm.source_names import NAME_NOT_IN_SOURCE_CODE
 from app.idm.text import sanitize_author_text
 from app.idm.unit_note_lines import (
     SCENARIO_LINE,
@@ -112,6 +113,7 @@ from app.idm.unit_note_lines import (
     faq_inferred_line,
     framework_line,
     supposition_line,
+    title_names_line,
     worksheet_line,
 )
 from app.idm.worksheet_input import EXAMPLE_REUSE_CODE, WORKSHEET_INPUT_CODE
@@ -161,6 +163,7 @@ _MAX_NOTE_CODES: Final = 6
 _CODE_TEXT_VI: Final[dict[str, str]] = {
     ANSWER_LEAK_CODE: "phương án lộ đáp án",
     ANSWER_NEAR_EXAMPLE_CODE: "đáp án lặp lại câu chữ ngay phía trên", ANSWER_ITEM_LENGTH_CODE: "ý của đáp án dài nhất",
+    NAME_NOT_IN_SOURCE_CODE: "tên công cụ không có trong tài liệu",
     ANSWER_LENGTH_CUE_CODE: "đáp án đúng dài hơn hẳn",
     ANSWER_CONTESTED_CODE: "đáp án có thể tranh cãi",
     QUESTION_INCOMPLETE_CODE: "câu hỏi bị cụt",
@@ -216,6 +219,7 @@ _CODE_TEXT_VI: Final[dict[str, str]] = {
 _CODE_TEXT_EN: Final[dict[str, str]] = {
     ANSWER_LEAK_CODE: "an option gives the answer away",
     ANSWER_NEAR_EXAMPLE_CODE: "a key in the words just above", ANSWER_ITEM_LENGTH_CODE: "the key's item is the longest",
+    NAME_NOT_IN_SOURCE_CODE: "a tool name the source does not use",
     ANSWER_LENGTH_CUE_CODE: "the correct option is much longer",
     ANSWER_CONTESTED_CODE: "a contestable answer",
     QUESTION_INCOMPLETE_CODE: "a cut question",
@@ -349,11 +353,12 @@ def build_unit_author_note(
     source_flags: Sequence[str] = (),
     source_notes: Sequence[str] = (),
     placeholder_slots: Sequence[int] = (),
-    glued: Sequence[str] = (),
+    glued: Sequence[str] = (), title_names: Sequence[str] = (),
     suppositions: int = 0,
     fallback_inputs: Sequence[int] = (),
     hype_words: Mapping[int, Sequence[str]] | None = None,
     classroom: Mapping[int, Sequence[str]] | None = None,
+    name_words: Mapping[int, Sequence[str]] | None = None,
 ) -> str:
     """Template note for the unit ``implementation_notes``; no IDs, no ``<``/``>``.
 
@@ -394,7 +399,8 @@ def build_unit_author_note(
                                     placeholder_slots=placeholder_slots, remaining=remaining,
                                     fallback_inputs=fallback_inputs)
     checks = _Checks("", [], []) if whole_fallback else _check_lines(
-        vi, deterministic_codes, remaining, fixed_codes, slot_types, named=named, hype_words=hype_words or {})
+        vi, deterministic_codes, remaining, fixed_codes, slot_types, named=named, hype_words=hype_words or {},
+        name_words=name_words or {})
     # Run 5496155c: a reason says "chi tiết bên dưới" only when a line below gives the details.
     kept_line = bool(review_slots) and not whole_fallback
     detailed = {reason for reason, shown in (
@@ -426,7 +432,8 @@ def build_unit_author_note(
              SCENARIO_LINE[vi] if ai_drafted and content and REVIEW_REASON_SCENARIO not in review_reasons else "",
              _acronyms_line(unexplained_acronyms, vi) if unexplained_acronyms and content else "",
              SUGGESTED_CRITERIA_LINE[vi] if suggested_criteria else "", glued_line(glued, vi) if glued else "",
-             classroom_line(classroom, slot_types, vi) if classroom and content else ""]
+             classroom_line(classroom, slot_types, vi) if classroom and content else "",
+             title_names_line(title_names, vi) if title_names and content else ""]
     # Run 2f8781d6 (A4): never "QA tự động: không phát hiện vấn đề lớn." (it stood on a unit whose question gave its
     # answer away); a clean unit's note says only what was fixed, or nothing.
     return sanitize_author_text(" ".join(part for part in [*review, *edits, checks.fixed] if part),
@@ -496,6 +503,9 @@ def _judge_line(judge: JudgeOutcome, problems: Sequence[Any], labels: Mapping[st
 
 # Content-mode findings (QLT-5 C) in plain words, without codes.
 _PLAIN_HINT_VI: Final = {
+    # Run 2f8781d6 (B9): a tool named by words the source does not use, left after its one repair.
+    NAME_NOT_IN_SOURCE_CODE: "tên{words} không có trong tài liệu — nên dùng đúng tên tài liệu gọi công cụ, mô hình "
+                             "hoặc bảng đó",
     # Run 2f8781d6 (B6): soft give-aways of the key, left after their one repair.
     ANSWER_NEAR_EXAMPLE_CODE: "đáp án đúng (hoặc ý nó chỉ tới) lặp lại câu chữ của ví dụ, bảng hoặc tình huống ngay "
                               "phía trên — người học có thể chọn theo chữ; nên giữ nguyên tắc nhưng đổi chi tiết tình "
@@ -538,6 +548,8 @@ _PLAIN_HINT_VI: Final = {
                                  "dung của ý trong lời giải",
 }
 _PLAIN_HINT_EN: Final = {
+    NAME_NOT_IN_SOURCE_CODE: "the name{words} is not in the source — use the name the source gives that tool, model "
+                             "or table",
     ANSWER_NEAR_EXAMPLE_CODE: "the correct option (or the item it names) repeats the words of the example, table or "
                               "case just above — learners can match words; keep the principle, change the case "
                               "details and the wording",
@@ -609,6 +621,7 @@ STYLE_CODES: Final = frozenset({
     SENTENCE_COPY_CODE, SENTENCE_LENGTH_CODE, "IDM_W5_VERBATIM_COPY", EXPLANATION_MISSING_CODE, EXAMPLE_ROLE_CODE,
     FAQ_TITLE_MISMATCH_CODE, FAQ_TYPE_MIX_CODE, FAQ_RESTATES_HTML_CODE, FAQ_RESTATES_SOURCE_CODE,
     ANSWER_LENGTH_CUE_CODE, FAQ_HYPE_CODE, *QUIZ_STYLE_CODES, ANSWER_NEAR_EXAMPLE_CODE, ANSWER_ITEM_LENGTH_CODE,
+    NAME_NOT_IN_SOURCE_CODE,
 })
 _REVIEW_REASON_VI: Final = {
     REVIEW_REASON_FALLBACK: "có khối dùng bản dự phòng dựng từ tài liệu",
@@ -675,7 +688,8 @@ class _Checks(NamedTuple):
 
 def _check_lines(vi: bool, deterministic_codes: Sequence[str], remaining: Sequence[SlotFinding] | None,
                  fixed_codes: Sequence[str], slot_types: Sequence[str], *, named: Collection[str] = (),
-                 hype_words: Mapping[int, Sequence[str]] | None = None) -> _Checks:
+                 hype_words: Mapping[int, Sequence[str]] | None = None,
+                 name_words: Mapping[int, Sequence[str]] | None = None) -> _Checks:
     """The "Đã tự sửa" line (settled during generation), one line per hinted finding (to check or to polish), then
     what still warns on the returned unit and no line above names (``named``: the plain words of the slot lines).
     ``hype_words`` (run 2f8781d6): slot -> the hype words its text uses, which their line names."""
@@ -694,7 +708,8 @@ def _check_lines(vi: bool, deterministic_codes: Sequence[str], remaining: Sequen
         where = ", ".join(f"{'khối' if vi else 'block'} {index + 1}"
                           + (f" ({labels[slot_types[index]]})" if index < len(slot_types)
                              and slot_types[index] in labels else "") for index in slots)
-        found = list(dict.fromkeys(word for index in slots for word in (hype_words or {}).get(index, ())))
+        source = (name_words if code == NAME_NOT_IN_SOURCE_CODE else hype_words) or {}
+        found = list(dict.fromkeys(word for index in slots for word in source.get(index, ())))
         hint = template.replace("{words}", f" ({', '.join(f'«{word}»' for word in found[:_MAX_HYPE_WORDS])})"
                                 if found else "")
         # QLT-9: plain words only, the code stays in ``deterministic_codes``; a wording finding is to polish.

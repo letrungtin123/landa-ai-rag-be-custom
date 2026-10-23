@@ -59,6 +59,7 @@ from app.idm.policy import (
     WORKSHEET_COMPONENT_TYPE,
 )
 from app.idm.quiz_text import quiz_findings
+from app.idm.source_names import NAME_NOT_IN_SOURCE_CODE, NameGuide
 from app.idm.text import (
     EvidenceIndex,
     content_pairs,
@@ -330,7 +331,7 @@ def deterministic_slot_findings(
     unit: dict[str, Any], brief: IdmUnitBriefV1, owned_text_by_slot: Sequence[str],
     evidence: EvidenceIndex | None = None, framework: FrameworkPromise | None = None, *,
     fidelity: FidelityChecker | None = None, faq_check: FaqChecker | None = None,
-    fact_rows: Sequence[tuple[str, str]] = (),
+    fact_rows: Sequence[tuple[str, str]] = (), names: NameGuide | None = None,
 ) -> list[SlotFinding]:
     """IDM checks on top of the shared staged validator (spec §7.7.2(b)).
 
@@ -354,6 +355,9 @@ def deterministic_slot_findings(
     for index, component in enumerate(components):
         kind = component.get("type")
         slot = brief.components[index] if index < len(brief.components) else None
+        # Run 2f8781d6 (B9): a tool named in a title or heading by words the source does not use ("ma trận thấu cảm").
+        if names is not None and names.slot_names(component):
+            findings.append(SlotFinding(NAME_NOT_IN_SOURCE_CODE, index))
         if kind == "html":
             text = _visible(component)
             preceding_html += " " + text
@@ -500,12 +504,14 @@ def advisory_slot_findings(unit: dict[str, Any], exempt: Collection[int] = ()) -
 def final_unit_findings(unit: dict[str, Any], brief: IdmUnitBriefV1, owned_text_by_slot: Sequence[str],
                         evidence: EvidenceIndex | None, fallback_slots: Collection[int], *,
                         framework: FrameworkPromise | None = None, fidelity: FidelityChecker | None = None,
-                        faq: FaqChecker | None = None, fact_rows: Sequence[tuple[str, str]] = ()) -> list[SlotFinding]:
+                        faq: FaqChecker | None = None, fact_rows: Sequence[tuple[str, str]] = (),
+                        names: NameGuide | None = None) -> list[SlotFinding]:
     """What the returned unit still has (QC course 364564, N8): the IDM checks of its provider slots plus the
     review-only notes. A code seen before a repair is not in it unless the final unit still fails it."""
 
     exempt = set(fallback_slots)
     found = [item for item in deterministic_slot_findings(unit, brief, owned_text_by_slot, evidence, framework,
-                                                          fidelity=fidelity, faq_check=faq, fact_rows=fact_rows)
+                                                          fidelity=fidelity, faq_check=faq, fact_rows=fact_rows,
+                                                          names=names)
              if item.component_index not in exempt]
     return [*found, *advisory_slot_findings(unit, exempt)]
