@@ -137,6 +137,11 @@ class FakeDb:
     def args_for(self, label: str) -> list[tuple[Any, ...]]:
         return [args for (_, _, args), name in zip(self.calls, self.labels(), strict=True) if name == label]
 
+    def chunk_rows(self) -> list[tuple[Any, ...]]:
+        """The rag_chunks rows in insert order, read back from the multi-row INSERTs (12 values per row)."""
+        return [tuple(args[start:start + 12]) for args in self.args_for("insert_chunk")
+                for start in range(0, len(args), 12)]
+
 
 class FakeEmbedder:
     """Async replacement for app.main.embed_texts that never touches a provider."""
@@ -527,6 +532,8 @@ class IndexDocumentCharacterizationTests(unittest.TestCase):
         downloader.assert_not_called()
         # Changed 2026-10-08 (SEP-1 #7): the three chunk rows go in one executemany (same SQL, same
         # columns, values and order) inside the same transaction instead of one execute per chunk.
+        # Changed 2026-10-24 (audit P1): one multi-row INSERT (execute) per batch of 200 chunks, so the statement-level
+        # quota trigger runs once per batch; same columns, values and order, the embedding as rounded real values.
         # Changed 2026-10-20 (skip an unchanged re-index): the document's active index is looked up once the
         # source is read; there is none here, so the run goes on exactly as before.
         self.assertEqual(db.labels(), [
@@ -535,7 +542,7 @@ class IndexDocumentCharacterizationTests(unittest.TestCase):
             "delete_structure_nodes", "deactivate_other_indexes", "activate_index", "delete_indexes",
         ])
         self.assertEqual(db.args_for("load_active_index"), [(TENANT_ID, KB_ID, DOC_ID, "gemini-embedding-001", 768)])
-        self.assertEqual([method for method, sql, _ in db.calls if "INSERT INTO rag_chunks" in sql], ["executemany"])
+        self.assertEqual([method for method, sql, _ in db.calls if "INSERT INTO rag_chunks" in sql], ["execute"])
         # Savepoint for the optional structure table rolls back; the outer index transaction commits.
         self.assertEqual(db.events, [("begin", 1), ("commit", 1), ("begin", 1), ("begin", 2), ("rollback", 2),
                                      ("commit", 1)])
@@ -544,7 +551,7 @@ class IndexDocumentCharacterizationTests(unittest.TestCase):
         self.assertEqual(db.args_for("supersede_running_indexes"), [(DOC_ID,)])
         self.assertEqual(db.args_for("insert_index_row"), [(TENANT_ID, KB_ID, DOC_ID, 3, "gemini-embedding-001")])
         self.assertEqual(db.args_for("lock_index_row"), [(INDEX_ID, DOC_ID)])
-        [(chunk_args,)] = db.args_for("insert_chunk")
+        chunk_args = db.chunk_rows()
         self.assertEqual([args[:5] for args in chunk_args], [(TENANT_ID, KB_ID, DOC_ID, INDEX_ID, n) for n in range(3)])
         contents = [args[5] for args in chunk_args]
         self.assertTrue(all(content.startswith(f"Paragraph {n + 1}:") for n, content in enumerate(contents)))
@@ -553,7 +560,7 @@ class IndexDocumentCharacterizationTests(unittest.TestCase):
         metadata = json.loads(chunk_args[0][10])
         self.assertEqual((metadata["source_name"], metadata["document_type"]), ("Safety notes", "text"))
         self.assertEqual(metadata["structured_evidence_contract_version"], SOURCE_EVIDENCE_PROPAGATION_VERSION)
-        self.assertTrue(chunk_args[0][11].startswith("[0.50000000,-0.25000000,0.00000000,"))
+        self.assertEqual(chunk_args[0][11], [0.5, -0.25] + [0.0] * 766)
         # Changed 2026-10-20: content_sha256 stores the index fingerprint (it used to be the hash of the joined
         # chunk text), taken over exactly the stored chunk values besides the ids and the embedding.
         [(fingerprint_kwargs, fingerprint)] = fingerprints
@@ -632,7 +639,7 @@ class IndexDocumentCharacterizationTests(unittest.TestCase):
         result, embedder, _, _ = self.run_index(db, request=index_request(embedding_model=" text-embedding-004 "),
                                                 download=b"# Title\n\nPlain markdown body")
         self.assertEqual(result["status"], "learned")
-        [(chunk_rows,)] = db.args_for("insert_chunk")
+        chunk_rows = db.chunk_rows()
         self.assertEqual(chunk_rows[0][5], "# Title\n\nPlain markdown body")
         self.assertEqual(db.args_for("insert_index_row")[0][4], "gemini-embedding-001")  # legacy alias mapped
         self.assertEqual(embedder.calls[0]["model"], "gemini-embedding-001")

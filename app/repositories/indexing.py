@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import json
 import logging
+from collections.abc import Sequence
+from functools import lru_cache
 from typing import Any, cast
 
 import asyncpg
@@ -12,6 +14,19 @@ from app.core.logging import SERVICE_LOGGER_NAME, log_event
 from app.repositories.executor import SqlExecutor
 
 logger = logging.getLogger(SERVICE_LOGGER_NAME)
+
+# Chunk rows per INSERT statement (audit 2026-10-24, P1). asyncpg's executemany runs one statement per row, so the
+# statement-level quota trigger on rag_chunks (tenant_data_quota_direct_insert, FOR EACH STATEMENT) ran once per
+# chunk inside the indexing transaction; one multi-row INSERT per batch runs it once per batch. 200 rows x 12 bind
+# parameters stay far below the 32,767 parameters of one statement.
+CHUNK_INSERT_BATCH_ROWS = 200
+# The value of each rag_chunks column, in insert order: the cast of its placeholder. The embedding is a real[] of
+# the values ``pgvector.vector_values`` rounds exactly as the vector literal did.
+_CHUNK_INSERT_COLUMNS = (
+    ("tenant_id", "::uuid"), ("kb_id", "::uuid"), ("document_id", "::uuid"), ("index_id", "::uuid"),
+    ("chunk_no", "::int"), ("content", ""), ("content_hash", ""), ("token_count", "::int"), ("source_page", "::int"),
+    ("source_section", ""), ("metadata", "::jsonb"), ("embedding", "::real[]::vector"),
+)
 
 
 async def load_document(pool: asyncpg.Pool, tenant_id: str, kb_id: str, document_id: str) -> asyncpg.Record | None:
@@ -247,20 +262,25 @@ async def lock_index_status(conn: SqlExecutor, index_id: Any, document_id: Any) 
     )
 
 
-async def insert_chunks(conn: SqlExecutor, rows: Any) -> None:
-    """Insert every chunk row of one index in one pipelined executemany."""
-    await conn.executemany(
-        """
-        INSERT INTO rag_chunks (
-          tenant_id, kb_id, document_id, index_id, chunk_no,
-          content, content_hash, token_count, source_page,
-          source_section, metadata, embedding
-        )
-        VALUES ($1::uuid, $2::uuid, $3::uuid, $4::uuid, $5::int,
-                $6, $7, $8::int, $9::int, $10, $11::jsonb, $12::vector)
-        """,
-        rows,
+@lru_cache(maxsize=8)
+def chunk_insert_sql(rows: int) -> str:
+    """One INSERT of ``rows`` chunk rows: ``len(_CHUNK_INSERT_COLUMNS)`` placeholders per row, rows in order."""
+    width = len(_CHUNK_INSERT_COLUMNS)
+    values = ", ".join(
+        "(" + ", ".join(f"${row * width + column + 1}{cast_to}"
+                        for column, (_name, cast_to) in enumerate(_CHUNK_INSERT_COLUMNS)) + ")"
+        for row in range(rows)
     )
+    columns = ", ".join(name for name, _cast in _CHUNK_INSERT_COLUMNS)
+    # Built from the constant column list and numbered placeholders only; every value is a bind parameter.
+    return f"INSERT INTO rag_chunks ({columns}) VALUES {values}"  # noqa: S608
+
+
+async def insert_chunks(conn: SqlExecutor, rows: Sequence[Sequence[Any]]) -> None:
+    """Insert every chunk row of one index, in order: one multi-row INSERT per ``CHUNK_INSERT_BATCH_ROWS`` rows."""
+    for start in range(0, len(rows), CHUNK_INSERT_BATCH_ROWS):
+        batch = rows[start:start + CHUNK_INSERT_BATCH_ROWS]
+        await conn.execute(chunk_insert_sql(len(batch)), *[value for row in batch for value in row])
 
 
 async def deactivate_other_indexes(conn: SqlExecutor, document_id: Any, index_id: Any) -> str:

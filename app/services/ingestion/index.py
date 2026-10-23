@@ -6,6 +6,7 @@ import asyncio
 import logging
 import re
 import tempfile
+from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
@@ -28,7 +29,7 @@ from app.infra.gemini.calls import normalize_embedding_model
 from app.infra.gemini.errors import http_error_detail
 from app.repositories import indexing as index_repository
 from app.repositories.indexing import delete_previous_structure_nodes_if_available, persist_structure_nodes_if_available
-from app.repositories.pgvector import vector_literal
+from app.repositories.pgvector import vector_values
 from app.schemas.common import AiUsage
 from app.schemas.kb import INDEX_SKIP_REASON_UNCHANGED, RagIndexRequest
 from app.services import provider
@@ -36,7 +37,12 @@ from app.services import runtime as service_runtime
 from app.services.ingestion import extract as extraction
 from app.services.ingestion.chunking import build_chunks, build_index_diagnostics
 from app.services.ingestion.extract import ExtractedSection, index_document_temp_path
-from app.services.ingestion.fingerprint import EMBEDDING_TASK_TYPE, index_fingerprint, stored_chunk_values
+from app.services.ingestion.fingerprint import (
+    EMBEDDING_TASK_TYPE,
+    StoredChunk,
+    index_fingerprint,
+    stored_chunk_values,
+)
 from app.services.ingestion.storage import fetch_index_source
 from app.services.text import clean_text
 
@@ -109,6 +115,17 @@ async def _claim_deferred_index(
         if str(current["index_id"]) == reusable_index_id:
             return await index_repository.start_index_row(pool, row, embedding_model)
     raise ValueError(SUPERSEDED_INDEX_MESSAGE)
+
+
+def chunk_rows(
+    document: Mapping[str, Any], index_id: str, stored_chunks: Sequence[StoredChunk],
+    embeddings: Sequence[Sequence[float]],
+) -> list[tuple[Any, ...]]:
+    """The rag_chunks rows of one index, in insert order; CPU work (768 rounded values per chunk), run off the loop."""
+    return [
+        (document["tenant_id"], document["kb_id"], document["id"], index_id, *stored, vector_values(embedding))
+        for stored, embedding in zip(stored_chunks, embeddings, strict=False)
+    ]
 
 
 async def _mark_cancelled_index(pool: asyncpg.Pool, index_id: str | None, request: RagIndexRequest) -> None:
@@ -257,20 +274,15 @@ async def _index_document(request: RagIndexRequest, pool: asyncpg.Pool) -> dict[
                        "document_id": request.document_id, "embedding_count": len(embeddings)},
             )
 
+            rows = await service_runtime.concurrency.run_cpu(chunk_rows, row, index_id, stored_chunks, embeddings)
             async with pool.acquire() as conn:  # noqa: SIM117 - the transaction is the inner block
                 async with conn.transaction():
                     index_status = await index_repository.lock_index_status(conn, index_id, row["id"])
                     if index_status != "running":
                         raise ValueError(SUPERSEDED_INDEX_MESSAGE)
-                    # One pipelined executemany inside the same transaction (SEP-1 #7): one round trip
-                    # per batch instead of one per chunk when the database is on another server.
-                    await index_repository.insert_chunks(
-                        conn,
-                        [
-                            (row["tenant_id"], row["kb_id"], row["id"], index_id, *stored, vector_literal(embedding))
-                            for stored, embedding in zip(stored_chunks, embeddings, strict=False)
-                        ],
-                    )
+                    # Multi-row INSERTs inside the same transaction: one statement, one round trip and one run of
+                    # the statement-level quota trigger per batch of chunks (SEP-1 #7, audit 2026-10-24 P1).
+                    await index_repository.insert_chunks(conn, rows)
                     await persist_structure_nodes_if_available(conn, row, index_id, structure)
                     await delete_previous_structure_nodes_if_available(conn, row, index_id)
                     await index_repository.deactivate_other_indexes(conn, row["id"], index_id)

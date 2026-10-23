@@ -145,7 +145,7 @@ class SkipUnchangedIndexTests(unittest.TestCase):
                            active=[active_index(fingerprint, 1)] * 2)
         result, embedder, _ = run_index(db)
         self.assertEqual((result["status"], len(embedder.calls)), ("learned", 1))
-        [(chunk_rows,)] = db.args_for("insert_chunk")
+        chunk_rows = db.chunk_rows()
         self.assertEqual(json.loads(chunk_rows[0][10])["source_name"], "Renamed")
 
     def test_same_content_with_another_pipeline_version_is_reindexed(self) -> None:

@@ -148,23 +148,26 @@
     ]
    },
    {
-    "method": "executemany",
-    "sql_sha256": "8aed7f35c69dbb2b924fb28716d3a768d55fa549d2184526c54b730db9e0123a",
+    "method": "execute",
+    "sql_sha256": "9401f667faf85ce11703cc0da9e017f44a25925d4349f6d57334926e41a2569a",
     "rule": null,
     "args": [
+     "11111111-1111-4111-8111-111111111111",
+     "22222222-2222-4222-8222-222222222222",
+     "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+     "44444444-4444-4444-8444-444444444444",
+     0,
+     "Chương 1. An toàn điện\n\n1.1 Cắt nguồn điện\nNgắt cầu dao tổng và treo biển cảnh báo trước khi bảo trì thiết bị điện. Kiểm tra lại bằng bút thử điện để chắc chắn không còn điện áp.\n\n1.2 Khoá và gắn thẻ\nMỗi người thực hiện gắn khoá cá nhân và thẻ ghi tên, thời gian bắt đầu công việc.\n\nChương 2. Phòng cháy chữa cháy\n\n2.1 Bình chữa cháy\nKiểm tra áp suất bình chữa cháy hằng tháng và ghi vào sổ theo dõi. Đặt bình ở nơi dễ thấy, dễ lấy, không bị che khuất.",
+     "c0c4e3e657469dcc022fb0f6d0dc69f8c1abe386299f684152ae37f3197a6ed4",
+     113,
+     null,
+     null,
+     "{\"source_name\": \"an-toan.txt\", \"document_type\": \"text\", \"content_kinds\": [\"text\"], \"table_count\": 0, \"structured_evidence_contract_version\": \"source-evidence-propagation-v1\", \"source_evidence_revision\": \"58780199a58d00cab3a1917e50d44f725b86ec1d511d8ab7c1cca7c4a0eaab95\", \"structure_source\": \"heading_inferred\", \"structure_confidence\": 0.76, \"parser_version\": \"source-structure-v3\", \"source_ref\": \"src-001\", \"heading_path\": \"An toàn điện\", \"source_structure\": {\"parser_version\": \"source-structure-v3\", \"structure_source\": \"heading_inferred\", \"confidence\": 0.76, \"warnings\": [\"TOC_NOT_FOUND_HEADING_INFERRED\"], \"chapter_authority\": {\"version\": 1, \"complete\": true, \"heading_refs\": [\"src-001\", \"src-004\"], \"basis\": \"EXPLICIT_CHAPTER_OR_NUMBERED_TREE\"}, \"nodes\": [{\"source_ref\": \"src-001\", \"title\": \"An toàn điện\", \"level\": 1, \"order\": 0, \"number_label\": \"1\", \"node_type\": \"chapter\", \"confidence\": 0.76}, {\"source_ref\": \"src-002\", \"title\": \"Cắt nguồn điện\", \"level\": 2, \"order\": 1, \"number_label\": \"1.1\", \"parent_source_ref\": \"src-001\", \"node_type\": \"section\", \"confidence\": 0.76}, {\"source_ref\": \"src-003\", \"title\": \"Khoá và gắn thẻ\", \"level\": 2, \"order\": 2, \"number_label\": \"1.2\", \"parent_source_ref\": \"src-001\", \"node_type\": \"section\", \"confidence\": 0.76}, {\"source_ref\": \"src-004\", \"title\": \"Phòng cháy chữa cháy\", \"level\": 1, \"order\": 3, \"number_label\": \"2\", \"node_type\": \"chapter\", \"confidence\": 0.76}, {\"source_ref\": \"src-005\", \"title\": \"Bình chữa cháy\", \"level\": 2, \"order\": 4, \"number_label\": \"2.1\", \"parent_source_ref\": \"src-004\", \"node_type\": \"section\", \"confidence\": 0.76}]}}",
      [
-      "11111111-1111-4111-8111-111111111111",
-      "22222222-2222-4222-8222-222222222222",
-      "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
-      "44444444-4444-4444-8444-444444444444",
-      0,
-      "Chương 1. An toàn điện\n\n1.1 Cắt nguồn điện\nNgắt cầu dao tổng và treo biển cảnh báo trước khi bảo trì thiết bị điện. Kiểm tra lại bằng bút thử điện để chắc chắn không còn điện áp.\n\n1.2 Khoá và gắn thẻ\nMỗi người thực hiện gắn khoá cá nhân và thẻ ghi tên, thời gian bắt đầu công việc.\n\nChương 2. Phòng cháy chữa cháy\n\n2.1 Bình chữa cháy\nKiểm tra áp suất bình chữa cháy hằng tháng và ghi vào sổ theo dõi. Đặt bình ở nơi dễ thấy, dễ lấy, không bị che khuất.",
-      "c0c4e3e657469dcc022fb0f6d0dc69f8c1abe386299f684152ae37f3197a6ed4",
-      113,
-      null,
-      null,
-      "{\"source_name\": \"an-toan.txt\", \"document_type\": \"text\", \"content_kinds\": [\"text\"], \"table_count\": 0, \"structured_evidence_contract_version\": \"source-evidence-propagation-v1\", \"source_evidence_revision\": \"58780199a58d00cab3a1917e50d44f725b86ec1d511d8ab7c1cca7c4a0eaab95\", \"structure_source\": \"heading_inferred\", \"structure_confidence\": 0.76, \"parser_version\": \"source-structure-v3\", \"source_ref\": \"src-001\", \"heading_path\": \"An toàn điện\", \"source_structure\": {\"parser_version\": \"source-structure-v3\", \"structure_source\": \"heading_inferred\", \"confidence\": 0.76, \"warnings\": [\"TOC_NOT_FOUND_HEADING_INFERRED\"], \"chapter_authority\": {\"version\": 1, \"complete\": true, \"heading_refs\": [\"src-001\", \"src-004\"], \"basis\": \"EXPLICIT_CHAPTER_OR_NUMBERED_TREE\"}, \"nodes\": [{\"source_ref\": \"src-001\", \"title\": \"An toàn điện\", \"level\": 1, \"order\": 0, \"number_label\": \"1\", \"node_type\": \"chapter\", \"confidence\": 0.76}, {\"source_ref\": \"src-002\", \"title\": \"Cắt nguồn điện\", \"level\": 2, \"order\": 1, \"number_label\": \"1.1\", \"parent_source_ref\": \"src-001\", \"node_type\": \"section\", \"confidence\": 0.76}, {\"source_ref\": \"src-003\", \"title\": \"Khoá và gắn thẻ\", \"level\": 2, \"order\": 2, \"number_label\": \"1.2\", \"parent_source_ref\": \"src-001\", \"node_type\": \"section\", \"confidence\": 0.76}, {\"source_ref\": \"src-004\", \"title\": \"Phòng cháy chữa cháy\", \"level\": 1, \"order\": 3, \"number_label\": \"2\", \"node_type\": \"chapter\", \"confidence\": 0.76}, {\"source_ref\": \"src-005\", \"title\": \"Bình chữa cháy\", \"level\": 2, \"order\": 4, \"number_label\": \"2.1\", \"parent_source_ref\": \"src-004\", \"node_type\": \"section\", \"confidence\": 0.76}]}}",
-      "[0.75294100,0.76862700,0.89019600,0.90196100]"
+      0.752941,
+      0.768627,
+      0.890196,
+      0.901961
      ]
     ]
    },

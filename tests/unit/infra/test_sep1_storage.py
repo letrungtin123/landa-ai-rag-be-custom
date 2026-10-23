@@ -262,7 +262,7 @@ class IndexRouteSignedUrlTests(unittest.TestCase):
         )
         self.assertEqual(result["status"], "learned")
         legacy.assert_not_called()
-        [(rows,)] = db.args_for("insert_chunk")
+        rows = db.chunk_rows()
         self.assertEqual(rows[0][5], "Signed body text for the index.")
         downloaded = [line for line in logs if "rag_index_downloaded" in line]
         self.assertIn("'storage_source': 'signed_url'", downloaded[0])
