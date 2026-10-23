@@ -101,11 +101,12 @@ async def judge_and_repair(writer: IdmUnitWriter, draft: _Draft, mode: JudgeMode
         return draft, judge
     # A slot the repair made worse keeps its judged version; anything else still failing drops the repair (a second
     # judge that ran out of time leaves the first judgement standing).
+    noted = (len(writer.codes), writer.worksheet_compacted, writer.worksheet_example_kept)
     repaired = writer.guard_repair(draft, writer.keep_whole_questions(draft, repaired), "w6")
     finding, idm = writer.problems(repaired)
     if repaired is draft or finding is not None or any(code not in SOFT_CODES for code, _index in idm):
+        _forget_repair(writer, noted)
         return draft, judge
-    noted = len(writer.codes)  # review 7 (L1): the soft codes of a repair count only when the repair is kept
     for index in dict.fromkeys(index for _code, index in idm):
         repaired = writer.keep_for_review(repaired, index, [code for code, slot in idm if slot == index])
     repaired = writer.refresh_review_marks(repaired)
@@ -113,13 +114,22 @@ async def judge_and_repair(writer: IdmUnitWriter, draft: _Draft, mode: JudgeMode
         second = await run_judge(writer.runtime, mode=mode, plan_summary=summary, facts=facts, unit=repaired.unit,
                                  practice_slot=practice_slot, faq_slot=writer.has_faq, organization_context=background)
     except BaseException:
-        del writer.codes[noted:]
+        _forget_repair(writer, noted)
         raise
     if second.status in {"pass", "review_required", "reject"} and (
             blocking_count(second.findings) < blocking_count(judge.findings)):
         return repaired, second
-    del writer.codes[noted:]
+    _forget_repair(writer, noted)
     return draft, judge
+
+
+def _forget_repair(writer: IdmUnitWriter, noted: tuple[int, bool, bool]) -> None:
+    """Review 7 (L1), review 8 (L5): a judge repair that is not kept leaves none of its codes and none of the guard's
+    worksheet compaction (``noted``: the codes, ``worksheet_compacted`` and ``worksheet_example_kept`` before it), so
+    the note describes the worksheet returned."""
+
+    del writer.codes[noted[0]:]
+    writer.worksheet_compacted, writer.worksheet_example_kept = noted[1], noted[2]
 
 
 def unit_review_reasons(writer: IdmUnitWriter, draft: _Draft, judge: JudgeOutcome, *, whole_fallback: bool,

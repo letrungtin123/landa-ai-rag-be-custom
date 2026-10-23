@@ -14,10 +14,20 @@ from app.idm.quiz_letters import expand_short_item_labels
 from app.idm.source_locked import render_idm_source_locked_html
 from app.idm.source_names import NameGuide
 from app.idm.visual_pages import unread_image_pages
+from tests.support.log_support import logged_events
 from tests.unit.idm.test_idm_qc_run_2f8781d6 import many_facts_body
 from tests.unit.idm.test_idm_qc_run_5496155c import region
+from tests.unit.idm.test_idm_review_dfb6db2 import GUIDANCE
 from tests.unit.idm.test_idm_storyboard import (
+    JUDGE,
+    REPAIR,
+    WRITER,
+    FakeGenerate,
     StoryboardEndpointTestCase,
+    judge,
+    slot_repair,
+    worksheet_body,
+    worksheet_writer,
 )
 
 # M1: two step sections, each with the same numbered labels ("1. Mục tiêu của bước này"); the renderer lists a
@@ -169,6 +179,32 @@ class BreadcrumbLastPartTests(unittest.TestCase):
                               (crumb.join(("Khóa học Trải nghiệm khách hàng", "MODULE 2: CHIẾN LƯỢC")), [])):
             locator = {"scope_title": scope, "visual_regions": [region(44, 0.92, asset="44a" * 21)]}
             self.assertEqual(unread_image_pages([locator], texts), warned, scope)
+
+
+class DroppedCompactionTests(StoryboardEndpointTestCase):
+    """L5: a judge repair the guard compacted and the second judge does not keep leaves no compaction line."""
+
+    async def run_case(self, second: dict[str, object]) -> tuple[list[str], str]:
+        body = worksheet_body()
+        writer = worksheet_writer(body)
+        repaired = worksheet_writer(body)
+        for row in repaired["components"]["c0"]["semantic_content"]["sections"][1]["blocks"][0]["rows"]:
+            row["value"] += GUIDANCE * 4
+        provider = FakeGenerate(**{WRITER: [writer], REPAIR: [slot_repair(repaired, 0)],
+                                   JUDGE: [judge(("Q7_cognitive_load", "major", 0)), second]})
+        with self.assertLogs("app.idm", level="INFO") as logs:
+            status, data, _ = await self.post(body, provider, mode="repair")
+        self.assertEqual(status, 200, data.get("detail"))
+        return (logged_events(logs.records, "idm_unit_quality")[-1]["codes"],
+                data["unit"]["idm_quality"]["author_note"])
+
+    async def test_a_dropped_repair_leaves_no_compaction_line(self) -> None:
+        codes, note = await self.run_case(judge(("Q7_cognitive_load", "major", 0)))
+        self.assertNotIn("IDM_W5_WORKSHEET_COMPACTED", codes)
+        self.assertNotIn("rút gọn", note)
+        codes, note = await self.run_case(judge())
+        self.assertIn("IDM_W5_WORKSHEET_COMPACTED", codes)
+        self.assertIn("rút gọn", note)
 
 
 if __name__ == "__main__":
