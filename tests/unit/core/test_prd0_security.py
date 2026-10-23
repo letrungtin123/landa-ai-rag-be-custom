@@ -9,7 +9,8 @@ from unittest.mock import patch
 
 from fastapi import Request
 
-from app.core.config import Settings, validate_startup_settings
+from app.core import metrics
+from app.core.config import AuthMode, Settings, validate_startup_settings
 from app.core.errors import AppError, unhandled_error_handler
 from app.core.logging import correlation_id_var
 from app.core.middleware import RequestBodyLimitMiddleware
@@ -97,6 +98,10 @@ async def authenticate(
     )
 
 
+def metric_value(name: str, labels: dict[str, str]) -> float:
+    return metrics.REGISTRY.get_sample_value(name, labels) or 0.0
+
+
 class HmacSecurityTests(unittest.IsolatedAsyncioTestCase):
     def test_python_signature_matches_cross_language_vector(self) -> None:
         self.assertEqual(
@@ -166,6 +171,65 @@ class HmacSecurityTests(unittest.IsolatedAsyncioTestCase):
             require_configured_service_auth(auth_mode="token", service_token="", hmac_secrets="")
         with self.assertRaisesRegex(RuntimeError, "AI_RAG_SERVICE_HMAC_SECRETS"):
             require_configured_service_auth(auth_mode="hmac", service_token="", hmac_secrets="")
+
+
+class AuthRejectionReasonTests(unittest.IsolatedAsyncioTestCase):
+    """A refused request logs one short reason and counts it (audit 2026-10-24, O5); never a header value."""
+
+    async def reason_of(self, request: Request, *, auth_mode: AuthMode = "hmac", token: str = "",
+                        secrets: str = f"kid1:{TEST_SECRET}", cache: ReplayCache | None = None) -> str:
+        with (
+            patch("app.core.security.time.time", return_value=float(TEST_TIMESTAMP)),
+            self.assertLogs("app.core.security", level="WARNING") as logs,
+            self.assertRaises(AppError) as caught,
+        ):
+            await require_internal_auth(request, auth_mode=auth_mode, service_token=token,
+                                        hmac_secrets=secrets, clock_skew_seconds=300, replay_ttl_seconds=600,
+                                        replay_cache=cache or ReplayCache())
+        self.assertEqual(caught.exception.http_status, 401)
+        [record] = logs.records
+        self.assertEqual(record.getMessage(), "auth_rejected")
+        for secret in (TEST_SECRET, TEST_SIGNATURE, "kid1", "kid-unknown", "wrong-token-value"):
+            self.assertNotIn(secret, json.dumps(record.__dict__, default=str))
+        return str(record.reason)
+
+    async def test_each_refusal_names_its_reason_and_counts_it(self) -> None:
+        unsigned = {key: value for key, value in signed_headers().items() if key != HMAC_SIGNATURE_HEADER}
+        cases = {
+            "missing_header": build_request(TEST_BODY, headers=unsigned),
+            "unknown_key": build_request(TEST_BODY, headers=signed_headers(key_id="kid-unknown")),
+            "bad_timestamp": build_request(TEST_BODY, headers=signed_headers(timestamp="17914176001234")),
+            "bad_signature": build_request(TEST_BODY, headers={**signed_headers(), HMAC_SIGNATURE_HEADER: "zz"}),
+            "bad_request_id": build_request(TEST_BODY, headers=signed_headers(request_id="not-a-uuid")),
+            "clock_skew": build_request(TEST_BODY, headers=signed_headers(timestamp=str(int(TEST_TIMESTAMP) - 301))),
+        }
+        cases["bad_signature "] = build_request(b'{"hello":"altered"}', headers=signed_headers())
+        for expected, request in cases.items():
+            with self.subTest(expected):
+                before = metric_value("ai_rag_auth_rejections_total", {"reason": expected.strip()})
+                self.assertEqual(await self.reason_of(request), expected.strip())
+                self.assertEqual(metric_value("ai_rag_auth_rejections_total", {"reason": expected.strip()}),
+                                 before + 1)
+
+    async def test_replay_token_and_configuration_reasons(self) -> None:
+        cache = ReplayCache()
+        with patch("app.core.security.time.time", return_value=float(TEST_TIMESTAMP)):
+            await authenticate(build_request(TEST_BODY, headers=signed_headers()), cache=cache)
+        self.assertEqual(await self.reason_of(build_request(TEST_BODY, headers=signed_headers()), cache=cache),
+                         "replay")
+        token_header = {"X-Landa-AI-Service-Token": "wrong-token-value"}
+        self.assertEqual(await self.reason_of(build_request(TEST_BODY, headers={}), auth_mode="token",
+                                              token="right-token-value"), "missing_header")
+        self.assertEqual(await self.reason_of(build_request(TEST_BODY, headers=token_header), auth_mode="token",
+                                              token="right-token-value"), "bad_token")
+        self.assertEqual(await self.reason_of(build_request(TEST_BODY, headers=token_header),
+                                              auth_mode="token_or_hmac", token="right-token-value"), "bad_token")
+        self.assertEqual(await self.reason_of(build_request(TEST_BODY, headers=signed_headers(key_id="kid-unknown")),
+                                              auth_mode="token_or_hmac"), "unknown_key")
+        self.assertEqual(await self.reason_of(build_request(TEST_BODY, headers=signed_headers()), secrets=""),
+                         "not_configured")
+        self.assertEqual(await self.reason_of(build_request(TEST_BODY, headers={}), auth_mode="token_or_hmac",
+                                              secrets=""), "missing_header")
 
 
 class ConfigSecurityTests(unittest.TestCase):

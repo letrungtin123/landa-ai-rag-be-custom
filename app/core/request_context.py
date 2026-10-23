@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import re
 import uuid
@@ -31,6 +32,14 @@ OPERATIONAL_PATHS = frozenset({"/healthz", "/readyz", "/metrics"})
 METRIC_METHODS = frozenset({"GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"})
 OTHER_METHOD = "OTHER"
 HTTP_STATUS_SERVER_ERROR = 500
+SUCCESS_STATUSES = range(200, 300)
+# A non-2xx answer: the access log names the error code of its body ({"detail": {"code": ...}}), read from at most
+# this many bytes, and only when it is a plain code; no other body text is logged (audit 2026-10-24, O5).
+ERROR_BODY_CAPTURE_BYTES = 4_096
+ERROR_CODE_PATTERN = re.compile(r"[A-Z][A-Z0-9_]{2,95}")
+# What Starlette's ServerErrorMiddleware (outside this middleware) answers an escaped exception with: the body of
+# app.core.errors.unhandled_error_handler.
+UNHANDLED_ERROR_CODE = "INTERNAL_ERROR"
 
 
 def _header(headers: list[tuple[bytes, bytes]], name: bytes) -> str | None:
@@ -42,6 +51,18 @@ def _header(headers: list[tuple[bytes, bytes]], name: bytes) -> str | None:
                 return None
             return text if SAFE_ID_PATTERN.fullmatch(text) else None
     return None
+
+
+def response_error_code(body: bytes) -> str | None:
+    """``detail.code`` of an error answer when it is a plain error code (UNAUTHORIZED, SERVICE_BUSY, ...)."""
+
+    try:
+        payload = json.loads(body)
+    except (ValueError, RecursionError):  # not JSON, cut at ERROR_BODY_CAPTURE_BYTES, or not UTF-8
+        return None
+    detail = payload.get("detail") if isinstance(payload, dict) else None
+    code = detail.get("code") if isinstance(detail, dict) else None
+    return code if isinstance(code, str) and ERROR_CODE_PATTERN.fullmatch(code) else None
 
 
 def method_label(method: str) -> str:
@@ -80,6 +101,8 @@ class RequestContextMiddleware:
         method = str(scope.get("method") or "GET")
         operational = path in OPERATIONAL_PATHS
         status_code = HTTP_STATUS_SERVER_ERROR
+        error_body = bytearray()
+        escaped_error = False
         started = perf_counter()
 
         async def send_with_context(message: AsgiMessage) -> None:
@@ -91,12 +114,17 @@ class RequestContextMiddleware:
                 if correlation_id:
                     response_headers.append((CORRELATION_ID_HEADER, correlation_id.encode("latin-1")))
                 message["headers"] = response_headers
+            elif message.get("type") == "http.response.body" and status_code not in SUCCESS_STATUSES:
+                error_body.extend(bytes(message.get("body", b""))[:ERROR_BODY_CAPTURE_BYTES - len(error_body)])
             await send(message)
 
         if not operational:
             self.state.begin_request()
         try:
             await self.app(scope, receive, send_with_context)
+        except Exception:
+            escaped_error = True
+            raise
         finally:
             if not operational:
                 self.state.end_request()
@@ -106,16 +134,17 @@ class RequestContextMiddleware:
             metrics.HTTP_REQUESTS.labels(route=route, method=label, status=str(status_code)).inc()
             metrics.HTTP_REQUEST_DURATION.labels(route=route, method=label).observe(duration)
             if not operational:
-                logger.info(
-                    "http_request_completed",
-                    extra={
-                        "event": "http_request_completed",
-                        "route": route,
-                        "method": method,
-                        "status": status_code,
-                        "duration_ms": round(duration * 1000),
-                    },
-                )
+                fields: dict[str, Any] = {
+                    "event": "http_request_completed",
+                    "route": route,
+                    "method": method,
+                    "status": status_code,
+                    "duration_ms": round(duration * 1000),
+                }
+                if status_code not in SUCCESS_STATUSES:
+                    fields["error_code"] = (UNHANDLED_ERROR_CODE if escaped_error and not error_body
+                                            else response_error_code(bytes(error_body)))
+                logger.info("http_request_completed", extra=fields)
             request_id_var.reset(request_token)
             correlation_id_var.reset(correlation_token)
 

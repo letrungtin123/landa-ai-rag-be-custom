@@ -115,6 +115,13 @@ DOCUMENT_LIMIT_REJECTIONS = Counter(
     ("code",),
     registry=REGISTRY,
 )
+# Internal requests refused by authentication (app.core.security): a fixed set of reasons, never a header value.
+AUTH_REJECTIONS = Counter(
+    "ai_rag_auth_rejections_total",
+    "Internal requests rejected by authentication, by reason.",
+    ("reason",),
+    registry=REGISTRY,
+)
 DEADLINE_EXCEEDED = Counter(
     "ai_rag_deadline_exceeded_total",
     "Requests stopped by their overall deadline, by route template.",

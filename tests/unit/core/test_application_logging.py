@@ -97,6 +97,52 @@ class RequestCompletedLogTests(unittest.TestCase):
         self.assertGreaterEqual(completed[0]["duration_ms"], 0)
         self.assertEqual(completed[0]["method"], "POST")
 
+    def completed_line(self, status: int, body: bytes, *, raise_after: bool = False) -> dict[str, Any]:
+        stream = self.capture("app.core.request_context")
+
+        async def app(scope: dict[str, Any], receive: Any, send: Any) -> None:
+            scope["route"] = type("Route", (), {"path": "/v1/kb/documents/index"})()
+            if not raise_after:
+                await send({"type": "http.response.start", "status": status, "headers": []})
+                await send({"type": "http.response.body", "body": body[:10], "more_body": True})
+                await send({"type": "http.response.body", "body": body[10:]})
+                return
+            raise RuntimeError("unexpected failure with private detail")
+
+        async def receive() -> dict[str, Any]:
+            return {"type": "http.request", "body": b"", "more_body": False}
+
+        async def send(message: dict[str, Any]) -> None:
+            return None
+
+        scope = {"type": "http", "method": "POST", "path": "/v1/kb/documents/index", "headers": [],
+                 "query_string": b""}
+        try:
+            asyncio.run(RequestContextMiddleware(app, state=RuntimeState())(scope, receive, send))
+        except RuntimeError:
+            self.assertTrue(raise_after)
+        [line] = [json.loads(item) for item in stream.getvalue().splitlines() if item.strip()]
+        self.assertEqual(line["event"], "http_request_completed")
+        return line
+
+    def test_a_non_2xx_line_names_the_error_code_of_the_answer(self) -> None:
+        # audit 2026-10-24, O5: three 401s on 23/10 could not be traced; now the line says which code was answered.
+        error = json.dumps({"detail": {"code": "UNAUTHORIZED", "message": "Unauthorized AI RAG service request.",
+                                       "correlation_id": "c-1"}}).encode()
+        line = self.completed_line(401, error)
+        self.assertEqual((line["status"], line["error_code"]), (401, "UNAUTHORIZED"))
+        self.assertNotIn("Unauthorized AI RAG", json.dumps(line))
+        self.assertEqual(self.completed_line(503, b'{"detail":{"code":"SERVICE_BUSY","message":"x"}}')["error_code"],
+                         "SERVICE_BUSY")
+        for body in (b'{"detail":"Not Found"}', b'{"detail":{"code":"lower_case"}}', b"<html>busy</html>",
+                     b'{"detail":{"code":"' + b"A" * 5_000 + b'"}}'):
+            with self.subTest(body=body[:30]):
+                self.assertIsNone(self.completed_line(404, body)["error_code"])
+        self.assertNotIn("error_code", self.completed_line(200, error))
+        escaped = self.completed_line(500, b"", raise_after=True)
+        self.assertEqual((escaped["status"], escaped["error_code"]), (500, "INTERNAL_ERROR"))
+        self.assertNotIn("private detail", json.dumps(escaped))
+
     def test_outcome_fields_default_to_null_and_stay_redacted(self) -> None:
         stream = self.capture("tests.request_outcome")
         logger = logging.getLogger("tests.request_outcome")

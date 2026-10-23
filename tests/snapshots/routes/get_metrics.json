@@ -8,6 +8,7 @@
   "status": 200,
   "content_type": "text/plain; version=1.0.0; charset=utf-8",
   "body": [
+   "ai_rag_auth_rejections_total",
    "ai_rag_deadline_exceeded_total",
    "ai_rag_document_limit_rejections_total",
    "ai_rag_fallbacks_total",
