@@ -761,7 +761,7 @@ class IdmUnitWriterSteps:
         unexplained: list[str] = []
         for token in abbreviations(texts):
             full = self.acronyms.expansion(token)
-            if token in KNOWN_ABBREVIATIONS or explained(token, full, texts):
+            if token in KNOWN_ABBREVIATIONS or explained(token, full, texts, source_texts=self.acronyms.source):
                 continue
             if full is None:
                 if self.acronyms.worth_noting(token):

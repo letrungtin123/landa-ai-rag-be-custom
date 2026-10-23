@@ -125,6 +125,8 @@ class AcronymGuide:
     expansions: Mapping[str, str]
     # Abbreviations the facts write as names or heading words, or with their full form before them ("… (SOP)").
     ignored: frozenset[str]
+    # Review 6 (L3): the facts themselves, where a full form may be paired with its abbreviation ("… - CX").
+    source: tuple[str, ...] = ()
 
     @classmethod
     def build(cls, facts: Iterable[str], locale: str) -> AcronymGuide:
@@ -149,7 +151,7 @@ class AcronymGuide:
                     ignored.add(token)
         common = _COMMON_VI if locale == "vi" else _COMMON_EN
         expansions = {**{token: full for token, full in common.items()}, **found}
-        return cls(expansions, frozenset(ignored - set(expansions)))
+        return cls(expansions, frozenset(ignored - set(expansions)), tuple(texts))
 
     def expansion(self, token: str) -> str | None:
         return self.expansions.get(token)
@@ -211,18 +213,34 @@ def _spelled(token: str, words: Sequence[str]) -> bool:
     return False
 
 
-def explained(token: str, full: str | None, texts: Sequence[str]) -> bool:
+def _paired(token: str, words: Sequence[str], source: str) -> bool:
+    """Review 6 (L3): the facts (``source``, folded) pair the last of ``words`` with ``token`` themselves ("Trải nghiệm
+    khách hàng (CX)", "… - CX", "CX (Trải nghiệm khách hàng)"), so a full form whose initials do not spell it counts."""
+
+    abbreviation = re.escape(idm_fold(token))
+    for size in range(_MIN_EXPANSION_WORDS, min(len(words), _MAX_EXPANSION_WORDS) + 1):
+        phrase = re.escape(idm_fold(" ".join(words[-size:])))
+        if re.search(rf"(?<!\w){phrase}\s*(?:[-–—:]\s*|\(\s*){abbreviation}(?!\w)"  # noqa: RUF001
+                     rf"|(?<!\w){abbreviation}\s*(?:[-–—:]\s*|\(\s*){phrase}(?!\w)", source):  # noqa: RUF001
+            return True
+    return False
+
+
+def explained(token: str, full: str | None, texts: Sequence[str], *, source_texts: Sequence[str] = ()) -> bool:
     """The unit already gives the full form: "(ROI)" after a phrase, "ROI (" with its meaning, the full form, or the
     words it abbreviates and a dash (hyphen, en or em dash) before it: "(Moments of Truth - MOT)", "Moments of Truth -
     MOT" (run 2f8781d6: the note listed MOT as unexplained). Review 5 (L1): only words whose initials spell it; "Ba chỉ
-    số cần theo dõi hằng tuần - NPS" explains nothing."""
+    số cần theo dõi hằng tuần - NPS" explains nothing. Review 6 (L3): or words the facts (``source_texts``) pair with
+    it themselves ("Trải nghiệm khách hàng - CX"); never a pairing the facts do not show."""
 
     joined = " ".join(texts)
     escaped = re.escape(token)
     if re.search(rf"\(\s*{escaped}\s*\)", joined) or re.search(rf"(?<![\w&]){escaped}\s*\(", joined):
         return True
     dashed = rf"([^\W\d_][\w'’]*(?:\s+[^\W\d_][\w'’&/]*)+)\s+[-–—]\s+{escaped}(?![\w&])"  # noqa: RUF001
-    if any(_spelled(token, match.group(1).split()) for match in re.finditer(dashed, joined)):
+    source = idm_fold(" ".join(source_texts))
+    if any(_spelled(token, match.group(1).split()) or (source and _paired(token, match.group(1).split(), source))
+           for match in re.finditer(dashed, joined)):
         return True
     return full is not None and idm_fold(full) in idm_fold(joined)
 

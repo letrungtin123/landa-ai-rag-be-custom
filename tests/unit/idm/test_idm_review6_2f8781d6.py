@@ -12,6 +12,7 @@ from types import SimpleNamespace
 from typing import Any
 
 from app.core.errors import ServiceError
+from app.idm.acronyms import explained
 from app.idm.answer_near import ANSWER_NEAR_EXAMPLE_CODE
 from app.idm.fallback_lines import restore_stops
 from app.idm.fidelity_checks import NEW_FACT_CODE, SENTENCE_COPY_CODE, SENTENCE_LENGTH_CODE
@@ -238,3 +239,17 @@ class ToolNameTests(unittest.TestCase):
                             ("Building Your Prioritization Matrix", []), ("Our Decision Framework", []),
                             ("A Practical Framework for Touchpoints", []), ("Mapping Each Stage on a Simple Map", [])):
             self.assertEqual(source.missing(text), found, text)
+
+
+class SourcePairedAbbreviationTests(unittest.TestCase):
+    """L3: "<Vietnamese name> - ABBR" explains ABBR only when the source pairs them; else the strict initials."""
+
+    def test_the_source_pairing_counts(self) -> None:
+        text = ["Trải nghiệm khách hàng - CX là trọng tâm của khóa học."]
+        self.assertFalse(explained("CX", None, text))
+        self.assertTrue(explained("CX", None, text, source_texts=["Trải nghiệm khách hàng (CX) là cách khách cảm "
+                                                                    "nhận doanh nghiệp."]))
+        self.assertTrue(explained("CX", None, text, source_texts=["Trải nghiệm khách hàng – CX"]))  # noqa: RUF001
+        self.assertFalse(explained("KPI", "chỉ số đo lường hiệu quả", ["Chỉ số đo lường hiệu suất - KPI cần theo dõi."],
+                                   source_texts=["Doanh thu tăng mạnh."]))
+        self.assertTrue(explained("MOT", None, ["Moments of Truth - MOT"]))
