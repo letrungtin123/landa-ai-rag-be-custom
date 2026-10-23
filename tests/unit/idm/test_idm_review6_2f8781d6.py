@@ -13,7 +13,7 @@ from typing import Any
 
 from app.core.errors import ServiceError
 from app.idm.acronyms import explained
-from app.idm.answer_near import ANSWER_NEAR_EXAMPLE_CODE
+from app.idm.answer_near import ANSWER_NEAR_EXAMPLE_CODE, near_example
 from app.idm.fallback_lines import restore_stops
 from app.idm.fidelity_checks import NEW_FACT_CODE, SENTENCE_COPY_CODE, SENTENCE_LENGTH_CODE
 from app.idm.node_acceptance import html_quality_code
@@ -22,8 +22,10 @@ from app.idm.source_locked import _is_label, render_idm_source_locked_html
 from app.idm.source_names import NAME_NOT_IN_SOURCE_CODE, NameGuide
 from app.idm.storyboard_context import _Draft
 from app.idm.storyboard_repair import IdmUnitRepairSteps
+from app.idm.visual_pages import evidence_needs_check, unread_image_pages
 from tests.support.log_support import logged_events
-from tests.unit.idm.test_idm_review5_2f8781d6 import FIXED, REPEATED, writer_with
+from tests.unit.idm.test_idm_qc_run_5496155c import region
+from tests.unit.idm.test_idm_review5_2f8781d6 import FIXED, REPEATED, block, html_slot, quiz, writer_with
 from tests.unit.idm.test_idm_storyboard import (
     JUDGE,
     REPAIR,
@@ -253,3 +255,40 @@ class SourcePairedAbbreviationTests(unittest.TestCase):
         self.assertFalse(explained("KPI", "chỉ số đo lường hiệu quả", ["Chỉ số đo lường hiệu suất - KPI cần theo dõi."],
                                    source_texts=["Doanh thu tăng mạnh."]))
         self.assertTrue(explained("MOT", None, ["Moments of Truth - MOT"]))
+
+
+class RecallCopyTests(unittest.TestCase):
+    """L4: a knowledge check with no case of its own whose key copies the lesson is caught again."""
+
+    def test_a_recall_question_that_copies_the_rule(self) -> None:
+        rule = html_slot(("Quy trình xử lý khiếu nại", [
+            block("paragraph", "Khiếu nại liên quan đến an toàn sản phẩm phải được chuyển ngay cho quản lý cấp cao xử "
+                               "lý trong vòng hai giờ."),
+            block("paragraph", "Mọi khiếu nại đều được ghi vào hệ thống trước khi xử lý.")]))
+        options = ["Khiếu nại liên quan đến an toàn sản phẩm phải được chuyển ngay cho quản lý cấp cao xử lý",
+                   "Mọi khiếu nại được nhân viên tuyến đầu tự xử lý trong tuần",
+                   "Khách hàng VIP luôn được hoàn tiền ngay lập tức",
+                   "Nhân viên có thể bỏ qua bước ghi nhận nếu khách vội"]
+        for stem in ("Theo bài học, phát biểu nào sau đây là đúng?", "Nhận định nào đúng với quy trình của công ty?"):
+            self.assertEqual(near_example(quiz(stem, options), [rule]), "option", stem)
+        # A case of its own still applies the rule quietly (review 5, M7).
+        new_case = quiz("Giả sử khách báo máy sấy vừa mua bốc khói khi dùng lần đầu. Bạn làm gì trước?", options)
+        self.assertIsNone(near_example(new_case, [rule]))
+
+
+class CoverPageTests(unittest.TestCase):
+    """L5: a picture page loses its warning only when its whole text is one heading line the source structure starts
+    a section with; a heading word alone is no signal."""
+
+    def test_only_a_marked_section_start_is_a_cover(self) -> None:
+        texts = {40: ["CHƯƠNG TRÌNH KHÁCH HÀNG THÂN THIẾT"], 41: ["PHẦN MỀM CRM: MÀN HÌNH HỒ SƠ KHÁCH HÀNG"],
+                 42: ["PHẦN THƯỞNG CHO NHÂN VIÊN XUẤT SẮC"], 43: ["MODULE 2: CHIẾN LƯỢC"],
+                 44: ["MODULE 3: TRIỂN KHAI"],
+                 12: ["Row 1; MODULE 1: THẤU HIỂU HIỆN TRẠNG", "Góc nhìn Outside – In: Khách hàng đang trải qua gì?"]}  # noqa: RUF001
+        locators: list[dict[str, Any]] = [{"visual_regions": [region(page, 0.92, asset=f"{page:02d}a" * 21)]}
+                                          for page in (40, 41, 42, 44, 12)]
+        locators.append({"scope_title": "MODULE 2: CHIẾN LƯỢC",
+                         "visual_regions": [region(43, 0.92, asset="43a" * 21)]})
+        self.assertEqual(unread_image_pages(locators, texts), [12, 40, 41, 42, 44])
+        self.assertTrue(evidence_needs_check(locators[:3], (), texts))
+        self.assertFalse(evidence_needs_check(locators[-1:], (), texts))

@@ -508,14 +508,17 @@ class ImageCoverPageTests(unittest.TestCase):
 
     def regions(self) -> list[dict[str, Any]]:
         shares = {12: [0.95], 45: [0.95], 39: [0.69], 36: [0.6], 29: [0.18, 0.19], 14: [0.35]}
+        # Review 6 (L5): the source structure starts a section with page 45's heading (its facts' scope title).
         return [{"visual_regions": [region(page, share, asset=f"{page:02d}{index}" * 21)
-                                    for index, share in enumerate(values)]} for page, values in shares.items()]
+                                    for index, share in enumerate(values)],
+                 **({"scope_title": "BÀI TẬP VỀ NHÀ"} if page == 45 else {})} for page, values in shares.items()]
 
     def test_covers_never_count_content_pictures_do(self) -> None:
-        self.assertEqual(unread_image_pages(self.regions(), self.TEXTS), [29, 36, 39])
+        # Review 6 (L5): page 12 (a title and a subtitle, no section start) warns again.
+        self.assertEqual(unread_image_pages(self.regions(), self.TEXTS), [12, 29, 36, 39])
         # Without the page texts, the rule of run 5496155c.
         self.assertEqual(unread_image_pages(self.regions()), [12, 36, 39, 45])
-        self.assertFalse(evidence_needs_check(self.regions()[:2], (), self.TEXTS))
+        self.assertFalse(evidence_needs_check(self.regions()[1:2], (), self.TEXTS))
         self.assertTrue(evidence_needs_check(self.regions()[4:], (), self.TEXTS))
         self.assertEqual(page_texts([(12, "a"), (None, "b"), (12, "c")]), {12: ["a", "c"]})
 
@@ -526,7 +529,8 @@ class ImageCoverPageTests(unittest.TestCase):
             for position, fact in enumerate(facts):
                 fact["source_page"] = page
                 fact["fact_text"] = self.TEXTS[page][0] if position == 0 else "OPEX"
-                fact["locator"] = {**(fact.get("locator") or {}),
+                # Review 6 (L5): the source structure starts the section on the cover page (its scope title).
+                fact["locator"] = {**(fact.get("locator") or {}), "scope_title": self.TEXTS[page][0].split("| ")[-1],
                                    "visual_regions": [region(page, 0.95 if page == 45 else 0.69)]}
             rehash_contract(body["unit_contract"])
             request = RagLessonAuthorUnitV2Request.model_validate(body)

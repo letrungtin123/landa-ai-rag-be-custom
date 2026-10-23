@@ -17,6 +17,12 @@ a section ("MODULE 1: THẤU HIỆN TRẠNG", "BÀI TẬP VỀ NHÀ", "PHẦN 2 
 only text is chart labels ("OPEX", "CAPEX", "ROI") or a plain title ("BẢN ĐỒ HÀNH TRÌNH KHÁCH HÀNG") keeps the
 warning, by the rule of run 5496155c when its words are only marks.
 
+Review 6 (L5): a heading word is no signal ("CHƯƠNG TRÌNH KHÁCH HÀNG THÂN THIẾT" is a programme, "PHẦN MỀM CRM" a
+screenshot). A cover is a page whose whole text is one heading line that opens a numbered section ("MODULE 2: …",
+"PHẦN 3 …", "CHƯƠNG II …") or an exercise ("BÀI TẬP …"), and that the source structure starts a section with (the
+``scope_title`` of a fact on that page). Anything else keeps the warning (run 2f8781d6's page 12, a title and a
+subtitle under the scope "Confidential", warns again).
+
 Reads only the fact locators and texts the backend already sends (``visual_regions`` of
 ``app.content.source_readiness``).
 """
@@ -26,10 +32,11 @@ from __future__ import annotations
 import json
 import re
 from collections import defaultdict
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Collection, Iterable, Mapping, Sequence
 from typing import Any, Final
 
 from app.idm.policy import IDM_IMAGE_PAGE_MIN_SHARE, IDM_IMAGE_PAGE_SHORT_TEXT_MIN_SHARE
+from app.idm.text import idm_fold
 
 _LEGACY_STATUS: Final = "legacy_review_required"
 _OBSERVED: Final = frozenset({"observed", "reviewed"})
@@ -42,11 +49,10 @@ _TITLE_MAX_WORDS: Final = 14
 _MARK_MAX_WORDS: Final = 2
 _STATEMENT_END_RE: Final = re.compile(r"[.!…]\W*$")
 _ROW_MARK_RE: Final = re.compile(r"^\s*row\s+\d+\s*[:;]\s*\|?\s*", re.IGNORECASE)
-# Review 5 (M5): the opening title of a section cover, in capitals, and the subtitle it may have.
-_COVER_OPENER_RE: Final = re.compile(r"^(?:module|phần|chương|chuyên đề|buổi|bài tập|part|chapter|section|session)\b",
-                                     re.IGNORECASE)
+# Review 6 (L5): the opening of a section cover, in capitals: a numbered section or an exercise.
+_COVER_OPENER_RE: Final = re.compile(r"^(?:(?:module|phần|chương|part|chapter|section|session)\s*(?:\d+|[ivx]+)\b"
+                                     r"|bài tập\b)", re.IGNORECASE)
 _COVER_CAPITALS_SHARE: Final = 0.6
-_COVER_MAX_TITLES: Final = 2
 # A numbered section title ("1.5 THIẾT KẾ …", "2.4 MA TRẬN …"): a content page of the deck, never its cover.
 _NUMBERED_TITLE_RE: Final = re.compile(r"^\d+(?:\.\d+)+\.?\s+\S")
 
@@ -108,9 +114,10 @@ def _cover_opener(line: str) -> bool:
             and sum(char.isupper() for char in letters) / len(letters) >= _COVER_CAPITALS_SHARE)
 
 
-def _min_share(texts: Sequence[str] | None) -> float | None:
+def _min_share(texts: Sequence[str] | None, starts: Collection[str] = ()) -> float | None:
     """The share of unread images from which a page with ``texts`` counts; ``None`` for a section cover (module
-    docstring); without its texts, or with marks only, ``IDM_IMAGE_PAGE_MIN_SHARE``."""
+    docstring; ``starts``: the folded section titles the source structure starts on the page); without its texts, or
+    with marks only, ``IDM_IMAGE_PAGE_MIN_SHARE``."""
 
     if texts is None:
         return IDM_IMAGE_PAGE_MIN_SHARE
@@ -120,10 +127,23 @@ def _min_share(texts: Sequence[str] | None) -> float | None:
         return IDM_IMAGE_PAGE_MIN_SHARE
     titles = [line for line in lines if len(line.split()) <= _TITLE_MAX_WORDS and not _STATEMENT_END_RE.search(line)]
     body = len(lines) - len(titles)
-    if (not body and len(titles) <= _COVER_MAX_TITLES and _cover_opener(titles[0])
-            and not any(_NUMBERED_TITLE_RE.match(title) for title in titles)):
+    if (len(lines) == 1 and titles and _cover_opener(titles[0]) and not _NUMBERED_TITLE_RE.match(titles[0])
+            and idm_fold(titles[0]) in starts):
         return None
     return IDM_IMAGE_PAGE_SHORT_TEXT_MIN_SHARE if body <= 1 else IDM_IMAGE_PAGE_MIN_SHARE
+
+
+def _section_starts(locators: Sequence[Mapping[str, Any]]) -> dict[int, set[str]]:
+    """Page -> the folded section titles (``scope_title``) of the facts whose regions sit on it."""
+
+    starts: dict[int, set[str]] = defaultdict(set)
+    for locator in locators:
+        title = locator.get("scope_title")
+        regions = locator.get("visual_regions")
+        for region in regions if isinstance(regions, list) and isinstance(title, str) else []:
+            if isinstance(region, Mapping) and (page := _page(region)) is not None:
+                starts[page].add(idm_fold(_ROW_MARK_RE.sub("", " ".join(str(title).split())).strip(" |")))
+    return starts
 
 
 def unread_image_pages(locators: Iterable[Mapping[str, Any]],
@@ -132,13 +152,15 @@ def unread_image_pages(locators: Iterable[Mapping[str, Any]],
     however many facts carry it). With ``texts`` (page -> the unit's fact texts of it, ``page_texts``): never a cover
     page, and from ``IDM_IMAGE_PAGE_SHORT_TEXT_MIN_SHARE`` for a page of at most one sentence besides its titles."""
 
+    listed = list(locators)
     shares: defaultdict[int, float] = defaultdict(float)
-    for region in _unread_regions(locators):
+    for region in _unread_regions(listed):
         if (page := _page(region)) is not None:
             shares[page] += _share(region) or 0.0
+    starts = _section_starts(listed)
     counted = []
     for page, share in shares.items():
-        least = _min_share(texts.get(page) if texts is not None else None)
+        least = _min_share(texts.get(page) if texts is not None else None, starts.get(page, set()))
         if least is not None and share >= least:
             counted.append(page)
     return sorted(counted)

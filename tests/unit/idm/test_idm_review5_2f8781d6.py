@@ -272,9 +272,12 @@ class ImagePageCoverTests(unittest.TestCase):
                  32: ["Module 2: chiến lược và chiến thuật"],  # not a title in capitals: not certain
                  33: ["MODULE 3: TRIỂN KHAI", "Lộ trình ba tháng", "Các mốc kiểm tra"]}  # two lines under it
         regions = self.regions((12, 0.95), (45, 0.95), (30, 0.92), (31, 0.88), (32, 0.9), (33, 0.9))
-        self.assertEqual(unread_image_pages(regions, texts), [30, 31, 32, 33])
+        # Review 6 (L5): a cover is one heading line the source structure starts a section with (the scope title of a
+        # fact on the page); page 12 (a title and a subtitle under the scope "Confidential") warns again.
+        regions[1]["scope_title"] = "BÀI TẬP VỀ NHÀ"
+        self.assertEqual(unread_image_pages(regions, texts), [12, 30, 31, 32, 33])
         self.assertTrue(evidence_needs_check(regions[2:4], (), texts))
-        self.assertFalse(evidence_needs_check(regions[:2], (), texts))
+        self.assertFalse(evidence_needs_check(regions[1:2], (), texts))
 
 
 def html_slot(*sections: tuple[str, list[dict[str, Any]]]) -> dict[str, Any]:
