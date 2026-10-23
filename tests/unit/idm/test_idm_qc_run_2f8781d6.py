@@ -275,11 +275,12 @@ class ShortItemLabelTests(unittest.TestCase):
         for label, longer in (("Ý", "Ý kiến"), ("Mục", "Mục số"), ("Câu", "Câu số"), ("Bước", "Bước số"),
                               ("Item", "Item no.")):
             quiz, count = expand_short_item_labels(item_quiz(label))
-            self.assertEqual(count, 8, label)
+            self.assertEqual(count, 12, label)
             self.assertEqual([choice["text"] for choice in quiz["choices"]], [f"{longer} {n}" for n in range(1, 5)])
             self.assertIn(f"- {longer} 2: Phương pháp số 2", quiz["question"])
-            # Review 5 (M1): never a word inside a sentence; the explanation is left as written.
-            self.assertEqual(quiz["explanation"], item_quiz(label)["explanation"])
+            # Review 5 (M1): never a word inside a sentence; review 6 (L6): the explanation names the items as the
+            # options do ("vì Ý 1" -> "vì Ý kiến 1").
+            self.assertIn(f"A - Đúng vì {longer} 1 chia", quiz["explanation"])
             self.assertTrue(all(len(choice["text"]) >= 8 for choice in quiz["choices"]))
             self.assertNotIn("Phương án", quiz["question"])
 

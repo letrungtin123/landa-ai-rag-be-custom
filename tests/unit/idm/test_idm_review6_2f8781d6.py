@@ -18,6 +18,7 @@ from app.idm.fallback_lines import restore_stops
 from app.idm.fidelity_checks import NEW_FACT_CODE, SENTENCE_COPY_CODE, SENTENCE_LENGTH_CODE
 from app.idm.node_acceptance import html_quality_code
 from app.idm.qa import ANSWER_LEAK_CODE
+from app.idm.quiz_letters import expand_short_item_labels
 from app.idm.source_locked import _is_label, render_idm_source_locked_html
 from app.idm.source_names import NAME_NOT_IN_SOURCE_CODE, NameGuide
 from app.idm.storyboard_context import _Draft
@@ -292,3 +293,25 @@ class CoverPageTests(unittest.TestCase):
         self.assertEqual(unread_image_pages(locators, texts), [12, 40, 41, 42, 44])
         self.assertTrue(evidence_needs_check(locators[:3], (), texts))
         self.assertFalse(evidence_needs_check(locators[-1:], (), texts))
+
+
+class ExpandedLabelTests(unittest.TestCase):
+    """L6: the expanded stem label is the same in the explanation and the hints; "lưu ý 2" never changes."""
+
+    def test_the_explanation_and_hints_follow(self) -> None:
+        items = "\n".join(f"- Ý {number}: {text}" for number, text in enumerate(
+            ("Gọi lại cho khách trong ngày.", "Gửi thư xin lỗi theo mẫu chuẩn.", "Chuyển ngay cho quản lý cấp cao.",
+             "Hẹn khách mang máy đến cửa hàng."), 1))
+        question = {"problem_type": "multiple_choice", "title": "Chọn ý đúng cho tình huống an toàn",
+                    "question": f"Giả sử khách báo máy sấy bốc khói. Bạn cân nhắc bốn ý:\n{items}\nÝ nào đúng?",
+                    "choices": [{"text": f"Ý {number}", "correct": number == 3} for number in (3, 1, 2, 4)],
+                    "hints": ["Xem lại Ý 3: an toàn trước."],
+                    "explanation": "Nguyên tắc: cần lưu ý 2 điều.\nA - Đúng vì Ý 3 chuyển ngay.\nB - Sai vì Ý 1 chậm."
+                                   "\nC - Sai vì Ý 2 chưa xử lý.\nD - Sai vì Ý 4 chậm."}
+        expanded, _count = expand_short_item_labels(question)
+        lines = expanded["explanation"].splitlines()
+        self.assertEqual(lines[0], "Nguyên tắc: cần lưu ý 2 điều.")
+        self.assertEqual(lines[1:], ["A - Đúng vì Ý kiến 3 chuyển ngay.", "B - Sai vì Ý kiến 1 chậm.",
+                                     "C - Sai vì Ý kiến 2 chưa xử lý.", "D - Sai vì Ý kiến 4 chậm."])
+        self.assertEqual(expanded["hints"], ["Xem lại Ý kiến 3: an toàn trước."])
+        self.assertEqual(expanded["title"], question["title"])

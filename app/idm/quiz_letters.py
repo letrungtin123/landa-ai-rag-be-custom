@@ -262,14 +262,18 @@ _SHORT_LABEL: Final = r"(?i:ý|mục|câu|bước|item|point)"
 _SHORT_ITEM_RE: Final = re.compile(rf"^([ \t]*[-–•*][ \t]+)({_SHORT_LABEL})[ \t]+(\d{{1,2}})([ \t]*:)",  # noqa: RUF001
                                    re.MULTILINE)
 _SHORT_USE_RE: Final = re.compile(rf"({_SHORT_LABEL})[ \t]+(\d{{1,2}})")
+# Review 6 (L6): the words after which the explanation or a hint names a listed item ("A - Đúng vì Ý 3 …").
+_LABEL_LEADS: Final = ("vì|của|như|lại|chọn|là|và|hoặc|với|thấy|xem|theo|because|of|like|choose|is|and|or|with"
+                       "|see")
 
 
 def expand_short_item_labels(component: dict[str, Any]) -> tuple[dict[str, Any], int]:
     """``component`` with the short label of its stem items ("- Ý 1:", "- Mục 2:") written out ("- Ý kiến 1:", "- Mục
     số 2:") at the start of the stem's item lines and in the options that are only such a name ("Ý 1"), and how many
     of them changed; ``(component, 0)`` unless an option is such a name under 8 characters, the stem lists the items
-    1, 2 … under that one label, and every option that is such a name names a listed item. Nothing else of the quiz
-    changes (review 5, M1)."""
+    1, 2 … under that one label, and every option that is such a name names a listed item. Never a word inside a
+    sentence (review 5, M1); review 6 (L6): the explanation and the hints name the items as the options do, where they
+    write the label as the stem does ("Ý 3", never "lưu ý 2") at a line start or after "vì", "của", "lại" …."""
 
     kind = str(component.get("problem_type") or "multiple_choice").strip().lower()
     question = component.get("question")
@@ -306,6 +310,23 @@ def expand_short_item_labels(component: dict[str, Any]) -> tuple[dict[str, Any],
         text = unicodedata.normalize("NFC", str(choices[position].get("text") or "")).strip(" .:;,")
         result["choices"][position]["text"] = f"{noun(match.group(1))} {match.group(2)}{text[match.end():]}"
         count += 1
+    written = {match.group(2) for match in _SHORT_ITEM_RE.finditer(stem)}
+    use = re.compile(rf"(^|(?<!\w)(?:{_LABEL_LEADS}) )({'|'.join(map(re.escape, sorted(written)))}) (\d{{1,2}})(?!\w)",
+                     re.MULTILINE)
+
+    def rename(match: re.Match[str]) -> str:
+        if int(match.group(3)) not in numbers:
+            return match.group(0)
+        return f"{match.group(1)}{noun(match.group(2))} {match.group(3)}"
+
+    for key in ("explanation", "hints"):
+        value = result.get(key)
+        texts = [value] if isinstance(value, str) else list(value) if isinstance(value, list) else []
+        renamed = [use.subn(rename, unicodedata.normalize("NFC", text)) if isinstance(text, str) else (text, 0)
+                   for text in texts]
+        count += sum(changes for _text, changes in renamed)
+        if renamed:
+            result[key] = renamed[0][0] if isinstance(value, str) else [text for text, _changes in renamed]
     return result, count
 
 

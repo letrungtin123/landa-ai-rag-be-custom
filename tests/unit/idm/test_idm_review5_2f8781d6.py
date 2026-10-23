@@ -134,14 +134,17 @@ class ShortLabelTests(unittest.TestCase):
                 "explanation": "Nguyên tắc: cần lưu ý 2 điều: an toàn trước, rồi mới tới bồi thường.\nA - Đúng vì Ý 3 "
                                "chuyển ngay.\nB - Sai vì Ý 1 chậm.\nC - Sai vì Ý 2 chưa xử lý.\nD - Sai vì Ý 4 chậm."}
         expanded, count = expand_short_item_labels(quiz)
-        self.assertEqual(count, 8)
+        self.assertEqual(count, 12)  # review 6 (L6): the explanation's four "vì Ý N" too
         self.assertEqual([choice["text"] for choice in expanded["choices"]],
                          ["Ý kiến 3", "Ý kiến 1", "Ý kiến 2", "Ý kiến 4"])
         self.assertIn("\n- Ý kiến 3: Chuyển ngay cho quản lý cấp cao.", expanded["question"])
         self.assertIn("(gợi ý 2 cách)", expanded["question"])
         self.assertIn("\nÝ nào đúng?", expanded["question"])
-        for key in ("title", "explanation", "hints"):
+        for key in ("title", "hints"):  # "Đồng ý 1 lần" stays
             self.assertEqual(expanded[key], quiz[key], key)
+        self.assertEqual(expanded["explanation"].splitlines()[:2],
+                         ["Nguyên tắc: cần lưu ý 2 điều: an toàn trước, rồi mới tới bồi thường.",
+                          "A - Đúng vì Ý kiến 3 chuyển ngay."])
         self.assertTrue(quiz["choices"][0]["text"] == "Ý 3")  # the input is never changed
 
 
