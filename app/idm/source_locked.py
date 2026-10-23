@@ -257,7 +257,7 @@ def _cells(text: str) -> list[str]:
     return [cell for part in _CELL_SEPARATOR_RE.split(text) if (cell := _CELL_MARKER_RE.sub("", part.strip()))]
 
 
-def _prepare_lines(title: str, values: Iterable[Any], *, labels: bool = False) -> list[str]:
+def _prepare_lines(title: str, values: Iterable[Any], *, labels: bool = False, ordered: bool = False) -> list[str]:
     facts = source_facts(values, _is_label, keep_labels=labels)
     title_key = _key(title)
     lines: list[str] = []
@@ -298,7 +298,7 @@ def _prepare_lines(title: str, values: Iterable[Any], *, labels: bool = False) -
                 joined = 0
     # A unit whose only fact repeats its title still shows that fact (the shared validator
     # requires visible source text beyond the title).
-    return prefix_repeated_labels(lines or repeats, _is_label) if labels else lines or repeats
+    return prefix_repeated_labels(lines or repeats, _is_label, ordered=ordered) if labels else lines or repeats
 
 
 def _row_cells(row: str) -> list[str]:
@@ -439,7 +439,7 @@ def render_idm_source_locked_html(
     # The shared validator counts <li> inside <ol>; when the plan requires an ordered list,
     # lone numbered lines keep the legacy list form so the required artifact is preserved.
     keep_single_ordered = "ordered_list" in required
-    lines = _prepare_lines(title, values, labels=True)
+    lines = _prepare_lines(title, values, labels=True, ordered=keep_single_ordered)
     names = _Names.of(lines)
     parts = [f"<h2>{html.escape(title)}</h2>"]
     index = 0

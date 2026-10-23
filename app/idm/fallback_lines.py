@@ -37,7 +37,7 @@ import unicodedata
 from collections.abc import Callable, Iterable, Sequence
 from typing import Any, Final
 
-from app.content.instructional_quality import TABLE_ROW_RE, clean_source_facts
+from app.content.instructional_quality import ORDERED_STEP_RE, TABLE_ROW_RE, clean_source_facts
 from app.core.text import casefold_strip_marks
 from app.idm.acronyms import keeps_capitals
 from app.idm.text import glued_words
@@ -61,6 +61,8 @@ _STEP_MARKER_RE: Final = re.compile(r"^((?:bước|buoc|step|giai đoạn|phase|
 _LEAD_RE: Final = re.compile(r"^([^:]{2,90}?)\s*:\s+\S")
 # Review 6 (M2): a label the section name may lead has letters of its own ("Mục tiêu"; never "85%").
 _MIN_LABEL_LETTERS: Final = 4
+# Review 7 (M1): the letters a label needs to be a heading at all (``source_locked._MIN_HEADING_LETTERS``).
+_MIN_JOIN_LETTERS: Final = 2
 _SHORT_NAME_MAX_CHARS: Final = 60
 _SHORT_NAME_MAX_WORDS: Final = 8
 LABEL_JOINER: Final = " – "  # noqa: RUF001 - the en dash joins the section name and the label
@@ -247,19 +249,25 @@ class PrefixedLabel(str):
         return made
 
 
-def _joins_title(lines: Sequence[str], position: int, is_label: LabelTest) -> bool:
+def _joins_title(lines: Sequence[str], position: int, is_label: LabelTest, *, ordered: bool) -> bool:
     """Review 6 (L7): the label at ``position`` comes right after its section title and before a line of content, so
-    the renderer joins the two into one heading ("Bước 2: thực hiện - Mục tiêu của bước này"), unique by the title."""
+    the renderer joins the two into one heading ("Bước 2: thực hiện - Mục tiêu của bước này"), unique by the title.
+    Review 7 (M1): only when the renderer's label run really is [title, label]: no label line before the title (a
+    figure "85%" there made all three paragraphs and the label repeated), both with letters and closed brackets, and no
+    step title the plan's ordered list turns into a list item (``ordered``)."""
 
     line = lines[position]
     previous = lines[position - 1] if position else ""
+    before = lines[position - 2] if position > 1 else ""
     following = lines[position + 1] if position + 1 < len(lines) else ""
     return (bool(previous) and is_section(previous, is_label) and is_label(line) and bool(following)
-            and not is_label(following) and not TABLE_ROW_RE.match(following)
-            and all(text.count("(") == text.count(")") for text in (previous, line)))
+            and not is_label(following) and not TABLE_ROW_RE.match(following) and not (before and is_label(before))
+            and not (ordered and ORDERED_STEP_RE.match(previous))
+            and all(text.count("(") == text.count(")") and sum(char.isalpha() for char in text) >= _MIN_JOIN_LETTERS
+                    for text in (previous, line)))
 
 
-def prefix_repeated_labels(lines: Sequence[str], is_label: LabelTest) -> list[str]:
+def prefix_repeated_labels(lines: Sequence[str], is_label: LabelTest, *, ordered: bool = False) -> list[str]:
     """``lines`` with every label an earlier section already used (as a label or as the lead of a row, "Về Chức năng
     (Functional Job): Sàng lọc …") led by its section's short name, so no label repeats ("Row 2: Người sử dụng trực
     tiếp" + ``LABEL_JOINER`` + "Về Chức năng (Functional Job)"); a label that would still repeat (two sections of one
@@ -279,7 +287,7 @@ def prefix_repeated_labels(lines: Sequence[str], is_label: LabelTest) -> list[st
             first.setdefault(key, where)
         if (label is None or not repeated or section is None or not section[1]
                 or sum(char.isalpha() for char in label) < _MIN_LABEL_LETTERS
-                or _joins_title(lines, position, is_label)):
+                or _joins_title(lines, position, is_label, ordered=ordered)):
             result.append(source)
             continue
         prefixed = f"{section[1]}{LABEL_JOINER}{label}"
