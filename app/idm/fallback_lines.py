@@ -23,7 +23,8 @@ Review 5: a step section ("BƯỚC 2: THỰC HIỆN") leads its labels by its wo
 label never reads as a numbered step (M3); a cut label gets its start back only when the slot writes that label in full
 elsewhere (L2); every label a later section repeats is led by its section name, also when an earlier section wrote it as
 the lead of a row ("Về Chức năng (Functional Job): …"), and a prefixed label is measured as a label without that name
-(``label_core``, L3); a stop after a word with a capital ("Node.Js", "TP.HCM") keeps its place (L5).
+(``label_core``, L3); a stop inside a name keeps its place (L5; review 6, L1: "Node.Js", "System.Console", "TP.HCM",
+"Tp.Hồ Chí Minh" stay, "Việt Nam.Bạn", "tăng mạnh.Do đó", "journey.It" are mended).
 
 Deterministic and meaning-preserving: no word is added except a repeated label's section name, which the source
 states as that section's title.
@@ -68,8 +69,9 @@ LABEL_JOINER: Final = " – "  # noqa: RUF001 - the en dash joins the section na
 _STOP_RE: Final = re.compile(r"\.(?=\S\S)")
 _CLOSING: Final = ")\"'" + chr(0x201D) + chr(0x2019)
 _MAX_CLOSING: Final = 2
-# Review 5 (L5): an English word of two letters after a stop is a name's part ("Node.Js"), never a sentence's start.
-_SHORT_WORD_CHARS: Final = 2
+# Review 6 (L1): the abbreviations a dot ends inside a name ("Tp.Hồ Chí Minh", "Ths.Nguyễn", "Mr.Smith", "Co.Ltd").
+_DOTTED_ABBREVIATIONS: Final = frozenset({"tp", "ths", "ts", "gs", "pgs", "bs", "ks", "mr", "mrs", "ms", "dr", "st",
+                                          "co", "inc", "ltd", "corp", "jsc", "vd", "no"})
 # A web or e-mail address keeps its dots.
 _ADDRESS_RE: Final = re.compile(r"://|^www\.|@", re.IGNORECASE)
 # The word before the stop: two letters at least (one Vietnamese letter with its mark: "Lưu ý.Đây"), not after another
@@ -305,12 +307,14 @@ def restore_stops(text: str) -> str:
         token = text[text.rfind(" ", 0, start) + 1:].split(" ", 1)[0]
         word = _LAST_WORD_RE.search(before)
         following = _WORD_RE.match(text, match.end())
-        english = following is not None and following.group(0).isascii()
-        # Review 5 (L5): never inside a name ("Node.Js", "System.Console", "TP.HCM"): the word before is lower case,
-        # and an English word after has two lower-case letters ("Js" has one; "Bị" is Vietnamese).
-        glued = (word is not None and word.group(0).islower() and start - len(before) <= _MAX_CLOSING
+        # Review 6 (L1): a lower-case letter before the stop, a capital and a lower-case letter after it, never a name's
+        # dot: a dotted abbreviation ("Tp.", "Mr.") or a code or namespace of two English words with a capital before
+        # the dot ("Node.Js", "System.Console"; "TP.HCM" has no lower-case letter before it).
+        name = (word is not None and following is not None and word.group(0).isascii()
+                and following.group(0).isascii() and not word.group(0).islower())
+        glued = (word is not None and word.group(0)[-1].islower() and start - len(before) <= _MAX_CLOSING
                  and after[0].isalpha() and after[0].isupper() and after[1].isalpha() and after[1].islower()
-                 and following is not None and (not english or len(following.group(0)) > _SHORT_WORD_CHARS)
+                 and word.group(0).lower() not in _DOTTED_ABBREVIATIONS and not name
                  and not _ADDRESS_RE.search(token))
         return ". " if glued else "."
 

@@ -13,6 +13,7 @@ from typing import Any
 
 from app.core.errors import ServiceError
 from app.idm.answer_near import ANSWER_NEAR_EXAMPLE_CODE
+from app.idm.fallback_lines import restore_stops
 from app.idm.fidelity_checks import NEW_FACT_CODE, SENTENCE_COPY_CODE, SENTENCE_LENGTH_CODE
 from app.idm.node_acceptance import html_quality_code
 from app.idm.qa import ANSWER_LEAK_CODE
@@ -204,3 +205,21 @@ class SoftRepairUsageTests(StoryboardEndpointTestCase):
         self.assertEqual(status, 200, data.get("detail"))
         self.assertEqual(provider.names.count(REPAIR), 0)
         self.assertEqual((data["usage_source"], data["usage_complete"]), ("provider", True))
+
+
+class StopTests(unittest.TestCase):
+    """L1: a glued full stop is mended between a lower-case letter and a capital with a lower-case letter, whatever
+    the words' language; only a name's dot stays."""
+
+    def test_sentences_are_mended_names_are_kept(self) -> None:
+        for glued, mended in (("thị trường Việt Nam.Bạn cần", "thị trường Việt Nam. Bạn cần"),
+                              ("sữa Vinamilk.Công ty mở rộng", "sữa Vinamilk. Công ty mở rộng"),
+                              ("chi nhánh Hà Nội.Khách hàng", "chi nhánh Hà Nội. Khách hàng"),
+                              ("chi phí tăng mạnh.Do đó, cần cắt giảm", "chi phí tăng mạnh. Do đó, cần cắt giảm"),
+                              ("rõ ràng.Ta cần", "rõ ràng. Ta cần"),
+                              ("the customer journey.It starts", "the customer journey. It starts"),
+                              ("đối thủ.On the other hand", "đối thủ. On the other hand")):
+            self.assertEqual(restore_stops(glued), mended)
+        for name in ("Node.Js là", "System.Console", "TP.HCM", "Tp.Hồ Chí Minh", "Mr.Smith", "St.Petersburg",
+                     "Ths.Nguyễn Văn A", "file README.Md", "v.v.Các bước", "trang www.abc.Com", "giá 3.5.Tiếp"):
+            self.assertEqual(restore_stops(name), name)
