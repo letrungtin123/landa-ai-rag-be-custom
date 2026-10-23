@@ -26,6 +26,7 @@ from app.core.security import (
     HMAC_TIMESTAMP_HEADER,
     ReplayCache,
     hmac_v2_canonical_message,
+    parse_hmac_secrets,
     require_configured_service_auth,
     require_internal_auth,
     sign_hmac_request,
@@ -34,7 +35,10 @@ from app.core.security import (
 from app.main import app
 from app.services import runtime as runtime_service
 
+# The v1 cross-language vector (the backend test signs the same request): TEST_SIGNATURE. Too short for a configured
+# key since the 32-character minimum (audit L2), so the authentication tests sign with AUTH_SECRET.
 TEST_SECRET = "test-secret-0123456789"
+AUTH_SECRET = "auth-test-secret-0123456789abcdef0123"
 TEST_PATH = "/v1/lesson-author/orchestration-v2/unit"
 TEST_BODY = '{"hello":"xin chào","count":2}'.encode()
 TEST_TIMESTAMP = "1791417600"
@@ -77,7 +81,7 @@ def build_request(
 def signed_headers(
     *,
     key_id: str = "kid1",
-    secret: str = TEST_SECRET,
+    secret: str = AUTH_SECRET,
     timestamp: str = TEST_TIMESTAMP,
     request_id: str = TEST_REQUEST_ID,
     signed_body: bytes = TEST_BODY,
@@ -93,7 +97,7 @@ def signed_headers(
 async def authenticate(
     request: Request,
     *,
-    secrets: str = f"kid1:{TEST_SECRET}",
+    secrets: str = f"kid1:{AUTH_SECRET}",
     cache: ReplayCache | None = None,
     accept_v1_signature: bool = True,
 ) -> None:
@@ -169,12 +173,12 @@ class HmacSecurityTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual((caught.exception.code, caught.exception.http_status), ("UNAUTHORIZED", 401))
 
     async def test_rotated_key_is_accepted(self) -> None:
-        second_secret = "rotated-secret-0123456789"
+        second_secret = "rotated-secret-0123456789abcdef0123456"
         headers = signed_headers(key_id="kid2", secret=second_secret)
         with patch("app.core.security.time.time", return_value=float(TEST_TIMESTAMP)):
             await authenticate(
                 build_request(TEST_BODY, headers=headers),
-                secrets=f"kid1:{TEST_SECRET},kid2:{second_secret}",
+                secrets=f"kid1:{AUTH_SECRET},kid2:{second_secret}",
             )
 
     def test_auth_configuration_fails_closed(self) -> None:
@@ -183,12 +187,23 @@ class HmacSecurityTests(unittest.IsolatedAsyncioTestCase):
         with self.assertRaisesRegex(RuntimeError, "AI_RAG_SERVICE_HMAC_SECRETS"):
             require_configured_service_auth(auth_mode="hmac", service_token="", hmac_secrets="")
 
+    def test_hmac_is_the_default_mode_and_a_secret_has_at_least_32_characters(self) -> None:
+        # Security audit 2026-10-24, L2: a static token is accepted only when a token mode is set explicitly.
+        with patch.dict(os.environ, {}, clear=True):
+            self.assertEqual(Settings(environment="test").auth_mode, "hmac")
+        self.assertEqual(set(parse_hmac_secrets(f"kid1:{'s' * 32}")), {"kid1"})
+        for value in (f"kid1:{'s' * 31}", f"kid1:{'s' * 32},kid2:{TEST_SECRET}"):
+            with self.subTest(value=value), self.assertRaisesRegex(RuntimeError, "SECRETS is invalid"):
+                parse_hmac_secrets(value)
+        with self.assertRaisesRegex(RuntimeError, "SECRETS is invalid"):
+            require_configured_service_auth(auth_mode="hmac", service_token="", hmac_secrets=f"kid1:{TEST_SECRET}")
+
 
 class AuthRejectionReasonTests(unittest.IsolatedAsyncioTestCase):
     """A refused request logs one short reason and counts it (audit 2026-10-24, O5); never a header value."""
 
     async def reason_of(self, request: Request, *, auth_mode: AuthMode = "hmac", token: str = "",
-                        secrets: str = f"kid1:{TEST_SECRET}", cache: ReplayCache | None = None) -> str:
+                        secrets: str = f"kid1:{AUTH_SECRET}", cache: ReplayCache | None = None) -> str:
         with (
             patch("app.core.security.time.time", return_value=float(TEST_TIMESTAMP)),
             self.assertLogs("app.core.security", level="WARNING") as logs,
@@ -200,7 +215,7 @@ class AuthRejectionReasonTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(caught.exception.http_status, 401)
         [record] = logs.records
         self.assertEqual(record.getMessage(), "auth_rejected")
-        for secret in (TEST_SECRET, TEST_SIGNATURE, "kid1", "kid-unknown", "wrong-token-value"):
+        for secret in (AUTH_SECRET, TEST_SIGNATURE, "kid1", "kid-unknown", "wrong-token-value"):
             self.assertNotIn(secret, json.dumps(record.__dict__, default=str))
         return str(record.reason)
 

@@ -89,7 +89,8 @@ bounded repair, then deterministic source-locked content marked for review. Prom
   `POST /v1/kb/documents/delete`, `POST /v1/kb/delete`, `POST /v1/chat`, the legacy lesson-author routes
   (`/v1/lesson-author/proposal`, `/blueprint`, `/chapter-checkpoint`) and the orchestration V2 routes
   (`/v1/lesson-author/orchestration-v2/source-snapshot`, `/course-skeleton`, `/chapter-shard`, `/unit`).
-- Auth: `AI_RAG_AUTH_MODE` `hmac` (target), `token` or `token_or_hmac` (rotation). HMAC headers
+- Auth: `AI_RAG_AUTH_MODE` `hmac` (the default); `token` or `token_or_hmac` (a move off the static token) only
+  when set explicitly. HMAC secrets have at least 32 characters. HMAC headers
   `X-Landa-Key-Id`, `X-Landa-Timestamp` (Unix seconds, skew `AI_RAG_AUTH_CLOCK_SKEW_SECONDS`),
   `X-Landa-Request-Id` (a new UUID per send; replays are refused for `AI_RAG_AUTH_REPLAY_TTL_SECONDS`, which
   must be at least twice the skew), `X-Landa-Signature-Version: 2` and `X-Landa-Signature` = lowercase hex
@@ -186,7 +187,7 @@ Secrets are `SecretStr` and never logged; `.env.example` holds placeholders.
 | `AI_RAG_STORAGE_DOWNLOAD_TIMEOUT_SECONDS` | int | `120` | >= 5, <= 600 |
 | `AI_RAG_PDF_COLUMN_AWARE` | bool | `true` |  |
 | `SUPABASE_STORAGE_BUCKET` | text | `landa-storage` | length >= 1, length <= 255 |
-| `AI_RAG_AUTH_MODE` | `token` \| `hmac` \| `token_or_hmac` | `token_or_hmac` |  |
+| `AI_RAG_AUTH_MODE` | `token` \| `hmac` \| `token_or_hmac` | `hmac` |  |
 | `AI_RAG_SERVICE_TOKEN` | secret | empty |  |
 | `AI_RAG_SERVICE_HMAC_SECRETS` | secret | empty |  |
 | `AI_RAG_AUTH_CLOCK_SKEW_SECONDS` | int | `300` | >= 30, <= 900 |

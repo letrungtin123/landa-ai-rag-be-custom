@@ -34,7 +34,8 @@ HEX_SIGNATURE_PATTERN = re.compile(r"^[0-9a-f]{64}$")
 # ASCII digits only: str.isdigit() also accepts other scripts' digits and SUPERSCRIPT TWO, which int() rejects (an
 # unsigned request then ended in an unhandled 500 instead of 401). Twelve digits hold any Unix time in seconds.
 HMAC_TIMESTAMP_PATTERN = re.compile(r"[0-9]{1,12}")
-MINIMUM_HMAC_SECRET_LENGTH = 16
+# 32 characters at least (security audit 2026-10-24, L2): `openssl rand -hex 32` gives 64.
+MINIMUM_HMAC_SECRET_LENGTH = 32
 # Why a request was refused: the bounded reason of the auth_rejected log line and of ai_rag_auth_rejections_total
 # (audit 2026-10-24, O5). Never a header value, a key id or a secret. "bad_version": an unknown signature version;
 # "legacy_signature": a v1 signature while AI_RAG_HMAC_ACCEPT_V1_SIGNATURE is false.

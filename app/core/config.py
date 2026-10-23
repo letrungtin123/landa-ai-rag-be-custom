@@ -266,7 +266,9 @@ class Settings(BaseSettings):
         max_length=255,
     )
 
-    auth_mode: AuthMode = Field(default="token_or_hmac", validation_alias="AI_RAG_AUTH_MODE")
+    # hmac by default (security audit 2026-10-24, L2): the static-token modes (token, token_or_hmac, kept for a key
+    # rotation) apply only when set explicitly.
+    auth_mode: AuthMode = Field(default="hmac", validation_alias="AI_RAG_AUTH_MODE")
     service_token: SecretStr = Field(default=SecretStr(""), validation_alias="AI_RAG_SERVICE_TOKEN")
     service_hmac_secrets: SecretStr = Field(default=SecretStr(""), validation_alias="AI_RAG_SERVICE_HMAC_SECRETS")
     auth_clock_skew_seconds: int = Field(

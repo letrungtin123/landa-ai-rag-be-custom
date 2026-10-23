@@ -45,7 +45,8 @@ class CheckpointProviderSDKTests(unittest.TestCase):
             finally:
                 main.app.dependency_overrides.pop(api_deps.get_db, None)
 
-        with patch.object(main.settings, "service_token", SecretStr("offline-token")), patch("app.services.lesson_author.proposal.lesson_author_proposal", generation):
+        # The static token is accepted only in an explicit token mode (hmac is the default since audit L2).
+        with patch.object(main.settings, "auth_mode", "token"), patch.object(main.settings, "service_token", SecretStr("offline-token")), patch("app.services.lesson_author.proposal.lesson_author_proposal", generation):
             return asyncio.run(run())
 
     def test_real_sdk_code_not_status_code_is_classified(self):

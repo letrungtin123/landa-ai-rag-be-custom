@@ -111,10 +111,9 @@ if hmac_value.strip():
     seen = set()
     for index, entry in enumerate(hmac_value.split(","), start=1):
         kid, sep, key_secret = entry.strip().partition(":")
-        if not sep or not KID.match(kid) or len(key_secret) < 16 or kid in seen:
-            fail(f"AI_RAG_SERVICE_HMAC_SECRETS entry #{index}: expected unique key_id:secret, secret >= 16 chars")
-        elif len(key_secret) < 32:
-            print(f"warning: AI_RAG_SERVICE_HMAC_SECRETS entry #{index} ({kid}) is shorter than 32 chars", file=sys.stderr)
+        # The service refuses to start with a secret under 32 characters (app.core.security).
+        if not sep or not KID.match(kid) or len(key_secret) < 32 or kid in seen:
+            fail(f"AI_RAG_SERVICE_HMAC_SECRETS entry #{index}: expected unique key_id:secret, secret >= 32 chars")
         seen.add(kid)
 
 database_url = values.get("DATABASE_URL", "")

@@ -174,7 +174,8 @@ class StagedInstanceOutputTests(unittest.TestCase):
                                              headers={"X-Landa-AI-Service-Token": "fixture-internal-token"})
             finally:
                 main.app.dependency_overrides.pop(api_deps.get_db, None)
-        with patch.object(main.settings, "service_token", SecretStr("fixture-internal-token")), patch("app.services.provider.generate_content", provider), \
+        # The static token is accepted only in an explicit token mode (hmac is the default since audit L2).
+        with patch.object(main.settings, "auth_mode", "token"), patch.object(main.settings, "service_token", SecretStr("fixture-internal-token")), patch("app.services.provider.generate_content", provider), \
                 patch("app.services.lesson_author.proposal.lesson_author_proposal", generation), self.assertLogs("app.main", "INFO") as logs:
             result = asyncio.run(send())
         self.assertEqual(result.status_code, 422)
