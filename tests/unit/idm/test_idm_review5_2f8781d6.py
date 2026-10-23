@@ -9,6 +9,7 @@ import json
 import unittest
 from typing import Any
 
+from app.idm.answer_near import ANSWER_NEAR_EXAMPLE_CODE, near_example
 from app.idm.fallback_lines import restore_stops
 from app.idm.node_acceptance import html_quality_code
 from app.idm.quiz_letters import expand_short_item_labels
@@ -37,7 +38,7 @@ from tests.unit.idm.test_idm_storyboard import (
 KEY = "Ghi nhận phản hồi và hẹn gọi lại cho khách trong ngày"
 QUIZ = {
     "question": "Giả sử một khách hàng gọi lần thứ hai để phàn nàn vì đơn hàng giao trễ, chưa có thiệt hại tài "
-                "chính. Bạn nên làm gì trước tiên?",
+                "chính. Với khiếu nại cấp 2 này, bạn nên làm gì trước tiên?",
     "choices": [{"text": "Chuyển hồ sơ sang bộ phận Pháp chế ngay lập tức", "correct": False},
                 {"text": KEY, "correct": True},
                 {"text": "Đề nghị hoàn tiền toàn bộ giá trị của đơn hàng", "correct": False}],
@@ -74,6 +75,8 @@ class SoftFindingRepairTests(StoryboardEndpointTestCase):
         self.assertEqual(logged_events(logs.records, "idm_unit_repair_guard"), [])
         quality = logged_events(logs.records, "idm_unit_quality")[-1]
         self.assertEqual(quality["fallback_slots"], [])
+        # The repaired html now holds the key's words and the case names it: the unchanged quiz turns soft.
+        self.assertEqual(quality["remaining_codes"], [ANSWER_NEAR_EXAMPLE_CODE])
         html = json.dumps(data["unit"]["components"][0], ensure_ascii=False)
         self.assertIn("hẹn gọi lại cho khách và báo trưởng nhóm", html)
         self.assertNotIn("source_locked_fallback", data["unit"]["components"][0])
@@ -268,3 +271,50 @@ class ImagePageCoverTests(unittest.TestCase):
         self.assertEqual(unread_image_pages(regions, texts), [30, 31, 32, 33])
         self.assertTrue(evidence_needs_check(regions[2:4], (), texts))
         self.assertFalse(evidence_needs_check(regions[:2], (), texts))
+
+
+def html_slot(*sections: tuple[str, list[dict[str, Any]]]) -> dict[str, Any]:
+    return {"type": "html", "semantic_content": {"version": 2, "sections": [
+        {"heading": heading, "blocks": blocks} for heading, blocks in sections]}}
+
+
+def block(kind: str, text: str | None = None, rows: tuple[tuple[str, str], ...] = ()) -> dict[str, Any]:
+    return {"kind": kind, "text": text, "items": [],
+            "rows": [{"label": label, "value": value} for label, value in rows]}
+
+
+def quiz(question: str, options: list[str], key: int = 0) -> dict[str, Any]:
+    return {"type": "problem", "problem_type": "multiple_choice", "question": question, "explanation": "x",
+            "choices": [{"text": text, "correct": index == key} for index, text in enumerate(options)]}
+
+
+class RuleApplicationTests(unittest.TestCase):
+    """M7: a new case that applies a taught rule is no give-away, whether the key copies or rewords the rule."""
+
+    RULE = html_slot(("Khi nào chuyển khiếu nại lên cấp trên?", [
+        block("paragraph", "Khiếu nại liên quan đến an toàn sản phẩm phải được chuyển ngay cho quản lý cấp cao xử lý "
+                           "trong vòng hai giờ."),
+        block("paragraph", "Khiếu nại về giao hàng chậm do nhân viên tuyến đầu tự xử lý và gọi lại cho khách trong "
+                           "ngày.")]))
+    DISTRACTORS = ("Hứa đổi máy mới cho khách vào cuối tuần này", "Gửi thư xin lỗi theo mẫu chuẩn của công ty",
+                   "Hẹn khách mang máy đến cửa hàng để kiểm tra")
+    CASE = "Giả sử bạn nhận cuộc gọi của khách nói máy sấy vừa mua bốc khói khi dùng lần đầu. Bạn làm gì trước?"
+
+    def test_applying_a_rule_to_a_new_case_is_quiet(self) -> None:
+        for key in ("Chuyển ngay cho quản lý cấp cao xử lý trong vòng hai giờ",
+                    "Báo ngay cho quản lý cấp cao để xử lý trong hai giờ"):
+            self.assertIsNone(near_example(quiz(self.CASE, [key, *self.DISTRACTORS]), [self.RULE]), key)
+        english = html_slot(("When do you escalate?", [block("table", rows=(
+            ("Safety complaint", "Escalate to a senior manager within two hours."),
+            ("Late delivery", "The front-line agent resolves it and calls the customer back the same day.")))]))
+        question = quiz("Suppose a customer says the new heater smoked on first use. What do you do first?",
+                        ["Escalate to a senior manager within two hours",
+                         "Promise a replacement heater by the end of the week",
+                         "Send the standard apology email template",
+                         "Ask the customer to bring the heater to the store"])
+        self.assertIsNone(near_example(question, [english]))
+
+    def test_a_case_that_names_the_condition_still_counts(self) -> None:
+        named = quiz("Khiếu nại liên quan đến an toàn sản phẩm thì bạn làm gì trước?",
+                     ["Chuyển ngay cho quản lý cấp cao xử lý trong vòng hai giờ", *self.DISTRACTORS])
+        self.assertEqual(near_example(named, [self.RULE]), "option")

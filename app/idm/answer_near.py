@@ -24,6 +24,12 @@ fallback:
 * ``ANSWER_ITEM_LENGTH_CODE`` (``item_length_cue``): the options only name the case's listed items and the item of the
   key is clearly the longest one (QC: 5 of 6 lists; c1.l1.u1 106 against 97 characters, c2.l1.u3 70 against 61).
 
+Review 5 (M7): the two option measures count only when the case names the passage the key copies, in a word pair of
+that passage the key does not hold (its row label or condition: "tầng Hậu trường", "nỗi đau ở tầng cảm xúc", "vai trò
+của tư duy phản biện"). A question that gives a new case and asks the learner to apply a taught rule ("máy sấy vừa mua
+bốc khói" for "khiếu nại liên quan đến an toàn sản phẩm phải được chuyển ngay cho quản lý cấp cao …") is the normal
+design, never a finding, whether the key copies or rewords the rule's action (``_named_by_case``).
+
 Calibrated on the run's 11 provider questions (the 5 leaking ones caught, the good c1.l2.u2 and c1.l1.u2 not) and
 checked on the 23 questions of two earlier runs of the same source. Pure functions; thresholds in ``app.idm.policy``.
 """
@@ -50,7 +56,7 @@ from app.idm.policy import (
     IDM_MCQ_ITEM_LENGTH_CUE_RATIO,
 )
 from app.idm.quiz_text import named_items
-from app.idm.text import content_words, idm_fold
+from app.idm.text import content_pairs, content_words, idm_fold
 from app.idm.worksheet_input import is_input_section
 
 ANSWER_NEAR_EXAMPLE_CODE: Final = "IDM_W5_ANSWER_NEAR_EXAMPLE"
@@ -131,6 +137,14 @@ def _case(question: str) -> str:
     return " ".join(line for line in question.splitlines() if not line.strip().startswith("-"))
 
 
+def _named_by_case(case: str, passages_: Sequence[str], key: str) -> bool:
+    """Review 5 (M7): the case names one of ``passages_`` (the ones the key copies) by a word pair of it the key does
+    not hold: the question asks for that passage, so the key is found by its words."""
+
+    asked = content_pairs(case) - content_pairs(key)
+    return any(asked & content_pairs(passage) for passage in passages_)
+
+
 def near_example(component: Mapping[str, Any], html_before: Sequence[Mapping[str, Any]]) -> NearKind | None:
     """What gives the key away by its words (module docstring): the key option, the listed item it names, the case
     that copies the passage holding it, or the stem that names it; ``None`` when nothing does."""
@@ -140,8 +154,9 @@ def near_example(component: Mapping[str, Any], html_before: Sequence[Mapping[str
     # hai"), as for the leak check (``answer_checks._labelled_key``).
     if key is None or len(texts) < _MIN_OPTIONS or _labelled_key(texts, key, unit_teaching(list(html_before), [])):
         return None
-    shown = [_tokens(passage) for passage in passages(html_before)]
     shown_texts = passages(html_before)
+    shown = [_tokens(passage) for passage in shown_texts]
+    stated = _case(str(component.get("question") or ""))
     others = [index for index in range(len(texts)) if index != key]
     words = [_tokens(text) for text in texts]
 
@@ -154,19 +169,25 @@ def near_example(component: Mapping[str, Any], html_before: Sequence[Mapping[str
         return best
 
     key_run, run_words = longest(key)
+    copied = [text for passage, text in zip(shown, shown_texts, strict=True) if _run(words[key], passage)[0] == key_run]
     if (key_run >= IDM_ANSWER_NEAR_RUN_WORDS and len(content_words(" ".join(run_words)))
-            >= IDM_ANSWER_NEAR_RUN_CONTENT_WORDS and key_run > max(longest(index)[0] for index in others)):
+            >= IDM_ANSWER_NEAR_RUN_CONTENT_WORDS and key_run > max(longest(index)[0] for index in others)
+            and _named_by_case(stated, copied, texts[key])):
         return "item" if named else "option"
     content = [set(content_words(text)) for text in texts]
 
-    def share(index: int) -> float:
-        return max((len(content[index] & set(content_words(passage))) / len(content[index])
-                    for passage in shown_texts), default=0.0) if content[index] else 0.0
+    def shared(index: int, passage: str) -> float:
+        return len(content[index] & set(content_words(passage))) / len(content[index]) if content[index] else 0.0
 
-    if (len(content[key]) >= IDM_ANSWER_NEAR_MIN_KEY_WORDS and share(key) >= IDM_ANSWER_NEAR_MIN_SHARE
-            and share(key) - max(share(index) for index in others) >= IDM_ANSWER_NEAR_MIN_MARGIN):
+    def share(index: int) -> float:
+        return max((shared(index, passage) for passage in shown_texts), default=0.0)
+
+    best = share(key)
+    if (len(content[key]) >= IDM_ANSWER_NEAR_MIN_KEY_WORDS and best >= IDM_ANSWER_NEAR_MIN_SHARE
+            and best - max(share(index) for index in others) >= IDM_ANSWER_NEAR_MIN_MARGIN
+            and _named_by_case(stated, [text for text in shown_texts if shared(key, text) == best], texts[key])):
         return "item" if named else "option"
-    case = _tokens(_case(str(component.get("question") or "")))
+    case = _tokens(stated)
     own = _bigrams(texts[key]) - set().union(*(_bigrams(texts[index]) for index in others))
     if any(_run(case, passage)[0] >= IDM_ANSWER_NEAR_CASE_RUN_WORDS and own & _bigrams(text)
            for passage, text in zip(shown, shown_texts, strict=True)):
