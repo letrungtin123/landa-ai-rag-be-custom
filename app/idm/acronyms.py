@@ -116,8 +116,11 @@ _TEXT_KINDS: Final = frozenset({"paragraph", "task", "warning"})
 _INITIAL_STOPS: Final = frozenset({"of", "and", "the", "for", "to", "in", "on", "&", "và", "của", "cho"})
 _MAX_SKIPPED_WORDS: Final = 2
 # Review 7 (L6): the words a source pairing must cover ("khách hàng" alone pairs "Chăm sóc khách hàng" with "Trải nghiệm
-# khách hàng (CX)").
+# khách hàng (CX)"); review 8 (L3): fewer only when they are the unit's whole dashed full form ("Tiếp thị - MKT").
 _MIN_PAIRED_WORDS: Final = 3
+# Review 8 (L3): the established initials that are not a word's first letter ("Customer Experience" -> CX); a short
+# explicit list, never a guess.
+_IRREGULAR_INITIALS: Final = {"experience": "x", "exchange": "x"}
 _LIST_KINDS: Final = frozenset({"bullets", "steps"})
 
 
@@ -204,24 +207,28 @@ def abbreviations(texts: Iterable[str]) -> list[str]:
 
 def _spelled(token: str, words: Sequence[str]) -> bool:
     """The last of ``words`` spell ``token`` by their initials, with or without their function words ("Moments of
-    Truth" -> MOT; review 5, L1)."""
+    Truth" -> MOT; review 5, L1), or with an established irregular initial ("Customer Experience" -> CX; review 8,
+    L3)."""
 
     letters = idm_fold("".join(char for char in token if char.isalpha()))
     for size in range(1, min(len(words), len(letters) + _MAX_SKIPPED_WORDS) + 1):
         tail = [word for word in words[-size:] if word[:1].isalpha()]
         initials = "".join(idm_fold(word[:1]) for word in tail)
         content = "".join(idm_fold(word[:1]) for word in tail if word.lower() not in _INITIAL_STOPS)
-        if letters and letters in {initials, content}:
+        irregular = "".join(_IRREGULAR_INITIALS.get(word.lower(), idm_fold(word[:1])) for word in tail
+                            if word.lower() not in _INITIAL_STOPS)
+        if letters and letters in {initials, content, irregular}:
             return True
     return False
 
 
 def _paired(token: str, words: Sequence[str], source: str) -> bool:
     """Review 6 (L3): the facts (``source``, folded) pair the last of ``words`` with ``token`` themselves ("Trải nghiệm
-    khách hàng (CX)", "… - CX", "CX (Trải nghiệm khách hàng)"), so a full form whose initials do not spell it counts."""
+    khách hàng (CX)", "… - CX", "CX (Trải nghiệm khách hàng)"), so a full form whose initials do not spell it counts.
+    At least three of them (review 7, L6), or all of fewer (review 8, L3: "Tiếp thị - MKT")."""
 
     abbreviation = re.escape(idm_fold(token))
-    for size in range(_MIN_PAIRED_WORDS, min(len(words), _MAX_EXPANSION_WORDS) + 1):
+    for size in range(min(_MIN_PAIRED_WORDS, len(words)), min(len(words), _MAX_EXPANSION_WORDS) + 1):
         phrase = re.escape(idm_fold(" ".join(words[-size:])))
         if re.search(rf"(?<!\w){phrase}\s*(?:[-–—:]\s*|\(\s*){abbreviation}(?!\w)"  # noqa: RUF001
                      rf"|(?<!\w){abbreviation}\s*(?:[-–—:]\s*|\(\s*){phrase}(?!\w)", source):  # noqa: RUF001

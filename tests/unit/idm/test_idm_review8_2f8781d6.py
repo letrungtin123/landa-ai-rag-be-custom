@@ -8,6 +8,7 @@ from __future__ import annotations
 import itertools
 import unittest
 
+from app.idm.acronyms import explained
 from app.idm.node_acceptance import html_quality_code
 from app.idm.quiz_letters import expand_short_item_labels
 from app.idm.source_locked import render_idm_source_locked_html
@@ -136,6 +137,21 @@ class EnglishHeadingTests(unittest.TestCase):
                             ("Bản đồ thấu cảm (Eisenhower Matrix)", ["Eisenhower Matrix"]),
                             ("Ma trận thấu cảm (Empathy Matrix)", ["Ma trận thấu cảm", "Empathy Matrix"])):
             self.assertEqual(guide.missing(text), found, text)
+
+
+class TwoWordFullFormTests(unittest.TestCase):
+    """L3: "Customer Experience - CX" (the established X of "Experience") and the facts' own two-word pairing
+    ("Tiếp thị - MKT") explain the abbreviation again; a two-word tail of another phrase still does not."""
+
+    def test_two_word_full_forms(self) -> None:
+        for unit, source, token in (
+                ("Customer Experience - CX là trọng tâm.", "Customer Experience (CX) matters.", "CX"),
+                ("We track Customer Experience - CX weekly.", "", "CX"),
+                ("Tiếp thị - MKT phối hợp.", "Phòng Tiếp thị (MKT) phụ trách.", "MKT")):
+            self.assertTrue(explained(token, None, [unit], source_texts=[source] if source else []), unit)
+        source = ["Trải nghiệm khách hàng (CX) là cách khách cảm nhận doanh nghiệp."]
+        self.assertFalse(explained("CX", None, ["Chăm sóc khách hàng - CX là trọng tâm."], source_texts=source))
+        self.assertFalse(explained("CX", None, ["Customer Journey - CX là trọng tâm."]))
 
 
 if __name__ == "__main__":
