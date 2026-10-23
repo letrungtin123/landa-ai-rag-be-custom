@@ -9,6 +9,7 @@ import json
 import unittest
 
 from app.core.errors import AppError, ServiceError
+from app.idm.acronyms import explained
 from app.idm.fallback_lines import restore_stops
 from app.idm.node_acceptance import html_quality_code
 from app.idm.quiz_letters import expand_short_item_labels
@@ -176,3 +177,12 @@ class WholeLabelRenameTests(unittest.TestCase):
         self.assertEqual(lines[1], "A - Đúng vì Bước số 2 phải làm trước Bước số 3.")
         self.assertEqual(lines[4], "D - Bước số 4 sai.")
         self.assertEqual(expanded["hints"], ["Bước số 2 luôn đi trước Bước số 3."])
+
+
+class PairedTailTests(unittest.TestCase):
+    """L6: a two-word tail ("khách hàng") is no pairing; the source must pair at least three words."""
+
+    def test_a_short_tail_is_no_pairing(self) -> None:
+        source = ["Trải nghiệm khách hàng (CX) là cách khách cảm nhận doanh nghiệp."]
+        self.assertFalse(explained("CX", None, ["Chăm sóc khách hàng - CX là trọng tâm."], source_texts=source))
+        self.assertTrue(explained("CX", None, ["Trải nghiệm khách hàng - CX là trọng tâm."], source_texts=source))

@@ -115,6 +115,9 @@ _TEXT_KINDS: Final = frozenset({"paragraph", "task", "warning"})
 # than its letters a dashed full form may hold.
 _INITIAL_STOPS: Final = frozenset({"of", "and", "the", "for", "to", "in", "on", "&", "và", "của", "cho"})
 _MAX_SKIPPED_WORDS: Final = 2
+# Review 7 (L6): the words a source pairing must cover ("khách hàng" alone pairs "Chăm sóc khách hàng" with "Trải nghiệm
+# khách hàng (CX)").
+_MIN_PAIRED_WORDS: Final = 3
 _LIST_KINDS: Final = frozenset({"bullets", "steps"})
 
 
@@ -218,7 +221,7 @@ def _paired(token: str, words: Sequence[str], source: str) -> bool:
     khách hàng (CX)", "… - CX", "CX (Trải nghiệm khách hàng)"), so a full form whose initials do not spell it counts."""
 
     abbreviation = re.escape(idm_fold(token))
-    for size in range(_MIN_EXPANSION_WORDS, min(len(words), _MAX_EXPANSION_WORDS) + 1):
+    for size in range(_MIN_PAIRED_WORDS, min(len(words), _MAX_EXPANSION_WORDS) + 1):
         phrase = re.escape(idm_fold(" ".join(words[-size:])))
         if re.search(rf"(?<!\w){phrase}\s*(?:[-–—:]\s*|\(\s*){abbreviation}(?!\w)"  # noqa: RUF001
                      rf"|(?<!\w){abbreviation}\s*(?:[-–—:]\s*|\(\s*){phrase}(?!\w)", source):  # noqa: RUF001
