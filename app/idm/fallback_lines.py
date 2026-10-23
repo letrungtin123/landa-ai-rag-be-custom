@@ -255,7 +255,8 @@ def _joins_title(lines: Sequence[str], position: int, is_label: LabelTest, *, or
     the renderer joins the two into one heading ("Bước 2: thực hiện - Mục tiêu của bước này"), unique by the title.
     Review 7 (M1): only when the renderer's label run really is [title, label]: no label line before the title (a
     figure "85%" there made all three paragraphs and the label repeated), both with letters and closed brackets, and no
-    step title the plan's ordered list turns into a list item (``ordered``)."""
+    step title the plan's ordered list turns into a list item (``ordered``). Review 8 (M1): never a numbered label
+    ("1. Mục tiêu …", "Bước 1: …"), which the renderer may list with the title or the next step."""
 
     line = lines[position]
     previous = lines[position - 1] if position else ""
@@ -263,7 +264,7 @@ def _joins_title(lines: Sequence[str], position: int, is_label: LabelTest, *, or
     following = lines[position + 1] if position + 1 < len(lines) else ""
     return (bool(previous) and is_section(previous, is_label) and is_label(line) and bool(following)
             and not is_label(following) and not TABLE_ROW_RE.match(following) and not (before and is_label(before))
-            and not (ordered and ORDERED_STEP_RE.match(previous))
+            and not (ordered and ORDERED_STEP_RE.match(previous)) and not ORDERED_STEP_RE.match(line)
             and all(text.count("(") == text.count(")") and sum(char.isalpha() for char in text) >= _MIN_JOIN_LETTERS
                     for text in (previous, line)))
 
