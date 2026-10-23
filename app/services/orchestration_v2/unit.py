@@ -26,6 +26,7 @@ from app.core.logging import SERVICE_LOGGER_NAME, log_payload
 from app.idm.diagram import idm_source_step_diagram
 from app.idm.preserve_unit import is_preserve_unit, run_preserve_unit
 from app.idm.runtime import IDM_LOG_FAMILY, IdmError, IdmStageError
+from app.idm.sortable import strip_order_labels
 from app.idm.source_fallback import last_resort_builders
 from app.idm.source_locked import idm_source_faq, idm_source_grounded_single_choice, render_idm_source_locked_html
 from app.idm.storyboard import IdmUnitDeps, run_idm_unit
@@ -122,10 +123,11 @@ def _idm_unit_deps(request: RagLessonAuthorUnitV2Request) -> IdmUnitDeps:
     bundle = manifest.get("source_evidence_bundle")
     supporting = list(dict.fromkeys(item for plan in contract.component_plan
                                     for item in plan.supporting_evidence_fact_ids))
-    source_locked_components = build_orchestration_v2_source_locked_components(
-        contract, request.locale, html_renderer=render_idm_source_locked_html,
-        single_choice_builder=idm_source_grounded_single_choice, diagram_builder=idm_source_step_diagram,
-        faq_builder=idm_source_faq, keep_repeats=True)
+    source_locked_components = [strip_order_labels(component) for component in (
+        build_orchestration_v2_source_locked_components(
+            contract, request.locale, html_renderer=render_idm_source_locked_html,
+            single_choice_builder=idm_source_grounded_single_choice, diagram_builder=idm_source_step_diagram,
+            faq_builder=idm_source_faq, keep_repeats=True))]
     # The whole-unit fallback (fallback_only, a provider failure) needs every slot: a question or FAQ slot no source
     # structure rebuilds gets a statement of the lesson there (run 5496155c: 9 of 10 units answered 422 before).
     question, faq = last_resort_builders([fact.fact_text for fact in contract.source_facts], contract.idm_unit_brief)

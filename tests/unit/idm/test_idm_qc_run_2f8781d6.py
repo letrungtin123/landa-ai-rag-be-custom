@@ -15,11 +15,14 @@ from app.content.instructional_quality import clean_source_facts
 from app.idm.fallback_lines import faq_topic, restore_stops, short_name, split_glued, tidy_facts
 from app.idm.node_acceptance import html_quality_code
 from app.idm.quiz_letters import expand_short_item_labels
+from app.idm.sortable import without_order_labels
 from app.idm.source_fallback import fallback_glued_words, idm_statement_faq
 from app.idm.source_locked import render_idm_source_locked_html
+from app.idm.storyboard import IdmUnitWriter, parse_brief
 from app.schemas.orchestration_v2 import RagLessonAuthorUnitV2Request
 from app.services.orchestration_v2 import unit as unit_service
 from app.services.orchestration_v2.source_locked import render_source_locked_html
+from tests.support.idm_test_support import make_runtime
 from tests.support.log_support import logged_events
 from tests.unit.idm.test_idm_fallback_matrix import rehashed, unit_findings
 from tests.unit.idm.test_idm_storyboard import (
@@ -327,6 +330,59 @@ class FallbackFaqQuestionTests(unittest.TestCase):
         assert english is not None
         self.assertEqual(english[0]["question"], "What should learners remember about 'Journey map practice'?")
         self.assertNotIn("Hỏi đáp:", " ".join(item["question"] for item in items))
+
+
+class SortableOrderLabelTests(StoryboardEndpointTestCase):
+    """A3: the learner UI shuffles a sortable's items, so their leading ordinal labels never stay (VI and EN)."""
+
+    def test_leading_ordinal_labels_go(self) -> None:
+        cases = {
+            "vi": (["Tầng 1: Cột mốc hành trình theo trục thời gian", "Tầng 2: Tâm thế và kỳ vọng của khách hàng",
+                    "Tầng 3: Điểm đau trọng yếu ở từng giai đoạn", "Tầng 4: Điểm chạm và giải pháp tạo cảm xúc"],
+                   ["Cột mốc hành trình theo trục thời gian", "Tâm thế và kỳ vọng của khách hàng",
+                    "Điểm đau trọng yếu ở từng giai đoạn", "Điểm chạm và giải pháp tạo cảm xúc"]),
+            "vi-mixed": (["Bước 1: xác định nhóm khách hàng mục tiêu", "Giai đoạn 2 - Phân tích hành trình mua",
+                          "3. Thiết kế điểm chạm tạo khác biệt", "(4) Đo lường kết quả sau ba tháng"],
+                         ["Xác định nhóm khách hàng mục tiêu", "Phân tích hành trình mua",
+                          "Thiết kế điểm chạm tạo khác biệt", "Đo lường kết quả sau ba tháng"]),
+            "en": (["Step 1: Map the customer milestones", "Step 2: Capture the mindset at each stage",
+                    "Stage 3 - List the pain points per stage", "4) Design the touchpoints and fixes"],
+                   ["Map the customer milestones", "Capture the mindset at each stage",
+                    "List the pain points per stage", "Design the touchpoints and fixes"]),
+        }
+        for name, (items, expected) in cases.items():
+            component, count = without_order_labels({"question_text": "Sắp xếp", "items": [{"text": t} for t in items]})
+            self.assertEqual([item["text"] for item in component["items"]], expected, name)
+            self.assertEqual(count, 4, name)
+
+    def test_items_stay_as_written_when_stripping_would_break_them(self) -> None:
+        for items in (["Bước 1: Lập", "Bước 2: Duyệt", "Bước 3: Gửi đi"],  # under the 14 characters of a step
+                      ["1.5 triệu khách hàng mới trong quý", "Hai kênh bán hàng chính của công ty",
+                       "Ba nhóm sản phẩm chủ lực năm nay"],  # a figure is no ordinal
+                      ["Tầng 1: Điểm chạm của khách hàng", "Tầng 2: Điểm chạm của khách hàng",
+                       "Tầng 3: Điểm đau lớn nhất của khách"]):  # two items would read the same
+            component = {"question_text": "Sắp xếp", "items": [{"text": text} for text in items]}
+            self.assertEqual(without_order_labels(component), (component, 0))
+
+    async def test_the_writer_and_the_fallback_items_carry_no_order(self) -> None:
+        # The writer's items, as they are bound before validation.
+        body = body_for(2, 0, 1)
+        request = RagLessonAuthorUnitV2Request.model_validate(body)
+        writer = IdmUnitWriter(request.unit_contract, parse_brief(request.unit_contract),
+                               unit_service._idm_unit_deps(request), make_runtime(None))
+        written = writer.normalize_component(1, {"type": "la_sortable", "question_text": "Sắp xếp các bước", "items": [
+            {"text": f"Bước {number}: {step}"} for number, step in enumerate(
+                ("Thực hiện xử lý hoặc chuyển hồ sơ", "Phản hồi kết quả cho khách hàng",
+                 "Xác nhận khách hàng đồng ý", "Đóng hồ sơ và lưu trữ trên CRM"), 9)]})
+        self.assertEqual(written["items"][0]["text"], "Thực hiện xử lý hoặc chuyển hồ sơ")
+        self.assertEqual(writer.runtime.adjustments["w5_sortable_order_labels_stripped"], 4)
+        # The source-locked sortable of golden lsn_004 u2 writes "Bước 9: …" before each step.
+        status, data, _ = await self.post({**body, "fallback_only": True})
+        self.assertEqual(status, 200, data.get("detail"))
+        items = [item["text"] for item in data["unit"]["components"][1]["items"]]
+        self.assertTrue(items)
+        self.assertFalse([text for text in items if re.match(r"(?i)bước\s*\d", text)])
+        self.assertEqual(unit_findings({**body, "fallback_only": True}, data["unit"]), (None, []))
 
 
 if __name__ == "__main__":

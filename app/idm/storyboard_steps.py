@@ -63,6 +63,7 @@ from app.idm.quiz_letters import (
 )
 from app.idm.quiz_text import lay_out_quiz
 from app.idm.runtime import IdmResponseInvalidError, IdmRuntime, ThinkingLevel, log_stage, record_deterministic_fallback
+from app.idm.sortable import ORDER_LABELS_STRIPPED, without_order_labels
 from app.idm.source_fallback import lesson_statements
 from app.idm.source_flags import unit_flags
 from app.idm.source_locked import FAQ_FALLBACK_REPEATED_CODE, faq_answers_repeat
@@ -265,6 +266,10 @@ class IdmUnitWriterSteps:
             normalized, laid_out = lay_out_quiz(normalized)
             self.runtime.adjustments.update(codes + laid_out)
             return normalized
+        if plan_type == "la_sortable" and isinstance(component, dict):
+            # Run 2f8781d6 (A3): the UI shuffles the items, so "Tầng 1: …", "Bước 2: …" would give the order away.
+            component, stripped = without_order_labels(component)
+            self.runtime.adjustments[ORDER_LABELS_STRIPPED] += stripped
         if plan_type != "html" or not isinstance(component, dict) or not isinstance(
                 component.get("semantic_content"), dict):
             return component
