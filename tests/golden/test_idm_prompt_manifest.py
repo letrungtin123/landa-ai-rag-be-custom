@@ -171,6 +171,11 @@ HASH_HISTORY: tuple[tuple[str, str], ...] = (
     # edit note).
     ("b590b7c7ba124e1844d6ffeec9a7060daae4cfdaba9dca6465f41f6933857852",
      "A two-way rule is a conflict; unclear is text that cannot be followed"),
+    # Run 2f8781d6 (B5): the W5 writing rules and the HTML_DUPLICATE_BLOCK repair rule say that row labels several
+    # sections share go into the section heading or start with the section's name, never an identical cell twice (the
+    # writing rule moved to the module constant _REPEAT_RULE).
+    ("a657004d14c93381f6ae9fd75b91085ed863e8f685156206629dd13969573d4e",
+     "Row labels several sections share carry their section's name"),
 )
 PROMPT_NAME = re.compile(r"(prompt|_rules?$|_suffix$|rule_lines?$|_hint$|^rule_line$|_cue_line$)")
 

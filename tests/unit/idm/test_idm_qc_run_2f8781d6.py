@@ -13,10 +13,12 @@ from pathlib import Path
 from typing import Any, ClassVar
 
 from app.content.instructional_quality import clean_source_facts
+from app.idm import prompts_unit
 from app.idm.acronyms import explained
 from app.idm.fallback_lines import faq_topic, restore_stops, short_name, split_glued, tidy_facts
 from app.idm.faq_checks import FAQ_HYPE_CODE
 from app.idm.node_acceptance import html_quality_code
+from app.idm.prompts_unit import rule_line
 from app.idm.qa import JudgeOutcome, SlotFinding, _code_text, build_unit_author_note
 from app.idm.quiz_letters import expand_short_item_labels
 from app.idm.quiz_text import EXPLANATION_FILLER_CODE
@@ -508,6 +510,34 @@ class ImageCoverPageTests(unittest.TestCase):
             request = RagLessonAuthorUnitV2Request.model_validate(body)
             with self.subTest(page=page):
                 self.assertEqual(unit_service._idm_unit_deps(request).evidence_review_required, expected)
+
+
+class RepeatedRowLabelGuidanceTests(unittest.TestCase):
+    """B5: the writer and the repair are told how to show row labels several sections share; the duplicate rule Python
+    and Node share backs the guidance."""
+
+    @staticmethod
+    def profiles(labels: list[str]) -> str:
+        return "".join(f"<h2>Hồ sơ {name}</h2><table><tbody><tr><th>{label}</th><td>Việc {name} cần làm mỗi "
+                       f"ngày.</td></tr></tbody></table>" for name, label in zip(("A", "B"), labels, strict=True))
+
+    def test_repeated_labels_fail_prefixed_labels_pass(self) -> None:
+        self.assertEqual(html_quality_code(self.profiles(["Về chức năng công việc", "Về chức năng công việc"])),
+                         "HTML_DUPLICATE_BLOCK")
+        self.assertIsNone(html_quality_code(self.profiles(["Hồ sơ A - Về chức năng công việc",
+                                                           "Hồ sơ B - Về chức năng công việc"])))
+
+    def test_the_writer_and_the_repair_are_told(self) -> None:
+        self.assertIn("When several sections share the same\n  row labels (profiles, cases, layers)",
+                      prompts_unit._REPEAT_RULE)
+        self.assertIn(prompts_unit._REPEAT_RULE, writer_prompt_of(escalate_body()))
+        self.assertIn("start it with the section's name", rule_line("c0", "HTML_DUPLICATE_BLOCK", "c0"))
+
+
+def writer_prompt_of(body: dict[str, Any]) -> str:
+    request = RagLessonAuthorUnitV2Request.model_validate(body)
+    return IdmUnitWriter(request.unit_contract, parse_brief(request.unit_contract),
+                         unit_service._idm_unit_deps(request), make_runtime(None)).writer_prompt()
 
 
 if __name__ == "__main__":

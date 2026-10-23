@@ -96,6 +96,14 @@ _WORKSHEET_RULE: Final = """\
   and the input data counts toward it, so keep it lean: one template row per field (its value one guiding question
   of at most 15 words), input entries of one sentence of at most 20 words each, a worked example of at most two
   filled entries and at most 6 self-check items; a worksheet still over the budget loses its worked example."""
+# Run 2f8781d6 (B5): three profiles that share their row labels ("Về Chức năng (Functional Job)" …) repeated those
+# labels as identical cells, the duplicate rule Python and Node share (HTML_DUPLICATE_BLOCK) rejected the slot twice and
+# it fell back to the source text.
+_REPEAT_RULE: Final = """\
+- In one html slot never repeat the same paragraph, list item, table cell or callout; a worksheet may repeat its
+  template's row labels (and blank-cell guidance) in the worked example table. When several sections share the same
+  row labels (profiles, cases, layers), put the label in the section heading or start it with the section's name
+  ("Người gác cổng - Chức năng"), never an identical label twice."""
 # N9 and QC feedback 2026-10-21 (A3): a callout quotes the source and adds a point its slot does not already make.
 _CALLOUT_RULE: Final = """\
 - A "warning" block is shown to the learner as a quotation/callout: use it only for a rule, warning or
@@ -210,8 +218,7 @@ Writing rules (learner-facing, {locale_name(locale)}):
 - No file names, page or slide numbers, citations, internal IDs, "theo tài liệu nguồn", emails or URLs; never a
   number right after the word trang/trạng, page or slide (write "Hiện trạng: có 3 lần", not "Hiện trạng: 3 lần").
 - Text of la_faq, la_sortable, la_crossword and la_diagram slots never contains the characters "<" or ">".
-- In one html slot never repeat the same paragraph, list item or callout; a worksheet may repeat its template's
-  row labels (and blank-cell guidance) in the worked example table.
+{_REPEAT_RULE}
 - When UNIT_BRIEF.job_aid_signpost is set, point the learner to the Job Aid in one sentence.
 - covered_source_fact_ids: list exactly the owned fact keys given for that slot.
 - title of each slot: a short learner-facing title; selection_rationale: one sentence for the author.
@@ -330,7 +337,9 @@ UNIT_RULE_TEXT: Final[dict[str, str]] = {
     "HTML_NON_INSTRUCTIONAL_CONTACT_COPY": "remove URLs, websites and e-mail addresses",
     "HTML_OCR_NOISE": "remove runs of repeated characters",
     "HTML_DUPLICATE_BLOCK": "do not repeat the same paragraph, list item or table cell (a worksheet may repeat only "
-                            "its template's table cells)",
+                            "its template's table cells); when several sections share the same row labels (profiles, "
+                            "cases, layers), put the label in the section heading or start it with the section's name "
+                            "(\"Người gác cổng - Chức năng\"), never an identical paragraph, list item or cell",
     # Node's revision-0 acceptance rules (app.idm.node_acceptance; codes as Node logs them).
     "HTML_SOURCE_REVIEW_COPY": "write instruction for the learner, not notes about reviewing the source",
     "HTML_SOURCE_ATTRIBUTION": 'no attribution to the source ("theo tài liệu", "dựa trên nguồn", "source states")',
