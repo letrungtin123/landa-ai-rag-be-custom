@@ -1,12 +1,11 @@
 """IDM ``generate_unit`` task: W5 storyboard writer + W6 judge (spec §7.7).
 
-The writer fills exactly the server-owned component slots of the unit contract.
-Acceptance reuses the shared staged validators (injected through
-:class:`IdmUnitDeps`, so ``app.idm`` never imports ``app.main``), then Node's own
-revision-0 acceptance rules (:mod:`app.idm.node_acceptance`), and adds the IDM
-checks. A failing slot gets one scoped repair (a leak, a new fact or a contested key a
-second, targeted one when time allows), then the source-locked fallback; a repair never
-leaves a slot worse than it found it, and a unit Node would reject is never returned (run c2e5ac41).
+The writer fills exactly the server-owned component slots of the unit contract. Acceptance reuses the shared staged
+validators (injected through :class:`IdmUnitDeps`, so ``app.idm`` never imports ``app.main``), then Node's own
+revision-0 acceptance rules (:mod:`app.idm.node_acceptance`), and adds the IDM checks. A failing slot gets one scoped
+repair (a leak, a new fact or a contested key a second, targeted one when time allows), then the source-locked
+fallback; a repair never leaves a slot worse than it found it, and a unit Node would reject is never returned (run
+c2e5ac41).
 
 The unit inputs (deps, brief, budget, draft, settle code sets) are in ``app.idm.storyboard_context``, the
 writer's state and deterministic steps in ``app.idm.storyboard_steps``, its repair decisions in
@@ -78,6 +77,7 @@ from app.idm.qa import (
     CALLOUT_UNGROUNDED_CODE,
     FAQ_RESTATES_HTML_CODE,
     FRAMEWORK_INCOMPLETE_CODE,
+    SOFT_CODES,
     JudgeMode,
     JudgeOutcome,
     advisory_slot_findings,
@@ -405,8 +405,10 @@ class IdmUnitWriter(IdmUnitRepairSteps):
                               locations: Mapping[tuple[str, int], str], *, targeted: bool) -> tuple[_Draft, bool]:
         """One repair call at the thinking level the time left allows, or none (R3); ``(draft, repaired)``.
 
-        A failed repair (budget, provider, invalid answer) leaves the draft for the per-slot settlement."""
+        A failed repair (budget, provider, invalid answer) leaves the draft for the per-slot settlement (review 5, M6:
+        a provider failure of a repair of soft findings only leaves the unit as it was, ``repair_failed``)."""
 
+        before = self.provider_state()
         level = repair_thinking_for(self.runtime.remaining_seconds(), targeted=targeted, preferred=THINKING_W5)
         self.log_budget("repair_targeted" if targeted else "repair", level)
         if level is None:
@@ -422,7 +424,7 @@ class IdmUnitWriter(IdmUnitRepairSteps):
         except IdmProviderError as error:
             if error.terminal:
                 raise
-            self.failure_codes.append(error.code)
+            self.repair_failed(error.code, issues, before)
         return draft, False
 
     async def settle(self, draft: _Draft) -> _Draft | None:
@@ -434,8 +436,7 @@ class IdmUnitWriter(IdmUnitRepairSteps):
         """
 
         finding, idm = self.problems(draft)
-        # A correct option far longer than the others gets one repair too (QC run 8de1c76b, Q4); left by it, it is
-        # a review note as before.
+        # A correct option far longer than the others gets one repair too (QC run 8de1c76b, Q4), then a review note.
         cues = [(item.code, item.component_index) for item in advisory_slot_findings(
             draft.unit, {*draft.fallback_slots, *draft.review_slots})]
         if finding is None and not idm and not cues:
@@ -470,9 +471,8 @@ class IdmUnitWriter(IdmUnitRepairSteps):
         issues = self.without_style_faq([*idm, *cues])
         # Only notes to settle: a repair that breaks anything else is dropped (the unit was acceptable before).
         notes_only = finding is None and not idm
-        # Only content-mode or FAQ findings (QLT-5 C, D): they end as review notes, so a repair that makes a slot fail a
-        # shared or Node rule (a longer explanation over the budget) is dropped instead of replacing the slot with the
-        # source-locked copy.
+        # Only content-mode or FAQ findings (QLT-5 C, D) end as review notes: a repair that breaks a shared or Node rule
+        # (a longer explanation over the budget) is dropped, never the slot replaced by the source-locked copy.
         review_only = finding is None and bool(idm) and {code for code, _index in idm} <= _REVIEW_ONLY_CODES
         locations: dict[tuple[str, int], str] = {}
         if finding is not None and (slot := _slot_of(finding)) is not None:
@@ -494,10 +494,11 @@ class IdmUnitWriter(IdmUnitRepairSteps):
         if not repaired:
             return draft, False
         draft = self.guard_repair(original, self.keep_whole_questions(original, draft), "w5")
-        if notes_only and any(self.problems(draft)):
+        finding_after, idm_after = self.problems(draft)  # review 5 (H1): a soft finding never drops the repair
+        if notes_only and (finding_after is not None or any(code not in SOFT_CODES for code, _index in idm_after)):
             self.runtime.adjustments["w5_note_repair_reverted"] += 1
             draft = original
-        elif review_only and self.problems(draft)[0] is not None:
+        elif review_only and finding_after is not None:
             fidelity = {code for code, _index in idm} <= FIDELITY_CODES
             self.runtime.adjustments["w5_fidelity_repair_reverted" if fidelity else "w5_faq_repair_reverted"] += 1
             draft = original

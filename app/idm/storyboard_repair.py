@@ -5,7 +5,9 @@ review-level finding the writer's answer did not have (a new number or name, a q
 
 * P1: after every repair the findings are compared slot by slot (``slot_findings``); a slot the repair made worse
   gets its pre-repair version back, and the whole repair is dropped when that still leaves a slot worse (a question
-  that copies html the repair rewrote) (``guard_repair``).
+  that copies html the repair rewrote) (``guard_repair``). Review 5 (H1): a soft finding (``SOFT_CODES``) never makes
+  a slot worse, nor does a wording one on a slot the repair did not change (an html repair that fixed a duplicate
+  block was dropped, and its slot fell back, because the unchanged quiz now read as "near the example").
 * P3: a slot that still gives its answer away, states a new fact or has a contested key after the first repair gets one
   more targeted repair when the time left allows (``second_repair_issues``); a slot kept for review whose findings a
   later step settles loses its review mark (``refresh_review_marks``).
@@ -13,6 +15,9 @@ review-level finding the writer's answer did not have (a new number or name, a q
   left (``retry_level``).
 * P7: an FAQ slot whose findings are all wording ones is settled without a repair call (``without_style_faq``): such
   repairs flipped its question types.
+* Review 5 (M6): a transient provider failure of a repair call for soft findings only leaves the unit as if the call
+  had not been made: the AI draft with its edit note, the judge still runs, the usage stays the provider's
+  (``repair_failed``).
 
 Codes, slot indexes and counts only reach the logs, never learner text.
 """
@@ -30,6 +35,7 @@ from app.idm.policy import FAQ_COMPONENT_TYPE, IDM_REPAIR_RETRY_MIN_SECONDS
 from app.idm.qa import (
     ANSWER_CONTESTED_CODE,
     ANSWER_LEAK_CODE,
+    SOFT_CODES,
     STYLE_CODES,
     advisory_slot_findings,
     deterministic_slot_findings,
@@ -103,7 +109,9 @@ class IdmUnitRepairSteps(IdmUnitWriterSteps):
 
         Every IDM check is compared on every slot. A shared-validator or Node rule counts only on a slot the repair
         changed, and only when ``before`` passed the shared validator: it reports one finding, so a rule another slot
-        already broke before the repair is no new one."""
+        already broke before the repair is no new one. A soft finding never counts, nor does a wording one on a slot
+        the repair did not change (review 5, H1): reverting that slot changes nothing, so it could only veto the
+        whole repair."""
 
         old_rules, old_checks, complete = self.slot_findings(before)
 
@@ -111,11 +119,13 @@ class IdmUnitRepairSteps(IdmUnitWriterSteps):
             """Slot -> the codes ``draft`` adds to ``before`` on each slot it makes worse."""
 
             rules, checks, _complete = self.slot_findings(draft)
-            changed = _changed_slots(before, draft) if complete else set()
+            changed = _changed_slots(before, draft)
+            ruled = changed if complete else set()
 
             def codes(slot_rules: SlotCodes, slot_checks: SlotCodes, index: int) -> frozenset[str]:
-                return slot_checks.get(index, _NO_CODES) | (slot_rules.get(index, _NO_CODES) if index in changed
-                                                            else _NO_CODES)
+                found = slot_checks.get(index, _NO_CODES) | (slot_rules.get(index, _NO_CODES) if index in ruled
+                                                             else _NO_CODES)
+                return found - (SOFT_CODES if index in changed else STYLE_CODES)
 
             found = {}
             for index in sorted({*rules, *checks, *old_rules, *old_checks} - {UNIT_LEVEL}):
@@ -206,6 +216,23 @@ class IdmUnitRepairSteps(IdmUnitWriterSteps):
         if style_only:
             self.runtime.adjustments["w5_faq_style_repair_skipped"] += len(style_only)
         return [(code, index) for code, index in issues if index not in style_only]
+
+    def provider_state(self) -> tuple[str | None, bool]:
+        """The task's provider failure and whether its usage is complete, before a repair call (``repair_failed``)."""
+
+        return self.runtime.provider_failure_code, self.runtime.usage.complete
+
+    def repair_failed(self, code: str, issues: Sequence[tuple[str, int]], before: tuple[str | None, bool]) -> None:
+        """A transient provider failure ``code`` of the repair call for ``issues`` (``before``: ``provider_state``
+        before it) is a failure code of the unit. Review 5 (M6): a call that only repaired soft findings
+        (``SOFT_CODES``) leaves the task as it was instead, so the judge still runs and the unit keeps the provider
+        lane; the soft findings stay edit notes."""
+
+        if issues and all(issue in SOFT_CODES for issue, _index in issues):
+            self.runtime.provider_failure_code, self.runtime.usage.complete = before
+            self.runtime.adjustments["w5_soft_repair_failed"] += 1
+            return
+        self.failure_codes.append(code)
 
     def retry_level(self, error: IdmProviderError, *, targeted: bool, preferred: ThinkingLevel,
                     failed_before: str | None) -> ThinkingLevel | None:

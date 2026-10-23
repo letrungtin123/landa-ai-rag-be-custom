@@ -623,6 +623,9 @@ STYLE_CODES: Final = frozenset({
     ANSWER_LENGTH_CUE_CODE, FAQ_HYPE_CODE, *QUIZ_STYLE_CODES, ANSWER_NEAR_EXAMPLE_CODE, ANSWER_ITEM_LENGTH_CODE,
     NAME_NOT_IN_SOURCE_CODE,
 })
+# Review 5 (H1, M6): the soft findings of run 2f8781d6, repaired once and then an edit note: they never make a repair
+# worse or veto it, and a failed call that only repairs them leaves the unit as it was.
+SOFT_CODES: Final = frozenset({ANSWER_NEAR_EXAMPLE_CODE, ANSWER_ITEM_LENGTH_CODE, NAME_NOT_IN_SOURCE_CODE})
 _REVIEW_REASON_VI: Final = {
     REVIEW_REASON_FALLBACK: "có khối dùng bản dự phòng dựng từ tài liệu",
     REVIEW_REASON_KEPT_SLOTS: "có khối AI viết chưa đạt hết kiểm tra tự động (chi tiết bên dưới)",
