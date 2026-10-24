@@ -173,7 +173,7 @@ those flows retrieve: turning it on is the owner's decision.
 | `AI_RAG_BUILD_SHA` | text | `unknown` | length <= 64 |
 | `AI_RAG_READINESS_DB_TIMEOUT_MS` | int | `1000` | >= 100, <= 10000 |
 | `AI_RAG_MAX_CONCURRENT_PROVIDER_CALLS` | int | `8` | >= 1, <= 256 |
-| `AI_RAG_PROVIDER_CHAT_RESERVED_SLOTS` | int | `2` | >= 0, <= 255 |
+| `AI_RAG_PROVIDER_CHAT_RESERVED_SLOTS` | int | `0` | >= 0, <= 255 |
 | `AI_RAG_MAX_CONCURRENT_INDEX_JOBS` | int | `2` | >= 1, <= 64 |
 | `AI_RAG_CPU_WORKERS` | int | CPU count - 1, between 1 and 4 | >= 1, <= 64 |
 | `AI_RAG_LIMITER_ACQUIRE_TIMEOUT_MS` | int | `30000` | >= 100, <= 600000 |

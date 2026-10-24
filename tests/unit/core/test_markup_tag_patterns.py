@@ -23,7 +23,9 @@ from app.idm.node_acceptance_text import _JS_WS, js_trim
 from app.services.staged_unit.markup_scans import preserved_list_items
 
 FUZZ_CASES = 50_000
-MAX_SECONDS = 0.05
+# Linear code takes milliseconds on these megabyte inputs, the quadratic patterns seconds to minutes: a bound ten
+# times the idle timings keeps the test meaningful on a busy machine (review of wave 3, A2).
+MAX_SECONDS = 0.5
 MEGABYTE = 1_000_000
 LONG_S, DOTTED_I, DOTLESS_I, KELVIN = chr(0x17F), chr(0x130), chr(0x131), chr(0x212A)
 NODE_TAGS = ("li", "ol", "ul", "table", "tr", "blockquote")
@@ -139,6 +141,8 @@ PAIRS: tuple[tuple[str, Callable[[str], Any], Callable[[str], Any]], ...] = (
     ("warning artifact", lambda text: artifact_count(text, "warning"), old_blockquote_count),
     *((f"preserved_list_items {tag}", lambda text, tag=tag: preserved_list_items(text, tag),
        lambda text, tag=tag: old_preserved_list_items(text, tag)) for tag in ("ol", "ul")),
+    # js_trim was "^[ws]+|[ws]+$" (review of wave 3, A3): 20,000 spaces inside the text took 0.9 s.
+    ("js_trim", js_trim, lambda text: re.sub(f"^[{_JS_WS}]+|[{_JS_WS}]+$", "", text)),
 )
 
 HAND_CASES = (
@@ -193,6 +197,8 @@ ADVERSARIAL: dict[str, str] = {
     "<choice>": "<choice>" * (MEGABYTE // 8),
     "<choice x": "<choice x" * (MEGABYTE // 9),
     "<blockquote x": "<blockquote x" * (MEGABYTE // 13),
+    "spaces inside a paragraph": "<p>a" + " " * MEGABYTE + "x</p>",
+    "line breaks inside a paragraph": "<p>a" + "\n" * MEGABYTE + "x</p>",
 }
 
 
@@ -208,7 +214,7 @@ def fastest_seconds(function: Callable[[str], Any], text: str) -> float:
 # Inputs of a megabyte of complete tags the sanitizer keeps or drops one by one (a Python call per tag, as before):
 # linear for the regex too, so they are held to the linear bound only.
 SANITIZER_MANY_TAGS = frozenset({"<ol>", "<table>", "<table><tr>", "<label>", "<choice>"})
-LINEAR_SECONDS = 0.5
+LINEAR_SECONDS = 2.0
 
 
 class TagPatternTimingTests(unittest.TestCase):

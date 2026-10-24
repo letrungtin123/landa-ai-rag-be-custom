@@ -379,7 +379,8 @@ class ReplyDecodingTests(unittest.TestCase):
         with patch.object(settings, "database_url", SecretStr("postgresql://user:hidden-password@db/x")), \
                 patch.object(settings, "max_document_pages", 77):
             request = json.loads(extract_isolated.extraction_request(Path("/tmp/a.pdf"), "a.pdf"))  # noqa: S108
-        self.assertEqual((request["path"], request["file_name"]), (str(Path("/tmp/a.pdf")), "a.pdf"))  # noqa: S108
+        # The child runs in another working directory: the path is sent absolute (review of wave 3, A5).
+        self.assertEqual((request["path"], request["file_name"]), (str(Path("/tmp/a.pdf").resolve()), "a.pdf"))  # noqa: S108
         self.assertEqual(request["settings"]["max_document_pages"], 77)
         self.assertNotIn("database_url", request["settings"])
         self.assertNotIn("hidden-password", json.dumps(request))

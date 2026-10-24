@@ -74,7 +74,7 @@ def extraction_request(path: Path, file_name: str) -> bytes:
     """The worker's request: the document and every setting of the service except its secrets."""
 
     values = {name: value for name, value in settings.model_dump().items() if not isinstance(value, SecretStr)}
-    return json.dumps({"path": str(path), "file_name": file_name, "settings": values}).encode("utf-8")
+    return json.dumps({"path": str(path.resolve()), "file_name": file_name, "settings": values}).encode("utf-8")
 
 
 def max_reply_bytes() -> int:

@@ -35,7 +35,9 @@ from app.services.retrieval import source_coverage
 from app.services.staged_unit import markup_scans
 
 FUZZ_CASES = 50_000
-MAX_SECONDS = 0.05
+# Linear code takes milliseconds on these megabyte inputs, the quadratic patterns seconds to minutes: a bound ten
+# times the idle timings keeps the test meaningful on a busy machine (review of wave 3, A2).
+MAX_SECONDS = 0.5
 MEGABYTE = 1_000_000
 EN_DASH, EM_DASH, ELLIPSIS, MIDDLE_DOT = chr(0x2013), chr(0x2014), chr(0x2026), chr(0xB7)
 LEFT_QUOTE, RIGHT_QUOTE, LEFT_GUILLEMET, RIGHT_GUILLEMET = chr(0x201C), chr(0x201D), chr(0xAB), chr(0xBB)
@@ -233,7 +235,7 @@ class LinearPatternTimingTests(unittest.TestCase):
                 continue
             # The speech verbs start with two lookbehinds and a case-insensitive alternation: the regex engine tries
             # every position (about 85 ms a megabyte, as before the change): linear, held to the linear bound.
-            bound = 0.5 if name == "speech" else MAX_SECONDS
+            bound = 2.0 if name == "speech" else MAX_SECONDS
             for run_name, text in runs.items():
                 with self.subTest(name=name, run=run_name):
                     self.assertLess(fastest_seconds(function, text), bound)
@@ -244,7 +246,7 @@ class LinearPatternTimingTests(unittest.TestCase):
         self.assertLess(fastest_seconds(lambda value: quiz_letters.word_before(value, reverse, len(value)), text),
                         MAX_SECONDS)
         line = "A" + " " * MEGABYTE
-        self.assertLess(fastest_seconds(lambda value: quiz_text._last_visible_char(value, len(value)), line), 0.5)
+        self.assertLess(fastest_seconds(lambda value: quiz_text._last_visible_char(value, len(value)), line), 2.0)
 
 
 # --- loops that copied the text before every match (quadratic in the text's length times the matches) --------------

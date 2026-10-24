@@ -254,8 +254,9 @@ class ChildProcess:
     @staticmethod
     def _cap_unavailable(error: OSError) -> None:
         # The child still runs apart and killable, without the memory cap (e.g. a host that forbids nested job
-        # objects). The cap is part of the hardening, not of the result: the extraction goes on.
-        log_event(logger, logging.WARNING, "child_process_memory_cap_unavailable", error_type=type(error).__name__,
+        # objects). The cap is part of the hardening, not of the result: the extraction goes on, logged as an ERROR
+        # so operators see the missing cap at once (review of wave 3, A4).
+        log_event(logger, logging.ERROR, "child_process_memory_cap_unavailable", error_type=type(error).__name__,
                   platform=sys.platform)
 
     @property

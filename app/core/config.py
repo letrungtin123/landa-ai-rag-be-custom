@@ -127,8 +127,12 @@ class Settings(BaseSettings):
     )
     # Provider slots only chat may take (audit 2026-10-24, P9): AI ID runs, indexing and the other background calls
     # hold at most AI_RAG_MAX_CONCURRENT_PROVIDER_CALLS minus this many at once (and always at least one).
+    # Default 0 (review of wave 3, A1): the backend runs up to 8 AI ID provider calls at once
+    # (LESSON_AUTHOR_ORCHESTRATION_V2_PROVIDER_CONCURRENCY), and a background call that waits 30 s for a slot falls
+    # back to deterministic content (2 concurrent runs: 34 of 400 calls busy with 2 reserved). Reserve slots only
+    # together with more total slots (e.g. 10 with 2 reserved) or a lower backend concurrency.
     provider_chat_reserved_slots: int = Field(
-        default=2,
+        default=0,
         validation_alias="AI_RAG_PROVIDER_CHAT_RESERVED_SLOTS",
         ge=0,
         le=255,

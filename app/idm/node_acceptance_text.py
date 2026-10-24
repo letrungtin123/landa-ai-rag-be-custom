@@ -22,7 +22,10 @@ AcceptanceCheck = Literal["normalization", "response", "coverage", "idm_budget",
 # ECMAScript WhiteSpace + LineTerminator: what `\s` and `String.prototype.trim` use.
 _JS_WS: Final = "\t\n\v\f\r \u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff"
 _JS_WS_RUN: Final = re.compile(f"[{_JS_WS}]+")
-_JS_TRIM: Final = re.compile(f"^[{_JS_WS}]+|[{_JS_WS}]+$")
+# The same characters for str.strip: "^[ws]+|[ws]+$" retried the trailing class from every character of a long
+# whitespace run inside the text (quadratic; 20,000 spaces took 0.9 s). Same result (review of wave 3, A3).
+_JS_WS_CHARS: Final = "".join(map(chr, (0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x20, 0xA0, 0x1680, *range(0x2000, 0x200B),
+                                    0x2028, 0x2029, 0x202F, 0x205F, 0x3000, 0xFEFF)))
 _ENTITY_RE: Final = re.compile(r"&(?:[a-z]+|#\d+|#x[a-f0-9]+);", re.IGNORECASE | re.ASCII)
 _COMBINING_RE: Final = re.compile("[\u0300-\u036f]")
 _BMP_MAX: Final = 0xFFFF
@@ -36,7 +39,7 @@ def js_len(value: str) -> int:
 
 
 def js_trim(value: str) -> str:
-    return _JS_TRIM.sub("", value)
+    return value.strip(_JS_WS_CHARS)
 
 
 def js_slice(value: str, end: int) -> str:
