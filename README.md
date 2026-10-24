@@ -130,7 +130,9 @@ bounded repair, then deterministic source-locked content marked for review. Prom
   (stage, outcome, exception type, frames) and count `ai_rag_handled_exceptions_total`.
 - Metrics (`GET /metrics`, Prometheus): HTTP requests and durations by route template, provider calls, durations
   and tokens by operation and pipeline `stage` (IDM stage, `course_skeleton`, `chapter_shard`, `chat`,
-  embeddings), fallbacks, limiter use and rejections, document-limit rejections, deadline hits.
+  embeddings), fallbacks, limiter use and rejections, document-limit rejections, deadline hits, the process's own
+  memory (`ai_rag_process_memory_bytes`, `kind` = `private` or `working_set`; PM2 on Windows reads only the working
+  set) and the event-loop lag (`ai_rag_event_loop_lag_seconds`, `window` = `last` or `max_1m`).
 
 ## Release and runtime
 
