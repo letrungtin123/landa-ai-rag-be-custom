@@ -2,7 +2,7 @@
 
 The shared builder (``app.services.orchestration_v2.source_locked._orchestration_v2_source_relationship_diagram``
 on top of
-``app.instructional_quality.source_relationship_pairs``) treats every arrow as a
+``app.content.instructional_quality.source_relationship_pairs``) treats every arrow as a
 relationship. A slogan such as "Chain title: no action → meaningless" therefore became the
 nodes "Chain title: no action" → "meaningless" next to the real step chain, and the same
 pair was required from the provider diagram (``DIAGRAM_SOURCE_RELATION_MISSING``). The

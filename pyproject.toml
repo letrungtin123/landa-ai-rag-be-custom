@@ -33,32 +33,10 @@ warn_unreachable = true
 show_error_codes = true
 plugins = ["pydantic.mypy"]
 
-# Legacy modules imported by strict code (app/idm, app/api, app/services outside the legacy
-# lesson-author pipeline, ...). They keep the "no new errors" baseline (STD-2); strict modules
-# still see their signatures. app.services.lesson_author is the legacy V5 writer/repair pipeline
-# moved verbatim in PRD-2 (deleted in PRD-3).
-[[tool.mypy.overrides]]
-module = [
-  "app.assessment_planner",
-  "app.assessment_selection_contract",
-  "app.component_capabilities",
-  "app.instructional_density",
-  "app.instructional_opportunities",
-  "app.lesson_author_blueprint",
-  "app.lesson_author_checkpoint",
-  "app.lesson_author_provider_schema",
-  "app.lesson_content_observation",
-  "app.lesson_prompt_policy",
-  "app.lesson_quality",
-  "app.media_brief",
-  "app.semantic_review",
-  "app.services.lesson_author.*",
-  "app.source_chapter_policy",
-  "app.source_map",
-  "app.source_visual_observation",
-  "app.workflows.*",
-]
-ignore_errors = true
+# The legacy modules (the V5 lesson-author pipeline: app/services/lesson_author, app/workflows and the legacy modules
+# of app/, deleted in PRD-3) are checked as strictly as the rest. Their known errors are counted per file in
+# scripts/mypy_baseline.json, a record that only shrinks (scripts/mypy_baseline.py, the gate's mypy step); it replaced
+# ``ignore_errors = true`` for those modules in refactor wave 3b.
 
 # Third-party packages that ship no type information.
 [[tool.mypy.overrides]]

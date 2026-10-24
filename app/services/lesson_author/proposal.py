@@ -19,7 +19,7 @@ from app.core.logging import SERVICE_LOGGER_NAME
 from app.infra.gemini.errors import is_non_retryable_provider_error
 from app.infra.gemini.usage import combine_usage
 from app.lesson_quality import duplicate_validation_result, pedagogical_validation_result
-from app.schemas.common import AiUsage
+from app.infra.gemini.usage import AiUsage
 from app.schemas.lesson_author import RagLessonAuthorCheckpointRequest, RagLessonAuthorProposalBase
 from app.services import provider
 from app.services.deadlines import run_with_deadline

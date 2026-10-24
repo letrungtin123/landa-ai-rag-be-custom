@@ -23,8 +23,7 @@ from app.core.logging import SERVICE_LOGGER_NAME, log_payload
 from app.idm.course_design import run_idm_course_design
 from app.idm.runtime import IdmError, IdmStageError
 from app.infra.gemini.errors import http_error_detail
-from app.infra.gemini.usage import combine_usage
-from app.schemas.common import AiUsage
+from app.infra.gemini.usage import AiUsage, combine_usage
 from app.schemas.orchestration_v2 import RagLessonAuthorCourseSkeletonV2Request
 from app.services.deadlines import record_fallback
 from app.services.orchestration_v2.common import (

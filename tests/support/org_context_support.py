@@ -11,7 +11,7 @@ import json
 from typing import Any
 
 from app.hashing import js_canonical_hash
-from app.schemas.common import AiUsage
+from app.infra.gemini.usage import AiUsage
 
 PROFILE: dict[str, Any] = {
     "organization_summary": ("Công ty Hải Đăng Logistics vận hành kho lạnh và giao hàng chặng cuối tại miền Trung.\n"

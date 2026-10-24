@@ -14,6 +14,7 @@ import unittest
 from collections.abc import Awaitable, Callable
 from typing import Any
 
+from app.contracts.orchestration_v2.provider import SourceSnapshotFactV2
 from app.idm.architecture import run_w4
 from app.idm.author_brief import INTENT_TAG, author_intent_block
 from app.idm.blueprint import run_w2
@@ -62,7 +63,6 @@ from app.idm.purpose import (
 from app.idm.qa import NOT_APPLICABLE, PURPOSE_CRITERION, criteria_summary, settle_applicability
 from app.idm.runtime import IdmProviderError
 from app.idm.text import is_generic_title
-from app.lesson_author_orchestration_v2_provider import SourceSnapshotFactV2
 from tests import idm_golden as g
 from tests.golden.idm_golden_unit import build_unit_request
 from tests.support.idm_test_support import golden_design, golden_shard, make_runtime

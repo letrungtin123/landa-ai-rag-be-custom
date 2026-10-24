@@ -244,7 +244,7 @@ def ensure_blueprint_source_granularity(
     multiple source page groups is expanded into source-named lessons.
     """
     chapters = blueprint.get("chapters") if isinstance(blueprint.get("chapters"), list) else []
-    for chapter_index, chapter_value in enumerate(chapters):
+    for _chapter_index, chapter_value in enumerate(chapters):
         if not isinstance(chapter_value, dict):
             continue
         lessons = chapter_value.get("lessons") if isinstance(chapter_value.get("lessons"), list) else []
@@ -561,7 +561,7 @@ def allocate_blueprint_source_fact_ids(
                 "BLUEPRINT_SOURCE_COVERAGE_INCOMPLETE",
                 "Blueprint contains more draftable units than the selected source has distinct facts.",
             )
-        for unit, group in zip(all_units, _partition_blueprint_facts(all_facts, len(all_units))):
+        for unit, group in zip(all_units, _partition_blueprint_facts(all_facts, len(all_units)), strict=False):
             fact_ids = [str(fact["fact_id"]).strip() for fact in group]
             unit["source_fact_ids"] = fact_ids
         return apply_phase_one_blueprint_component_contract(blueprint)
@@ -573,7 +573,7 @@ def allocate_blueprint_source_fact_ids(
                 "BLUEPRINT_SOURCE_COVERAGE_INCOMPLETE",
                 f"Blueprint chapter {chapter_index + 1} contains more units than its resolved source facts.",
             )
-        for unit, group in zip(units, _partition_blueprint_facts(facts, len(units))):
+        for unit, group in zip(units, _partition_blueprint_facts(facts, len(units)), strict=False):
             fact_ids = [str(fact["fact_id"]).strip() for fact in group]
             unit["source_fact_ids"] = fact_ids
             assigned_ids.update(fact_ids)

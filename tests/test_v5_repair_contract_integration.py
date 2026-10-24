@@ -26,7 +26,7 @@ from app.lesson_author_blueprint import (
     build_v5_semantic_delta_repair_response_schema,
     semantic_delta_required_fields,
 )
-from app.schemas.common import AiUsage
+from app.infra.gemini.usage import AiUsage
 from app.services.lesson_author.architecture_validation import validate_v5_post_allocation_instructional_depth
 from app.services.lesson_author.blueprint_workflow import lesson_author_blueprint
 from app.services.lesson_author.repair.prompt import build_course_architecture_repair_prompt

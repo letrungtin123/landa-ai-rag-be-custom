@@ -16,9 +16,9 @@ from typing import Any
 from fastapi.routing import APIRoute
 from pydantic import TypeAdapter, ValidationError
 
+from app.infra.gemini.usage import AiUsage
 from app.main import app
 from app.schemas.chat import ChatResponse
-from app.schemas.common import AiUsage
 from app.schemas.health import HealthResponse, ServiceMetaResponse
 from app.schemas.kb import INDEX_DOCUMENT_RESPONSE, DeleteResponse, IndexDocumentResponse
 from app.schemas.orchestration_v2 import (

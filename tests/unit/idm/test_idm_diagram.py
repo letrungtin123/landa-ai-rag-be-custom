@@ -14,10 +14,10 @@ import unittest
 from itertools import pairwise
 from typing import Any
 
+from app.content.instructional_quality import clean_source_facts, source_relationship_pairs
 from app.idm.contracts import brief_hash_of
 from app.idm.diagram import idm_diagram_relationships, idm_source_step_diagram
 from app.idm.storyboard import build_idm_expected, parse_brief, run_idm_unit
-from app.instructional_quality import clean_source_facts, source_relationship_pairs
 from app.schemas.orchestration_v2 import RagLessonAuthorUnitV2Request
 from app.services.orchestration_v2 import source_locked as v2_source_locked
 from app.services.orchestration_v2 import unit as unit_service

@@ -12,7 +12,7 @@ import json
 from collections.abc import Callable
 from typing import Any
 
-from app.lesson_author_orchestration_v2_provider import SourceSnapshotFactV2
+from app.contracts.orchestration_v2.provider import SourceSnapshotFactV2
 
 DOCUMENT_ID = "00000000-0000-4000-8000-0000000000d1"
 SNAPSHOT_HASH = hashlib.sha256(b"idm-golden-complaint-handling").hexdigest()

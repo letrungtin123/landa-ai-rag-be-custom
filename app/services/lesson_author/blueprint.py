@@ -20,7 +20,7 @@ from app.lesson_author_blueprint import (
     parse_lesson_author_blueprint_candidate,
     validate_lesson_author_blueprint,
 )
-from app.schemas.common import AiUsage
+from app.infra.gemini.usage import AiUsage
 from app.schemas.lesson_author import RagLessonAuthorBlueprintRequest
 from app.services import provider
 from app.services.lesson_author.proposal_validation import _normalize_structural_title
@@ -214,7 +214,7 @@ def enforce_lesson_author_source_structure(
             "Blueprint chapter count does not match the authoritative source table of contents.",
         )
 
-    for chapter_index, (chapter, source_node) in enumerate(zip(chapters, source_chapters)):
+    for chapter_index, (chapter, source_node) in enumerate(zip(chapters, source_chapters, strict=False)):
         if not isinstance(chapter, dict):
             raise LessonAuthorBlueprintValidationError(
                 "BLUEPRINT_SOURCE_STRUCTURE_MISMATCH",

@@ -9,12 +9,12 @@ from unittest.mock import AsyncMock, patch
 
 from fastapi import HTTPException
 
-from app.schemas.common import AiUsage
+from app.infra.gemini.usage import AiUsage
 from app.services.lesson_author import chapter_checkpoint as chapter_checkpoint_service
-from app.services.lesson_author.staged import provider_schemas as staged_schemas
-from app.services.lesson_author.staged import validation as staged_validation
 from app.services.lesson_author.staged import writer as staged_writer
-from app.services.lesson_author.staged.provider_schemas import STAGED_COMPONENT_PAYLOAD_FIELDS
+from app.services.staged_unit import provider_schemas as staged_schemas
+from app.services.staged_unit import validation as staged_validation
+from app.services.staged_unit.provider_schemas import STAGED_COMPONENT_PAYLOAD_FIELDS
 from app.workflows.contracts import WorkflowFailure
 from tests.test_chapter_checkpoint import fixture as endpoint_fixture
 from tests.unit.legacy.test_staged_recovery_identity import fixture as original_fixture

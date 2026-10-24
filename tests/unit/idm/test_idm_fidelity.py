@@ -48,7 +48,13 @@ from app.idm.html_rules import DENSITY_CODE, HtmlRuleViolation
 from app.idm.module_design import run_idm_module_design
 from app.idm.prompts import html_slot_rules, html_violation_line, module_prompt, unit_writer_prompt, w2_blueprint_prompt
 from app.idm.purpose import resolve_purpose
-from app.idm.qa import EXPLAINED_CRITERION, build_unit_author_note, criteria_summary, deterministic_slot_findings
+from app.idm.qa import (
+    EXPLAINED_CRITERION,
+    UnitNoteFacts,
+    build_unit_author_note,
+    criteria_summary,
+    deterministic_slot_findings,
+)
 from app.idm.qa import JudgeOutcome as Judge
 from app.idm.storyboard import output_budget
 from app.idm.text import evidence_index
@@ -460,21 +466,24 @@ class ExampleLabelTests(unittest.TestCase):
                          "Illustrative example: a new hire asks a colleague for help.")
 
     def test_author_note_lists_every_drafted_example_in_plain_words(self) -> None:
-        note = build_unit_author_note(locale="vi", judge=Judge("pass"), deterministic_codes=[], fallback_slots=[],
-                                      ai_drafted=False, slot_types=["html", "problem"], drafted_examples={0: 2},
-                                      remaining=[])
+        note = build_unit_author_note(UnitNoteFacts(
+            locale="vi", judge=Judge("pass"), deterministic_codes=[], fallback_slots=[],
+            ai_drafted=False, slot_types=["html", "problem"], drafted_examples={0: 2},
+            remaining=[]))
         self.assertIn("Ví dụ minh hoạ do AI soạn — cần kiểm tra: 2 ví dụ (khối 1 (Lý thuyết)).", note)
-        english = build_unit_author_note(locale="en", judge=Judge("pass"), deterministic_codes=[], fallback_slots=[],
-                                         ai_drafted=False, slot_types=["html"], drafted_examples={0: 1},
-                                         remaining=[])
+        english = build_unit_author_note(UnitNoteFacts(
+            locale="en", judge=Judge("pass"), deterministic_codes=[], fallback_slots=[],
+            ai_drafted=False, slot_types=["html"], drafted_examples={0: 1},
+            remaining=[]))
         self.assertIn("Illustrative examples drafted by AI — please check: 1 example(s) (block 1 (Theory)).", english)
 
     def test_review_lines_for_content_mode_findings_are_plain(self) -> None:
         from app.idm.qa import SlotFinding  # noqa: PLC0415 - one test
 
-        note = build_unit_author_note(locale="vi", judge=Judge("pass"), deterministic_codes=[SENTENCE_COPY_CODE],
-                                      fallback_slots=[], ai_drafted=False, slot_types=["html"], review_slots=[],
-                                      remaining=[SlotFinding(SENTENCE_COPY_CODE, 0), SlotFinding(NEW_FACT_CODE, 0)])
+        note = build_unit_author_note(UnitNoteFacts(
+            locale="vi", judge=Judge("pass"), deterministic_codes=[SENTENCE_COPY_CODE],
+            fallback_slots=[], ai_drafted=False, slot_types=["html"], review_slots=[],
+            remaining=[SlotFinding(SENTENCE_COPY_CODE, 0), SlotFinding(NEW_FACT_CODE, 0)]))
         self.assertIn("Nên biên tập khối 1 (Lý thuyết): nhiều câu gần như chép nguyên văn tài liệu", note)
         self.assertIn("Cần xem khối 1 (Lý thuyết): có số liệu hoặc tên riêng không có trong tài liệu", note)
         self.assertNotIn("IDM_W5_SENTENCE_COPY", note)
@@ -502,8 +511,9 @@ class QaIntegrationTests(unittest.TestCase):
         findings = [IdmJudgeFindingV1(criterion="Q2_not_copied", severity="pass", witness="w"),
                     IdmJudgeFindingV1(criterion=EXPLAINED_CRITERION, severity="major", component_index=0, witness="w")]
         self.assertEqual(criteria_summary(findings), {"Q2_not_copied": "major"})
-        note = build_unit_author_note(locale="vi", judge=Judge("review_required", findings), deterministic_codes=[],
-                                      fallback_slots=[], ai_drafted=False, remaining=[])
+        note = build_unit_author_note(UnitNoteFacts(
+            locale="vi", judge=Judge("review_required", findings), deterministic_codes=[],
+            fallback_slots=[], ai_drafted=False, remaining=[]))
         self.assertIn("phần lý thuyết chưa được giảng giải cho người học", note)
 
     def test_course_note_says_how_the_content_is_written(self) -> None:

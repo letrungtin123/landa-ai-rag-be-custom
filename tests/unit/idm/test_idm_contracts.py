@@ -9,6 +9,7 @@ from typing import Any
 
 from pydantic import BaseModel, ValidationError
 
+from app.contracts.orchestration_v2.blueprint import canonical_hash
 from app.idm.contracts import (
     IdmAudienceV1,
     IdmAuthorNotesV1,
@@ -37,7 +38,6 @@ from app.idm.contracts import (
     brief_hash_of,
     design_hash_of,
 )
-from app.lesson_author_orchestration_v2 import canonical_hash
 from tests.idm_golden import W1_REDUCE, W1_SECTION, W2_BLUEPRINT, W4_COURSE, project_context, source_facts
 from tests.unit.idm.test_idm_course_design import golden_design
 

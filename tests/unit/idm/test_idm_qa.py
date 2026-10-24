@@ -15,6 +15,7 @@ from app.idm.qa import (
     CRITERIA,
     JudgeOutcome,
     SlotFinding,
+    UnitNoteFacts,
     advisory_slot_findings,
     blocking_count,
     build_unit_author_note,
@@ -371,14 +372,16 @@ class AuthorNoteAndQualityTests(unittest.TestCase):
     def test_author_note_templates(self) -> None:
         review = JudgeOutcome("review_required", [finding("Q4_feedback_teaches", "major", 1),
                                                   finding("Q8_language", "minor", 0)])
-        vi = build_unit_author_note(locale="vi", judge=review, deterministic_codes=["IDM_W5_X", "IDM_W5_X"],
-                                    fallback_slots=[1], ai_drafted=True)
+        vi = build_unit_author_note(UnitNoteFacts(
+            locale="vi", judge=review, deterministic_codes=["IDM_W5_X", "IDM_W5_X"],
+            fallback_slots=[1], ai_drafted=True))
         self.assertEqual(vi, "QA tự động: 1 vấn đề cần xem — phản hồi chưa giải thích từng lựa chọn. "
                              "1 khối dùng bản dự phòng dựng từ tài liệu — cần biên tập. "
                              "Kiểm tra tự động còn cảnh báo: một kiểm tra tự động khác. "
                              "Tình huống minh hoạ do AI soạn, tác giả nên kiểm tra lại tính thực tế.")
-        en = build_unit_author_note(locale="en", judge=review, deterministic_codes=[], fallback_slots=[],
-                                    ai_drafted=True)
+        en = build_unit_author_note(UnitNoteFacts(
+            locale="en", judge=review, deterministic_codes=[], fallback_slots=[],
+            ai_drafted=True))
         self.assertEqual(en, "Automatic QA: 1 issue(s) to review — feedback does not explain each option. "
                              "The illustrative scenario was drafted by AI; the author should check it is realistic.")
         cases = {
@@ -392,52 +395,57 @@ class AuthorNoteAndQualityTests(unittest.TestCase):
             ("vi", "not_run"): "",
         }
         for (locale, status), expected in cases.items():
-            note = build_unit_author_note(locale=locale, judge=JudgeOutcome(status),  # type: ignore[arg-type]
-                                          deterministic_codes=[], fallback_slots=[], ai_drafted=False)
+            note = build_unit_author_note(UnitNoteFacts(
+                locale=locale, judge=JudgeOutcome(status),  # type: ignore[arg-type]
+                deterministic_codes=[], fallback_slots=[], ai_drafted=False))
             self.assertEqual(note, expected)
-        en_fallback = build_unit_author_note(locale="en", judge=JudgeOutcome("not_run"),
-                                             deterministic_codes=["B_CODE", "A_CODE"], fallback_slots=[0, 1],
-                                             ai_drafted=False)
+        en_fallback = build_unit_author_note(UnitNoteFacts(
+            locale="en", judge=JudgeOutcome("not_run"),
+            deterministic_codes=["B_CODE", "A_CODE"], fallback_slots=[0, 1],
+            ai_drafted=False))
         self.assertEqual(en_fallback, "2 block(s) use the source-based fallback — edit them. "
                                       "Automatic checks still warn: another automatic check.")
 
     def test_author_note_says_why_slots_fell_back(self) -> None:
         # QC course 234653 (D16): "1 khối dùng bản dự phòng" never said why.
-        note = build_unit_author_note(
+        note = build_unit_author_note(UnitNoteFacts(
             locale="vi", judge=JudgeOutcome("pass"), deterministic_codes=["HTML_SEMANTIC_INVALID"],
             fallback_slots=[0], ai_drafted=False, review_slots=[2], slot_types=["html", "problem", "la_faq"],
             slot_reasons={0: ["HTML_SEMANTIC_INVALID"], 2: ["IDM_W5_FAQ_TYPE_MIX"]},
-            failure_codes=["IDM_W5_REPAIR_INVALID", "not a code"], faq_items_dropped=1)
+            failure_codes=["IDM_W5_REPAIR_INVALID", "not a code"], faq_items_dropped=1))
         # Run 5496155c: no "no major issue" next to a fallback, and no "còn cảnh báo" repeating the fallback's reason.
         self.assertEqual(note, "1 khối dùng bản dự phòng dựng từ tài liệu — cần biên tập. "
                                "Lý do: khối 1 (Lý thuyết): lỗi định dạng phần lý thuyết. "
                                "Giữ bản AI để tác giả rà soát: khối 3 (Hỏi đáp): hỏi đáp chỉ hỏi lại kiến thức. "
                                "Sửa tự động không thành công: lần sửa của AI sai định dạng. "
                                "Đã bỏ 1 câu hỏi đáp có nội dung ngoài tài liệu.")
-        whole = build_unit_author_note(locale="en", judge=JudgeOutcome("not_run"),
-                                       deterministic_codes=["IDM_W5_INSTANCE_INVALID"], fallback_slots=[0, 1],
-                                       ai_drafted=False, slot_types=["html", "problem"],
-                                       failure_codes=["AI_PROVIDER_UNAVAILABLE"], whole_fallback=True)
+        whole = build_unit_author_note(UnitNoteFacts(
+            locale="en", judge=JudgeOutcome("not_run"),
+            deterministic_codes=["IDM_W5_INSTANCE_INVALID"], fallback_slots=[0, 1],
+            ai_drafted=False, slot_types=["html", "problem"],
+            failure_codes=["AI_PROVIDER_UNAVAILABLE"], whole_fallback=True))
         self.assertEqual(whole, "The whole lesson uses the source-based fallback — edit it. "
                                 "Reason: the AI did not answer, an AI answer in the wrong format.")
-        silent = build_unit_author_note(locale="en", judge=JudgeOutcome("not_run"), deterministic_codes=[],
-                                        fallback_slots=[], ai_drafted=False, failure_codes=["IDM_W5_REPAIR_INVALID"])
+        silent = build_unit_author_note(UnitNoteFacts(
+            locale="en", judge=JudgeOutcome("not_run"), deterministic_codes=[],
+            fallback_slots=[], ai_drafted=False, failure_codes=["IDM_W5_REPAIR_INVALID"]))
         self.assertEqual(silent, "")
 
     def test_author_note_separates_fixed_codes_from_what_the_final_unit_still_has(self) -> None:
         # QC course 364564 (N8): codes seen before the repair were printed as "còn cảnh báo" on a unit that passed.
         types = ["html", "problem", "la_faq"]
-        fixed = build_unit_author_note(
+        fixed = build_unit_author_note(UnitNoteFacts(
             locale="vi", judge=JudgeOutcome("pass"),
             deterministic_codes=["IDM_W5_PRACTICE_INCOMPLETE", "HTML_SOURCE_LOCATOR"],
             fallback_slots=[], ai_drafted=False, slot_types=types, remaining=[],
-            fixed_codes=["IDM_W5_PRACTICE_INCOMPLETE", "HTML_SOURCE_LOCATOR"])
+            fixed_codes=["IDM_W5_PRACTICE_INCOMPLETE", "HTML_SOURCE_LOCATOR"]))
         self.assertEqual(fixed, "Đã tự sửa: lỗi định dạng phần lý thuyết, bài luyện tập thiếu phần.")
         remaining = [SlotFinding("IDM_W5_ANSWER_LENGTH_CUE", 1), SlotFinding("IDM_W5_ANSWER_LEAK", 1),
                      SlotFinding("IDM_W5_WORKSHEET_INCOMPLETE", 2)]
-        vi = build_unit_author_note(locale="vi", judge=JudgeOutcome("not_run"), deterministic_codes=[],
-                                    fallback_slots=[], ai_drafted=False, slot_types=types, remaining=remaining,
-                                    fixed_codes=["HTML_SOURCE_LOCATOR"])
+        vi = build_unit_author_note(UnitNoteFacts(
+            locale="vi", judge=JudgeOutcome("not_run"), deterministic_codes=[],
+            fallback_slots=[], ai_drafted=False, slot_types=types, remaining=remaining,
+            fixed_codes=["HTML_SOURCE_LOCATOR"]))
         # Review of dfb6db2: what to check first, then what to polish, then what was done.
         self.assertEqual(vi, "Cần xem khối 2 (Quiz): một phương án gần như chép lại ví dụ hoặc "
                              "nội dung ngay trước câu hỏi — người học có thể chọn theo trí nhớ thay vì áp dụng tiêu "
@@ -445,18 +453,20 @@ class AuthorNoteAndQualityTests(unittest.TestCase):
                              "Nên biên tập khối 2 (Quiz): đáp án đúng dài hơn hẳn các "
                              "phương án khác — người học có thể đoán theo độ dài. "
                              "Đã tự sửa: lỗi định dạng phần lý thuyết.")
-        en = build_unit_author_note(locale="en", judge=JudgeOutcome("not_run"), deterministic_codes=[],
-                                    fallback_slots=[], ai_drafted=False, slot_types=types, remaining=remaining,
-                                    fixed_codes=["HTML_SOURCE_LOCATOR"])
+        en = build_unit_author_note(UnitNoteFacts(
+            locale="en", judge=JudgeOutcome("not_run"), deterministic_codes=[],
+            fallback_slots=[], ai_drafted=False, slot_types=types, remaining=remaining,
+            fixed_codes=["HTML_SOURCE_LOCATOR"]))
         self.assertEqual(en, "Review block 2 (Quiz): an option nearly copies the example or "
                              "text shown right before the question — learners can match it instead of applying the "
                              "criterion. Automatic checks still warn: an incomplete worksheet. "
                              "Polish block 2 (Quiz): the correct option is "
                              "much longer than the others — learners can guess it by length. "
                              "Automatically fixed: a theory format problem.")
-        whole = build_unit_author_note(locale="en", judge=JudgeOutcome("not_run"), deterministic_codes=["X_CODE"],
-                                       fallback_slots=[0], ai_drafted=False, whole_fallback=True, remaining=[],
-                                       fixed_codes=["X_CODE"])
+        whole = build_unit_author_note(UnitNoteFacts(
+            locale="en", judge=JudgeOutcome("not_run"), deterministic_codes=["X_CODE"],
+            fallback_slots=[0], ai_drafted=False, whole_fallback=True, remaining=[],
+            fixed_codes=["X_CODE"]))
         self.assertEqual(whole, "The whole lesson uses the source-based fallback — edit it. "
                                 "Reason: another automatic check.")
 
@@ -471,8 +481,9 @@ class AuthorNoteAndQualityTests(unittest.TestCase):
         many = JudgeOutcome("reject", [finding(criterion, "critical", 0, "<script>") for criterion in CRITERIA])
         codes = [f"IDM_CODE_{index:02d}" for index in range(20)]
         for locale in ("vi", "en"):
-            note = build_unit_author_note(locale=locale, judge=many, deterministic_codes=codes,
-                                          fallback_slots=[0, 1, 2], ai_drafted=True)
+            note = build_unit_author_note(UnitNoteFacts(
+                locale=locale, judge=many, deterministic_codes=codes,
+                fallback_slots=[0, 1, 2], ai_drafted=True))
             self.assertLessEqual(len(note), 1_500)
             self.assertNotIn("<", note)
             self.assertNotIn(">", note)

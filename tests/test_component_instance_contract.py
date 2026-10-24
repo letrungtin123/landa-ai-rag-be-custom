@@ -10,7 +10,7 @@ from unittest.mock import AsyncMock, patch
 from app.assessment_planner import compile_v5_assessment_plan
 from app.component_capabilities import ComponentCapabilities, validate_instance_plan
 from app.lesson_quality import validate_lesson_pedagogical_quality
-from app.schemas.common import AiUsage
+from app.infra.gemini.usage import AiUsage
 from app.schemas.lesson_author import RagLessonAuthorRequest
 from app.services.lesson_author.architecture_validation import (
     validate_course_architecture_workflow,
@@ -22,8 +22,8 @@ from app.services.lesson_author.evidence_scope import (
 )
 from app.services.lesson_author.staged.skeleton import _locked_component_plan
 from app.services.lesson_author.staged.source_locked import build_source_locked_unit
-from app.services.lesson_author.staged.validation import validate_staged_unit_content
 from app.services.lesson_author.staged.writer import generate_staged_lesson_author_proposal
+from app.services.staged_unit.validation import validate_staged_unit_content
 from app.source_map import build_source_map
 from tests.unit.legacy.test_evidence_scope_allocation_v5 import _manifest, _nodes, _v5_blueprint
 

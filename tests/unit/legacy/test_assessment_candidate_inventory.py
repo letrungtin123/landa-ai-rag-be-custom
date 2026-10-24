@@ -13,7 +13,7 @@ from fastapi import HTTPException
 from app.assessment_planner import compile_v5_assessment_plan, materialize_assessment_source_refs
 from app.assessment_selection_contract import build_assessment_selection_contract
 from app.component_capabilities import ComponentCapabilities
-from app.schemas.common import AiUsage
+from app.infra.gemini.usage import AiUsage
 from app.services.lesson_author.architecture_validation import validate_v5_instructional_coherence
 from app.services.lesson_author.blueprint_workflow import lesson_author_blueprint
 from app.services.lesson_author.evidence_scope import (

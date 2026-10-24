@@ -4,12 +4,12 @@ from copy import deepcopy
 
 from pydantic import ValidationError
 
-from app.lesson_author_orchestration_v2 import (
+from app.contracts.orchestration_v2.blueprint import (
     OrchestrationContractError,
     assemble_blueprint_v2,
     canonical_hash,
 )
-from app.lesson_author_orchestration_v2_provider import (
+from app.contracts.orchestration_v2.provider import (
     CHAPTER_SHARD_PROVIDER_SCHEMA_METADATA,
     COURSE_SKELETON_PROVIDER_SCHEMA_METADATA,
     ChapterShardDraftV2,

@@ -27,10 +27,10 @@ from app.core.handled_exceptions import count_handled_exception, report_handled_
 from app.core.logging import SERVICE_LOGGER_NAME
 from app.infra.gemini.calls import normalize_embedding_model
 from app.infra.gemini.errors import http_error_detail
+from app.infra.gemini.usage import AiUsage
 from app.repositories import indexing as index_repository
 from app.repositories.indexing import delete_previous_structure_nodes_if_available, persist_structure_nodes_if_available
 from app.repositories.pgvector import vector_values
-from app.schemas.common import AiUsage
 from app.schemas.kb import INDEX_SKIP_REASON_UNCHANGED, RagIndexRequest
 from app.services import provider
 from app.services import runtime as service_runtime

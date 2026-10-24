@@ -25,7 +25,7 @@ from app.lesson_author_provider_schema import staged_provider_response_model
 from app.lesson_content_observation import observe_lesson_content
 from app.lesson_prompt_policy import instructional_contract_review_signals, lesson_output_language_policy
 from app.prompt_safety import untrusted_block
-from app.schemas.common import AiUsage
+from app.infra.gemini.usage import AiUsage
 from app.schemas.lesson_author import RagLessonAuthorProposalBase
 from app.services import provider
 from app.services.lesson_author.errors import LessonAuthorProposalValidationError
@@ -394,7 +394,8 @@ async def generate_staged_lesson_author_proposal(
                 schema_diagnostics["provider_schema_fingerprint"],
                 request.correlation_id or "none",
             )
-            raise failure
+            # ``failure`` may be ``error`` itself; "from error" would change the chain the logs and tests see.
+            raise failure  # noqa: B904
         logger.info(
             "lesson_author_staged_content_batch generation_stage=%s batch_index=%s batch_count=%s unit_count=%s content_output_tokens=%s provider_timeout_ms=%s remaining_workflow_budget_ms=%s duration_ms=%s provider_event=%s provider_finish_reason=%s status=completed provider_schema_fingerprint=%s correlation_id=%s",
             generation_stage,

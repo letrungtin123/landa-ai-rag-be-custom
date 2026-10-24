@@ -321,7 +321,7 @@ def _apply_blueprint_architecture_to_skeleton(
         raise LessonAuthorProposalValidationError("Staged skeleton changed the approved Blueprint lesson count.")
 
     locked_lessons: list[dict[str, Any]] = []
-    for lesson_index, (actual_value, expected_value) in enumerate(zip(actual_lessons, expected_lessons)):
+    for lesson_index, (actual_value, expected_value) in enumerate(zip(actual_lessons, expected_lessons, strict=False)):
         if not isinstance(actual_value, dict) or not isinstance(expected_value, dict):
             raise LessonAuthorProposalValidationError("Staged skeleton contains an invalid Blueprint lesson.")
         if lesson_author_title_key(actual_value.get("title")) != lesson_author_title_key(expected_value.get("title")):
@@ -333,7 +333,7 @@ def _apply_blueprint_architecture_to_skeleton(
                 f"Staged skeleton changed the approved unit count for Blueprint lesson {lesson_index + 1}.",
             )
         locked_units: list[dict[str, Any]] = []
-        for unit_index, (actual_unit, expected_unit) in enumerate(zip(actual_units, expected_units)):
+        for unit_index, (actual_unit, expected_unit) in enumerate(zip(actual_units, expected_units, strict=False)):
             if not isinstance(actual_unit, dict) or not isinstance(expected_unit, dict):
                 raise LessonAuthorProposalValidationError("Staged skeleton contains an invalid Blueprint unit.")
             if lesson_author_title_key(actual_unit.get("title")) != lesson_author_title_key(expected_unit.get("title")):
@@ -537,7 +537,7 @@ def _build_blueprint_locked_staged_skeleton(
         for unit in lesson["units"]:
             planned_units.append((lesson_index, lesson, unit))
     assignments: list[list[dict[str, Any]]] = [[] for _ in planned_units]
-    for fact_index, fact in enumerate(facts):
+    for _fact_index, fact in enumerate(facts):
         source_ref = str(fact.get("source_ref") or "").strip().casefold()
         eligible = [
             index

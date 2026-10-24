@@ -23,8 +23,8 @@ from typing import Any
 from pydantic import BaseModel, TypeAdapter
 from pydantic.json_schema import JsonSchemaMode
 
+from app.infra.gemini.usage import AiUsage
 from app.schemas.chat import ChatResponse, RagChatRequest
-from app.schemas.common import AiUsage
 from app.schemas.kb import (
     DeleteResponse,
     IndexDocumentResponse,
@@ -50,8 +50,8 @@ from app.schemas.orchestration_v2 import (
 from app.schemas.org_context import OrgContextDistillResponse, RagOrgContextDistillRequest
 from app.services.lesson_author.architecture_validation import validate_v5_instructional_coherence
 from app.services.lesson_author.checkpoint import build_lesson_author_checkpoint_result
-from app.services.lesson_author.proposal_validation import semantic_learning_visible_text
 from app.services.provider import generate_content
+from app.services.staged_unit.proposal_shape import semantic_learning_visible_text
 from app.services.staged_unit.provider_schemas import staged_component_payload_code
 
 __all__ = [

@@ -15,11 +15,11 @@ import httpx
 
 from app import main
 from app.api import deps as api_deps
+from app.contracts.orchestration_v2.blueprint import ChapterBlueprintShardV2, CourseSkeletonV2
 from app.core.errors import AppError, ServiceError
 from app.idm.contracts import IdmCourseDesignV1, IdmShardDesignV1
 from app.idm.runtime import IdmBudgetError, IdmProviderError, IdmStageError
-from app.lesson_author_orchestration_v2 import ChapterBlueprintShardV2, CourseSkeletonV2
-from app.schemas.common import AiUsage
+from app.infra.gemini.usage import AiUsage
 from app.schemas.orchestration_v2 import RagLessonAuthorChapterShardV2Request, RagLessonAuthorCourseSkeletonV2Request
 from app.services.orchestration_v2 import chapter_shard as chapter_shard_service
 from app.services.orchestration_v2 import course_skeleton as course_skeleton_service

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import unittest
 
-from app.instructional_quality import (
+from app.content.instructional_quality import (
     build_source_grounded_single_choice,
     build_source_locked_single_choice,
     clean_source_facts,

@@ -614,8 +614,8 @@ IDM_PRESERVE_TITLE_MAX_WORDS: Final = 30
 IDM_PRESERVE_FURNITURE_MIN_PAGES: Final = 3
 IDM_PRESERVE_FURNITURE_MAX_CHARS: Final = 100
 # Unit size (reading units of a kept document): the job-aid reading budget per unit, raised up to the instructional
-# density hard limits (``app.instructional_density``: 48 facts, 12,000 source characters, 1,600 words) when a lesson
-# would otherwise need more than 12 units. Units split at line boundaries only; text is never cut.
+# density hard limits (``app.content.instructional_density``: 48 facts, 12,000 source characters, 1,600 words) when a
+# lesson would otherwise need more than 12 units. Units split at line boundaries only; text is never cut.
 IDM_PRESERVE_UNIT_TARGET_WORDS: Final = SEGMENT_WORD_BUDGET["job_aid"]
 IDM_PRESERVE_UNIT_MAX_WORDS: Final = MAX_GENERATED_WORDS
 IDM_PRESERVE_UNIT_MAX_FACTS: Final = 48

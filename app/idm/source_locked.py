@@ -1,7 +1,7 @@
 """Source-locked fallback content for IDM units (QC course 234653, defects D8, D11, D12).
 
 When the W5 writer cannot produce a slot, the unit shows the locked source facts. The
-shared renderer and question builder in ``app.instructional_quality`` serve the legacy
+shared renderer and question builder in ``app.content.instructional_quality`` serve the legacy
 pipeline and stay byte-identical (spec §11.6); IDM units get these variants through
 ``IdmUnitDeps``/the service layer instead:
 

@@ -15,7 +15,7 @@ from typing import Any, ClassVar
 from unittest.mock import Mock, patch
 
 from app.core.errors import DocumentLimitError
-from app.schemas.common import AiUsage
+from app.infra.gemini.usage import AiUsage
 from app.schemas.kb import INDEX_DOCUMENT_RESPONSE, INDEX_SKIP_REASON_UNCHANGED, RagIndexRequest
 from app.services.ingestion import fingerprint as fingerprint_module
 from app.services.ingestion import index as index_service

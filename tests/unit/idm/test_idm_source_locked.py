@@ -14,14 +14,14 @@ import unittest
 from typing import Any
 from unittest.mock import patch
 
-from app import instructional_quality
+from app.content import instructional_quality
+from app.content.instructional_quality import render_source_locked_html
 from app.idm.quiz_text import explanation_report
 from app.idm.source_locked import idm_source_grounded_single_choice, render_idm_source_locked_html
-from app.instructional_quality import render_source_locked_html
 from app.schemas.orchestration_v2 import RagLessonAuthorUnitV2Request
-from app.services.lesson_author.staged import validation as staged_validation
 from app.services.orchestration_v2 import source_locked as v2_source_locked
 from app.services.orchestration_v2 import unit as unit_service
+from app.services.staged_unit import validation as staged_validation
 from tests.unit.idm.test_idm_storyboard import severity_body
 
 

@@ -22,6 +22,7 @@ from app.idm.qa import (
     REVIEW_REASON_KEPT_SLOTS,
     JudgeOutcome,
     SlotFinding,
+    UnitNoteFacts,
     build_unit_author_note,
 )
 from app.idm.quiz_letters import number_item_letters
@@ -313,29 +314,29 @@ class NoteOrderTests(unittest.TestCase):
     end."""
 
     def test_checks_lead_and_edit_notes_follow(self) -> None:
-        note = build_unit_author_note(
+        note = build_unit_author_note(UnitNoteFacts(
             locale="vi", judge=JudgeOutcome("pass"), deterministic_codes=[], fallback_slots=[], ai_drafted=True,
             slot_types=["html", "problem"], review_slots=[1], slot_reasons={1: ["IDM_W5_ANSWER_LEAK"]},
             review_reasons=[REVIEW_REASON_KEPT_SLOTS], notices=[REVIEW_REASON_EVIDENCE],
             remaining=[SlotFinding("IDM_W5_ANSWER_LEAK", 1), SlotFinding("IDM_W5_SENTENCE_LENGTH", 0)],
-            fixed_codes=["HTML_SOURCE_LOCATOR"], unexplained_acronyms=["TNA"])
+            fixed_codes=["HTML_SOURCE_LOCATOR"], unexplained_acronyms=["TNA"]))
         order = [note.index(part) for part in ("Cần tác giả xem lại vì", "Giữ bản AI", "Cần xem khối 2",
                                                "Lưu ý:", "Nên biên tập khối 1", "Tình huống minh hoạ",
                                                "Chữ viết tắt", "Đã tự sửa")]
         self.assertEqual(order, sorted(order))
 
     def test_the_budget_never_cuts_what_to_check(self) -> None:
-        note = build_unit_author_note(
+        note = build_unit_author_note(UnitNoteFacts(
             locale="vi", judge=JudgeOutcome("pass"), deterministic_codes=[], fallback_slots=[], ai_drafted=True,
             slot_types=["html", "problem"], review_slots=[1], slot_reasons={1: ["IDM_W5_ANSWER_LEAK"]},
             review_reasons=[REVIEW_REASON_KEPT_SLOTS], remaining=[SlotFinding("IDM_W5_ANSWER_LEAK", 1)],
             source_flags=["Tài liệu ghi khác nhau ở phần “Ba cấp độ”: “Cấp 2 được phản hồi trong 48 giờ” (trang 7) "
-                          "và “Cấp 2 được phản hồi trong 24 giờ” (trang 9). Hãy kiểm tra trước khi áp dụng."] * 3,
+            "và “Cấp 2 được phản hồi trong 24 giờ” (trang 9). Hãy kiểm tra trước khi áp dụng."] * 3,
             unexplained_acronyms=[f"AB{number}" for number in range(8)],
             source_notes=["Tài liệu ghi chưa rõ ở phần “Ba cấp độ”: " + "rất dài " * 60 + "."] * 3,
             glued=["bộchân", "khảthi"], notices=[REVIEW_REASON_EVIDENCE], faq_items_dropped=1, faq_items_restated=1,
             faq_items_copied=1, faq_items_recall=1, faq_items_open=1, faq_items_invalid=1, callouts_to_prose=1,
-            callouts_repeating=1, suppositions=2, framework_list_inserted=5, worksheet_compacted=True)
+            callouts_repeating=1, suppositions=2, framework_list_inserted=5, worksheet_compacted=True))
         self.assertLessEqual(len(note), 1500)
         self.assertIn("Cần xem khối 2 (Quiz)", note)
 

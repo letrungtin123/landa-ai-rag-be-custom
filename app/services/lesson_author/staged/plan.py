@@ -8,6 +8,11 @@ from typing import Any
 
 from app.core.config import settings
 from app.core.errors import ProviderError
+# Moved in refactor wave 3b; re-exported here for the legacy pipeline and its tests.
+from app.services.staged_unit.component_types import (
+    STAGED_COMPONENT_TYPE_ALIASES as STAGED_COMPONENT_TYPE_ALIASES,
+    normalize_staged_component_type as normalize_staged_component_type,
+)
 from app.services.lesson_author.proposal_validation import (
     MIN_LESSON_AUTHOR_HTML_TEXT_CHARS,
     _normalize_structural_title,
@@ -86,45 +91,6 @@ def staged_lesson_content_output_tokens(*, request_max_output_tokens: int, max_f
     """Retain the existing Stage-2 output-token calculation as a testable contract."""
     required_content_tokens = max(8_192, min(65_536, max(1, max_facts_per_unit) * 1_200))
     return min(request_max_output_tokens, required_content_tokens)
-
-
-STAGED_COMPONENT_TYPE_ALIASES = {
-    "html": "html",
-    "problem": "problem",
-    "quiz": "problem",
-    "question": "problem",
-    "multiple_choice": "problem",
-    "multiple-select": "problem",
-    "multiple_select": "problem",
-    "multi_choice": "problem",
-    "multi_select": "problem",
-    "mcq": "problem",
-    "dropdown": "problem",
-    "select": "problem",
-    "numerical": "problem",
-    "numeric": "problem",
-    "short_text": "problem",
-    "short-answer": "problem",
-    "short_answer": "problem",
-    "la_problem": "problem",
-    "la_faq": "la_faq",
-    "faq": "la_faq",
-    "la_sortable": "la_sortable",
-    "sortable": "la_sortable",
-    "ordering": "la_sortable",
-    "la_crossword": "la_crossword",
-    "crossword": "la_crossword",
-    "vocabulary": "la_crossword",
-    "la_diagram": "la_diagram",
-    "diagram": "la_diagram",
-    "flowchart": "la_diagram",
-    "mindmap": "la_diagram",
-}
-
-
-def normalize_staged_component_type(value: Any) -> str | None:
-    raw = str(value or "").strip().casefold().replace(" ", "_")
-    return STAGED_COMPONENT_TYPE_ALIASES.get(raw)
 
 
 def _staged_unit_fact_text(

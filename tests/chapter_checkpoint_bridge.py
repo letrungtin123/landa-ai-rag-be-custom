@@ -6,7 +6,7 @@ from copy import deepcopy
 from unittest.mock import AsyncMock, patch
 
 from app.lesson_author_checkpoint import ChapterCheckpointUnit
-from app.schemas.common import AiUsage
+from app.infra.gemini.usage import AiUsage
 from app.schemas.lesson_author import RagLessonAuthorCheckpointRequest
 from tests.test_chapter_checkpoint import checkpoint_result, fixture, provider_result
 from tests.unit.legacy.test_checkpoint_component_quality_repair import instance_wire

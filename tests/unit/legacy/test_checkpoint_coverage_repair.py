@@ -13,11 +13,11 @@ from google import genai
 from google.genai import models, types
 
 from app.lesson_author_checkpoint import ChapterCheckpointUnit
-from app.schemas.common import AiUsage
+from app.infra.gemini.usage import AiUsage
 from app.services.lesson_author.errors import LessonAuthorProposalValidationError
-from app.services.lesson_author.staged import provider_schemas as staged_schemas
-from app.services.lesson_author.staged import validation as staged_validation
-from app.services.lesson_author.staged.provider_schemas import STAGED_COMPONENT_COVERAGE_REPAIR_CONTRACT_VERSION
+from app.services.staged_unit import provider_schemas as staged_schemas
+from app.services.staged_unit import validation as staged_validation
+from app.services.staged_unit.provider_schemas import STAGED_COMPONENT_COVERAGE_REPAIR_CONTRACT_VERSION
 from app.workflows.contracts import WorkflowFailure
 from tests.test_chapter_checkpoint import checkpoint_result
 from tests.unit.legacy.test_checkpoint_component_quality_repair import instance_wire

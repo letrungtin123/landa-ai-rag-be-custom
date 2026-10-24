@@ -7,15 +7,15 @@ from unittest.mock import AsyncMock, patch
 
 from app.lesson_author_checkpoint import ChapterCheckpointUnit
 from app.lesson_author_provider_schema import staged_provider_response_model
-from app.schemas.common import AiUsage
-from app.services.lesson_author.staged import provider_schemas as staged_schemas
-from app.services.lesson_author.staged import validation as staged_validation
+from app.infra.gemini.usage import AiUsage
+from app.services.staged_unit import provider_schemas as staged_schemas
+from app.services.staged_unit import validation as staged_validation
 from app.workflows.contracts import WorkflowFailure
-from tests.unit.legacy import test_checkpoint_provider_sdk as sdk_fixture
-from tools.staged_schema_probe import capture_sdk_body, visit_schema
 from tests.test_chapter_checkpoint import checkpoint_result
+from tests.unit.legacy import test_checkpoint_provider_sdk as sdk_fixture
 from tests.unit.legacy.test_checkpoint_component_quality_repair import instance_wire
 from tests.unit.legacy.test_staged_ordered_writer import uat_fixture
+from tools.staged_schema_probe import capture_sdk_body, visit_schema
 
 
 def repaired_payload(unit):

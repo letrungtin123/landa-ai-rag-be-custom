@@ -15,7 +15,7 @@ from app import lesson_quality, main
 from app.api import deps as api_deps
 from app.core.errors import ServiceError
 from app.lesson_author_checkpoint import ChapterCheckpointUnit, assemble_checkpoint_chapter, select_checkpoint_unit
-from app.schemas.common import AiUsage
+from app.infra.gemini.usage import AiUsage
 from app.schemas.lesson_author import RagLessonAuthorCheckpointRequest, RagLessonAuthorRequest
 from app.services.lesson_author import chapter_checkpoint as chapter_checkpoint_service
 from app.services.lesson_author import checkpoint as checkpoint_service

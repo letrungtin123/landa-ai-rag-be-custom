@@ -8,9 +8,9 @@ from typing import Any
 
 from pydantic import ValidationError
 
+from app.contracts.orchestration_v2.blueprint import canonical_hash
+from app.contracts.orchestration_v2.provider import UnitGenerationContractV2
 from app.idm.contracts import brief_hash_of
-from app.lesson_author_orchestration_v2 import canonical_hash
-from app.lesson_author_orchestration_v2_provider import UnitGenerationContractV2
 from app.schemas.orchestration_v2 import RagLessonAuthorUnitV2Request
 from tests import idm_golden as g
 from tests.golden import idm_golden_unit as gu

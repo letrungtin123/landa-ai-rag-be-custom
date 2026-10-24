@@ -41,7 +41,7 @@ _WS_CODES: Final = (0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x20, 0xA0, 0x1680, *range(0x2
 WS_CHARS: Final = "".join(chr(code) for code in _WS_CODES)
 WS_CLASS: Final = re.escape(WS_CHARS)
 _WS_RUN: Final = re.compile(f"[{WS_CLASS}]+")
-# The source snapshot encodes a table row as "Row <n>: cell | cell | ..." (``app.instructional_quality``).
+# The source snapshot encodes a table row as "Row <n>: cell | cell | ..." (``app.content.instructional_quality``).
 TABLE_ROW_RE: Final = re.compile(f"Row[{WS_CLASS}]+([0-9]+)[{WS_CLASS}]*:[{WS_CLASS}]*([\\s\\S]+)", re.IGNORECASE)
 # Tried only where a run of white space starts (every match starts there), so a long run is read once, not once per
 # character (wave 3 hardening).

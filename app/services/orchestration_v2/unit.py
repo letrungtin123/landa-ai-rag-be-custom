@@ -19,6 +19,7 @@ from app.contracts.orchestration_v2.provider import (
     unit_contract_manifest_v2,
     unit_contract_v5_architecture_v2,
 )
+from app.contracts.workflow import WorkflowFailure
 from app.core import metrics
 from app.core.config import settings
 from app.core.handled_exceptions import report_handled_exception
@@ -32,8 +33,7 @@ from app.idm.source_locked import idm_source_faq, idm_source_grounded_single_cho
 from app.idm.storyboard import IdmUnitDeps, run_idm_unit
 from app.idm.visual_pages import evidence_needs_check, page_texts
 from app.infra.gemini.retry import PROVIDER_TRANSIENT_MAX_ATTEMPTS
-from app.infra.gemini.usage import combine_usage
-from app.schemas.common import AiUsage
+from app.infra.gemini.usage import AiUsage, combine_usage
 from app.schemas.lesson_author import RagLessonAuthorRequest
 from app.schemas.orchestration_v2 import RagLessonAuthorUnitV2Request
 from app.semantic_review import (
@@ -49,7 +49,6 @@ from app.semantic_review import (
 from app.services import provider
 from app.services import runtime as service_runtime
 from app.services.deadlines import record_fallback
-from app.services.lesson_author.errors import LessonAuthorProposalValidationError
 from app.services.lesson_author.staged import writer as staged_writer
 from app.services.orchestration_v2.common import V2_LOG_FAMILY, _orchestration_v2_http_error
 from app.services.orchestration_v2.idm import _idm_http_error, _idm_runtime
@@ -59,6 +58,7 @@ from app.services.orchestration_v2.source_locked import (
     complete_source_locked_components,
 )
 from app.services.retrieval.source_coverage import format_source_coverage_manifest
+from app.services.staged_unit.errors import LessonAuthorProposalValidationError
 from app.services.staged_unit.provider_schemas import (
     bind_staged_instance_payload,
     build_staged_instance_response_model,
@@ -70,7 +70,6 @@ from app.services.staged_unit.validation import (
     merge_staged_component_payload_delta,
     validate_staged_unit_content,
 )
-from app.workflows.contracts import WorkflowFailure
 
 logger = logging.getLogger(SERVICE_LOGGER_NAME)
 

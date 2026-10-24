@@ -13,13 +13,13 @@ from typing import TYPE_CHECKING, Annotated, Any, ClassVar, Literal, cast
 from google.genai import types
 from pydantic import BaseModel, Field, ValidationError, create_model, model_validator
 
-from app.component_capabilities import validate_instance_plan
+from app.content.teaching_policy import lesson_instructional_quality_policy
+from app.contracts.component_capabilities import validate_instance_plan
+from app.contracts.workflow import WorkflowFailure
 from app.infra.gemini.errors import safe_provider_error_diagnostics
-from app.lesson_prompt_policy import lesson_instructional_quality_policy
-from app.services.lesson_author.errors import LessonAuthorProposalValidationError
-from app.services.lesson_author.proposal_validation import semantic_learning_visible_text
-from app.services.lesson_author.staged.plan import normalize_staged_component_type
-from app.workflows.contracts import WorkflowFailure
+from app.services.staged_unit.component_types import normalize_staged_component_type
+from app.services.staged_unit.errors import LessonAuthorProposalValidationError
+from app.services.staged_unit.proposal_shape import semantic_learning_visible_text
 
 if TYPE_CHECKING:
     from pydantic import GetJsonSchemaHandler

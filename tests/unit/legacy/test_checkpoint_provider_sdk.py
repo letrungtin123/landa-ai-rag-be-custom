@@ -14,7 +14,7 @@ from app import main
 from app.api import deps as api_deps
 from app.lesson_author_checkpoint import ChapterCheckpointUnit
 from app.services import provider as provider_service
-from app.services.lesson_author.staged import provider_schemas as staged_schemas
+from app.services.staged_unit import provider_schemas as staged_schemas
 from tests.test_chapter_checkpoint import checkpoint_result
 from tests.unit.legacy.test_checkpoint_component_quality_repair import instance_wire
 from tests.unit.legacy.test_staged_instance_output import checkpoint_instance_fixture

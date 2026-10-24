@@ -57,8 +57,8 @@ from app.idm.runtime import (
     minimum_admitted_output,
     repair_thinking,
 )
+from app.infra.gemini.usage import AiUsage
 from app.infra.provider_limits import classify_provider_limit
-from app.schemas.common import AiUsage
 from app.schemas.orchestration_v2 import RagLessonAuthorChapterShardV2Request
 from app.services import provider as provider_service
 from app.services.orchestration_v2 import idm as v2_idm

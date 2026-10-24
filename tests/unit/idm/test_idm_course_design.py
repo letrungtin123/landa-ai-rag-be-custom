@@ -14,6 +14,8 @@ from unittest.mock import patch
 
 from pydantic import BaseModel
 
+from app.contracts.orchestration_v2.blueprint import CourseSkeletonV2
+from app.contracts.orchestration_v2.provider import SourceSnapshotFactV2
 from app.idm.contracts import IdmContentBlockV1, IdmCourseDesignV1, IdmCourseSkeletonRequestV1, IdmW1SectionResponseV1
 from app.idm.course_design import run_idm_course_design
 from app.idm.prompts import fact_lines, judge_prompt, module_prompt, unit_writer_prompt
@@ -32,8 +34,6 @@ from app.idm.runtime import (
 )
 from app.idm.signals import IdmCapacityError
 from app.idm.text import first_main_verb
-from app.lesson_author_orchestration_v2 import CourseSkeletonV2
-from app.lesson_author_orchestration_v2_provider import SourceSnapshotFactV2
 from tests.idm_golden import (
     DOCUMENT_ID,
     EVIDENCE_REVISION,

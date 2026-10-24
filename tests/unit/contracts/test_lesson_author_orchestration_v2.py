@@ -1,6 +1,6 @@
 import unittest
 
-from app.lesson_author_orchestration_v2 import (
+from app.contracts.orchestration_v2.blueprint import (
     ChapterBlueprintShardV2,
     CourseSkeletonV2,
     OrchestrationContractError,

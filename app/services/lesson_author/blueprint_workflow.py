@@ -30,7 +30,7 @@ from app.lesson_author_blueprint import (
     build_v5_semantic_delta_repair_response_schema,
     validate_lesson_author_blueprint,
 )
-from app.schemas.common import AiUsage
+from app.infra.gemini.usage import AiUsage
 from app.schemas.lesson_author import RagLessonAuthorBlueprintRequest
 from app.services import provider
 from app.services import runtime as service_runtime
@@ -736,7 +736,12 @@ async def _lesson_author_blueprint(
                         "total_repair_provider_calls": total_repair_provider_calls,
                     })
 
-                def record_repair_provider_telemetry(telemetry: dict[str, Any]) -> None:
+                # Bound to this operation when defined (B023); the provider calls it during this iteration only.
+                def record_repair_provider_telemetry(
+                    telemetry: dict[str, Any], *,
+                    repair_provider_telemetry: dict[str, Any] = repair_provider_telemetry,
+                    operation_index: int = operation_index, operation: str | None = operation,
+                ) -> None:
                     repair_provider_telemetry.update(telemetry)
                     emit_blueprint_diagnostic({
                         "stage": "architecture_repair_provider",

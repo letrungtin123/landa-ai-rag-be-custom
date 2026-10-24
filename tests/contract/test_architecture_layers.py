@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import ast
 import hashlib
+import importlib
 import re
 import unittest
 from pathlib import Path
@@ -9,8 +10,10 @@ from typing import NamedTuple
 
 from fastapi.routing import APIRoute
 
-from app import hashing, lesson_author_orchestration_v2, source_evidence_bundle
+from app import hashing
 from app.api.deps import require_internal_token
+from app.content import source_evidence_bundle
+from app.contracts.orchestration_v2 import blueprint as orchestration_v2_blueprint
 from app.main import app
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -18,20 +21,19 @@ APP_ROOT = REPO_ROOT / "app"
 # Framework-free domain modules (§19.2 "module thuần").
 PURE_MODULE_PATTERNS = (
     "source_*.py", "instructional_*.py", "lesson_quality.py", "semantic_review.py", "workflows/*.py",
-    "assessment_*.py", "learner_content_purity.py", "ordered_learning_content.py", "media_brief.py",
-    "component_capabilities.py", "lesson_author_*.py", "lesson_content_observation.py", "lesson_prompt_policy.py",
-    # The shared core moved verbatim out of the modules above in refactor wave 2 (their old paths are aliases).
+    "assessment_*.py", "media_brief.py", "component_capabilities.py", "lesson_author_*.py",
+    "lesson_content_observation.py", "lesson_prompt_policy.py",
+    # The shared core moved verbatim out of the modules above in refactor wave 2.
     "content/*.py", "contracts/**/*.py",
 )
 MAX_ROUTE_HANDLER_LINES = 30
 EVENT_NAME_PATTERN = re.compile(r"[a-z][a-z0-9_]*")
 
 
-# STD-5 (spec §19): files <= 800 lines and functions <= 120 lines in the code held to the full standard
-# (the strict paths of scripts/check.ps1); code moved verbatim in PRD-2 stays <= 2,500 lines per file.
-STRICT_CODE = ("core/", "infra/", "idm/", "api/", "schemas/", "repositories/", "prompt_safety.py", "__main__.py",
-               "main.py", "services/runtime.py", "services/meta.py", "services/deadlines.py", "services/text.py",
-               "hashing.py")
+# STD-5 (spec §19): files <= 800 lines and functions <= 120 lines in the code held to the full standard, which is
+# every Python file of the strict paths of scripts/check.sh (``strict_paths``; test_quality_gate_scripts.py keeps
+# check.ps1 equal to it); code moved verbatim in PRD-2 stays <= 2,500 lines per file.
+CHECK_SH = REPO_ROOT / "scripts" / "check.sh"
 MAX_STRICT_FILE_LINES = 800
 MAX_STRICT_FUNCTION_LINES = 120
 MAX_MOVED_FILE_LINES = 2_500
@@ -43,22 +45,83 @@ class Allowance(NamedTuple):
     target: str
 
 
-# Strict-code offenders when the STD-5 limits were enforced (refactor wave 1, 2026-10-18), at their size then.
-# An entry only shrinks: the test fails when the file or function grows past its size here (lower the number
-# when it shrinks) and when it fits the limit again (remove the entry). New code never gets an entry.
-FILE_SIZE_ALLOWLIST: dict[str, Allowance] = {}
+# Strict-code offenders at their size when the STD-5 limits started to cover them: the first three in refactor
+# wave 1 (2026-10-18), the others in refactor wave 3b (2026-10-24), when the rule grew from part of the strict paths
+# to all of them (mostly code moved verbatim out of the legacy modules in wave 2, step 2.1). An entry only shrinks:
+# the test fails when the file or function grows past its size here (lower the number when it shrinks) and when it
+# fits the limit again (remove the entry). New code never gets an entry.
+_MOVED = "moved verbatim from the legacy modules (wave 2, step 2.1)"
+FILE_SIZE_ALLOWLIST: dict[str, Allowance] = {
+    "app/contracts/orchestration_v2/provider.py": Allowance(1_240, f"provider drafts, wire, binders; {_MOVED}",
+                                                            "split by concern"),
+    "app/services/staged_unit/provider_schemas.py": Allowance(1_102, f"staged provider schemas; {_MOVED}",
+                                                              "split by concern"),
+    "app/services/staged_unit/validation.py": Allowance(1_190, f"staged unit validation; {_MOVED}", "split by concern"),
+    "app/content/source_readiness.py": Allowance(846, f"PDF readiness analysis; {_MOVED}", "split by concern"),
+}
 FUNCTION_SIZE_ALLOWLIST: dict[str, Allowance] = {
-    "idm/module_design.py::run_idm_module_design": Allowance(212, "W3/W4 call, repair loop, salvage and assembly",
-                                                             "wave 2 (2.5)"),
-    "idm/runtime.py::idm_generate": Allowance(131, "admission, transport, usage ledger, trace and parse of one call",
-                                              "wave 2 (2.5)"),
-    "idm/course_design.py::run_idm_course_design": Allowance(127, "W1 map/reduce, W2, W4 and assembly",
-                                                             "wave 2 (2.5)"),
+    "app/idm/module_design.py::run_idm_module_design": Allowance(
+        210, "W3/W4 call, repair loop, salvage and assembly", "wave 2 (2.5)"),
+    "app/idm/runtime.py::idm_generate": Allowance(
+        131, "admission, transport, usage ledger, trace and parse of one call", "wave 2 (2.5)"),
+    "app/idm/course_design.py::run_idm_course_design": Allowance(
+        127, "W1 map/reduce, W2, W4 and assembly", "wave 2 (2.5)"),
+    # Refactor wave 3b: the strict paths the rule did not cover before.
+    "app/contracts/orchestration_v2/provider.py::salvage_chapter_shard_draft_v2": Allowance(
+        122, f"chapter shard salvage; {_MOVED}", "split into steps"),
+    "app/contracts/orchestration_v2/provider.py::_compile_unit_components_v2": Allowance(
+        195, f"unit component compiler; {_MOVED}", "split into steps"),
+    "app/services/retrieval/search.py::retrieve_chunks": Allowance(
+        183, "embedding, vector and keyword search, merge and limits of one retrieval", "split into steps"),
+    "app/services/retrieval/source_coverage.py::build_source_coverage_manifest": Allowance(
+        146, "source coverage manifest of a lesson-author request", "split into steps"),
+    "app/services/ingestion/index.py::_index_document": Allowance(
+        185, "load, extract, structure, chunk, embed and persist of one index run", "split into steps"),
+    "app/services/orchestration_v2/chapter_shard.py::_lesson_author_orchestration_v2_chapter_shard": Allowance(
+        177, "chapter shard route service (IDM and v2-legacy)", "split into steps"),
+    "app/services/orchestration_v2/source_snapshot.py::lesson_author_orchestration_v2_source_snapshot": Allowance(
+        312, "source snapshot route service", "split into steps"),
+    "app/services/orchestration_v2/unit.py::_lesson_author_orchestration_v2_unit_legacy": Allowance(
+        481, "v2-legacy unit route service", "PRD-3 (removal of the v2-legacy pipeline)"),
+    "app/services/staged_unit/provider_schemas.py::build_lesson_author_proposal_response_schema": Allowance(
+        141, f"proposal response schema; {_MOVED}", "split into steps"),
+    "app/services/staged_unit/provider_schemas.py::build_lesson_author_unit_response_schema": Allowance(
+        172, f"unit response schema; {_MOVED}", "split into steps"),
+    "app/services/staged_unit/provider_schemas.py::build_staged_lesson_content_response_model": Allowance(
+        144, f"staged content response model; {_MOVED}", "split into steps"),
+    "app/services/staged_unit/validation.py::staged_instructional_finding": Allowance(
+        257, f"staged instructional checks; {_MOVED}", "split into steps"),
+    "app/services/staged_unit/validation.py::validate_staged_unit_content": Allowance(
+        270, f"staged unit validation; {_MOVED}", "split into steps"),
+    "app/content/instructional_quality.py::render_source_locked_html": Allowance(
+        128, f"source-locked HTML renderer; {_MOVED}", "split into steps"),
+    "app/content/source_evidence_bundle.py::_validate_payload": Allowance(
+        126, f"evidence bundle validation; {_MOVED}", "split into steps"),
+    "app/content/source_readiness.py::_page_readiness": Allowance(
+        131, f"page readiness analysis; {_MOVED}", "split into steps"),
+    "app/content/source_structure.py::analyze_source_structure": Allowance(
+        137, f"source structure analysis; {_MOVED}", "split into steps"),
 }
 
 
-def is_strict_code(name: str) -> bool:
-    return any(name == item or (item.endswith("/") and name.startswith(item)) for item in STRICT_CODE)
+def strict_paths() -> list[str]:
+    """The ``strict_paths`` list of scripts/check.sh (files and directories, relative to the repository)."""
+
+    match = re.search(r'^strict_paths="([^"]*)"', CHECK_SH.read_text(encoding="utf-8"), flags=re.MULTILINE)
+    if match is None:
+        raise AssertionError("strict_paths not found in scripts/check.sh")
+    return match.group(1).split()
+
+
+def strict_files() -> dict[str, Path]:
+    """Every Python file of the strict paths, by its path relative to the repository."""
+
+    files: dict[str, Path] = {}
+    for item in strict_paths():
+        path = REPO_ROOT / item
+        for found in sorted(path.rglob("*.py")) if path.is_dir() else [path]:
+            files[found.relative_to(REPO_ROOT).as_posix()] = found
+    return dict(sorted(files.items()))
 
 
 def function_lengths(name: str, tree: ast.AST) -> dict[str, int]:
@@ -89,6 +152,59 @@ def size_violations(sizes: dict[str, int], limit: int, allowlist: dict[str, Allo
         elif lines > allowance.lines:
             found.append(f"{name}: grew to {lines} lines (allowlisted at {allowance.lines}; {allowance.target})")
     return found
+
+
+# PRD-3 deletes the legacy lesson-author pipeline: app/services/lesson_author, app/workflows and the app/ modules
+# outside the strict paths. Strict code does not import it, so the deletion never reaches into strict code. These are
+# the imports left after refactor wave 3b moved the shared helpers out (strict file, imported legacy module) -> why
+# it stays. An entry only shrinks: remove it when the import goes; a new strict-to-legacy import never gets one.
+LEGACY_IMPORT_ALLOWLIST: dict[tuple[str, str], str] = {
+    ("app/api/routes/lesson_author_legacy.py", "app.services.lesson_author.blueprint_workflow"):
+        "the legacy V5 routes call the pipeline they serve; deleted with it",
+    ("app/api/routes/lesson_author_legacy.py", "app.services.lesson_author.chapter_checkpoint"):
+        "the legacy V5 routes call the pipeline they serve; deleted with it",
+    ("app/api/routes/lesson_author_legacy.py", "app.services.lesson_author.proposal"):
+        "the legacy V5 routes call the pipeline they serve; deleted with it",
+    ("app/contract_bridge.py", "app.services.lesson_author.architecture_validation"):
+        "the backend's cross-language tests import validate_v5_instructional_coherence through app.main",
+    ("app/contract_bridge.py", "app.services.lesson_author.checkpoint"):
+        "the backend's cross-language tests call build_lesson_author_checkpoint_result through app.main",
+    ("app/services/orchestration_v2/unit.py", "app.semantic_review"):
+        "the v2-legacy unit path runs the V5 semantic review (512 lines, untyped); goes with that path",
+    ("app/services/orchestration_v2/unit.py", "app.services.lesson_author.staged.writer"):
+        "the v2-legacy unit path runs the V5 staged writer (1,088 lines, untyped); goes with that path",
+}
+
+
+def module_file(module: str) -> str | None:
+    """The repository path of an importable module of this repository (``.py`` or package), else ``None``."""
+
+    base = REPO_ROOT.joinpath(*module.split("."))
+    for candidate in (base.with_suffix(".py"), base / "__init__.py"):
+        if candidate.is_file():
+            return candidate.relative_to(REPO_ROOT).as_posix()
+    return None
+
+
+def imported_app_modules(path: Path) -> set[str]:
+    """The ``app`` modules ``path`` imports; ``from package import module`` counts as the module itself."""
+
+    found: set[str] = set()
+    for name, imported in imported_modules(path):
+        if name != "app" and not name.startswith("app."):
+            continue
+        for item in imported or {""}:
+            submodule = f"{name}.{item}"
+            found.add(submodule if item and module_file(submodule) else name)
+    return found
+
+
+def legacy_import_violations(found: set[tuple[str, str]], allowed: dict[tuple[str, str], str]) -> list[str]:
+    problems = [f"{name} imports the legacy module {module}: move what it needs into a strict package"
+                for name, module in sorted(found - set(allowed))]
+    problems += [f"{name} no longer imports {module}: remove its allowlist entry"
+                 for name, module in sorted(set(allowed) - found)]
+    return problems
 
 
 # STD-7 / F-08: accent folding lives in app/core/text.py. A decomposing normalisation (NFD or NFKD, or a form
@@ -228,6 +344,66 @@ class ArchitectureLayerTests(unittest.TestCase):
                         offenders.append(f"{layer}:{path.relative_to(APP_ROOT).as_posix()}:{name}")
         self.assertEqual(offenders, [])
 
+    def test_code_imports_moved_modules_by_their_new_path(self) -> None:
+        # Refactor wave 3b removed the self-replacing alias modules of wave 2 (step 2.1). The one left serves the
+        # backend's IDM fixture only; nothing in this repository imports it.
+        self.assertIs(importlib.import_module("app.lesson_author_orchestration_v2"), orchestration_v2_blueprint)
+        offenders = [
+            f"{path.relative_to(REPO_ROOT).as_posix()}:{name}"
+            for root in ("app", "tests", "tools", "scripts")
+            for path in sorted((REPO_ROOT / root).rglob("*.py"))
+            if "lesson_author_orchestration_v2" in path.read_text(encoding="utf-8")
+            for name, imported in imported_modules(path)
+            if name == "app.lesson_author_orchestration_v2"
+            or (name == "app" and "lesson_author_orchestration_v2" in imported)
+        ]
+        self.assertEqual(offenders, [])
+
+    def test_core_and_infra_import_only_the_layers_below_them(self) -> None:
+        # §19.2: app/core (configuration, logging, errors, security, limits) is the bottom layer and imports no
+        # other app package; app/infra (database, storage, provider adapters) builds on app/core alone and never on
+        # the schemas, services, repositories, IDM, the routes or the legacy modules, nor on the web framework.
+        allowed = {"core": ("app.core",), "infra": ("app.core", "app.infra")}
+        offenders = []
+        for layer, prefixes in allowed.items():
+            paths = sorted((APP_ROOT / layer).rglob("*.py"))
+            self.assertTrue(paths, layer)
+            for path in paths:
+                for name, imported in imported_modules(path):
+                    for module in ([f"app.{item}" for item in imported] if name == "app" else [name]):
+                        outside = (module.startswith("app.")
+                                   and not any(module == item or module.startswith(item + ".") for item in prefixes))
+                        web = layer == "infra" and module.split(".", 1)[0] in {"fastapi", "starlette"}
+                        if outside or web:
+                            offenders.append(f"{layer}:{path.relative_to(APP_ROOT).as_posix()}:{module}")
+        self.assertEqual(offenders, [])
+
+    def test_strict_code_does_not_import_the_legacy_pipeline(self) -> None:
+        strict = strict_files()
+        found: set[tuple[str, str]] = set()
+        for name, path in strict.items():
+            for module in imported_app_modules(path):
+                target = module_file(module)
+                if target is not None and target.startswith("app/") and target not in strict:
+                    found.add((name, module))
+        self.assertEqual(legacy_import_violations(found, LEGACY_IMPORT_ALLOWLIST), [])
+        self.assertTrue(all(reason for reason in LEGACY_IMPORT_ALLOWLIST.values()))
+
+    def test_legacy_import_rule_resolves_modules_and_catches_new_and_stale_entries(self) -> None:
+        self.assertEqual(module_file("app.services.lesson_author.staged.writer"),
+                         "app/services/lesson_author/staged/writer.py")
+        self.assertEqual(module_file("app.services.lesson_author"), "app/services/lesson_author/__init__.py")
+        self.assertIsNone(module_file("app.services.lesson_author.staged.writer.generate_staged_lesson_author_proposal"))
+        unit = APP_ROOT / "services" / "orchestration_v2" / "unit.py"
+        expected = {"app.semantic_review", "app.services.lesson_author.staged.writer", "app.services.provider"}
+        self.assertLessEqual(expected, imported_app_modules(unit))
+        allowed = {("app/kept.py", "app.legacy"): "reason", ("app/gone.py", "app.legacy"): "reason"}
+        self.assertEqual(legacy_import_violations({("app/kept.py", "app.legacy"), ("app/new.py", "app.legacy")},
+                                                  allowed), [
+            "app/new.py imports the legacy module app.legacy: move what it needs into a strict package",
+            "app/gone.py no longer imports app.legacy: remove its allowlist entry",
+        ])
+
     def test_no_application_module_imports_app_main(self) -> None:
         # app/__main__.py names "app.main:app" as a string for uvicorn; nothing imports the factory module.
         offenders = [
@@ -245,8 +421,8 @@ class ArchitectureLayerTests(unittest.TestCase):
         self.assertLessEqual(sizes["main.py"], 200)
         self.assertEqual({name: lines for name, lines in sizes.items() if lines > MAX_MOVED_FILE_LINES}, {})
         # STD-5 on the strict code: <= 800 lines per file; the allowlist only shrinks.
-        strict = {name: lines for name, lines in sizes.items() if is_strict_code(name)}
-        self.assertGreater(len(strict), 80)
+        strict = {name: len(path.read_text(encoding="utf-8").splitlines()) for name, path in strict_files().items()}
+        self.assertGreater(len(strict), 190)
         self.assertEqual(size_violations(strict, MAX_STRICT_FILE_LINES, FILE_SIZE_ALLOWLIST), [])
 
     def test_size_rules_catch_growth_new_offenders_and_stale_entries(self) -> None:
@@ -262,17 +438,19 @@ class ArchitectureLayerTests(unittest.TestCase):
                          "class Box:\n    async def method(self):\n        return 1\n")
         self.assertEqual(function_lengths("m.py", tree), {"m.py::outer": 4, "m.py::outer.inner": 2,
                                                           "m.py::Box.method": 2})
-        self.assertTrue(is_strict_code("idm/qa.py") and is_strict_code("hashing.py"))
-        self.assertFalse(is_strict_code("services/provider.py") or is_strict_code("idm_legacy.py"))
+        # The rule covers exactly the strict paths of scripts/check.sh, outside app/ too, and no legacy module.
+        names = set(strict_files())
+        self.assertLessEqual({"app/idm/qa.py", "app/hashing.py", "app/services/provider.py", "app/contract_bridge.py",
+                              "app/services/staged_unit/validation.py", "scripts/coverage_by_package.py"}, names)
+        self.assertEqual({name for name in names if name.startswith(("app/services/lesson_author/", "app/workflows/"))
+                          or name in {"app/lesson_author_blueprint.py", "app/semantic_review.py"}}, set())
 
     def test_function_sizes_follow_std5(self) -> None:
         # STD-5 on the strict code: <= 120 lines per function (def line to last line); the allowlist only shrinks.
         lengths: dict[str, int] = {}
-        for path in sorted(APP_ROOT.rglob("*.py")):
-            name = path.relative_to(APP_ROOT).as_posix()
-            if is_strict_code(name):
-                lengths.update(function_lengths(name, ast.parse(path.read_text(encoding="utf-8"))))
-        self.assertGreater(len(lengths), 1_000)
+        for name, path in strict_files().items():
+            lengths.update(function_lengths(name, ast.parse(path.read_text(encoding="utf-8"))))
+        self.assertGreater(len(lengths), 1_500)
         self.assertEqual(size_violations(lengths, MAX_STRICT_FUNCTION_LINES, FUNCTION_SIZE_ALLOWLIST), [])
 
     def test_logs_are_structured_events(self) -> None:
@@ -345,7 +523,7 @@ class ArchitectureLayerTests(unittest.TestCase):
             if isinstance(node, ast.FunctionDef) and node.name in {"canonical_hash", "_canonical_hash"}
         ]
         self.assertEqual(offenders, [])
-        self.assertIs(lesson_author_orchestration_v2.canonical_hash, hashing.canonical_hash)
+        self.assertIs(orchestration_v2_blueprint.canonical_hash, hashing.canonical_hash)
         self.assertIs(source_evidence_bundle.canonical_hash, hashing.canonical_hash)
         # The encoding the Node mirror reproduces: sorted keys, compact separators, raw UTF-8.
         self.assertEqual(hashing.canonical_hash({"b": [1, "đ"], "a": None}),

@@ -13,7 +13,7 @@ from app.core.config import settings
 from app.core.errors import ServiceError
 from app.infra.gemini.errors import is_non_retryable_provider_error
 from app.infra.gemini.transport import call_provider_with_timeout
-from app.schemas.common import AiUsage
+from app.infra.gemini.usage import AiUsage
 from app.schemas.lesson_author import RagLessonAuthorRequest
 from app.services.lesson_author.staged.plan import (
     STAGED_LESSON_WORKFLOW_TIMEOUT_MAX_MS,

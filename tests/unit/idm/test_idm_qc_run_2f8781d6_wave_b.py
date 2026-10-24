@@ -12,7 +12,7 @@ from typing import Any
 from app.idm import prompts_unit
 from app.idm.answer_near import ANSWER_ITEM_LENGTH_CODE, ANSWER_NEAR_EXAMPLE_CODE, item_length_cue, near_example
 from app.idm.prompts_course import w1_section_prompt
-from app.idm.qa import STYLE_CODES, JudgeOutcome, build_unit_author_note
+from app.idm.qa import STYLE_CODES, JudgeOutcome, UnitNoteFacts, build_unit_author_note
 from app.idm.qa_checks import advisory_slot_findings
 from app.idm.slot_words import classroom_words, exercise_details
 from app.idm.source_names import NAME_NOT_IN_SOURCE_CODE, NameGuide
@@ -222,9 +222,10 @@ class ClassroomExerciseTests(unittest.TestCase):
         self.assertEqual(classroom_words([teaching], (), []), {})
 
     def test_the_note_names_them(self) -> None:
-        note = build_unit_author_note(locale="vi", judge=JudgeOutcome("pass"), deterministic_codes=[],
-                                      fallback_slots=[], ai_drafted=False, slot_types=["html", "la_faq"],
-                                      classroom={0: ["10 phút", "đúng 2"], 1: ["theo nhóm"]})
+        note = build_unit_author_note(UnitNoteFacts(
+            locale="vi", judge=JudgeOutcome("pass"), deterministic_codes=[],
+            fallback_slots=[], ai_drafted=False, slot_types=["html", "la_faq"],
+            classroom={0: ["10 phút", "đúng 2"], 1: ["theo nhóm"]}))
         self.assertEqual(note, "Nên biên tập khối 1 (Lý thuyết), khối 2 (Hỏi đáp): còn chi tiết của bài tập trên lớp "
                                "trong tài liệu («10 phút», «đúng 2», «theo nhóm») — nên viết thành bài tự luyện trên "
                                "công ty của người học, bỏ thời lượng, số lượng phải chọn và cách làm theo nhóm hoặc ở "
@@ -325,13 +326,15 @@ class SourceNameTests(unittest.TestCase):
                                     "liệu — nên đổi theo tên tài liệu dùng."),
                              ("en", "The unit or lesson title uses «Ma trận thấu cảm», a name the source does not use "
                                     "— rename it as the source does.")):
-            note = build_unit_author_note(locale=locale, judge=JudgeOutcome("pass"), deterministic_codes=[],
-                                          fallback_slots=[], ai_drafted=False, slot_types=["html", "problem"],
-                                          title_names=["Ma trận thấu cảm", "Ma trận thấu cảm"])
+            note = build_unit_author_note(UnitNoteFacts(
+                locale=locale, judge=JudgeOutcome("pass"), deterministic_codes=[],
+                fallback_slots=[], ai_drafted=False, slot_types=["html", "problem"],
+                title_names=["Ma trận thấu cảm", "Ma trận thấu cảm"]))
             self.assertEqual(note, line)
-        whole = build_unit_author_note(locale="vi", judge=JudgeOutcome("pass"), deterministic_codes=[],
-                                       fallback_slots=[0, 1], ai_drafted=False, slot_types=["html", "problem"],
-                                       whole_fallback=True, title_names=["Ma trận thấu cảm"])
+        whole = build_unit_author_note(UnitNoteFacts(
+            locale="vi", judge=JudgeOutcome("pass"), deterministic_codes=[],
+            fallback_slots=[0, 1], ai_drafted=False, slot_types=["html", "problem"],
+            whole_fallback=True, title_names=["Ma trận thấu cảm"]))
         self.assertNotIn("Ma trận thấu cảm", whole)
 
     def test_the_writer_reads_the_unit_s_titles(self) -> None:

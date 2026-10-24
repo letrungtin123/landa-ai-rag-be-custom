@@ -6,8 +6,7 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 from app.idm.runtime import IdmUsageLedger
-from app.infra.gemini.usage import combine_usage, normalize_usage, usage_from_google_response
-from app.schemas.common import AiUsage
+from app.infra.gemini.usage import AiUsage, combine_usage, normalize_usage, usage_from_google_response
 
 
 def _response(**meta: int) -> SimpleNamespace:

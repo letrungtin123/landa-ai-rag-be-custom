@@ -54,14 +54,14 @@ from pydantic import ValidationError
 
 from app import main
 from app.api import deps as api_deps
+from app.contracts.orchestration_v2.provider import UnitGenerationContractV2
 from app.core.errors import ServiceError
 from app.hashing import js_canonical_hash
 from app.idm.node_acceptance import node_acceptance_findings
 from app.idm.org_profile import IdmOrganizationContextV1, org_profile_char_count
 from app.idm.preserve_render import preserve_text_finding
 from app.idm.storyboard import acceptance_context, parse_brief
-from app.lesson_author_orchestration_v2_provider import UnitGenerationContractV2
-from app.schemas.common import AiUsage
+from app.infra.gemini.usage import AiUsage
 from tests import idm_golden as g
 from tests.golden import idm_golden_module as gm
 from tests.golden import idm_preserve_golden as pg

@@ -5,15 +5,15 @@ import json
 import unittest
 from unittest.mock import AsyncMock, patch
 
+from app.content.source_structure import analyze_source_structure, compact_structure
 from app.lesson_author_blueprint import LessonAuthorBlueprintValidationError
-from app.schemas.common import AiUsage
+from app.infra.gemini.usage import AiUsage
 from app.services.ingestion.extract import ExtractedSection
 from app.services.lesson_author.blueprint import generate_validated_lesson_author_blueprint
 from app.services.lesson_author.blueprint_workflow import lesson_author_blueprint
 from app.services.retrieval.structure import build_source_structure_context
 from app.source_chapter_policy import bind_source_chapters, resolve_source_chapter_policy
 from app.source_map import build_course_architect_context, build_source_map
-from app.source_structure import analyze_source_structure, compact_structure
 from tests.unit.legacy.test_lesson_author_blueprint import blueprint_request, valid_blueprint
 
 
@@ -129,7 +129,7 @@ class SourceChapterPolicyTests(unittest.TestCase):
     def test_node_chapter_and_per_document_outline_caps_never_truncate_authority(self):
         doc = document("CONTENTS\n" + "\n".join(f"{i}. Topic {i}......{i}" for i in range(1, 14)))
         self.assertIn("SOURCE_CHAPTER_CAPACITY_EXCEEDED", resolve_source_chapter_policy([doc])["reason_codes"])
-        with patch("app.source_structure.MAX_NODES", 2):
+        with patch("app.content.source_structure.MAX_NODES", 2):
             capped = document("CONTENTS\n1. Foundation......3\n2. Practice......5\n3. Extension......8")
         self.assertIn("SOURCE_STRUCTURE_INCOMPLETE", resolve_source_chapter_policy([capped])["reason_codes"])
         long = document("CONTENTS\n" + "\n".join(f"{i}. {'Topic ' * 30}{i}......{i}" for i in range(1, 40)))

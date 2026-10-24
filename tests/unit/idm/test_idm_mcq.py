@@ -11,6 +11,7 @@ import unittest
 from collections import Counter
 from typing import Any
 
+from app.contracts.orchestration_v2.provider import UnitGenerationContractV2
 from app.idm.mcq import (
     LABELS_STRIPPED_CODE,
     OPTION_LETTERS,
@@ -24,7 +25,6 @@ from app.idm.mcq import (
 )
 from app.idm.node_acceptance import node_acceptance_findings
 from app.idm.storyboard import acceptance_context, parse_brief
-from app.lesson_author_orchestration_v2_provider import UnitGenerationContractV2
 from tests.unit.idm.test_idm_storyboard import (
     JUDGE,
     WRITER,

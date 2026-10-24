@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import re
 from collections.abc import Collection, Mapping, Sequence
+from dataclasses import dataclass
 from typing import Any, Final, NamedTuple
 
 from app.idm.answer_near import ANSWER_ITEM_LENGTH_CODE, ANSWER_NEAR_EXAMPLE_CODE
@@ -318,52 +319,11 @@ def _slot_reasons(slots: Sequence[int], reasons: Mapping[int, Sequence[str]], sl
     return "; ".join(parts)
 
 
-def build_unit_author_note(
-    *,
-    locale: str,
-    judge: JudgeOutcome,
-    deterministic_codes: Sequence[str],
-    fallback_slots: Sequence[int],
-    ai_drafted: bool,
-    slot_reasons: Mapping[int, Sequence[str]] | None = None,
-    review_slots: Sequence[int] = (),
-    slot_types: Sequence[str] = (),
-    failure_codes: Sequence[str] = (),
-    whole_fallback: bool = False,
-    faq_items_dropped: int = 0,
-    faq_items_invalid: int = 0,
-    remaining: Sequence[SlotFinding] | None = None,
-    fixed_codes: Sequence[str] = (),
-    faq_items_restated: int = 0,
-    callouts_to_prose: int = 0,
-    framework_list_inserted: int = 0,
-    callouts_repeating: int = 0,
-    worksheet_compacted: bool = False,
-    worksheet_example_kept: bool = False,
-    drafted_examples: Mapping[int, int] | None = None,
-    example_numbers: Mapping[int, int] | None = None,
-    faq_items_copied: int = 0,
-    faq_items_recall: int = 0,
-    faq_inferred: Mapping[int, int] | None = None,
-    faq_items_open: int = 0,
-    review_reasons: Sequence[str] = (),
-    unexplained_acronyms: Sequence[str] = (),
-    notices: Sequence[str] = (),
-    suggested_criteria: bool = False,
-    source_flags: Sequence[str] = (),
-    source_notes: Sequence[str] = (),
-    placeholder_slots: Sequence[int] = (),
-    glued: Sequence[str] = (), title_names: Sequence[str] = (),
-    suppositions: int = 0,
-    fallback_inputs: Sequence[int] = (),
-    hype_words: Mapping[int, Sequence[str]] | None = None,
-    classroom: Mapping[int, Sequence[str]] | None = None,
-    name_words: Mapping[int, Sequence[str]] | None = None,
-) -> str:
-    """Template note for the unit ``implementation_notes``; no IDs, no ``<``/``>``.
+@dataclass(frozen=True, kw_only=True)
+class UnitNoteFacts:
+    """What the author note of one unit reports (``build_unit_author_note``); the W5 stage fills it once per unit.
 
-    Every fallback says why (QC course 234653, D16): the codes behind each replaced or kept slot, the
-    provider/time/budget code behind a whole-unit fallback and a failed automatic repair.
+    A new fact of a QC round is a new field here, not a new parameter.
 
     ``remaining`` are the findings of the unit as returned and ``fixed_codes`` the codes found and
     settled during generation (QC course 364564, N8: codes seen before a repair were printed as
@@ -390,50 +350,105 @@ def build_unit_author_note(
     (review of dfb6db2): fallback worksheets whose input data the practice plan only describes.
     """
 
-    vi = locale == "vi"
-    problems = [finding for finding in judge.findings if finding.severity in {"major", "critical"}]
-    judged = _judge_line(judge, problems, _CRITERION_LABEL_VI if vi else _CRITERION_LABEL_EN, vi)
-    slot_lines, named = _slot_lines(vi, slot_reasons or {}, slot_types, whole_fallback=whole_fallback,
-                                    fallback_slots=fallback_slots, review_slots=review_slots,
-                                    failure_codes=failure_codes, deterministic_codes=deterministic_codes,
-                                    placeholder_slots=placeholder_slots, remaining=remaining,
-                                    fallback_inputs=fallback_inputs)
-    checks = _Checks("", [], []) if whole_fallback else _check_lines(
-        vi, deterministic_codes, remaining, fixed_codes, slot_types, named=named, hype_words=hype_words or {},
-        name_words=name_words or {})
+    locale: str
+    judge: JudgeOutcome
+    deterministic_codes: Sequence[str]
+    fallback_slots: Sequence[int]
+    ai_drafted: bool
+    slot_reasons: Mapping[int, Sequence[str]] | None = None
+    review_slots: Sequence[int] = ()
+    slot_types: Sequence[str] = ()
+    failure_codes: Sequence[str] = ()
+    whole_fallback: bool = False
+    faq_items_dropped: int = 0
+    faq_items_invalid: int = 0
+    remaining: Sequence[SlotFinding] | None = None
+    fixed_codes: Sequence[str] = ()
+    faq_items_restated: int = 0
+    callouts_to_prose: int = 0
+    framework_list_inserted: int = 0
+    callouts_repeating: int = 0
+    worksheet_compacted: bool = False
+    worksheet_example_kept: bool = False
+    drafted_examples: Mapping[int, int] | None = None
+    example_numbers: Mapping[int, int] | None = None
+    faq_items_copied: int = 0
+    faq_items_recall: int = 0
+    faq_inferred: Mapping[int, int] | None = None
+    faq_items_open: int = 0
+    review_reasons: Sequence[str] = ()
+    unexplained_acronyms: Sequence[str] = ()
+    notices: Sequence[str] = ()
+    suggested_criteria: bool = False
+    source_flags: Sequence[str] = ()
+    source_notes: Sequence[str] = ()
+    placeholder_slots: Sequence[int] = ()
+    glued: Sequence[str] = ()
+    title_names: Sequence[str] = ()
+    suppositions: int = 0
+    fallback_inputs: Sequence[int] = ()
+    hype_words: Mapping[int, Sequence[str]] | None = None
+    classroom: Mapping[int, Sequence[str]] | None = None
+    name_words: Mapping[int, Sequence[str]] | None = None
+
+
+def build_unit_author_note(facts: UnitNoteFacts) -> str:
+    """Template note for the unit ``implementation_notes``; no IDs, no ``<``/``>``.
+
+    Every fallback says why (QC course 234653, D16): the codes behind each replaced or kept slot, the
+    provider/time/budget code behind a whole-unit fallback and a failed automatic repair.
+    """
+
+    vi = facts.locale == "vi"
+    problems = [finding for finding in facts.judge.findings if finding.severity in {"major", "critical"}]
+    judged = _judge_line(facts.judge, problems, _CRITERION_LABEL_VI if vi else _CRITERION_LABEL_EN, vi)
+    slot_lines, named = _slot_lines(vi, facts.slot_reasons or {}, facts.slot_types,
+                                    whole_fallback=facts.whole_fallback, fallback_slots=facts.fallback_slots,
+                                    review_slots=facts.review_slots, failure_codes=facts.failure_codes,
+                                    deterministic_codes=facts.deterministic_codes,
+                                    placeholder_slots=facts.placeholder_slots, remaining=facts.remaining,
+                                    fallback_inputs=facts.fallback_inputs)
+    checks = _Checks("", [], []) if facts.whole_fallback else _check_lines(
+        vi, facts.deterministic_codes, facts.remaining, facts.fixed_codes, facts.slot_types, named=named,
+        hype_words=facts.hype_words or {}, name_words=facts.name_words or {})
     # Run 5496155c: a reason says "chi tiết bên dưới" only when a line below gives the details.
-    kept_line = bool(review_slots) and not whole_fallback
+    kept_line = bool(facts.review_slots) and not facts.whole_fallback
     detailed = {reason for reason, shown in (
-        (REVIEW_REASON_SOURCE, bool(source_flags)), (REVIEW_REASON_JUDGE, bool(problems) and bool(judged)),
+        (REVIEW_REASON_SOURCE, bool(facts.source_flags)), (REVIEW_REASON_JUDGE, bool(problems) and bool(judged)),
         (REVIEW_REASON_KEPT_SLOTS, kept_line), (REVIEW_REASON_STYLE, kept_line),
-        (REVIEW_REASON_SERVER_EDIT, callouts_to_prose > 0 or framework_list_inserted > 0),
-        (REVIEW_REASON_EXAMPLE_NUMBERS, bool(example_numbers) and not whole_fallback)) if shown}
-    content = not whole_fallback
+        (REVIEW_REASON_SERVER_EDIT, facts.callouts_to_prose > 0 or facts.framework_list_inserted > 0),
+        (REVIEW_REASON_EXAMPLE_NUMBERS, bool(facts.example_numbers) and not facts.whole_fallback)) if shown}
+    content = not facts.whole_fallback
     # Review of dfb6db2: what the author must check first ("Cần xem"), then what to polish ("Lưu ý", "Nên biên tập"),
     # then what was done; the note's character budget only ever cuts the end.
     # The fallback and kept-slot lines lead a unit marked for review; a unit with notices only opens with them.
-    first = bool(review_reasons or fallback_slots or whole_fallback)
-    review = [_reasons_line(review_reasons, vi, detailed, _REVIEW_LEAD[vi]),
-              *fit_flags(source_flags, IDM_UNIT_SOURCE_FLAGS_MAX_CHARS, locale), judged,
+    first = bool(facts.review_reasons or facts.fallback_slots or facts.whole_fallback)
+    review = [_reasons_line(facts.review_reasons, vi, detailed, _REVIEW_LEAD[vi]),
+              *fit_flags(facts.source_flags, IDM_UNIT_SOURCE_FLAGS_MAX_CHARS, facts.locale), judged,
               *(slot_lines if first else ()), *checks.review]
-    edits = [_reasons_line(notices, vi, detailed, _NOTICE_LEAD[vi]),
-             *fit_flags(source_notes, IDM_UNIT_SOURCE_FLAGS_MAX_CHARS, locale, soft=True),
+    edits = [_reasons_line(facts.notices, vi, detailed, _NOTICE_LEAD[vi]),
+             *fit_flags(facts.source_notes, IDM_UNIT_SOURCE_FLAGS_MAX_CHARS, facts.locale, soft=True),
              *(() if first else slot_lines), *checks.polish,
-             *dropped_faq_lines(vi, dropped=faq_items_dropped, restated=faq_items_restated, copied=faq_items_copied,
-                                recall=faq_items_recall, unresolved=faq_items_open, invalid=faq_items_invalid),
-             *callout_lines(vi, to_prose=callouts_to_prose, repeating=callouts_repeating),
-             supposition_line(suppositions, vi) if suppositions else "",
-             framework_line(framework_list_inserted, vi) if framework_list_inserted else "",
-             worksheet_line(vi, example_kept=worksheet_example_kept) if worksheet_compacted else "",
-             drafted_examples_line(drafted_examples, slot_types, vi) if drafted_examples and content else "",
-             example_numbers_line(example_numbers, slot_types, vi) if example_numbers and content else "",
-             faq_inferred_line(faq_inferred, slot_types, vi) if faq_inferred and content else "",
+             *dropped_faq_lines(vi, dropped=facts.faq_items_dropped, restated=facts.faq_items_restated,
+                                copied=facts.faq_items_copied, recall=facts.faq_items_recall,
+                                unresolved=facts.faq_items_open, invalid=facts.faq_items_invalid),
+             *callout_lines(vi, to_prose=facts.callouts_to_prose, repeating=facts.callouts_repeating),
+             supposition_line(facts.suppositions, vi) if facts.suppositions else "",
+             framework_line(facts.framework_list_inserted, vi) if facts.framework_list_inserted else "",
+             worksheet_line(vi, example_kept=facts.worksheet_example_kept) if facts.worksheet_compacted else "",
+             drafted_examples_line(facts.drafted_examples, facts.slot_types, vi)
+             if facts.drafted_examples and content else "",
+             example_numbers_line(facts.example_numbers, facts.slot_types, vi)
+             if facts.example_numbers and content else "",
+             faq_inferred_line(facts.faq_inferred, facts.slot_types, vi) if facts.faq_inferred and content else "",
              # A source-locked unit carries no drafted scenario; the review reason already says it when it is one.
-             SCENARIO_LINE[vi] if ai_drafted and content and REVIEW_REASON_SCENARIO not in review_reasons else "",
-             _acronyms_line(unexplained_acronyms, vi) if unexplained_acronyms and content else "",
-             SUGGESTED_CRITERIA_LINE[vi] if suggested_criteria else "", glued_line(glued, vi) if glued else "",
-             classroom_line(classroom, slot_types, vi) if classroom and content else "",
-             title_names_line(title_names, vi) if title_names and content else ""]
+             SCENARIO_LINE[vi]
+             if facts.ai_drafted and content and REVIEW_REASON_SCENARIO not in facts.review_reasons else "",
+             _acronyms_line(facts.unexplained_acronyms, vi) if facts.unexplained_acronyms and content else "",
+             SUGGESTED_CRITERIA_LINE[vi] if facts.suggested_criteria else "",
+             glued_line(facts.glued, vi) if facts.glued else "",
+             classroom_line(facts.classroom, facts.slot_types, vi) if facts.classroom and content else "",
+             title_names_line(facts.title_names, vi) if facts.title_names and content else ""]
     # Run 2f8781d6 (A4): never "QA tự động: không phát hiện vấn đề lớn." (it stood on a unit whose question gave its
     # answer away); a clean unit's note says only what was fixed, or nothing.
     return sanitize_author_text(" ".join(part for part in [*review, *edits, checks.fixed] if part),
@@ -757,6 +772,7 @@ __all__ = [
     "REVIEW_REASON_SCENARIO", "REVIEW_REASON_SERVER_EDIT", "REVIEW_REASON_SOURCE", "REVIEW_REASON_STEP_INCOMPLETE",
     "REVIEW_REASON_STYLE",
     "SOURCE_ARTIFACT_CODE", "TITLE_CRITERION", "WORKSHEET_INCOMPLETE_CODE", "JudgeMode", "JudgeOutcome", "SlotFinding",
+    "UnitNoteFacts",
     "advisory_slot_findings", "blocking_count", "build_unit_author_note", "build_unit_quality",
     "callouts_as_paragraphs", "copied_options", "criteria_summary", "deterministic_slot_findings", "faq_title_mismatch",
     "final_unit_findings", "has_practice_slot", "html_before", "learner_view", "repair_targets",

@@ -2,7 +2,7 @@
 
 An ``html`` slot is written as ``semantic_content`` (ordered sections of typed blocks) and
 rendered by Node. The shared staged validator stays authoritative
-(``app.services.lesson_author.proposal_validation.semantic_learning_visible_text`` on top of
+(``app.services.staged_unit.proposal_shape.semantic_learning_visible_text`` on top of
 ``app.content.ordered_learning_content.flatten_ordered_content``, ``staged_component_payload_code``
 and ``staged_instructional_finding``). It reports only the first failure and only as
 ``HTML_SEMANTIC_INVALID``, while the provider wire schema drops every length and count
@@ -31,7 +31,7 @@ from typing import Any, Final
 
 from app.core.text import casefold_strip_marks
 
-# --- limits (mirror proposal_validation.SEMANTIC_LEARNING_HTML_LIMITS and flatten_ordered_content) ---
+# --- limits (mirror proposal_shape.SEMANTIC_LEARNING_HTML_LIMITS and flatten_ordered_content) ---
 ORDERED_CONTENT_VERSION: Final = 2
 MAX_SECTIONS: Final = 12
 MAX_BLOCKS_PER_SECTION: Final = 12

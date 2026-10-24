@@ -16,10 +16,10 @@ from app.content.instructional_quality import (
 )
 from app.content.learner_content_purity import sanitize_source_fact_for_learner
 from app.contracts.orchestration_v2.provider import UnitComponentPlanV2, UnitGenerationContractV2
-from app.services.lesson_author.staged.source_locked import (
-    _source_locked_faq_answers,
-    _source_locked_faq_question,
-    _source_locked_html_facts,
+from app.services.staged_unit.source_locked_text import (
+    source_locked_faq_answers,
+    source_locked_faq_question,
+    source_locked_html_facts,
 )
 
 
@@ -29,7 +29,7 @@ def _orchestration_v2_source_fragments(values: list[str], *, minimum: int = 3) -
     fragments: list[str] = []
     seen: set[str] = set()
     for value in values:
-        for candidate in _source_locked_html_facts([value]):
+        for candidate in source_locked_html_facts([value]):
             for sentence in re.split(r"(?<=[.!?;])\s+|[\r\n]+", candidate):
                 normalized = re.sub(r"\s+", " ", sentence).strip(" -\u2022")
                 key = normalized.casefold()
@@ -329,11 +329,11 @@ def _orchestration_v2_source_locked_component(
             return None
         component["items"] = items
     elif plan.type == "la_faq":
-        answers = _source_locked_faq_answers(fact_texts)
+        answers = source_locked_faq_answers(fact_texts)
         if len(answers) < 2:  # noqa: PLR2004 - minimum items for the treatment
             return None
         component["items"] = [{
-            "question": _source_locked_faq_question(answer, title, item_index, locale),
+            "question": source_locked_faq_question(answer, title, item_index, locale),
             "answer": answer,
         } for item_index, answer in enumerate(answers)]
     elif plan.type == "la_sortable":

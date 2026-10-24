@@ -14,7 +14,7 @@ from google.genai import errors, types
 from pydantic import create_model
 
 from app import main
-from app.services.lesson_author.staged import provider_schemas as staged_schemas
+from app.services.staged_unit import provider_schemas as staged_schemas
 
 KINDS = ("html", "problem", "la_faq", "la_crossword", "la_diagram", "la_sortable")
 BOUNDS = {"min_items", "max_items", "min_length", "max_length", "minimum", "maximum"}

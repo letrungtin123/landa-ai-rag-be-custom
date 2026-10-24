@@ -43,6 +43,7 @@ from app.idm.notes import KeptDefinitionNote, SkippedBlockNote, build_course_not
 from app.idm.qa import (
     JudgeOutcome,
     SlotFinding,
+    UnitNoteFacts,
     build_unit_author_note,
     callouts_as_paragraphs,
     criteria_summary,
@@ -57,7 +58,7 @@ from app.idm.qa import (
 from app.idm.storyboard import run_idm_unit
 from app.idm.terms import course_terms, defined_terms, defines, mentions
 from app.idm.text import evidence_index
-from app.schemas.common import AiUsage
+from app.infra.gemini.usage import AiUsage
 from app.schemas.orchestration_v2 import RagLessonAuthorUnitV2Request
 from app.services.orchestration_v2 import unit as unit_service
 from tests import idm_golden as g
@@ -306,8 +307,9 @@ class JudgeAggregationTests(unittest.TestCase):
 
     def test_title_criterion_note_in_both_locales(self) -> None:
         outcome = JudgeOutcome("review_required", [finding("Q10_title_matches", "major")])
-        notes = [build_unit_author_note(locale=locale, judge=outcome, deterministic_codes=[], fallback_slots=[],
-                                        ai_drafted=False) for locale in ("vi", "en")]
+        notes = [build_unit_author_note(UnitNoteFacts(
+            locale=locale, judge=outcome, deterministic_codes=[], fallback_slots=[],
+            ai_drafted=False)) for locale in ("vi", "en")]
         self.assertEqual(notes, ["QA tự động: 1 vấn đề cần xem — tiêu đề không khớp nội dung được dạy.",
                                  "Automatic QA: 1 issue(s) to review — a title does not match what the unit teaches."])
 

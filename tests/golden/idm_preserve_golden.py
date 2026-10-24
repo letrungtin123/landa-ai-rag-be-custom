@@ -10,7 +10,7 @@ from __future__ import annotations
 import hashlib
 from typing import Any
 
-from app.lesson_author_orchestration_v2_provider import SourceSnapshotFactV2
+from app.contracts.orchestration_v2.provider import SourceSnapshotFactV2
 from tests.idm_golden import FakeIdmProvider
 
 DOCUMENT_ID = "00000000-0000-4000-8000-0000000000e1"

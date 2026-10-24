@@ -6,6 +6,7 @@ import unicodedata
 import unittest
 from typing import Any
 
+from app.contracts.orchestration_v2.provider import SourceSnapshotFactV2
 from app.idm.signals import (
     IdmCapacityError,
     compute_fact_signals,
@@ -34,7 +35,6 @@ from app.idm.text import (
     single_line,
     trim_at_boundary,
 )
-from app.lesson_author_orchestration_v2_provider import SourceSnapshotFactV2
 from tests.idm_golden import DOCUMENT_ID, key, source_facts
 
 MAX_CHARS = 24_000

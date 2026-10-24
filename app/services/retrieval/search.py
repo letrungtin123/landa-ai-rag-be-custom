@@ -12,10 +12,10 @@ from app.core import metrics
 from app.core.config import settings
 from app.core.logging import SERVICE_LOGGER_NAME
 from app.infra.gemini.calls import normalize_embedding_model
+from app.infra.gemini.usage import AiUsage
 from app.repositories import retrieval as retrieval_repository
 from app.repositories.pgvector import vector_literal
 from app.schemas.chat import RagRequestBase
-from app.schemas.common import AiUsage
 from app.schemas.lesson_author import RagLessonAuthorBlueprintRequest
 from app.schemas.orchestration_v2 import RagLessonAuthorSourceSnapshotV2Request
 from app.services import provider

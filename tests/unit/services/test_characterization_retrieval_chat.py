@@ -21,15 +21,15 @@ import asyncpg
 from pydantic import SecretStr
 
 from app import main
+from app.content.source_structure import PARSER_VERSION
+from app.infra.gemini.usage import AiUsage
 from app.schemas.chat import RagChatMessage, RagChatRequest, RagSourceDocument
-from app.schemas.common import AiUsage
 from app.schemas.lesson_author import RagLessonAuthorBlueprintRequest, RagLessonAuthorRequest
 from app.services import provider as provider_service
 from app.services.chat import service as chat_service
 from app.services.chat.service import UNTRUSTED_CONTENT_RULE_EN, UNTRUSTED_CONTENT_RULE_VI
 from app.services.retrieval import query as retrieval_query
 from app.services.retrieval import search as retrieval_search
-from app.source_structure import PARSER_VERSION
 
 TENANT_ID = "11111111-1111-4111-8111-111111111111"
 KB_ID = "22222222-2222-4222-8222-222222222222"

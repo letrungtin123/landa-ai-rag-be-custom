@@ -32,6 +32,7 @@ from app.idm.qa import (
     REVIEW_REASON_STYLE,
     JudgeOutcome,
     SlotFinding,
+    UnitNoteFacts,
     build_unit_author_note,
     faq_title_mismatch,
 )
@@ -179,20 +180,21 @@ class WorksheetTests(unittest.TestCase):
         self.assertFalse(dropped[1])
 
     def test_the_note_says_whether_the_example_stayed(self) -> None:
-        kept = build_unit_author_note(locale="vi", judge=JudgeOutcome("pass"), deterministic_codes=[],
-                                      fallback_slots=[], ai_drafted=False, worksheet_compacted=True,
-                                      worksheet_example_kept=True)
+        kept = build_unit_author_note(UnitNoteFacts(
+            locale="vi", judge=JudgeOutcome("pass"), deterministic_codes=[],
+            fallback_slots=[], ai_drafted=False, worksheet_compacted=True,
+            worksheet_example_kept=True))
         self.assertIn("đã rút gọn gợi ý trong bảng (ví dụ mẫu vẫn giữ", kept)
         self.assertNotIn("bỏ phần ví dụ mẫu", kept)
 
 
 class NoteTests(unittest.TestCase):
     def test_notices_are_not_a_review_mark_and_notes_have_no_codes(self) -> None:
-        note = build_unit_author_note(
+        note = build_unit_author_note(UnitNoteFacts(
             locale="vi", judge=JudgeOutcome("pass"), deterministic_codes=["IDM_W5_SENTENCE_LENGTH"],
             fallback_slots=[], ai_drafted=False, review_slots=[0], slot_types=["html"],
             slot_reasons={0: ["IDM_W5_SENTENCE_LENGTH"]}, remaining=[SlotFinding("IDM_W5_SENTENCE_LENGTH", 0)],
-            notices=[REVIEW_REASON_EVIDENCE, REVIEW_REASON_STYLE])
+            notices=[REVIEW_REASON_EVIDENCE, REVIEW_REASON_STYLE]))
         self.assertTrue(note.startswith("Lưu ý: tài liệu nguồn của phần này có trang chủ yếu là hình ảnh"))
         # Run 5496155c: a note with a notice never says "no major issue"; the finding is named once, by its own line.
         self.assertNotIn("không phát hiện vấn đề lớn", note)
@@ -202,8 +204,9 @@ class NoteTests(unittest.TestCase):
         self.assertNotIn("Cần tác giả xem lại", note)
 
     def test_a_marked_unit_never_says_no_major_issue(self) -> None:
-        note = build_unit_author_note(locale="vi", judge=JudgeOutcome("pass"), deterministic_codes=[],
-                                      fallback_slots=[], ai_drafted=True, review_reasons=["ai_scenario"])
+        note = build_unit_author_note(UnitNoteFacts(
+            locale="vi", judge=JudgeOutcome("pass"), deterministic_codes=[],
+            fallback_slots=[], ai_drafted=True, review_reasons=["ai_scenario"]))
         self.assertNotIn("không phát hiện vấn đề lớn", note)
         self.assertTrue(note.startswith("Cần tác giả xem lại vì:"))
 

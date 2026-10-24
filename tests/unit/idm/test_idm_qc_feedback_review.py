@@ -26,7 +26,7 @@ from app.idm.mcq import normalize_single_choice
 from app.idm.module_autofix import autofix_lesson
 from app.idm.module_design import validate_lesson
 from app.idm.notes import SkippedBlockNote, build_course_notes
-from app.idm.qa import JudgeOutcome, build_unit_author_note
+from app.idm.qa import JudgeOutcome, UnitNoteFacts, build_unit_author_note
 from app.idm.qa_checks import repeated_callouts
 from app.idm.quiz_text import (
     EXPLANATION_VERDICT_CODE,
@@ -271,10 +271,10 @@ class SourceFlagSizeTests(unittest.TestCase):
 
     def test_the_unit_note_keeps_its_other_lines(self) -> None:
         flags = flag_sentences([(f"Phần {n}: {LONG_NAME}", [CONFLICT3]) for n in range(3)], LONG_FACTS, "vi")
-        note = build_unit_author_note(
+        note = build_unit_author_note(UnitNoteFacts(
             locale="vi", judge=JudgeOutcome("pass"), deterministic_codes=[], fallback_slots=[1], ai_drafted=False,
             slot_types=["html", "problem"], review_reasons=["source_check", "fallback"], source_flags=flags,
-            suggested_criteria=True)
+            suggested_criteria=True))
         self.assertLessEqual(len(note), 1500)
         self.assertIn("1 khối dùng bản dự phòng dựng từ tài liệu", note)
         self.assertIn("tiêu chí AI gợi ý từ nội dung đã dạy", note)
