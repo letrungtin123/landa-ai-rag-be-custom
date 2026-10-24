@@ -5,13 +5,14 @@ IDM W5 budget counts.
 
 from __future__ import annotations
 
+import functools
 import json
 import re
 import unicodedata
 from collections.abc import Iterable, Mapping
 from typing import Any, Final
 
-from app.core.markup import remove_elements, replace_tags
+from app.core.markup import count_tags, element_spans, remove_elements, replace_tags, sub_tags
 from app.idm.node_acceptance_text import (
     _ENTITY_RE,
     _JS_WS,
@@ -55,16 +56,32 @@ def sanitize_lesson_author_html(value: Any) -> str:
             return ""
         return f"</{tag}>" if match.group(0).startswith("</") else f"<{tag}>"
 
-    return js_trim(_SANITIZE_TAG_RE.sub(keep, text))
+    # The tag regex in linear time (app.core.markup.sub_tags): quadratic on "<style x" without a ">" after it.
+    return js_trim(sub_tags(_SANITIZE_TAG_RE, keep, text))
+
+
+@functools.cache
+def _tag_re(tag: str) -> re.Pattern[str]:
+    return re.compile(f"<{tag}(?:[{_JS_WS}][^>]*)?>", re.IGNORECASE | re.ASCII)
+
+
+@functools.cache
+def _closing_tag_re(tag: str) -> re.Pattern[str]:
+    return re.compile(f"</{tag}>", re.IGNORECASE | re.ASCII)
 
 
 def _count_tags(html: str, tag: str) -> int:
-    return len(re.findall(f"<{tag}(?:[{_JS_WS}][^>]*)?>", html, flags=re.IGNORECASE | re.ASCII))
+    """``len(re.findall(f"<{tag}(?:[{_JS_WS}][^>]*)?>", html, re.I | re.A))`` in linear time (app.core.markup)."""
+
+    return count_tags(_tag_re(tag), html)
 
 
 def _count_list_items(html: str, tag: str) -> int:
-    segments = re.findall(f"<{tag}(?:[{_JS_WS}][^>]*)?>([\\s\\S]*?)</{tag}>", html, flags=re.IGNORECASE | re.ASCII)
-    return sum(_count_tags(segment, "li") for segment in segments)
+    """The ``<li>`` tags inside ``<{tag}>…</{tag}>``: the regex ``<{tag}(?:[WS][^>]*)?>([\\s\\S]*?)</{tag}>`` in
+    linear time (``app.core.markup.element_spans``)."""
+
+    return sum(_count_tags(html[content_start:content_end], "li")
+               for _, content_start, content_end, _ in element_spans(html, _tag_re(tag), _closing_tag_re(tag)))
 
 
 def _artifact_missing(html: str, artifact: Mapping[str, Any]) -> bool:
@@ -373,6 +390,11 @@ _COURSE_HTML_MAX_BYTES: Final = 250_000
 _COURSE_HTML_MAX_ROWS: Final = 100
 _COURSE_HTML_MAX_COLUMNS: Final = 50
 _COURSE_HTML_MAX_CELLS: Final = 10_000
+_TABLE_OPEN_RE: Final = re.compile(r"<table\b[^>]*>", re.IGNORECASE | re.ASCII)
+_TABLE_CLOSE_RE: Final = re.compile(r"</table>", re.IGNORECASE | re.ASCII)
+_ROW_OPEN_RE: Final = re.compile(r"<tr\b[^>]*>", re.IGNORECASE | re.ASCII)
+_ROW_CLOSE_RE: Final = re.compile(r"</tr>", re.IGNORECASE | re.ASCII)
+_CELL_OPEN_RE: Final = re.compile(r"<(?:td|th)\b[^>]*>", re.IGNORECASE | re.ASCII)
 
 
 def workspace_html_code(html: str) -> str | None:
@@ -381,11 +403,14 @@ def workspace_html_code(html: str) -> str | None:
     if len(html.encode("utf-8", "surrogatepass")) > _COURSE_HTML_MAX_BYTES:
         return "HTML_TOO_LARGE"
     cells = 0
-    for table in re.findall(r"<table\b[^>]*>[\s\S]*?</table>", html, re.IGNORECASE | re.ASCII):
-        if len(re.findall(r"<tr\b[^>]*>", table, re.I | re.A)) > _COURSE_HTML_MAX_ROWS:
+    # The regexes <table\b[^>]*>[\s\S]*?</table>, <tr\b[^>]*>, <tr\b[^>]*>[\s\S]*?</tr> and <(?:td|th)\b[^>]*>
+    # (re.I | re.A) in linear time (app.core.markup): quadratic on opening tags without a ">" or closing tag after them.
+    for table_start, _, _, table_end in element_spans(html, _TABLE_OPEN_RE, _TABLE_CLOSE_RE):
+        table = html[table_start:table_end]
+        if count_tags(_ROW_OPEN_RE, table) > _COURSE_HTML_MAX_ROWS:
             return "HTML_TABLE_TOO_LARGE"
-        for row in re.findall(r"<tr\b[^>]*>[\s\S]*?</tr>", table, re.IGNORECASE | re.ASCII):
-            row_cells = len(re.findall(r"<(?:td|th)\b[^>]*>", row, re.IGNORECASE | re.ASCII))
+        for row_start, _, _, row_end in element_spans(table, _ROW_OPEN_RE, _ROW_CLOSE_RE):
+            row_cells = count_tags(_CELL_OPEN_RE, table[row_start:row_end])
             if row_cells > _COURSE_HTML_MAX_COLUMNS:
                 return "HTML_TABLE_TOO_LARGE"
             cells += row_cells

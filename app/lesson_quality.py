@@ -14,8 +14,20 @@ from html import unescape
 from typing import Any
 
 from app.content.ordered_learning_content import flatten_ordered_content
-from app.core.markup import replace_tags
+from app.core.markup import count_tags, element_spans, replace_tags, tags_end
 from app.workflows.contracts import WorkflowIssue, WorkflowValidationResult
+
+# The tag and element regexes of the problem and artifact checks, run in linear time by app.core.markup (wave 3 of
+# the hardening): as re.search / re.finditer / re.findall patterns they were quadratic on unclosed tags.
+_LABEL_OPEN_RE = re.compile(r"<label>", re.IGNORECASE)
+_LABEL_CLOSE_RE = re.compile(r"</label>", re.IGNORECASE)
+_CHOICE_OPEN_RE = re.compile(r"<(?:choice|option)\b[^>]*>", re.IGNORECASE)
+_CHOICE_CLOSE_RE = re.compile(r"</(?:choice|option)>", re.IGNORECASE)
+_OL_TAG_RE = re.compile(r"<ol\b[^>]*>", re.IGNORECASE | re.DOTALL)
+_UL_TAG_RE = re.compile(r"<ul\b[^>]*>", re.IGNORECASE | re.DOTALL)
+_LI_TAG_RE = re.compile(r"<li\b[^>]*>")
+_TR_TAG_RE = re.compile(r"<tr\b[^>]*>", re.IGNORECASE)
+_BLOCKQUOTE_TAG_RE = re.compile(r"<blockquote\b[^>]*>", re.IGNORECASE)
 
 EXPLANATORY_TYPES = {"html", "la_faq"}
 PRACTICE_OR_CHECK_TYPES = {"problem", "la_sortable", "la_crossword"}
@@ -136,8 +148,9 @@ def _problem_question(component: dict[str, Any]) -> str:
     if isinstance(direct, str) and direct.strip():
         return _plain_text(direct)
     xml = str(component.get("data") or component.get("xml") or "")
-    match = re.search(r"<label>([\s\S]*?)</label>", xml, flags=re.IGNORECASE)
-    return _plain_text(match.group(1) if match else "")
+    # re.search(r"<label>([\s\S]*?)</label>", xml, re.I) in linear time (app.core.markup.element_spans).
+    span = next(element_spans(xml, _LABEL_OPEN_RE, _LABEL_CLOSE_RE), None)
+    return _plain_text(xml[span[1]:span[2]] if span else "")
 
 
 def _problem_choices(component: dict[str, Any]) -> list[str]:
@@ -149,11 +162,9 @@ def _problem_choices(component: dict[str, Any]) -> list[str]:
             values.append(_plain_text(row.get("text") or choice))
         return [value for value in values if value]
     xml = str(component.get("data") or component.get("xml") or "")
-    return [
-        _plain_text(match.group(1))
-        for match in re.finditer(r"<(?:choice|option)\b[^>]*>([\s\S]*?)</(?:choice|option)>", xml, flags=re.IGNORECASE)
-        if _plain_text(match.group(1))
-    ]
+    # re.finditer(r"<(?:choice|option)\b[^>]*>([\s\S]*?)</(?:choice|option)>", xml, re.I) in linear time.
+    contents = [xml[start:end] for _, start, end, _ in element_spans(xml, _CHOICE_OPEN_RE, _CHOICE_CLOSE_RE)]
+    return [_plain_text(content) for content in contents if _plain_text(content)]
 
 
 def _semantic_learning_text(value: Any) -> str:
@@ -268,23 +279,31 @@ def _html_artifact_item_count(component: dict[str, Any], artifact_type: str) -> 
         semantic_items = semantic.get("ordered_steps", semantic.get("steps"))
         if isinstance(semantic_items, list):
             return len([item for item in semantic_items if isinstance(item, str) and item.strip()])
-        return len(re.findall(r"<li\b[^>]*>", re.sub(r"(?is)^.*?<ol\b[^>]*>", "", html_value))) if re.search(r"<ol\b", html_value, re.IGNORECASE) else 0
+        return count_tags(_LI_TAG_RE, _after_first_tag(_OL_TAG_RE, html_value)) if re.search(r"<ol\b", html_value, re.IGNORECASE) else 0
     if artifact_type == "checklist":
         semantic_items = semantic.get("bullet_points", semantic.get("bullets"))
         if isinstance(semantic_items, list):
             return len([item for item in semantic_items if isinstance(item, str) and item.strip()])
-        return len(re.findall(r"<li\b[^>]*>", re.sub(r"(?is)^.*?<ul\b[^>]*>", "", html_value))) if re.search(r"<ul\b", html_value, re.IGNORECASE) else 0
+        return count_tags(_LI_TAG_RE, _after_first_tag(_UL_TAG_RE, html_value)) if re.search(r"<ul\b", html_value, re.IGNORECASE) else 0
     if artifact_type in {"table", "comparison"}:
         rows = semantic.get("comparison_rows", semantic.get("table_rows"))
         if isinstance(rows, list):
             return len([row for row in rows if isinstance(row, dict)])
-        return len(re.findall(r"<tr\b[^>]*>", html_value, re.IGNORECASE)) - 1 if re.search(r"<table\b", html_value, re.IGNORECASE) else 0
+        return count_tags(_TR_TAG_RE, html_value) - 1 if re.search(r"<table\b", html_value, re.IGNORECASE) else 0
     if artifact_type in {"warning", "requirement", "exception"}:
         warnings = semantic.get("warnings", semantic.get("warning"))
         if isinstance(warnings, list):
             return len([item for item in warnings if isinstance(item, str) and item.strip()])
-        return len(re.findall(r"<blockquote\b[^>]*>", html_value, re.IGNORECASE))
+        return count_tags(_BLOCKQUOTE_TAG_RE, html_value)
     return 0
+
+
+def _after_first_tag(pattern: re.Pattern[str], html_value: str) -> str:
+    """``re.sub(r"(?is)^.*?<ol\\b[^>]*>", "", html_value)`` (or ``<ul``): the text after the first such tag, found
+    up to the last ">" so the search is linear (app.core.markup.count_tags)."""
+
+    match = pattern.search(html_value, 0, tags_end(html_value))
+    return html_value[match.end():] if match else html_value
 
 
 def _issue(

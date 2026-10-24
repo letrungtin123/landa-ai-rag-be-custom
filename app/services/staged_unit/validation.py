@@ -17,7 +17,7 @@ from app.content.instructional_quality import (
 )
 from app.content.learner_content_purity import component_learner_text, learner_content_purity_finding
 from app.content.ordered_learning_content import semantic_shape_diagnostics
-from app.core.markup import replace_tags
+from app.core.markup import element_spans, replace_tags
 from app.instructional_density import INSTRUCTIONAL_DENSITY_POLICY_VERSION
 from app.services.lesson_author.errors import LessonAuthorProposalValidationError
 from app.services.lesson_author.proposal_validation import (
@@ -33,6 +33,21 @@ from app.services.staged_unit.provider_schemas import (
     StagedSortableItem,
     staged_component_payload_code,
 )
+
+# (opening, closing) of the lists whose <li> items a required artifact counts (re.I as the former findall).
+_LIST_TAGS: dict[str, tuple[re.Pattern[str], re.Pattern[str]]] = {
+    tag: (re.compile(f"<{tag}>", re.IGNORECASE), re.compile(f"</{tag}>", re.IGNORECASE)) for tag in ("ol", "ul")
+}
+
+
+def preserved_list_items(html: str, tag: str) -> int:
+    """The ``<li>`` tags of ``"".join(re.findall(rf"<{tag}>(.*?)</{tag}>", html, re.I | re.S))``, the list contents
+    found in linear time (``app.core.markup.element_spans``; the findall scanned to the end from every unclosed list).
+    """
+
+    opening, closing = _LIST_TAGS[tag]
+    contents = "".join(html[start:end] for _, start, end, _ in element_spans(html, opening, closing))
+    return len(re.findall(r"<li>", contents, re.IGNORECASE))
 
 
 class StagedUnitFinding(str):
@@ -257,22 +272,8 @@ def staged_instructional_finding(  # noqa: PLR0917 - positional signature kept f
                     preserved_count = _staged_semantic_artifact_count(semantic, artifact_type)
                 elif artifact_type in {"table", "comparison"}:
                     preserved_count = len(re.findall(r"<tr>", html, re.IGNORECASE))
-                elif artifact_type == "ordered_list":
-                    preserved_count = len(
-                        re.findall(
-                            r"<li>",
-                            "".join(re.findall(r"<ol>(.*?)</ol>", html, re.IGNORECASE | re.DOTALL)),
-                            re.IGNORECASE,
-                        )
-                    )
-                elif artifact_type == "checklist":
-                    preserved_count = len(
-                        re.findall(
-                            r"<li>",
-                            "".join(re.findall(r"<ul>(.*?)</ul>", html, re.IGNORECASE | re.DOTALL)),
-                            re.IGNORECASE,
-                        )
-                    )
+                elif artifact_type in {"ordered_list", "checklist"}:
+                    preserved_count = preserved_list_items(html, "ol" if artifact_type == "ordered_list" else "ul")
                 else:
                     preserved_count = len(re.findall(r"<blockquote>", html, re.IGNORECASE))
                 if preserved_count < required_count:

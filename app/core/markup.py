@@ -7,12 +7,15 @@ as ``<[^<>]*>`` is not a drop-in replacement: it reads "a << b > c" differently,
 ``app.idm.node_acceptance_text`` must keep the Node result character for character. The same holds for
 ``<[^>]*>`` (which also removes "<>") and for the element pattern ``<style[^>]*>[\\s\\S]*?</style>`` (review of
 wave 1, L-5): ``replace_tags(..., include_empty=True)`` and ``remove_elements`` give their results in linear time.
+``count_tags``, ``sub_tags`` and ``element_spans`` do the same for the tag patterns of the Node mirrors and of the
+legacy checks (``<li(?:\\s[^>]*)?>``, ``<table\\b[^>]*>[\\s\\S]*?</table>`` ...; wave 3 of the hardening).
 """
 
 from __future__ import annotations
 
 import re
 import string
+from collections.abc import Callable, Iterator
 from typing import Final
 
 _TAG_RE: Final = re.compile(r"<[^>]+>")
@@ -63,3 +66,49 @@ def remove_elements(text: str, name: str) -> str:
         position = close + len(closing)
     kept.append(text[position:])
     return "".join(kept)
+
+
+def tags_end(text: str) -> int:
+    """Where the text's last ">" ends (0 without one): no match of a pattern that ends with ">" goes past it."""
+
+    return text.rfind(">") + 1
+
+
+def count_tags(pattern: re.Pattern[str], text: str) -> int:
+    """``len(pattern.findall(text))`` for a tag pattern, in time linear in ``len(text)``.
+
+    ``pattern`` is a tag: "<", a name and, for the attributes, ``[^>]*`` (which cannot cross a ">"), then ">"; where it
+    matches, the match ends at the first ">" after its start. The regex is quadratic on "<name " with no ">" after it:
+    from each one ``[^>]*`` runs to the end of the text before the match fails. Searched only up to the last ">"
+    (``tags_end``), every ``[^>]*`` stops at a ">" and the tag matches, so no part of the text is scanned twice.
+    """
+
+    return len(pattern.findall(text, 0, tags_end(text)))
+
+
+def sub_tags(pattern: re.Pattern[str], replacement: Callable[[re.Match[str]], str], text: str) -> str:
+    """``pattern.sub(replacement, text)`` for a tag pattern (see ``count_tags``), in linear time."""
+
+    end = tags_end(text)
+    return pattern.sub(replacement, text[:end]) + text[end:]
+
+
+def element_spans(text: str, opening: re.Pattern[str], closing: re.Pattern[str]) -> Iterator[tuple[int, int, int, int]]:
+    """The matches of ``opening([\\s\\S]*?)closing`` (``re.finditer``, same flags) in linear time, as
+    ``(start, content start, content end, end)``.
+
+    ``opening`` is a tag pattern (see ``count_tags``) and ``closing`` has no lookbehind. The regex is quadratic on
+    opening tags with no closing tag after them: from each one the lazy ``[\\s\\S]*?`` runs to the end of the text.
+    Here each opening tag is found up to the last ">", then the first match of ``closing`` after it, and the search
+    goes on after that. When no closing match follows an opening tag, none follows a later opening tag either (each
+    ends at or after this one's ">"), so the regex has no more matches and the search stops.
+    """
+
+    limit = tags_end(text)
+    position = 0
+    while (start := opening.search(text, position, limit)) is not None:
+        close = closing.search(text, start.end())
+        if close is None:
+            return
+        yield start.start(), start.end(), close.start(), close.end()
+        position = close.end()
