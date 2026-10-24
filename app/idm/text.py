@@ -426,8 +426,33 @@ _LETTERS_RE: Final = re.compile(r"[^\W\d_]+")
 _VOWELS: Final = frozenset("aeiouy")
 # Review of dfb6db2 (item 13): a glued word is made of Vietnamese syllables (an initial Vietnamese has, a vowel group, a
 # final): "café", "Zürich", "Nestlé" or "José" are not ("f", "z", "j", "w" and "-stl-" are no Vietnamese spelling).
-_SYLLABLES_RE: Final = re.compile(r"(?:(?:ngh|ng|nh|ch|gh|gi|kh|ph|qu|th|tr|[bcdđghklmnprstvx])?[aeiouy]{1,3}"
-                                  r"(?:ch|ng|nh|[cmnpt])?){2,}")
+_SYLLABLE_RE: Final = re.compile(r"(?:ngh|ng|nh|ch|gh|gi|kh|ph|qu|th|tr|[bcdđghklmnprstvx])?[aeiouy]{1,3}"
+                                 r"(?:ch|ng|nh|[cmnpt])?")
+# The longest syllable of _SYLLABLE_RE: a three-letter initial, three vowels and a two-letter final.
+_SYLLABLE_MAX_LENGTH: Final = 8
+# How many syllables end at a position: one, or two or more.
+_ONE_SYLLABLE: Final = 1
+_SYLLABLES: Final = 2
+
+
+def _two_syllables_or_more(base: str) -> bool:
+    """Whether ``base`` is two or more _SYLLABLE_RE syllables end to end: the language of ``(?:syllable){2,}``.
+
+    That regex, matched whole, tried every way of cutting a long run of vowels into one-to-three-vowel syllables before
+    failing on the next letter: exponential in the word's length, holding the GIL (re-score of 2026-10-24, N1). This
+    walks the word once: for every position, whether one syllable or two-or-more syllables end there.
+    """
+
+    ends: list[int] = [0] * (len(base) + 1)  # 0: no way to reach it, else _ONE_SYLLABLE or _SYLLABLES
+    ends[0] = -1  # the start: zero syllables
+    for start, state in enumerate(ends):
+        if state == 0:
+            continue
+        reached = _ONE_SYLLABLE if state == -1 else _SYLLABLES
+        for stop in range(start + 1, min(len(base), start + _SYLLABLE_MAX_LENGTH) + 1):
+            if ends[stop] < reached and _SYLLABLE_RE.fullmatch(base, start, stop):
+                ends[stop] = reached
+    return ends[len(base)] == _SYLLABLES if base else False
 
 
 def _vowel_groups(base: str) -> int:
@@ -469,6 +494,6 @@ def glued_words(text: str) -> list[str]:
     for word in _LETTERS_RE.findall(unicodedata.normalize("NFC", text)):
         base = casefold_strip_marks(word)
         vietnamese = "đ" in base or base != word.casefold()
-        if vietnamese and _vowel_groups(base) > 1 and _SYLLABLES_RE.fullmatch(base):
+        if vietnamese and _vowel_groups(base) > 1 and _two_syllables_or_more(base):
             found.append(word)
     return list(dict.fromkeys(found))
