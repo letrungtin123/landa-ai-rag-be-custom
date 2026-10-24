@@ -28,6 +28,7 @@ from app.idm.qa import (
     REVIEW_REASON_SOURCE,
     JudgeOutcome,
     SlotFinding,
+    UnitNoteFacts,
     build_unit_author_note,
 )
 from app.idm.qa_checks import WORKSHEET_INCOMPLETE_CODE
@@ -752,7 +753,7 @@ class SuppositionTests(StoryboardEndpointTestCase):
 def note(**changes: Any) -> str:
     base: dict[str, Any] = {"locale": "vi", "judge": JudgeOutcome("pass"), "deterministic_codes": [],
                             "fallback_slots": [], "ai_drafted": False, "slot_types": ["html", "problem", "la_faq"]}
-    return build_unit_author_note(**{**base, **changes})
+    return build_unit_author_note(UnitNoteFacts(**{**base, **changes}))
 
 
 # Run 2f8781d6 (A4): the line is gone from every note.

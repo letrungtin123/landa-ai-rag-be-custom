@@ -80,6 +80,7 @@ from app.idm.qa import (
     SOFT_CODES,
     JudgeMode,
     JudgeOutcome,
+    UnitNoteFacts,
     advisory_slot_findings,
     build_unit_author_note,
     build_unit_quality,
@@ -683,7 +684,7 @@ async def run_idm_unit(
     inferred = {} if whole_fallback else writer.faq.inferred_counts(components, draft.fallback_slots)
     fixed = [] if whole_fallback else settled_codes(
         writer.codes, remaining, {code for index in draft.fallback_slots for code in draft.reasons.get(index, ())})
-    note = build_unit_author_note(
+    note = build_unit_author_note(UnitNoteFacts(
         locale=runtime.locale, judge=judge, deterministic_codes=writer.codes, fallback_slots=draft.fallback_slots,
         ai_drafted=ai_drafted, slot_reasons=draft.reasons, review_slots=draft.review_slots,
         slot_types=[plan["type"] for plan in writer.plans], failure_codes=writer.failure_codes,
@@ -701,7 +702,7 @@ async def run_idm_unit(
         **writer.slot_notes(components, draft.fallback_slots, whole_fallback=whole_fallback),
         glued=fallback_glued_words(components, draft.fallback_slots), source_flags=writer.source_flags,
         source_notes=writer.source_notes,
-        suppositions=0 if whole_fallback else writer.supposed_count(draft.fallback_slots))
+        suppositions=0 if whole_fallback else writer.supposed_count(draft.fallback_slots)))
     quality = build_unit_quality(mode=deps.judge_mode, judge=judge, repair_applied=draft.repair_applied,
                                  deterministic_codes=[*writer.codes, *(item.code for item in remaining)],
                                  author_note=note)

@@ -19,7 +19,7 @@ from app.idm.fallback_lines import faq_topic, restore_stops, short_name, split_g
 from app.idm.faq_checks import FAQ_HYPE_CODE
 from app.idm.node_acceptance import html_quality_code
 from app.idm.prompts_unit import rule_line
-from app.idm.qa import JudgeOutcome, SlotFinding, _code_text, build_unit_author_note
+from app.idm.qa import JudgeOutcome, SlotFinding, UnitNoteFacts, _code_text, build_unit_author_note
 from app.idm.quiz_letters import expand_short_item_labels
 from app.idm.quiz_text import EXPLANATION_FILLER_CODE
 from app.idm.slot_words import hype_words
@@ -428,7 +428,7 @@ class AuthorNoteTests(unittest.TestCase):
     def note(self, **changes: Any) -> str:
         base: dict[str, Any] = {"locale": "vi", "judge": JudgeOutcome("pass"), "deterministic_codes": [],
                                 "fallback_slots": [], "ai_drafted": False, "slot_types": ["html", "problem", "la_faq"]}
-        return build_unit_author_note(**{**base, **changes})
+        return build_unit_author_note(UnitNoteFacts(**{**base, **changes}))
 
     def test_no_major_issue_line_is_gone(self) -> None:
         self.assertEqual(self.note(), "")

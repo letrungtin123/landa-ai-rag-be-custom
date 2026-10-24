@@ -33,6 +33,7 @@ from app.idm.qa import (
     REVIEW_REASON_EVIDENCE,
     REVIEW_REASON_SCENARIO,
     JudgeOutcome,
+    UnitNoteFacts,
     build_unit_author_note,
     deterministic_slot_findings,
 )
@@ -197,17 +198,19 @@ class AuthorTextTests(unittest.TestCase):
         self.assertEqual(plain_row_refs("Arrow 3 stays"), "Arrow 3 stays")
 
     def test_the_note_says_why_first_and_lists_unexplained_abbreviations(self) -> None:
-        note = build_unit_author_note(locale="vi", judge=JudgeOutcome("pass"), deterministic_codes=[],
-                                      fallback_slots=[], ai_drafted=True,
-                                      review_reasons=[REVIEW_REASON_EVIDENCE, REVIEW_REASON_SCENARIO],
-                                      unexplained_acronyms=["BQS", "G8D"])
+        note = build_unit_author_note(UnitNoteFacts(
+            locale="vi", judge=JudgeOutcome("pass"), deterministic_codes=[],
+            fallback_slots=[], ai_drafted=True,
+            review_reasons=[REVIEW_REASON_EVIDENCE, REVIEW_REASON_SCENARIO],
+            unexplained_acronyms=["BQS", "G8D"]))
         self.assertTrue(note.startswith("Cần tác giả xem lại vì: tài liệu nguồn của phần này có trang chủ yếu là "
                                         "hình ảnh (bảng hoặc sơ đồ dạng ảnh) hệ thống chưa đọc được"))
         self.assertIn("câu hỏi dùng tình huống do AI soạn, tác giả nên kiểm tra lại tình huống và đáp án.", note)
         self.assertNotIn("Tình huống minh hoạ do AI soạn", note)
         self.assertTrue(note.endswith("tác giả nên bổ sung nghĩa ở lần xuất hiện đầu: BQS, G8D."))
-        english = build_unit_author_note(locale="en", judge=JudgeOutcome("pass"), deterministic_codes=[],
-                                         fallback_slots=[], ai_drafted=False, review_reasons=[REVIEW_REASON_EVIDENCE])
+        english = build_unit_author_note(UnitNoteFacts(
+            locale="en", judge=JudgeOutcome("pass"), deterministic_codes=[],
+            fallback_slots=[], ai_drafted=False, review_reasons=[REVIEW_REASON_EVIDENCE]))
         self.assertTrue(english.startswith("Needs the author's review because: the source of this section has pages "
                                            "that are mostly an image"))
 

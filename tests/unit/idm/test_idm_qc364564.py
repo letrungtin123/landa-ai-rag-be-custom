@@ -43,6 +43,7 @@ from app.idm.notes import KeptDefinitionNote, SkippedBlockNote, build_course_not
 from app.idm.qa import (
     JudgeOutcome,
     SlotFinding,
+    UnitNoteFacts,
     build_unit_author_note,
     callouts_as_paragraphs,
     criteria_summary,
@@ -306,8 +307,9 @@ class JudgeAggregationTests(unittest.TestCase):
 
     def test_title_criterion_note_in_both_locales(self) -> None:
         outcome = JudgeOutcome("review_required", [finding("Q10_title_matches", "major")])
-        notes = [build_unit_author_note(locale=locale, judge=outcome, deterministic_codes=[], fallback_slots=[],
-                                        ai_drafted=False) for locale in ("vi", "en")]
+        notes = [build_unit_author_note(UnitNoteFacts(
+            locale=locale, judge=outcome, deterministic_codes=[], fallback_slots=[],
+            ai_drafted=False)) for locale in ("vi", "en")]
         self.assertEqual(notes, ["QA tự động: 1 vấn đề cần xem — tiêu đề không khớp nội dung được dạy.",
                                  "Automatic QA: 1 issue(s) to review — a title does not match what the unit teaches."])
 
