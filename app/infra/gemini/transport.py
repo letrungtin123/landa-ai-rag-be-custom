@@ -13,12 +13,13 @@ from __future__ import annotations
 import asyncio
 import logging
 from collections.abc import Awaitable, Callable
+from contextlib import AbstractAsyncContextManager
 from dataclasses import dataclass
 from time import perf_counter
 from typing import Any, Literal
 
 from app.core import metrics
-from app.core.concurrency import WorkloadLimiter
+from app.core.concurrency import WorkloadLimiter, current_provider_priority
 from app.core.config import settings
 from app.core.errors import AppError, ProviderError
 from app.core.handled_exceptions import report_handled_exception
@@ -57,6 +58,14 @@ def provider_limiter() -> WorkloadLimiter:
     if _provider_slots.limiter is None:
         raise RuntimeError("The provider concurrency limiter is not installed (app.services.runtime).")
     return _provider_slots.limiter()
+
+
+def _provider_slot(timeout_ms: int) -> AbstractAsyncContextManager[None]:
+    """A provider slot within the call's deadline. Background calls (everything but chat) leave the slots reserved for
+    chat free (audit 2026-10-24, P9)."""
+
+    return provider_limiter().slot(max_wait_seconds=timeout_ms / 1000,
+                                   background=current_provider_priority() == "background")
 
 
 async def run_in_provider_thread(run: Callable[[], Any]) -> Any:
@@ -242,7 +251,7 @@ async def call_provider_with_timeout(
         attempt_started = perf_counter()
         outcome = "error"
         try:
-            async with provider_limiter().slot(max_wait_seconds=timeout_ms / 1000):
+            async with _provider_slot(timeout_ms):
                 response = await asyncio.wait_for(run_in_provider_thread(run), timeout=timeout_ms / 1000)
             outcome = "success"
             emit_safe_provider_telemetry(on_provider_diagnostic, {

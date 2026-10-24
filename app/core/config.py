@@ -125,6 +125,14 @@ class Settings(BaseSettings):
         ge=1,
         le=256,
     )
+    # Provider slots only chat may take (audit 2026-10-24, P9): AI ID runs, indexing and the other background calls
+    # hold at most AI_RAG_MAX_CONCURRENT_PROVIDER_CALLS minus this many at once (and always at least one).
+    provider_chat_reserved_slots: int = Field(
+        default=2,
+        validation_alias="AI_RAG_PROVIDER_CHAT_RESERVED_SLOTS",
+        ge=0,
+        le=255,
+    )
     max_concurrent_index_jobs: int = Field(
         default=2,
         validation_alias="AI_RAG_MAX_CONCURRENT_INDEX_JOBS",
@@ -145,9 +153,18 @@ class Settings(BaseSettings):
         ge=100,
         le=600_000,
     )
-    extraction_executor: Literal["thread", "process"] = Field(
-        default="thread",
+    # thread: in this process; process: a pool of service processes; isolated: one fresh child process per document,
+    # killed at the deadline and capped at AI_RAG_EXTRACTION_MEMORY_LIMIT_BYTES (audit 2026-10-24, M2).
+    extraction_executor: Literal["thread", "process", "isolated"] = Field(
+        default="isolated",
         validation_alias="AI_RAG_EXTRACTION_EXECUTOR",
+    )
+    # Memory (commit charge on Windows, address space on Linux) one isolated extraction child may use.
+    extraction_memory_limit_bytes: int = Field(
+        default=1024 * 1024 * 1024,
+        validation_alias="AI_RAG_EXTRACTION_MEMORY_LIMIT_BYTES",
+        ge=256 * 1024 * 1024,
+        le=64 * 1024 * 1024 * 1024,
     )
 
     # Provider retry policy (5xx always; 429 only with a short server retry hint).
@@ -390,6 +407,8 @@ class Settings(BaseSettings):
     chunk_overlap_chars: int = Field(default=350, validation_alias="AI_RAG_CHUNK_OVERLAP_CHARS", ge=0, le=50_000)
     # The provider call clamps the batch to 1..100 (provider.embedding_batch_size).
     embedding_batch_size: int = Field(default=32, validation_alias="AI_RAG_EMBEDDING_BATCH_SIZE", ge=1, le=1_000)
+    # Embedding batches of one request in flight at once (audit 2026-10-24, P4); each also takes a provider slot.
+    embedding_concurrency: int = Field(default=2, validation_alias="AI_RAG_EMBEDDING_CONCURRENCY", ge=1, le=16)
     provider_request_timeout_ms: int = Field(default=60_000, validation_alias="AI_RAG_PROVIDER_REQUEST_TIMEOUT_MS",
                                              ge=1_000, le=600_000)
     blueprint_provider_request_timeout_ms: int = Field(

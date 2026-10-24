@@ -83,9 +83,11 @@ from app.idm.worksheet_input import is_input_section
 _WORD_RE: Final = re.compile(r"\w+", re.UNICODE)
 # A worked example in the html: a text that opens with an example label, the blocks after it in its section, and every
 # block of a section whose heading names an example ("Ví dụ minh họa mẫu hoàn thành").
+# The spaces before and after the quotes and before the colon are taken whole (possessive): only spaces stand there,
+# so the match is the same, without the quadratic split of one run of spaces between two \s* (wave 3 hardening).
 _EXAMPLE_LABEL_RE: Final = re.compile(
-    r"^\s*[\"'(]*\s*(?:ví dụ minh hoạ|ví dụ minh họa|ví dụ|illustrative example|worked example|for example|example)"
-    r"\s*[:,]\s*", re.IGNORECASE)
+    r"^\s*+[\"'(]*\s*+(?:ví dụ minh hoạ|ví dụ minh họa|ví dụ|illustrative example|worked example|for example|example)"
+    r"\s*+[:,]\s*", re.IGNORECASE)
 _EXAMPLE_HEADING_WORDS: Final = ("vi du", "example", "mau hoan thanh", "bai mau")
 # A table-row fact: "Row 3: Bậc 02 | Vietnam Quality | Đạt chuẩn …" (the PDF reader's row label is optional).
 _ROW_LABEL_RE: Final = re.compile(r"^\s*row\s+\d{1,3}\s*:\s*", re.IGNORECASE)
@@ -102,7 +104,8 @@ _CLAUSE_RE: Final = re.compile(r"[,;:.!?]")
 _RUNG_RE: Final = re.compile(r"^(?P<stem>[^\W\d_]+(?:\s+[^\W\d_]+)?)\s+0*(?P<number>\d{1,2})$")
 _SENTENCE_RE: Final = re.compile(r"(?<=[.!?;])\s+")
 # The head of a taught label: "Bậc 01 - Vietnam Manufacturing" -> "Bậc 01", "Hiện đại hóa: …" -> "Hiện đại hóa".
-_HEAD_END_RE: Final = re.compile(r"\s+[-–—|]\s+|\s*:\s*|\s*\(")  # noqa: RUF001 - dashes
+# Started only after a non-space (the first match always starts there), so a long run of spaces is read once.
+_HEAD_END_RE: Final = re.compile(r"(?<!\s)(?:\s+[-–—|]\s+|\s*:\s*|\s*\()")  # noqa: RUF001 - dashes
 # An option that starts with a numbered label ("Cấp 2 vì …", "Bậc 01 - …") applies a taught rule to the case.
 _NUMBERED_LABEL_RE: Final = re.compile(r"^\s*[^\W\d_]+(?:\s+[^\W\d_]+)?\s+0?\d{1,2}(?!\d)")
 _MIN_HEAD_CHARS: Final = 3

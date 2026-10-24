@@ -130,7 +130,9 @@ bounded repair, then deterministic source-locked content marked for review. Prom
   (stage, outcome, exception type, frames) and count `ai_rag_handled_exceptions_total`.
 - Metrics (`GET /metrics`, Prometheus): HTTP requests and durations by route template, provider calls, durations
   and tokens by operation and pipeline `stage` (IDM stage, `course_skeleton`, `chapter_shard`, `chat`,
-  embeddings), fallbacks, limiter use and rejections, document-limit rejections, deadline hits.
+  embeddings), fallbacks, limiter use and rejections, document-limit rejections, deadline hits, the process's own
+  memory (`ai_rag_process_memory_bytes`, `kind` = `private` or `working_set`; PM2 on Windows reads only the working
+  set) and the event-loop lag (`ai_rag_event_loop_lag_seconds`, `window` = `last` or `max_1m`).
 
 ## Release and runtime
 
@@ -169,10 +171,12 @@ those flows retrieve: turning it on is the owner's decision.
 | `AI_RAG_BUILD_SHA` | text | `unknown` | length <= 64 |
 | `AI_RAG_READINESS_DB_TIMEOUT_MS` | int | `1000` | >= 100, <= 10000 |
 | `AI_RAG_MAX_CONCURRENT_PROVIDER_CALLS` | int | `8` | >= 1, <= 256 |
+| `AI_RAG_PROVIDER_CHAT_RESERVED_SLOTS` | int | `2` | >= 0, <= 255 |
 | `AI_RAG_MAX_CONCURRENT_INDEX_JOBS` | int | `2` | >= 1, <= 64 |
 | `AI_RAG_CPU_WORKERS` | int | CPU count - 1, between 1 and 4 | >= 1, <= 64 |
 | `AI_RAG_LIMITER_ACQUIRE_TIMEOUT_MS` | int | `30000` | >= 100, <= 600000 |
-| `AI_RAG_EXTRACTION_EXECUTOR` | `thread` \| `process` | `thread` |  |
+| `AI_RAG_EXTRACTION_EXECUTOR` | `thread` \| `process` \| `isolated` | `isolated` |  |
+| `AI_RAG_EXTRACTION_MEMORY_LIMIT_BYTES` | int | `1073741824` | >= 268435456, <= 68719476736 |
 | `AI_RAG_PROVIDER_MAX_ATTEMPTS` | int | `2` | >= 1, <= 5 |
 | `AI_RAG_PROVIDER_RETRY_BASE_MS` | int | `1500` | >= 0, <= 30000 |
 | `AI_RAG_PROVIDER_RETRY_MAX_MS` | int | `8000` | >= 0, <= 60000 |
@@ -221,6 +225,7 @@ those flows retrieve: turning it on is the owner's decision.
 | `AI_RAG_CHUNK_MAX_CHARS` | int | `3200` | >= 100, <= 100000 |
 | `AI_RAG_CHUNK_OVERLAP_CHARS` | int | `350` | >= 0, <= 50000 |
 | `AI_RAG_EMBEDDING_BATCH_SIZE` | int | `32` | >= 1, <= 1000 |
+| `AI_RAG_EMBEDDING_CONCURRENCY` | int | `2` | >= 1, <= 16 |
 | `AI_RAG_PROVIDER_REQUEST_TIMEOUT_MS` | int | `60000` | >= 1000, <= 600000 |
 | `AI_RAG_BLUEPRINT_PROVIDER_REQUEST_TIMEOUT_MS` | int | `300000` | >= 1000, <= 600000 |
 | `AI_RAG_STAGED_LESSON_CONTENT_PROVIDER_TIMEOUT_MS` | int | `180000` | > 60000, <= 300000 |

@@ -6,10 +6,11 @@ patch target (``app.services.provider.generate_content``) fakes the provider eve
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
 import logging
-from collections.abc import Callable
+from collections.abc import Callable, Coroutine
 from time import perf_counter
 from typing import Any, Literal
 
@@ -112,19 +113,58 @@ async def embed_texts(
 
     effective_model = normalize_embedding_model(model)
     batch_size = embedding_batch_size(effective_model)
+    batches = [contents[start : start + batch_size] for start in range(0, len(contents), batch_size)]
+    results: list[tuple[list[list[float]], AiUsage]] = [([], AiUsage())] * len(batches)
+    failures: dict[int, Exception] = {}
+    next_batches = iter(range(len(batches)))
+
+    async def embed_batches() -> None:
+        # The workers share one iterator: batches start in order and each runs once.
+        for index in next_batches:
+            try:
+                results[index] = await embed_text_batch(
+                    api_key,
+                    effective_model,
+                    batches[index],
+                    task_type=task_type,
+                    output_dimensionality=output_dimensionality,
+                )
+            except Exception as error:
+                failures[index] = error
+                raise
+
+    # Audit 2026-10-24, P4: up to AI_RAG_EMBEDDING_CONCURRENCY batches at once (each still takes a provider slot,
+    # its own retries and deadline in call_provider_with_timeout); the vectors keep the order of ``contents``.
+    workers = min(settings.embedding_concurrency, len(batches))
+    if workers == 1:
+        await embed_batches()
+    else:
+        await _until_first_failure([embed_batches() for _ in range(workers)])
+    if failures:
+        # The error of the first failed batch, as the sequential loop raised it.
+        raise failures[min(failures)]
     embeddings: list[list[float]] = []
     usage = AiUsage()
-    for start in range(0, len(contents), batch_size):
-        batch_embeddings, batch_usage = await embed_text_batch(
-            api_key,
-            effective_model,
-            contents[start : start + batch_size],
-            task_type=task_type,
-            output_dimensionality=output_dimensionality,
-        )
+    for batch_embeddings, batch_usage in results:
         embeddings.extend(batch_embeddings)
         usage = combine_usage(usage, batch_usage)
     return embeddings, usage
+
+
+async def _until_first_failure(work: list[Coroutine[Any, Any, None]]) -> None:
+    """Run ``work`` concurrently until all of it is done or one part fails, then cancel the rest and wait for it.
+
+    The failures are the caller's to raise. A cancelled caller cancels every part and waits for them before its
+    cancellation goes on, so no provider call outlives its request.
+    """
+
+    tasks = [asyncio.ensure_future(item) for item in work]
+    try:
+        await asyncio.wait(tasks, return_when=asyncio.FIRST_EXCEPTION)
+    finally:
+        for task in tasks:
+            task.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
 
 
 def _emit_request_size(

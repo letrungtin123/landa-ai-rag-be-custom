@@ -268,8 +268,26 @@ _SHORT_USE_RE: Final = re.compile(rf"({_SHORT_LABEL})[ \t]+(\d{{1,2}})")
 _LABEL_LEADS: Final = frozenset({"vì", "của", "như", "lại", "chọn", "là", "và", "hoặc", "với", "thấy", "xem", "theo",
                                  "trước", "sau", "because", "of", "like", "choose", "is", "and", "or", "with", "see",
                                  "before", "after"})
-_WORD_BEFORE_RE: Final = re.compile(r"(\w+)[ \t]+$")
 _WORD_AFTER_RE: Final = re.compile(r"[ \t]+(\w+)")
+# Read on the reversed text by word_before.
+_BLANKS_RE: Final = re.compile(r"[ \t]+")
+_WORD_RE: Final = re.compile(r"\w+")
+
+
+def word_before(text: str, reverse: str, end: int) -> str | None:
+    """``re.compile(r"(\\w+)[ \\t]+$").search(text, 0, end)``'s word, or None; ``reverse`` is ``text[::-1]``.
+
+    Searched from the start of the text for every use of a label, the regex read the whole text before it each time
+    and was quadratic on a long word. The match can only end at ``end`` (or before a line break there): the spaces
+    and tabs before it and the word before those are read backwards instead.
+    """
+
+    blanks_end = end - 1 if end and text[end - 1] == "\n" else end
+    blanks = _BLANKS_RE.match(reverse, len(text) - blanks_end)
+    if blanks is None:
+        return None
+    word = _WORD_RE.match(reverse, blanks.end())
+    return word.group()[::-1] if word is not None else None
 
 
 def expand_short_item_labels(component: dict[str, Any]) -> tuple[dict[str, Any], int]:
@@ -320,20 +338,25 @@ def expand_short_item_labels(component: dict[str, Any]) -> tuple[dict[str, Any],
     written = {match.group(2) for match in _SHORT_ITEM_RE.finditer(stem)}
     use = re.compile(rf"(?<!\w)({'|'.join(map(re.escape, sorted(written)))}) (\d{{1,2}})(?!\w)")
 
-    def rename(match: re.Match[str]) -> str:
-        before = _WORD_BEFORE_RE.search(match.string, 0, match.start())
-        after = _WORD_AFTER_RE.match(match.string, match.end())
-        near = [found.group(1) for found in (before, after) if found is not None]
-        if (int(match.group(2)) not in numbers or any(word.isupper() and len(word) > 1 for word in near)
-                or (before is not None and before.group(1).isdigit())
-                or (match.group(1).islower() and before is not None and before.group(1).lower() not in _LABEL_LEADS)):
-            return match.group(0)
-        return f"{noun(match.group(1))} {match.group(2)}"
+    def renamed_uses(text: str) -> tuple[str, int]:
+        reverse = text[::-1]
+
+        def rename(match: re.Match[str]) -> str:
+            before = word_before(text, reverse, match.start())
+            after = _WORD_AFTER_RE.match(match.string, match.end())
+            near = [found for found in (before, after.group(1) if after is not None else None) if found is not None]
+            if (int(match.group(2)) not in numbers or any(word.isupper() and len(word) > 1 for word in near)
+                    or (before is not None and before.isdigit())
+                    or (match.group(1).islower() and before is not None and before.lower() not in _LABEL_LEADS)):
+                return match.group(0)
+            return f"{noun(match.group(1))} {match.group(2)}"
+
+        return use.subn(rename, text)
 
     for key in ("explanation", "hints"):
         value = result.get(key)
         texts = [value] if isinstance(value, str) else list(value) if isinstance(value, list) else []
-        renamed = [use.subn(rename, unicodedata.normalize("NFC", text)) if isinstance(text, str) else (text, 0)
+        renamed = [renamed_uses(unicodedata.normalize("NFC", text)) if isinstance(text, str) else (text, 0)
                    for text in texts]
         count += sum(changes for _text, changes in renamed)
         if renamed:

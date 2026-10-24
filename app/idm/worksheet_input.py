@@ -241,7 +241,10 @@ def missing_input(component: Mapping[str, Any]) -> InputReference | None:
     return reference
 
 
-_ENTRY_SPLIT_RE: Final = re.compile(r"\s*(?:[,;]|\bvà\b|\band\b)\s*", re.IGNORECASE)
+# The entries of a context are counted between these separators. re.split(r"\s*(?:[,;]|\bvà\b|\band\b)\s*") gives the
+# same parts but with the spaces next to a separator, which never change whether a part is blank; that regex was
+# quadratic on long runs of spaces (wave 3 hardening).
+_ENTRY_SEPARATOR_RE: Final = re.compile(r"[,;]|\b(?:và|and)\b", re.IGNORECASE)
 
 
 def described_only(task: str, context: str) -> InputReference | None:
@@ -251,7 +254,7 @@ def described_only(task: str, context: str) -> InputReference | None:
     reference = input_reference([task, context])
     if reference is None:
         return None
-    entries = [part for part in _ENTRY_SPLIT_RE.split(context) if part.strip()]
+    entries = [part for part in _ENTRY_SEPARATOR_RE.split(context) if part.strip()]
     return reference if len(entries) < max(_MIN_LIST_ENTRIES, reference.count or 0) else None
 
 

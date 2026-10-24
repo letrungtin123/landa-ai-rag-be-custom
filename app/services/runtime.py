@@ -16,6 +16,7 @@ from app.core.concurrency import ConcurrencyRuntime
 from app.core.config import settings, validate_startup_settings
 from app.core.lifespan import RuntimeState
 from app.core.logging import SERVICE_LOGGER_NAME, log_event
+from app.core.process_metrics import event_loop_lag
 from app.core.security import require_configured_service_auth
 from app.idm.policy import IDM_PROMPT_POLICY_VERSION
 from app.idm.prompt_manifest import prompt_templates_hash
@@ -37,6 +38,7 @@ concurrency = ConcurrencyRuntime(
     cpu_workers=settings.cpu_workers,
     acquire_timeout_seconds=settings.limiter_acquire_timeout_ms / 1000,
     extraction_executor=settings.extraction_executor,
+    provider_reserved_slots=settings.provider_chat_reserved_slots,
 )
 # Provider calls take their slots from this runtime's limiter and run on its provider threads, both looked up at
 # every attempt so a replaced ``concurrency`` (tests) is the one in use.
@@ -127,6 +129,8 @@ async def startup() -> None:
         retry_max_seconds=float(settings.db_connect_retry_max_seconds),
     )
     await database.start()
+    # ai_rag_event_loop_lag_seconds on /metrics (audit 2026-10-24, D2); the memory gauges read the process at scrape.
+    event_loop_lag.start()
 
 
 async def shutdown() -> None:
@@ -139,3 +143,4 @@ async def shutdown() -> None:
     db_pool = None
     gemini_pool.client_pool.clear()
     concurrency.shutdown()
+    await event_loop_lag.stop()

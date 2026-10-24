@@ -7,6 +7,7 @@ from typing import Any, Literal
 import asyncpg
 
 from app.core import metrics
+from app.core.concurrency import interactive_provider_calls
 from app.core.config import settings
 from app.core.logging import redact_secret_like_values
 from app.infra.gemini.usage import combine_usage
@@ -97,7 +98,10 @@ def build_chat_prompt(
 
 
 async def chat(request: RagChatRequest, pool: asyncpg.Pool) -> dict[str, Any]:
-    return await run_with_deadline("/v1/chat", settings.chat_deadline_ms, _chat(request, pool))
+    # The question's embedding and the answer may use the provider slots kept for chat, so a learner does not wait
+    # behind AI ID runs (audit 2026-10-24, P9).
+    with interactive_provider_calls():
+        return await run_with_deadline("/v1/chat", settings.chat_deadline_ms, _chat(request, pool))
 
 
 async def _chat(request: RagChatRequest, pool: asyncpg.Pool) -> dict[str, Any]:

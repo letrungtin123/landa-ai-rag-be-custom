@@ -35,7 +35,8 @@ from app.repositories import indexing as index_repository
 from app.schemas.common import AiUsage
 from app.schemas.kb import RagDeleteDocumentRequest, RagDeleteKbRequest, RagIndexRequest
 from app.services import provider as provider_service
-from app.services.ingestion import chunking
+from app.services import runtime as runtime_service
+from app.services.ingestion import chunking, extract_isolated
 from app.services.ingestion import documents as documents_service
 from app.services.ingestion import extract as extraction
 from app.services.ingestion import index as index_service
@@ -596,13 +597,24 @@ class IndexDocumentCharacterizationTests(unittest.TestCase):
         ])
 
     def test_file_document_downloads_to_temp_path_and_persists_structure_nodes(self) -> None:
+        # Changed 2026-10-24 (audit M2): the isolated executor (the default) parses the file in a child process; the
+        # request it sends names the same temp path and file name the thread executor passes to extract_sections.
+        for executor, target, function in (
+                ("thread", "app.services.ingestion.extract.extract_sections", extraction.extract_sections),
+                ("isolated", "app.services.ingestion.extract_isolated.extraction_request",
+                 extract_isolated.extraction_request)):
+            with self.subTest(executor=executor), \
+                    patch.object(runtime_service.concurrency, "extraction_executor_kind", executor):
+                self.check_file_document_downloads_to_temp_path(target, function)
+
+    def check_file_document_downloads_to_temp_path(self, target: str, function: Any) -> None:
         storage_path = f"{TENANT_ID}/{KB_ID}/guide.docx"
         with tempfile.TemporaryDirectory() as directory:
             write_docx(Path(directory) / "guide.docx")
             raw = (Path(directory) / "guide.docx").read_bytes()
         db = FakeDb(document=document_row(name="guide.docx", type="docx", file_path=storage_path, content=None))
-        spy = Mock(wraps=extraction.extract_sections)
-        with patch("app.services.ingestion.extract.extract_sections", new=spy):
+        spy = Mock(wraps=function)
+        with patch(target, new=spy):
             result, _, downloader, records = self.run_index(db, download=raw)
         downloader.assert_called_once_with(storage_path)
         temp_path, file_name = spy.call_args.args
