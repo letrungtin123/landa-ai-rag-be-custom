@@ -31,6 +31,11 @@ MAX_WITNESSES = 120
 _NEGATION = re.compile(r"\b(?:not|never|no|without|khong|cam|chua)\b")
 _NUMBERS = re.compile(r"(?<!\w)\d+(?:[.,]\d+)?(?!\w)")
 _INTERNAL_ID = re.compile(r"\bp\d+-f\d+\b|\bcp2_[a-f0-9]+\b")
+# Whether a span shows a worked product: \d+\s*[x×*]\s*\d+\s*=\s*\d+ found or not (only searched). A match inside a
+# run of digits means one from the run's first digit, and both numbers before "=" end where their digits end, so the
+# search starts at the first digit of a run only and does not give digits back: linear instead of quadratic on a long
+# run of digits (wave 3 hardening).
+_WORKED_CALCULATION = re.compile(r"(?<!\d)\d++\s*[x×*]\s*\d++\s*=\s*\d+")
 _MULTIPLICATION = re.compile(r"(?<![\w.,-])(\d{1,6}(?:\.\d{1,6})?)\s*[x×*]\s*(\d{1,6}(?:\.\d{1,6})?)\s*=\s*(\d{1,12}(?:\.\d{1,12})?)(?![\w,]|\.\d)")
 _INSTRUCTIONAL_TYPES = {"html", "la_diagram", "la_sortable", "la_crossword"}
 
@@ -287,7 +292,7 @@ def observe_lesson_content(unit: dict, expected: dict, manifest: dict | None) ->
             finding("APPLICATION_TASK_REQUIRES_REVIEW", "unit", objective_ref=ref, action=action)
         if action == "calculation" and not any(
                 re.search(r"\b(?:example|suppose|hypothetical|vi du|gia dinh|gia su)\b", s.normalized)
-                and re.search(r"\d+\s*[x×*]\s*\d+\s*=\s*\d+", s.raw) for s in spans):
+                and _WORKED_CALCULATION.search(s.raw) for s in spans):
             finding("WORKED_CALCULATION_NOT_OBSERVED", "unit", objective_ref=ref)
     correct_positions = Counter()
     for i, raw in enumerate(components[:MAX_COMPONENTS]):

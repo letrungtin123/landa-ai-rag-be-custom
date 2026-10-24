@@ -97,9 +97,48 @@ _TYPE_PHRASES: Final[tuple[tuple[FaqQuestionType, tuple[str, ...]], ...]] = (
         "nên làm gì", "cần làm gì", "phải làm gì", "how", "should", "apply", "what to do", "handle")),
 )
 # "Khi <case> thì …" / "When <case>, …" asks what to do in a case (not "khi nào", which asks for the rule itself).
-_WHEN_CLAUSE_VI: Final = re.compile(r"(?<!\w)khi(?!\s+nào)(?!\w)[^?]*?(?<!\w)thì(?!\w)")
-_WHEN_CLAUSE_FOLDED: Final = re.compile(r"(?<!\w)khi(?!\s+nao)(?!\w)[^?]*?(?<!\w)thi(?!\w)")
-_WHEN_CLAUSE_EN: Final = re.compile(r"(?<!\w)when(?!\w)[^?,]+,")
+# The regexes (?<!\w)khi(?!\s+nào)(?!\w)[^?]*?(?<!\w)thì(?!\w) (folded: nao, thi) and (?<!\w)when(?!\w)[^?,]+, are
+# searched in parts by _when_then / _when_comma: from every "khi" (or "when") they scanned to the next "?", so
+# "khi khi khi …" was quadratic (wave 3 hardening).
+_WHEN_VI: Final = re.compile(r"(?<!\w)khi(?!\s+nào)(?!\w)")
+_THEN_VI: Final = re.compile(r"(?<!\w)thì(?!\w)")
+_WHEN_FOLDED: Final = re.compile(r"(?<!\w)khi(?!\s+nao)(?!\w)")
+_THEN_FOLDED: Final = re.compile(r"(?<!\w)thi(?!\w)")
+_WHEN_EN: Final = re.compile(r"(?<!\w)when(?!\w)")
+_WHEN_EN_STOP: Final = re.compile(r"[?,]")
+
+
+def _when_then(text: str, when: re.Pattern[str], then: re.Pattern[str]) -> bool:
+    """A "khi" with a "thì" after it and no "?" between (the regex above), in linear time.
+
+    When the first "khi" before a "?" has no "thì" before it, no later "khi" before that "?" has one either: the
+    search goes on after the "?".
+    """
+
+    position = 0
+    while (start := when.search(text, position)) is not None:
+        question = text.find("?", start.end())
+        limit = len(text) if question < 0 else question
+        if then.search(text, start.end(), limit) is not None:
+            return True
+        if question < 0:
+            return False
+        position = question + 1
+    return False
+
+
+def _when_comma(text: str) -> bool:
+    """A "when" followed by at least one character and a comma, with no "?" before the comma, in linear time."""
+
+    position = 0
+    while (start := _WHEN_EN.search(text, position)) is not None:
+        stop = _WHEN_EN_STOP.search(text, start.end())
+        if stop is None:
+            return False
+        if stop.group() == "," and stop.start() > start.end():
+            return True
+        position = stop.start() + 1
+    return False
 
 
 def _alternation(phrases: Iterable[str]) -> re.Pattern[str]:
@@ -122,11 +161,11 @@ def question_type(question: str) -> FaqQuestionType:
     lowered = unicodedata.normalize("NFC", " ".join(question.split())).lower()
     accented = _has_diacritics(lowered)
     text = lowered if accented else idm_fold(lowered)
+    when, then = (_WHEN_VI, _THEN_VI) if accented else (_WHEN_FOLDED, _THEN_FOLDED)
     for kind, pattern in _ACCENTED_PATTERNS if accented else _FOLDED_PATTERNS:
         if pattern.search(text):
             return kind
-        if kind == "what_if" and ((_WHEN_CLAUSE_VI if accented else _WHEN_CLAUSE_FOLDED).search(text)
-                                  or _WHEN_CLAUSE_EN.search(text)):
+        if kind == "what_if" and (_when_then(text, when, then) or _when_comma(text)):
             return kind
     return RECALL
 

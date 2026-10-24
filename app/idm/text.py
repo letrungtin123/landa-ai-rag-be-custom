@@ -440,6 +440,27 @@ def _vowel_groups(base: str) -> int:
     return groups
 
 
+def visible_end(text: str, end: int, blanks: str | None = None) -> int:
+    """Where ``text[:end].rstrip(blanks)`` ends, read backwards from ``end`` instead of copying the text before it:
+    a copy per match of a pattern made those loops quadratic in the text's length (wave 3 hardening)."""
+
+    if blanks is None:
+        while end > 0 and text[end - 1].isspace():
+            end -= 1
+    else:
+        while end > 0 and text[end - 1] in blanks:
+            end -= 1
+    return end
+
+
+def visible_start(text: str, start: int) -> int:
+    """Where ``text[start:].lstrip()`` starts (without the copy)."""
+
+    while start < len(text) and text[start].isspace():
+        start += 1
+    return start
+
+
 def glued_words(text: str) -> list[str]:
     """The words of ``text`` that hold two Vietnamese syllables or more without a space ("bộchân", "từchối"), in
     order and without repeats. Split only where the facts show how (``app.idm.fallback_lines.split_glued``)."""

@@ -121,7 +121,24 @@ SOURCE_TOC_TITLE_MAX_WORDS = 8
 
 
 SOURCE_TOC_ENTRY_MAX_CHARS = 120
-SOURCE_TOC_LEADER_RE = re.compile(r"(?:\.{3,}|…{2,}|·{3,}|_{3,})\s*\d{1,4}\s*$")
+SOURCE_TOC_LEADERS = ("...", "……", "···", "___")
+_TOC_PAGE_MAX_DIGITS = 4
+
+
+def ends_with_toc_leader(line: str) -> bool:
+    """Whether ``re.search(r"(?:\\.{3,}|…{2,}|·{3,}|_{3,})\\s*\\d{1,4}\\s*$", line)`` matches: a dot leader and a
+    page number of one to four digits end the line (spaces between and after them allowed).
+
+    The match ends the line, so its digits are the line's last ones (all of them: one more before them could not
+    belong to the leader) and the leader ends right before the spaces before them. The regex tried every character
+    of a leader run and ran to its end from each one: quadratic (3.5 s for a 20 kB line, wave 3 hardening).
+    """
+
+    text = line.rstrip()
+    digits = 0
+    while digits <= _TOC_PAGE_MAX_DIGITS and digits < len(text) and text[-1 - digits].isdecimal():
+        digits += 1
+    return 1 <= digits <= _TOC_PAGE_MAX_DIGITS and text[:len(text) - digits].rstrip().endswith(SOURCE_TOC_LEADERS)
 SOURCE_TOC_PAGE_SUFFIX_RE = re.compile(r"\S\s+\d{1,4}$")
 
 
@@ -145,7 +162,7 @@ def _is_source_toc_title(line: str) -> bool:
 
 
 def _is_source_toc_entry(line: str) -> bool:
-    if SOURCE_TOC_LEADER_RE.search(line):
+    if ends_with_toc_leader(line):
         return True
     if len(line) > SOURCE_TOC_ENTRY_MAX_CHARS or re.search(r"[.!?;:]$", line):
         return False  # a sentence is content, even inside a TOC page
@@ -175,7 +192,7 @@ def _drop_source_toc_lines(lines: list[str]) -> list[str]:
         if in_toc and _is_source_toc_entry(line):
             continue
         in_toc = False
-        if seen_title and (SOURCE_TOC_LEADER_RE.search(line) or SOURCE_TOC_CHAPTER_LABEL_RE.fullmatch(line)):
+        if seen_title and (ends_with_toc_leader(line) or SOURCE_TOC_CHAPTER_LABEL_RE.fullmatch(line)):
             continue
         result.append(line)
     return result

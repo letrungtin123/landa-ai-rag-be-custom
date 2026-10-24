@@ -43,9 +43,8 @@ from app.idm.worksheet_input import is_input_section
 COMPACTED_CODE: Final = "IDM_W5_WORKSHEET_COMPACTED"
 _PLACEHOLDER_RE: Final = re.compile(r"^\[\s*(.+?)\s*\]$")
 _FILL_LEADER_RE: Final = re.compile(r"[.…_·]{4,}")
-_TRAILING_ELLIPSIS_RE: Final = re.compile(r"\s*(?:\.{2,}|…)\s*$")
 _SENTENCE_END_RE: Final = re.compile(r"(?<=[.!?])\s+")
-_CELL_SPLIT_RE: Final = re.compile(r"\s*[;|]\s*")
+_CELL_SEPARATORS: Final = re.compile(r"[;|]")
 _LABEL_MAX_WORDS: Final = 8
 _HEADING_MAX_WORDS: Final = 12
 _UPPER_SHARE: Final = 0.6
@@ -182,7 +181,26 @@ def _placeholder(line: str) -> str | None:
     match = _PLACEHOLDER_RE.match(line)
     if match is None:
         return None
-    return _TRAILING_ELLIPSIS_RE.sub("", match.group(1)).strip() or None
+    return without_trailing_ellipsis(match.group(1)).strip() or None
+
+
+def without_trailing_ellipsis(text: str) -> str:
+    """``re.sub(r"\\s*(?:\\.{2,}|…)\\s*$", "", text)``: the text without the dots or ellipsis that end it and the
+    spaces around them, in linear time.
+
+    The match ends the text: its spaces after the dots are the text's last ones, its dots (or its one "…") end right
+    before them, and it starts at the first of the spaces before those. From every dot of a long run the regex ran
+    to the run's end (quadratic: 2.4 s for 20 kB, wave 3 hardening).
+    """
+
+    end = len(text.rstrip())
+    if end and text[end - 1] == "…":
+        start = end - 1
+    else:
+        start = len(text[:end].rstrip("."))
+        if end - start < 2:  # noqa: PLR2004 - "{2,}": two dots or more
+            return text
+    return text[:len(text[:start].rstrip())]
 
 
 def _upper_share(line: str) -> float:
@@ -229,8 +247,18 @@ def _table_row(line: str) -> tuple[str, str, str] | None:
     if match is None:
         return None
     cells = [cell for cell in (_FILL_LEADER_RE.sub("", cell).strip()
-                               for cell in _CELL_SPLIT_RE.split(match.group(2))) if cell]
+                               for cell in split_cells(match.group(2))) if cell]
     return (cells[0], "", "") if len(cells) == 1 else None
+
+
+def split_cells(text: str) -> list[str]:
+    """``re.split(r"\\s*[;|]\\s*", text)`` in linear time: the parts between ";" and "|" without the spaces next to a
+    separator (the regex was quadratic on long runs of spaces without a separator)."""
+
+    parts = _CELL_SEPARATORS.split(text)
+    if len(parts) == 1:
+        return parts
+    return [parts[0].rstrip(), *(part.strip() for part in parts[1:-1]), parts[-1].lstrip()]
 
 
 def _form_rows(lines: list[str]) -> tuple[list[tuple[str, str, str]], set[int]]:
@@ -361,7 +389,9 @@ def worksheet_fallback_html(title: str, fact_texts: Sequence[str], task: str | N
 _SELF_CHECK: Final = {"vi": "Tự kiểm tra", "en": "Self-check"}
 _LABEL: Final = r"(?:tiêu chí gợi ý|suggested criteria|suggested criterion)"
 _DASHES: Final = "-" + "".join(map(chr, (0x2013, 0x2014)))
-_HEADING_LABEL_RE: Final = re.compile(rf"\s*(?:[(\[]\s*{_LABEL}\s*[)\]]|[{_DASHES}:]\s*{_LABEL})\s*$", re.IGNORECASE)
+# Started only after a non-space (where the leftmost match starts), so a long run of spaces is read once.
+_HEADING_LABEL_RE: Final = re.compile(rf"(?<!\s)\s*(?:[(\[]\s*{_LABEL}\s*[)\]]|[{_DASHES}:]\s*{_LABEL})\s*$",
+                                      re.IGNORECASE)
 _WHOLE_LABEL_RE: Final = re.compile(rf"^\s*{_LABEL}\s*$", re.IGNORECASE)
 _ITEM_LABEL_RE: Final = re.compile(rf"^\s*{_LABEL}\s*[:{_DASHES}]\s*(?=\S)", re.IGNORECASE)
 

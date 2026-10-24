@@ -34,6 +34,19 @@ from app.services.staged_unit.provider_schemas import (
     staged_component_payload_code,
 )
 
+# A website or an e-mail address in learner text: (?:https?://|www\.|[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}) searched (re.I)
+# by contains_contact_copy, the address found from its "@" (a word character, "." "+" or "-" before it is all the
+# regex needs there): from every character of a long word the regex ran to the word's end looking for one (quadratic).
+_WEB_LINK_RE = re.compile(r"https?://", re.IGNORECASE)
+_WEB_HOST_RE = re.compile(r"www\.", re.IGNORECASE)
+_EMAIL_RE = re.compile(r"(?<=[\w.+-])@[\w.-]+\.[A-Za-z]{2,}", re.IGNORECASE)
+
+
+def contains_contact_copy(text: str) -> bool:
+    """Whether the regex above finds a website or an e-mail address in ``text``, in linear time."""
+
+    return bool(("://" in text and _WEB_LINK_RE.search(text)) or _WEB_HOST_RE.search(text)
+                or ("@" in text and _EMAIL_RE.search(text)))
 # (opening, closing) of the lists whose <li> items a required artifact counts (re.I as the former findall).
 _LIST_TAGS: dict[str, tuple[re.Pattern[str], re.Pattern[str]]] = {
     tag: (re.compile(f"<{tag}>", re.IGNORECASE), re.compile(f"</{tag}>", re.IGNORECASE)) for tag in ("ol", "ul")
@@ -239,7 +252,7 @@ def staged_instructional_finding(  # noqa: PLR0917 - positional signature kept f
         if contains_generic_review_language(text):
             return fail("HTML_GENERIC_REVIEW_COPY", "semantic_content",
                         "Learner content contains internal source-review instructions instead of instruction.")
-        if re.search(r"(?:https?://|www\.|[\w.+-]+@[\w.-]+\.[A-Za-z]{2,})", text, re.IGNORECASE):
+        if contains_contact_copy(text):
             return fail("HTML_NON_INSTRUCTIONAL_CONTACT_COPY", "semantic_content",
                         "Learner content contains source contact or website boilerplate.")
         if re.search(r"(.)\1{5,}", text, re.IGNORECASE):

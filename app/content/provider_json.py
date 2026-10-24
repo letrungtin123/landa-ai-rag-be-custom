@@ -13,28 +13,36 @@ Both fail with the same 502 ``ServiceError`` the routes have always returned.
 from __future__ import annotations
 
 import json
-import re
 from typing import Any
 
 from app.core.errors import ServiceError
-
-_OBJECT_SPAN = re.compile(r"\{.*\}", flags=re.DOTALL)
 
 
 def provider_json_error(label: str, *, shape: str = "") -> ServiceError:
     return ServiceError(status_code=502, detail=f"AI không trả JSON {label}{shape} hợp lệ.")
 
 
+def object_span(text: str) -> str | None:
+    """What ``re.search(r"\\{.*\\}", text, re.DOTALL)`` matches: from the first "{" to the last "}" after it.
+
+    The regex tried every "{" and ran to the end of the text from each one when no "}" came after it (quadratic on an
+    answer of "{"); the first "{" either has a "}" after it, and the greedy ``.*`` stops at the last one, or none does.
+    """
+
+    first, last = text.find("{"), text.rfind("}")
+    return text[first:last + 1] if 0 <= first < last else None
+
+
 def parse_provider_json_object(text: str, label: str) -> dict[str, Any]:
     try:
         parsed = json.loads(text)
     except json.JSONDecodeError:
-        match = _OBJECT_SPAN.search(text)
-        if not match:
+        span = object_span(text)
+        if span is None:
             # Implicitly chained to the decode error, exactly as before.
             raise provider_json_error(label)  # noqa: B904
         try:
-            parsed = json.loads(match.group(0))
+            parsed = json.loads(span)
         except json.JSONDecodeError as exc:
             raise provider_json_error(label) from exc
     if not isinstance(parsed, dict):

@@ -28,6 +28,7 @@ from app.idm.policy import (
     IDM_MEDIA_POINT_LABEL_MAX_WORDS,
 )
 from app.idm.quiz_text import utf16_length
+from app.idm.text import visible_end
 
 MEDIA_BRIEF_THIN_CODE: Final = "IDM_W4_MEDIA_BRIEF_THIN"
 MEDIA_BRIEF_COMPLETED_CODE: Final = "IDM_W4_MEDIA_BRIEF_COMPLETED"
@@ -85,10 +86,15 @@ def _numbered(text: str) -> bool:
     for match in _NUMBERED_RE.finditer(text):
         if match.group("clear"):
             return True
-        before = text[:match.start()].rstrip(" \t")
-        words = before.split()
-        if not before or before[-1] in _PHRASE_MARKS or before.endswith("\n") or (
-                words and words[-1].casefold() in _PLACING_WORDS):
+        # The text before the number without its spaces and tabs, and its last word, read back from the match (a copy
+        # and a split of the whole text before every match were quadratic on long text).
+        end = visible_end(text, match.start(), " \t")
+        word_end = visible_end(text, end)
+        word_start = word_end
+        while word_start > 0 and not text[word_start - 1].isspace():
+            word_start -= 1
+        if not end or text[end - 1] in _PHRASE_MARKS or text[end - 1] == "\n" or (
+                word_end and text[word_start:word_end].casefold() in _PLACING_WORDS):
             return True
     return False
 

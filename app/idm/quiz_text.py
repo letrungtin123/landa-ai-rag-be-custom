@@ -23,8 +23,8 @@ from __future__ import annotations
 import re
 import unicodedata
 from collections import Counter
-from collections.abc import Mapping, Sequence
-from itertools import pairwise
+from collections.abc import Callable, Mapping, Sequence
+from itertools import combinations, pairwise
 from typing import Any, Final
 
 from app.idm.mcq import OPTION_LETTERS, question_complete, segment_starts
@@ -51,7 +51,7 @@ from app.idm.policy import (
     QUIZ_FILLER_VI,
 )
 from app.idm.quiz_letters import number_item_letters, stem_item_letters
-from app.idm.text import EvidenceIndex, content_words, idm_fold, ngram_overlap
+from app.idm.text import EvidenceIndex, content_words, idm_fold, ngram_overlap, visible_end
 
 EXPLANATION_LAYOUT_CODE: Final = "IDM_W5_EXPLANATION_LAYOUT"
 EXPLANATION_VERDICT_CODE: Final = "IDM_W5_EXPLANATION_VERDICT"
@@ -98,7 +98,8 @@ OPTION_SEPARATOR: Final = " - "
 LINE_FEED: Final = "\n"
 _SINGLE_CHOICE_TYPES: Final = frozenset({"multiple_choice", "single_choice"})
 # An inline list item: a marker between spaces before an item that starts with a capital letter or a digit.
-_INLINE_MARKER_RE: Final = re.compile(r"[ \t]+[-–•][ \t]+(?=\S)")  # noqa: RUF001 - the en dash is a marker
+# Tried only where a run of spaces and tabs starts (every match starts there), so a long run is read once.
+_INLINE_MARKER_RE: Final = re.compile(r"(?<![ \t])[ \t]+[-–•][ \t]+(?=\S)")  # noqa: RUF001 - the en dash is a marker
 _MIN_INLINE_ITEMS: Final = 2
 # The label an inline list item starts with: one to four words and a colon ("Mức 1:", "Phân khúc X:", "KPI 2:").
 _ITEM_LABEL_RE: Final = re.compile(r"([^\s:–—-][^\s:]*)(?:[ \t]+[^\s:]+){0,3}:[ \t]")  # noqa: RUF001 - dashes
@@ -135,14 +136,67 @@ _MIN_NAMED_ITEMS: Final = 2
 # A quotation inside a stem line ("Khách hỏi: “Bao giờ giao?”"): its question mark asks nothing of the learner.
 # What a person in the case asks or says after a speech verb and a colon ("… và hỏi: Khi nào thì hàng về kho?").
 # Review 4: a whole word, and never the label "Câu hỏi:" that asks the learner ("Câu hỏi: Bạn sẽ xử lý thế nào?").
-_SPEECH_RE: Final = re.compile(r"(?<!\w)(?<![Cc]âu )(?i:hỏi|nói|thắc mắc|than|phàn nàn|chia sẻ|nhắn|viết|asks?|asked"
-                               r"|says?|said|writes?|wrote)(?!\w)[ \t]*:[^?\n]*\?")
+# The speech verb and its colon of (?<!\w)(?<![Cc]âu )(?i:hỏi|…|wrote)(?!\w)[ \t]*:[^?\n]*\? ; _without_speech removes
+# that up to the "?" (from every verb it scanned to the end of the line: quadratic on "nói:" repeated).
+_SPEECH_HEAD_RE: Final = re.compile(r"(?<!\w)(?<![Cc]âu )(?i:hỏi|nói|thắc mắc|than|phàn nàn|chia sẻ|nhắn|viết|asks?"
+                                    r"|asked|says?|said|writes?|wrote)(?!\w)[ \t]*:")
+_SPEECH_END_RE: Final = re.compile(r"[?\n]")
 # An explanation line that only points at the option ("phương án này", "this option"), not at the item's content.
 _GENERIC_REFERENCE_RE: Final = re.compile(r"\b(?:phuong an|lua chon|dap an|(?:cach|y|de xuat|phat bieu|tinh huong"
                                           r"|nhan dinh|yeu cau) (?:nay|do)|this (?:option|choice|item|one)"
                                           r"|the option)\b")
 _SHORT_REASON_WORDS: Final = 3
 _QUOTED_RE: Final = re.compile("\"[^\"]*\"|\u201c[^\u201d]*\u201d|\u00ab[^\u00bb]*\u00bb")
+_QUOTE_CLOSERS: Final = {"\"": "\"", "\u201c": "\u201d", "\u00ab": "\u00bb"}
+# The opening quotes still searched for, by the kinds left (sub_quoted drops a kind with no closing quote left).
+_QUOTE_OPENERS: Final = {
+    frozenset(kinds): re.compile("[" + "".join(sorted(kinds)) + "]")
+    for size in (1, 2, 3) for kinds in combinations(_QUOTE_CLOSERS, size)
+}
+
+
+def sub_quoted(replacement: Callable[[re.Match[str]], str] | str, text: str) -> str:
+    """``_QUOTED_RE.sub(replacement, text)`` in linear time.
+
+    The regex scanned to the end of the text from every opening quote without a closing one (quadratic on "\u201c"
+    repeated). A quotation here ends at the first closing quote after its opening one, as in the regex; once a kind of
+    quote has no closing quote left, its opening quotes are not looked at again.
+    """
+
+    kinds = frozenset(_QUOTE_CLOSERS)
+    parts: list[str] = []
+    kept = position = 0
+    while kinds and (opening := _QUOTE_OPENERS[kinds].search(text, position)) is not None:
+        start = opening.start()
+        if text.find(_QUOTE_CLOSERS[opening.group()], start + 1) < 0:
+            kinds -= {opening.group()}
+            position = start + 1
+            continue
+        match = _QUOTED_RE.match(text, start)
+        assert match is not None  # noqa: S101 - a closing quote follows the opening one
+        parts.append(text[kept:start])
+        parts.append(replacement(match) if callable(replacement) else match.expand(replacement))
+        kept = position = match.end()
+    parts.append(text[kept:])
+    return "".join(parts)
+
+
+def _without_speech(text: str) -> str:
+    """``re.sub(SPEECH, "", text)`` for the reported-speech pattern above, in linear time: from a speech verb and its
+    colon to the next "?", unless a line break comes first (then no verb before that line break matches)."""
+
+    parts: list[str] = []
+    kept = position = 0
+    while (head := _SPEECH_HEAD_RE.search(text, position)) is not None:
+        end = _SPEECH_END_RE.search(text, head.end())
+        if end is None:
+            break
+        if end.group() == "?":
+            parts.append(text[kept:head.start()])
+            kept = end.end()
+        position = end.end()
+    parts.append(text[kept:])
+    return "".join(parts)
 
 
 def _normal(text: str) -> str:
@@ -181,13 +235,20 @@ def _lines(text: str) -> list[str]:
 
 
 # --- layout -------------------------------------------------------------------------------------------------------
+def _last_visible_char(line: str, end: int) -> str:
+    """``line[:end].rstrip()[-1:]`` without copying the line before every marker (quadratic over many markers)."""
+
+    end = visible_end(line, end)
+    return line[end - 1:end]
+
+
 def _list_markers(line: str) -> list[re.Match[str]]:
     """The inline item markers of ``line`` (" - " before an item that starts with a capital letter or a digit), never
     one between two numbers or times: "10 - 20 triệu", "8:00 - 12:00" are ranges (review M1)."""
 
     markers = []
     for match in _INLINE_MARKER_RE.finditer(line):
-        before, after = line[:match.start()].rstrip()[-1:], line[match.end():match.end() + 1]
+        before, after = _last_visible_char(line, match.start()), line[match.end():match.end() + 1]
         if before.isdigit() and after.isdigit():
             continue
         if after.isupper() or after.isdigit():
@@ -366,7 +427,7 @@ def _without_quoted_names(text: str, evidence: EvidenceIndex | None) -> str:
         tokens = re.findall(r"\w+", idm_fold(match.group(0)))
         return " " if len(tokens) <= IDM_HYPE_NAME_MAX_WORDS and _sourced(tokens, evidence) else match.group(0)
 
-    return _QUOTED_RE.sub(drop, text)
+    return sub_quoted(drop, text)
 
 
 def hype_phrases(text: str, evidence: EvidenceIndex | None = None) -> list[str]:
@@ -488,7 +549,7 @@ def _asks_early(lines: Sequence[str]) -> list[str]:
     review of dfb6db2 item 14) left out (list items may be questions)."""
 
     return [str(number) for number, line in enumerate(lines[:-1], start=1)
-            if not line.startswith(LIST_MARKER) and "?" in _SPEECH_RE.sub("", _QUOTED_RE.sub("", line))]
+            if not line.startswith(LIST_MARKER) and "?" in _without_speech(sub_quoted("", line))]
 
 
 def explanation_report(component: Mapping[str, Any], evidence: EvidenceIndex | None = None) -> dict[str, list[str]]:

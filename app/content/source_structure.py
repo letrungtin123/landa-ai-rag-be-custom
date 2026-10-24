@@ -43,8 +43,10 @@ SLIDE_RANGE_RE = re.compile(
     r"\btừ\s+(?:slide|trang)\s+(\d+)\s+đến\s+(?:slide|trang)\s+(\d+)\b",
     re.IGNORECASE | re.UNICODE,
 )
+# Started only after a non-space (where the leftmost match starts), so a long run of spaces is read once instead of
+# once per character (wave 3 hardening).
 SOURCE_RANGE_SUFFIX_RE = re.compile(
-    r"\s*\(\s*(?:(?:từ|tu|from)\s+)?(?:slides?|trang|pages?)\s+\d{1,4}\s*"
+    r"(?<!\s)\s*\(\s*(?:(?:từ|tu|from)\s+)?(?:slides?|trang|pages?)\s+\d{1,4}\s*"
     r"(?:(?:đến|den|to)\s+(?:(?:slides?|trang|pages?)\s+)?\d{1,4}"
     r"|[-\u2013\u2014]\s*(?:(?:slides?|trang|pages?)\s+)?\d{1,4})\s*\)\s*$",
     re.IGNORECASE | re.UNICODE,

@@ -109,7 +109,9 @@ _PROFILE_ROLES: Final[dict[str, tuple[str, str]]] = {
     "sales": ("một nhân viên kinh doanh", "a salesperson"),
 }
 _WORD_RE: Final = re.compile(r"\w+")
-_EXAMPLE_LABEL_RE: Final = re.compile(r"^\s*[\"'(]*\s*(?:ví dụ minh hoạ|ví dụ minh họa|illustrative example)\s*:\s*",
+# Possessive spaces (only spaces stand there): the same match without the quadratic split of one run of spaces
+# between two \s* (wave 3 hardening).
+_EXAMPLE_LABEL_RE: Final = re.compile(r"^\s*+[\"'(]*\s*+(?:ví dụ minh hoạ|ví dụ minh họa|illustrative example)\s*+:\s*",
                                       re.IGNORECASE)
 _FIRST_SENTENCE_RE: Final = re.compile(r"[.!?;]\s")
 # The main person is introduced near the start: "Một trưởng nhóm …", "Sau đây là cách một trưởng nhóm …", "Khi phát

@@ -28,6 +28,7 @@ from typing import Any, Final
 
 from app.idm.contracts import IdmLessonDesignV1
 from app.idm.policy import IDM_MCQ_LENGTH_CUE_LONGEST_RATIO, IDM_MCQ_LENGTH_CUE_RATIO
+from app.idm.text import visible_end
 
 OPTION_LETTERS: Final = "ABCDEF"
 SHUFFLED_CODE: Final = "w5_problem_options_shuffled"
@@ -294,8 +295,10 @@ def segment_starts(text: str, count: int) -> list[re.Match[str]]:
     for match in _SEGMENT_RE.finditer(text):
         if match.group(1) not in letters:
             continue
-        before = text[:match.start()].rstrip(" \t")
-        if not before or (before.endswith("\n") if lined else before[-1] in _SEGMENT_AFTER):
+        # The character before the label's spaces and tabs, read back from the label (a copy of the text before every
+        # label was quadratic on long text).
+        end = visible_end(text, match.start(), " \t")
+        if not end or (text[end - 1] == "\n" if lined else text[end - 1] in _SEGMENT_AFTER):
             starts.append(match)
     return starts
 

@@ -43,7 +43,9 @@ WS_CLASS: Final = re.escape(WS_CHARS)
 _WS_RUN: Final = re.compile(f"[{WS_CLASS}]+")
 # The source snapshot encodes a table row as "Row <n>: cell | cell | ..." (``app.instructional_quality``).
 TABLE_ROW_RE: Final = re.compile(f"Row[{WS_CLASS}]+([0-9]+)[{WS_CLASS}]*:[{WS_CLASS}]*([\\s\\S]+)", re.IGNORECASE)
-_CELL_SPLIT_RE: Final = re.compile(f"[{WS_CLASS}]+\\|[{WS_CLASS}]+")
+# Tried only where a run of white space starts (every match starts there), so a long run is read once, not once per
+# character (wave 3 hardening).
+_CELL_SPLIT_RE: Final = re.compile(f"(?<![{WS_CLASS}])[{WS_CLASS}]+\\|[{WS_CLASS}]+")
 # A literal pipe inside a cell is stored as a broken bar by the table extractor.
 _ESCAPED_PIPE: Final = chr(0xA6)
 _ENTITY_RE: Final = re.compile(r"&(?:#([0-9]{1,7})|#[xX]([0-9a-fA-F]{1,6})|([A-Za-z]{2,8}));")

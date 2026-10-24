@@ -17,11 +17,11 @@ capitalised word ("FPT Software", "DEEP C Hải Phòng"), and the abbreviations 
 from __future__ import annotations
 
 import re
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any, Final
 
-from app.idm.text import idm_fold
+from app.idm.text import idm_fold, visible_end, visible_start
 from app.idm.titles import vietnamese_word
 
 # Two to eight capitals or digits (and "&"), starting with a letter, not inside a word, a code ("CR-04") or a version
@@ -34,6 +34,7 @@ _MAX_EXPANSION_WORDS: Final = 10
 # A capitalised word after the abbreviation makes it part of a name ("FPT Software", "DEEP C"); a number makes it a
 # label ("SHIFT 2", "MODUN 1").
 _NAME_AFTER_RE: Final = r"\s+(?:[A-ZĐÀ-Ỹ][\w&.-]*|\d)"
+_NAME_AFTER: Final = re.compile(_NAME_AFTER_RE)
 # Two or more capitalised words in a row are a heading written in capitals ("THINK BIG", "SEE DIFFERENT").
 _CAPS_RUN_RE: Final = re.compile(r"(?<![\w-])[A-ZĐ][A-ZĐ0-9&]+(?:\s+[A-ZĐ][A-ZĐ0-9&]+)+(?![\w-])")
 _ROMAN_RE: Final = re.compile(r"^[IVXLC]+$")
@@ -150,10 +151,12 @@ class AcronymGuide:
                 ignored.update(run.split())
             for match in ACRONYM_RE.finditer(text):
                 token = match.group(1)
-                if re.match(_NAME_AFTER_RE, text[match.end():]) and token not in found:
+                if _NAME_AFTER.match(text, match.end()) and token not in found:
                     ignored.add(token)
-                before = text[:match.start()].rstrip()
-                if before.endswith("(") and text[match.end():].lstrip().startswith(")"):
+                # "( TOKEN )": the text before it ends with "(" and the text after it starts with ")" (without
+                # copying the text on either side for every abbreviation: quadratic on long texts).
+                before_end, after_start = visible_end(text, match.start()), visible_start(text, match.end())
+                if text[before_end - 1:before_end] == "(" and text[after_start:after_start + 1] == ")":
                     ignored.add(token)
         common = _COMMON_VI if locale == "vi" else _COMMON_EN
         expansions = {**{token: full for token, full in common.items()}, **found}
@@ -247,12 +250,73 @@ def explained(token: str, full: str | None, texts: Sequence[str], *, source_text
     escaped = re.escape(token)
     if re.search(rf"\(\s*{escaped}\s*\)", joined) or re.search(rf"(?<![\w&]){escaped}\s*\(", joined):
         return True
-    dashed = rf"([^\W\d_][\w'’]*(?:\s+[^\W\d_][\w'’&/]*)+)\s+[-–—]\s+{escaped}(?![\w&])"  # noqa: RUF001
     source = idm_fold(" ".join(source_texts))
-    if any(_spelled(token, match.group(1).split()) or (source and _paired(token, match.group(1).split(), source))
-           for match in re.finditer(dashed, joined)):
+    if any(_spelled(token, phrase.split()) or (source and _paired(token, phrase.split(), source))
+           for phrase in dashed_phrases(joined, token)):
         return True
     return full is not None and idm_fold(full) in idm_fold(joined)
+
+
+# The words before "- TOKEN" (``dashed_phrases``): letters only start a word, the first word has no "&" or "/".
+_PHRASE_WORD_CHARS: Final = r"\w'’&/"  # noqa: RUF001 - the apostrophe a writer may type
+_PHRASE_RUN_REVERSED: Final = re.compile(f"[{_PHRASE_WORD_CHARS}]+")
+_SPACE_RUN_REVERSED: Final = re.compile(r"\s+")
+_OUTSIDE_PHRASE_REVERSED: Final = re.compile(rf"[^\s{_PHRASE_WORD_CHARS}]")
+# A word whose first character is not a letter, read backwards: its first character, then a space or the region's start.
+_NON_LETTER_WORD_START_REVERSED: Final = re.compile(r"[\d_'’&/](?=\s|\Z)")  # noqa: RUF001 - the apostrophe
+# Where the first word can start: the first letter of a word's last run of word characters and apostrophes that
+# reaches the next space.
+_FIRST_WORD_START: Final = re.compile(r"(?<![\w'’])[\d_'’]*+([^\W\d_])[\w'’]*+(?=\s)")  # noqa: RUF001
+
+
+def dashed_phrases(joined: str, token: str) -> Iterator[str]:
+    """``[match.group(1) for match in re.finditer(DASHED, joined)]`` in linear time, where DASHED is the pattern
+    this module used: two words or more (a letter, then word characters, apostrophes and, after the first word, "&"
+    and "/"), then a dash (hyphen, en or em dash) between spaces and ``token`` not followed by a word character or "&".
+
+    The regex tried every letter of the text as the start of the words and ran over all the words after it, so it was
+    quadratic on ordinary prose (a 42 kB unit took 37 s for one abbreviation). Every match ends where " - TOKEN" begins,
+    so each such place is found first and the words are read backwards from it, within the span no earlier match or
+    character outside the words can cross: the last word starts with a letter after a space; before it, the words of
+    the span after the last one that does not start with a letter can follow the first word; the first word starts at
+    the first letter of a word's last run of word characters and apostrophes. The leftmost such start is the regex's.
+    """
+
+    # Tried only where a run of white space starts (the leftmost match starts there), so a long run is read once.
+    suffix = re.compile(rf"(?<!\s)\s+[-–—]\s+{re.escape(token)}(?![\w&])")  # noqa: RUF001 - the dashes
+    reverse = joined[::-1]
+    position = 0
+    for match in suffix.finditer(joined):
+        end = match.start()
+        start = _phrase_start(joined, reverse, position, end)
+        if start is not None:
+            yield joined[start:end]
+            position = match.end()
+
+
+def _phrase_start(joined: str, reverse: str, position: int, end: int) -> int | None:
+    size = len(joined)
+    last_word = _PHRASE_RUN_REVERSED.match(reverse, size - end, size - position)
+    if last_word is None:
+        return None
+    last_start = end - len(last_word.group())
+    if last_start <= position or not _is_letter(joined[last_start]) or not joined[last_start - 1].isspace():
+        return None
+    space = _SPACE_RUN_REVERSED.match(reverse, size - last_start, size - position)
+    words_end = last_start - (len(space.group()) if space else 0)
+    outside = _OUTSIDE_PHRASE_REVERSED.search(reverse, size - words_end, size - position)
+    low = size - outside.start() if outside else position
+    odd = _NON_LETTER_WORD_START_REVERSED.search(reverse, size - words_end, size - low)
+    low = size - 1 - odd.start() if odd else low
+    # One space after the region keeps the lookahead of _FIRST_WORD_START true for its last word.
+    first = _FIRST_WORD_START.search(joined[low:words_end + 1])
+    return low + first.start(1) if first else None
+
+
+def _is_letter(char: str) -> bool:
+    """``[^\\W\\d_]``: a word character that is neither a digit nor "_"."""
+
+    return char.isalnum() and not char.isdecimal()
 
 
 def _insert(text: str, token: str, full: str) -> str | None:
