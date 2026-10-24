@@ -399,6 +399,8 @@ class Settings(BaseSettings):
     chunk_overlap_chars: int = Field(default=350, validation_alias="AI_RAG_CHUNK_OVERLAP_CHARS", ge=0, le=50_000)
     # The provider call clamps the batch to 1..100 (provider.embedding_batch_size).
     embedding_batch_size: int = Field(default=32, validation_alias="AI_RAG_EMBEDDING_BATCH_SIZE", ge=1, le=1_000)
+    # Embedding batches of one request in flight at once (audit 2026-10-24, P4); each also takes a provider slot.
+    embedding_concurrency: int = Field(default=2, validation_alias="AI_RAG_EMBEDDING_CONCURRENCY", ge=1, le=16)
     provider_request_timeout_ms: int = Field(default=60_000, validation_alias="AI_RAG_PROVIDER_REQUEST_TIMEOUT_MS",
                                              ge=1_000, le=600_000)
     blueprint_provider_request_timeout_ms: int = Field(

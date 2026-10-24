@@ -215,6 +215,7 @@ Secrets are `SecretStr` and never logged; `.env.example` holds placeholders.
 | `AI_RAG_CHUNK_MAX_CHARS` | int | `3200` | >= 100, <= 100000 |
 | `AI_RAG_CHUNK_OVERLAP_CHARS` | int | `350` | >= 0, <= 50000 |
 | `AI_RAG_EMBEDDING_BATCH_SIZE` | int | `32` | >= 1, <= 1000 |
+| `AI_RAG_EMBEDDING_CONCURRENCY` | int | `2` | >= 1, <= 16 |
 | `AI_RAG_PROVIDER_REQUEST_TIMEOUT_MS` | int | `60000` | >= 1000, <= 600000 |
 | `AI_RAG_BLUEPRINT_PROVIDER_REQUEST_TIMEOUT_MS` | int | `300000` | >= 1000, <= 600000 |
 | `AI_RAG_STAGED_LESSON_CONTENT_PROVIDER_TIMEOUT_MS` | int | `180000` | > 60000, <= 300000 |
