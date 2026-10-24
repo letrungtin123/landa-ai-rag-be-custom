@@ -394,7 +394,8 @@ async def generate_staged_lesson_author_proposal(
                 schema_diagnostics["provider_schema_fingerprint"],
                 request.correlation_id or "none",
             )
-            raise failure
+            # ``failure`` may be ``error`` itself; "from error" would change the chain the logs and tests see.
+            raise failure  # noqa: B904
         logger.info(
             "lesson_author_staged_content_batch generation_stage=%s batch_index=%s batch_count=%s unit_count=%s content_output_tokens=%s provider_timeout_ms=%s remaining_workflow_budget_ms=%s duration_ms=%s provider_event=%s provider_finish_reason=%s status=completed provider_schema_fingerprint=%s correlation_id=%s",
             generation_stage,

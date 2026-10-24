@@ -455,7 +455,7 @@ def _learner_readiness_warnings(components: list[dict[str, Any]]) -> list[Workfl
         if re.search(r"\b(?:rui ro|risk)\b", text):
             ranges = [(int(a), int(b)) for a, b in re.findall(r"\b(\d{1,3})\s*[-–]\s*(\d{1,3})\b", item["text"][:32_000])]
             ordered = sorted(set((a, b) for a, b in ranges if a < b))
-            if any(a2 == b1 for (_a1, b1), (a2, _b2) in zip(ordered, ordered[1:])):
+            if any(a2 == b1 for (_a1, b1), (a2, _b2) in zip(ordered, ordered[1:], strict=False)):
                 findings.append(_issue("SOURCE_RANGE_REVIEW_REQUIRED",
                                        "Risk bands share a boundary value; confirm source interval semantics before using that boundary as a quiz answer.",
                                        path=item["component_path"], severity="warning"))

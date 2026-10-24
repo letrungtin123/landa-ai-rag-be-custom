@@ -214,7 +214,7 @@ def enforce_lesson_author_source_structure(
             "Blueprint chapter count does not match the authoritative source table of contents.",
         )
 
-    for chapter_index, (chapter, source_node) in enumerate(zip(chapters, source_chapters)):
+    for chapter_index, (chapter, source_node) in enumerate(zip(chapters, source_chapters, strict=False)):
         if not isinstance(chapter, dict):
             raise LessonAuthorBlueprintValidationError(
                 "BLUEPRINT_SOURCE_STRUCTURE_MISMATCH",

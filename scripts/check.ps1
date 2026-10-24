@@ -14,10 +14,11 @@ $StrictPaths = @(
     "app/services/text.py", "app/services/legacy_routes.py", "app/services/response_contracts.py",
     "app/services/provider.py", "app/services/chat", "app/services/retrieval", "app/services/ingestion",
     "app/services/orchestration_v2", "app/services/org_context", "app/services/staged_unit", "app/content",
-    "app/hashing.py", "app/contract_bridge.py", "scripts/coverage_by_package.py"
+    "app/hashing.py", "app/contract_bridge.py", "scripts/coverage_by_package.py", "scripts/mypy_baseline.py"
 )
-# The legacy lesson-author pipeline (app/services/lesson_author, app/workflows and the legacy modules of app/)
-# keeps the mypy "no new errors" baseline (pyproject overrides) and the pyflakes (F) step until PRD-3 deletes it.
+# The legacy lesson-author pipeline (app/services/lesson_author, app/workflows and the legacy modules of app/) keeps
+# a shrink-only mypy error count per file (scripts/mypy_baseline.json) and the pyflakes and bugbear (F, B) step until
+# PRD-3 deletes it.
 # Test code held to the same lint profile: every test directory except the legacy pipeline's
 # (tests/unit/legacy) and the cross-language files of tests/ that belong to it.
 $StrictTests = @(
@@ -37,8 +38,10 @@ function Invoke-Gate([string]$Name, [scriptblock]$Command) {
 Push-Location $RepoRoot
 try {
     Invoke-Gate "ruff (strict paths)" { & $Python -m ruff check @StrictPaths @StrictTests }
-    Invoke-Gate "ruff (moved code, F rules)" { & $Python -m ruff check app/services app/content app/contracts --select F }
-    Invoke-Gate "mypy (strict paths)" { & $Python -m mypy @StrictPaths }
+    Invoke-Gate "ruff (legacy pipeline, F and B rules)" { & $Python -m ruff check app --select F,B }
+    # mypy (strict) on the strict paths and every other app module: no error in the strict paths, the legacy files'
+    # error counts as recorded in scripts/mypy_baseline.json.
+    Invoke-Gate "mypy (strict paths, legacy baseline)" { & $Python scripts/mypy_baseline.py @StrictPaths }
     Invoke-Gate "pytest + coverage" { & $Python -m pytest -q --cov=app --cov-branch --cov-report=term --cov-fail-under=85 }
     # Coverage of each app package: a report, except the packages with a target (hardening plan §19.6).
     Invoke-Gate "coverage by package" { & $Python scripts/coverage_by_package.py --fail-under app/idm=90 }

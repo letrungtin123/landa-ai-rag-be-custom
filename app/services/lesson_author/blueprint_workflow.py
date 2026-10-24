@@ -736,7 +736,12 @@ async def _lesson_author_blueprint(
                         "total_repair_provider_calls": total_repair_provider_calls,
                     })
 
-                def record_repair_provider_telemetry(telemetry: dict[str, Any]) -> None:
+                # Bound to this operation when defined (B023); the provider calls it during this iteration only.
+                def record_repair_provider_telemetry(
+                    telemetry: dict[str, Any], *,
+                    repair_provider_telemetry: dict[str, Any] = repair_provider_telemetry,
+                    operation_index: int = operation_index, operation: str | None = operation,
+                ) -> None:
                     repair_provider_telemetry.update(telemetry)
                     emit_blueprint_diagnostic({
                         "stage": "architecture_repair_provider",

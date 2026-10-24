@@ -471,7 +471,9 @@ def _apply_v5_semantic_delta_repair_patches(
         blocks = _semantic_delta_blocks(unit)
 
         if operation == "align_concepts_to_evidence":
-            def normalized_concept_ids(value: Any, *, field: str) -> list[str]:
+            # The loop's path and operation are bound when the helper is defined (B023); it is only called below.
+            def normalized_concept_ids(value: Any, *, field: str, path: str = path,
+                                       operation: str = operation) -> list[str]:
                 if not isinstance(value, list) or not all(isinstance(item, str) and item.strip() for item in value):
                     raise _semantic_delta_failure(
                         "Evidence-concept repair must contain only non-empty canonical concept IDs.",

@@ -21,7 +21,7 @@ def bind_source_chapters(blueprint: dict[str, Any], policy: dict[str, Any], sour
         chapters = result.get("chapters", [])
         if len(chapters) != len(expected):
             raise LessonAuthorBlueprintValidationError("BLUEPRINT_SOURCE_STRUCTURE_MISMATCH", "Chapter bindings do not cover the source inventory.")
-        for index, (chapter, binding) in enumerate(zip(chapters, expected)):
+        for index, (chapter, binding) in enumerate(zip(chapters, expected, strict=False)):
             # Both exact identity and authoritative order are required. Title
             # injection is legal only AFTER this evidence binding succeeds.
             if chapter.get("source_refs") != [binding["source_ref"]]:

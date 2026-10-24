@@ -109,7 +109,7 @@ def _blueprint_lesson_fact_groups(
         return []
     return [
         (title, group)
-        for (title, _refs), group in zip(lesson_specs, groups)
+        for (title, _refs), group in zip(lesson_specs, groups, strict=False)
         if group
     ]
 
@@ -182,7 +182,7 @@ def build_source_locked_staged_skeleton(
 
     seen_titles: dict[str, int] = {}
     units: list[dict[str, Any]] = []
-    for index, (unit_facts, approved_title) in enumerate(zip(grouped_facts, grouped_titles), start=1):
+    for index, (unit_facts, approved_title) in enumerate(zip(grouped_facts, grouped_titles, strict=False), start=1):
         title = (
             _normalize_structural_title(approved_title, "Nội dung trọng tâm")
             if approved_title

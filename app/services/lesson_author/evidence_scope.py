@@ -250,7 +250,7 @@ def validate_course_architecture_evidence_scope(
                             concept_id for concept_id in _source_fact_allocation_values(block, "concept_ids")
                             if concept_id not in concepts
                         )
-    for concept_id in sorted(unknown_concepts):
+    for _concept_id in sorted(unknown_concepts):
         add("UNKNOWN_CONCEPT_ID", "Course architecture selected a concept outside the Source Map.", path="course")
 
     required_scopes = {
@@ -1023,7 +1023,7 @@ def allocate_source_map_architecture_facts(
 
         unallocated.append({"fact_id": fact_id, "code": code, "path": path})
         rejection_counts[code] = rejection_counts.get(code, 0) + 1
-    for fact_id, manifest_fact in fact_by_id.items():
+    for fact_id, _manifest_fact in fact_by_id.items():
         fact = map_facts.get(fact_id)
         if fact is None:
             reject(fact_id, "SOURCE_MAP_PROVENANCE_INVALID", "course")
