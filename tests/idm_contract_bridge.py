@@ -61,7 +61,7 @@ from app.idm.node_acceptance import node_acceptance_findings
 from app.idm.org_profile import IdmOrganizationContextV1, org_profile_char_count
 from app.idm.preserve_render import preserve_text_finding
 from app.idm.storyboard import acceptance_context, parse_brief
-from app.schemas.common import AiUsage
+from app.infra.gemini.usage import AiUsage
 from tests import idm_golden as g
 from tests.golden import idm_golden_module as gm
 from tests.golden import idm_preserve_golden as pg

@@ -10,7 +10,7 @@ from unittest.mock import AsyncMock, patch
 from app.assessment_planner import compile_v5_assessment_plan
 from app.component_capabilities import ComponentCapabilities, validate_instance_plan
 from app.lesson_quality import validate_lesson_pedagogical_quality
-from app.schemas.common import AiUsage
+from app.infra.gemini.usage import AiUsage
 from app.schemas.lesson_author import RagLessonAuthorRequest
 from app.services.lesson_author.architecture_validation import (
     validate_course_architecture_workflow,

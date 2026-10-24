@@ -27,7 +27,7 @@ from app.idm.runtime import (
 )
 from app.infra.gemini.calls import require_provider_api_key
 from app.infra.gemini.errors import http_error_detail, provider_http_error_status, safe_provider_error_diagnostics
-from app.schemas.common import AiUsage
+from app.infra.gemini.usage import AiUsage
 from app.services import provider
 from app.services import runtime as service_runtime
 from app.services.orchestration_v2.common import _orchestration_v2_http_error

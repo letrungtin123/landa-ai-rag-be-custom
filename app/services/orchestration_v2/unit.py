@@ -32,8 +32,7 @@ from app.idm.source_locked import idm_source_faq, idm_source_grounded_single_cho
 from app.idm.storyboard import IdmUnitDeps, run_idm_unit
 from app.idm.visual_pages import evidence_needs_check, page_texts
 from app.infra.gemini.retry import PROVIDER_TRANSIENT_MAX_ATTEMPTS
-from app.infra.gemini.usage import combine_usage
-from app.schemas.common import AiUsage
+from app.infra.gemini.usage import AiUsage, combine_usage
 from app.schemas.lesson_author import RagLessonAuthorRequest
 from app.schemas.orchestration_v2 import RagLessonAuthorUnitV2Request
 from app.semantic_review import (

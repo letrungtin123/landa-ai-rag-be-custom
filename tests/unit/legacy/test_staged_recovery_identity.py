@@ -10,7 +10,7 @@ from unittest.mock import AsyncMock, patch
 from google import genai
 from google.genai import models, types
 
-from app.schemas.common import AiUsage
+from app.infra.gemini.usage import AiUsage
 from app.services.lesson_author.errors import LessonAuthorProposalValidationError
 from app.services.lesson_author.staged.skeleton import (
     match_staged_unit_by_title,

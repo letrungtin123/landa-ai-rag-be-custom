@@ -30,11 +30,10 @@ MAX_ROUTE_HANDLER_LINES = 30
 EVENT_NAME_PATTERN = re.compile(r"[a-z][a-z0-9_]*")
 
 
-# STD-5 (spec §19): files <= 800 lines and functions <= 120 lines in the code held to the full standard
-# (the strict paths of scripts/check.ps1); code moved verbatim in PRD-2 stays <= 2,500 lines per file.
-STRICT_CODE = ("core/", "infra/", "idm/", "api/", "schemas/", "repositories/", "prompt_safety.py", "__main__.py",
-               "main.py", "services/runtime.py", "services/meta.py", "services/deadlines.py", "services/text.py",
-               "hashing.py")
+# STD-5 (spec §19): files <= 800 lines and functions <= 120 lines in the code held to the full standard, which is
+# every Python file of the strict paths of scripts/check.sh (``strict_paths``; test_quality_gate_scripts.py keeps
+# check.ps1 equal to it); code moved verbatim in PRD-2 stays <= 2,500 lines per file.
+CHECK_SH = REPO_ROOT / "scripts" / "check.sh"
 MAX_STRICT_FILE_LINES = 800
 MAX_STRICT_FUNCTION_LINES = 120
 MAX_MOVED_FILE_LINES = 2_500
@@ -46,22 +45,83 @@ class Allowance(NamedTuple):
     target: str
 
 
-# Strict-code offenders when the STD-5 limits were enforced (refactor wave 1, 2026-10-18), at their size then.
-# An entry only shrinks: the test fails when the file or function grows past its size here (lower the number
-# when it shrinks) and when it fits the limit again (remove the entry). New code never gets an entry.
-FILE_SIZE_ALLOWLIST: dict[str, Allowance] = {}
+# Strict-code offenders at their size when the STD-5 limits started to cover them: the first three in refactor
+# wave 1 (2026-10-18), the others in refactor wave 3b (2026-10-24), when the rule grew from part of the strict paths
+# to all of them (mostly code moved verbatim out of the legacy modules in wave 2, step 2.1). An entry only shrinks:
+# the test fails when the file or function grows past its size here (lower the number when it shrinks) and when it
+# fits the limit again (remove the entry). New code never gets an entry.
+_MOVED = "moved verbatim from the legacy modules (wave 2, step 2.1)"
+FILE_SIZE_ALLOWLIST: dict[str, Allowance] = {
+    "app/contracts/orchestration_v2/provider.py": Allowance(1_240, f"provider drafts, wire, binders; {_MOVED}",
+                                                            "split by concern"),
+    "app/services/staged_unit/provider_schemas.py": Allowance(1_102, f"staged provider schemas; {_MOVED}",
+                                                              "split by concern"),
+    "app/services/staged_unit/validation.py": Allowance(1_190, f"staged unit validation; {_MOVED}", "split by concern"),
+    "app/content/source_readiness.py": Allowance(846, f"PDF readiness analysis; {_MOVED}", "split by concern"),
+}
 FUNCTION_SIZE_ALLOWLIST: dict[str, Allowance] = {
-    "idm/module_design.py::run_idm_module_design": Allowance(212, "W3/W4 call, repair loop, salvage and assembly",
-                                                             "wave 2 (2.5)"),
-    "idm/runtime.py::idm_generate": Allowance(131, "admission, transport, usage ledger, trace and parse of one call",
-                                              "wave 2 (2.5)"),
-    "idm/course_design.py::run_idm_course_design": Allowance(127, "W1 map/reduce, W2, W4 and assembly",
-                                                             "wave 2 (2.5)"),
+    "app/idm/module_design.py::run_idm_module_design": Allowance(
+        210, "W3/W4 call, repair loop, salvage and assembly", "wave 2 (2.5)"),
+    "app/idm/runtime.py::idm_generate": Allowance(
+        131, "admission, transport, usage ledger, trace and parse of one call", "wave 2 (2.5)"),
+    "app/idm/course_design.py::run_idm_course_design": Allowance(
+        127, "W1 map/reduce, W2, W4 and assembly", "wave 2 (2.5)"),
+    # Refactor wave 3b: the strict paths the rule did not cover before.
+    "app/contracts/orchestration_v2/provider.py::salvage_chapter_shard_draft_v2": Allowance(
+        122, f"chapter shard salvage; {_MOVED}", "split into steps"),
+    "app/contracts/orchestration_v2/provider.py::_compile_unit_components_v2": Allowance(
+        195, f"unit component compiler; {_MOVED}", "split into steps"),
+    "app/services/retrieval/search.py::retrieve_chunks": Allowance(
+        183, "embedding, vector and keyword search, merge and limits of one retrieval", "split into steps"),
+    "app/services/retrieval/source_coverage.py::build_source_coverage_manifest": Allowance(
+        146, "source coverage manifest of a lesson-author request", "split into steps"),
+    "app/services/ingestion/index.py::_index_document": Allowance(
+        185, "load, extract, structure, chunk, embed and persist of one index run", "split into steps"),
+    "app/services/orchestration_v2/chapter_shard.py::_lesson_author_orchestration_v2_chapter_shard": Allowance(
+        177, "chapter shard route service (IDM and v2-legacy)", "split into steps"),
+    "app/services/orchestration_v2/source_snapshot.py::lesson_author_orchestration_v2_source_snapshot": Allowance(
+        312, "source snapshot route service", "split into steps"),
+    "app/services/orchestration_v2/unit.py::_lesson_author_orchestration_v2_unit_legacy": Allowance(
+        481, "v2-legacy unit route service", "PRD-3 (removal of the v2-legacy pipeline)"),
+    "app/services/staged_unit/provider_schemas.py::build_lesson_author_proposal_response_schema": Allowance(
+        141, f"proposal response schema; {_MOVED}", "split into steps"),
+    "app/services/staged_unit/provider_schemas.py::build_lesson_author_unit_response_schema": Allowance(
+        172, f"unit response schema; {_MOVED}", "split into steps"),
+    "app/services/staged_unit/provider_schemas.py::build_staged_lesson_content_response_model": Allowance(
+        144, f"staged content response model; {_MOVED}", "split into steps"),
+    "app/services/staged_unit/validation.py::staged_instructional_finding": Allowance(
+        257, f"staged instructional checks; {_MOVED}", "split into steps"),
+    "app/services/staged_unit/validation.py::validate_staged_unit_content": Allowance(
+        270, f"staged unit validation; {_MOVED}", "split into steps"),
+    "app/content/instructional_quality.py::render_source_locked_html": Allowance(
+        128, f"source-locked HTML renderer; {_MOVED}", "split into steps"),
+    "app/content/source_evidence_bundle.py::_validate_payload": Allowance(
+        126, f"evidence bundle validation; {_MOVED}", "split into steps"),
+    "app/content/source_readiness.py::_page_readiness": Allowance(
+        131, f"page readiness analysis; {_MOVED}", "split into steps"),
+    "app/content/source_structure.py::analyze_source_structure": Allowance(
+        137, f"source structure analysis; {_MOVED}", "split into steps"),
 }
 
 
-def is_strict_code(name: str) -> bool:
-    return any(name == item or (item.endswith("/") and name.startswith(item)) for item in STRICT_CODE)
+def strict_paths() -> list[str]:
+    """The ``strict_paths`` list of scripts/check.sh (files and directories, relative to the repository)."""
+
+    match = re.search(r'^strict_paths="([^"]*)"', CHECK_SH.read_text(encoding="utf-8"), flags=re.MULTILINE)
+    if match is None:
+        raise AssertionError("strict_paths not found in scripts/check.sh")
+    return match.group(1).split()
+
+
+def strict_files() -> dict[str, Path]:
+    """Every Python file of the strict paths, by its path relative to the repository."""
+
+    files: dict[str, Path] = {}
+    for item in strict_paths():
+        path = REPO_ROOT / item
+        for found in sorted(path.rglob("*.py")) if path.is_dir() else [path]:
+            files[found.relative_to(REPO_ROOT).as_posix()] = found
+    return dict(sorted(files.items()))
 
 
 def function_lengths(name: str, tree: ast.AST) -> dict[str, int]:
@@ -246,6 +306,25 @@ class ArchitectureLayerTests(unittest.TestCase):
         ]
         self.assertEqual(offenders, [])
 
+    def test_core_and_infra_import_only_the_layers_below_them(self) -> None:
+        # §19.2: app/core (configuration, logging, errors, security, limits) is the bottom layer and imports no
+        # other app package; app/infra (database, storage, provider adapters) builds on app/core alone and never on
+        # the schemas, services, repositories, IDM, the routes or the legacy modules, nor on the web framework.
+        allowed = {"core": ("app.core",), "infra": ("app.core", "app.infra")}
+        offenders = []
+        for layer, prefixes in allowed.items():
+            paths = sorted((APP_ROOT / layer).rglob("*.py"))
+            self.assertTrue(paths, layer)
+            for path in paths:
+                for name, imported in imported_modules(path):
+                    for module in ([f"app.{item}" for item in imported] if name == "app" else [name]):
+                        outside = (module.startswith("app.")
+                                   and not any(module == item or module.startswith(item + ".") for item in prefixes))
+                        web = layer == "infra" and module.split(".", 1)[0] in {"fastapi", "starlette"}
+                        if outside or web:
+                            offenders.append(f"{layer}:{path.relative_to(APP_ROOT).as_posix()}:{module}")
+        self.assertEqual(offenders, [])
+
     def test_no_application_module_imports_app_main(self) -> None:
         # app/__main__.py names "app.main:app" as a string for uvicorn; nothing imports the factory module.
         offenders = [
@@ -263,8 +342,8 @@ class ArchitectureLayerTests(unittest.TestCase):
         self.assertLessEqual(sizes["main.py"], 200)
         self.assertEqual({name: lines for name, lines in sizes.items() if lines > MAX_MOVED_FILE_LINES}, {})
         # STD-5 on the strict code: <= 800 lines per file; the allowlist only shrinks.
-        strict = {name: lines for name, lines in sizes.items() if is_strict_code(name)}
-        self.assertGreater(len(strict), 80)
+        strict = {name: len(path.read_text(encoding="utf-8").splitlines()) for name, path in strict_files().items()}
+        self.assertGreater(len(strict), 190)
         self.assertEqual(size_violations(strict, MAX_STRICT_FILE_LINES, FILE_SIZE_ALLOWLIST), [])
 
     def test_size_rules_catch_growth_new_offenders_and_stale_entries(self) -> None:
@@ -280,17 +359,19 @@ class ArchitectureLayerTests(unittest.TestCase):
                          "class Box:\n    async def method(self):\n        return 1\n")
         self.assertEqual(function_lengths("m.py", tree), {"m.py::outer": 4, "m.py::outer.inner": 2,
                                                           "m.py::Box.method": 2})
-        self.assertTrue(is_strict_code("idm/qa.py") and is_strict_code("hashing.py"))
-        self.assertFalse(is_strict_code("services/provider.py") or is_strict_code("idm_legacy.py"))
+        # The rule covers exactly the strict paths of scripts/check.sh, outside app/ too, and no legacy module.
+        names = set(strict_files())
+        self.assertLessEqual({"app/idm/qa.py", "app/hashing.py", "app/services/provider.py", "app/contract_bridge.py",
+                              "app/services/staged_unit/validation.py", "scripts/coverage_by_package.py"}, names)
+        self.assertEqual({name for name in names if name.startswith(("app/services/lesson_author/", "app/workflows/"))
+                          or name in {"app/lesson_author_blueprint.py", "app/semantic_review.py"}}, set())
 
     def test_function_sizes_follow_std5(self) -> None:
         # STD-5 on the strict code: <= 120 lines per function (def line to last line); the allowlist only shrinks.
         lengths: dict[str, int] = {}
-        for path in sorted(APP_ROOT.rglob("*.py")):
-            name = path.relative_to(APP_ROOT).as_posix()
-            if is_strict_code(name):
-                lengths.update(function_lengths(name, ast.parse(path.read_text(encoding="utf-8"))))
-        self.assertGreater(len(lengths), 1_000)
+        for name, path in strict_files().items():
+            lengths.update(function_lengths(name, ast.parse(path.read_text(encoding="utf-8"))))
+        self.assertGreater(len(lengths), 1_500)
         self.assertEqual(size_violations(lengths, MAX_STRICT_FUNCTION_LINES, FUNCTION_SIZE_ALLOWLIST), [])
 
     def test_logs_are_structured_events(self) -> None:

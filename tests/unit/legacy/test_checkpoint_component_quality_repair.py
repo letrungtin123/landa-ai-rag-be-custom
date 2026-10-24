@@ -9,7 +9,7 @@ from unittest.mock import AsyncMock, patch
 
 from fastapi import HTTPException
 
-from app.schemas.common import AiUsage
+from app.infra.gemini.usage import AiUsage
 from app.services.lesson_author import chapter_checkpoint as chapter_checkpoint_service
 from app.services.lesson_author.staged import writer as staged_writer
 from app.services.staged_unit import provider_schemas as staged_schemas

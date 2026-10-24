@@ -24,7 +24,7 @@ from app.idm.mcq import normalize_single_choice, practice_key_shift, question_or
 from app.idm.quiz_text import lay_out_quiz
 from app.idm.runtime import IdmStageError
 from app.idm.storyboard import build_idm_expected, output_budget, parse_brief, run_idm_unit
-from app.schemas.common import AiUsage
+from app.infra.gemini.usage import AiUsage
 from app.schemas.orchestration_v2 import RagLessonAuthorUnitV2Request
 from app.services.orchestration_v2 import unit as unit_service
 from tests import idm_golden as g

@@ -19,7 +19,7 @@ from app.lesson_author_blueprint import (
     parse_lesson_author_blueprint_candidate,
     validate_lesson_author_blueprint,
 )
-from app.schemas.common import AiUsage
+from app.infra.gemini.usage import AiUsage
 from app.services.lesson_author.architecture_shape import _workflow_issue_from_blueprint_validation_error
 from app.services.lesson_author.architecture_validation import (
     validate_course_architecture_workflow,

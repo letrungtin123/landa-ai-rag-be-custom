@@ -11,7 +11,7 @@ from google import genai
 from google.genai import models, types
 from pydantic import ValidationError, create_model
 
-from app.schemas.common import AiUsage
+from app.infra.gemini.usage import AiUsage
 from app.schemas.lesson_author import RagLessonAuthorRequest
 from app.services.lesson_author.errors import LessonAuthorProposalValidationError
 from app.services.lesson_author.prompts import ARCHITECT_COMPONENT_OPPORTUNITY_POLICY

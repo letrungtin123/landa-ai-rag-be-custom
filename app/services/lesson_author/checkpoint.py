@@ -12,7 +12,7 @@ from app.lesson_quality import (
     instructional_plan_validation_result,
     pedagogical_validation_result,
 )
-from app.schemas.common import AiUsage
+from app.infra.gemini.usage import AiUsage
 from app.schemas.lesson_author import RagLessonAuthorCheckpointRequest
 from app.services.lesson_author.lesson_generation import validate_lesson_generation_workflow
 from app.services.lesson_author.proposal_validation import normalize_lesson_author_proposal_tree

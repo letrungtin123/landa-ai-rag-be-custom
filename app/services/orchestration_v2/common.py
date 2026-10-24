@@ -10,7 +10,7 @@ from app.core import metrics
 from app.core.errors import ServiceError
 from app.core.logging import SERVICE_LOGGER_NAME, log_payload
 from app.infra.gemini.errors import provider_http_error_status, safe_provider_error_diagnostics
-from app.schemas.common import AiUsage
+from app.infra.gemini.usage import AiUsage
 from app.services import provider
 
 logger = logging.getLogger(SERVICE_LOGGER_NAME)

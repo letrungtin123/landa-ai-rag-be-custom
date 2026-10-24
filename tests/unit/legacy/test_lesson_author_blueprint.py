@@ -18,7 +18,7 @@ from app.lesson_author_blueprint import (
     LessonAuthorBlueprintValidationError,
     parse_and_validate_lesson_author_blueprint,
 )
-from app.schemas.common import AiUsage
+from app.infra.gemini.usage import AiUsage
 from app.schemas.lesson_author import RagLessonAuthorBlueprintRequest, RagLessonAuthorRequest
 from app.services.lesson_author.blueprint import (
     CourseArchitectSemanticScopeError,

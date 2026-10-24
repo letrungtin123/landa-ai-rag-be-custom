@@ -32,8 +32,8 @@ from pydantic import ValidationError
 from app import main
 from app.content.source_structure import PARSER_VERSION
 from app.core.errors import AppError, DocumentLimitError, ServiceError
+from app.infra.gemini.usage import AiUsage
 from app.repositories import indexing as index_repository
-from app.schemas.common import AiUsage
 from app.schemas.kb import RagDeleteDocumentRequest, RagDeleteKbRequest, RagIndexRequest
 from app.services import provider as provider_service
 from app.services.ingestion import chunking

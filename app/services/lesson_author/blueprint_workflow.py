@@ -30,7 +30,7 @@ from app.lesson_author_blueprint import (
     build_v5_semantic_delta_repair_response_schema,
     validate_lesson_author_blueprint,
 )
-from app.schemas.common import AiUsage
+from app.infra.gemini.usage import AiUsage
 from app.schemas.lesson_author import RagLessonAuthorBlueprintRequest
 from app.services import provider
 from app.services import runtime as service_runtime

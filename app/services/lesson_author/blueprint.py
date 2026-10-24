@@ -20,7 +20,7 @@ from app.lesson_author_blueprint import (
     parse_lesson_author_blueprint_candidate,
     validate_lesson_author_blueprint,
 )
-from app.schemas.common import AiUsage
+from app.infra.gemini.usage import AiUsage
 from app.schemas.lesson_author import RagLessonAuthorBlueprintRequest
 from app.services import provider
 from app.services.lesson_author.proposal_validation import _normalize_structural_title

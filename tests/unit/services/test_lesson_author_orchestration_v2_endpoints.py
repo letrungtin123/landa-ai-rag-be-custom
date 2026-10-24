@@ -12,7 +12,7 @@ from app.contracts.orchestration_v2.provider import (
     CourseSkeletonProviderWireV2,
 )
 from app.core.errors import ServiceError
-from app.schemas.common import AiUsage
+from app.infra.gemini.usage import AiUsage
 from app.schemas.orchestration_v2 import (
     RagLessonAuthorChapterShardV2Request,
     RagLessonAuthorCourseSkeletonV2Request,

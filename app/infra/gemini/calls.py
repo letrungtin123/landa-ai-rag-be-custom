@@ -18,13 +18,12 @@ from pydantic import BaseModel, SecretStr
 
 from app.core import metrics
 from app.core.config import settings
+from app.core.json_shape import describe_lesson_author_blueprint_response
 from app.core.logging import SERVICE_LOGGER_NAME, log_event
 from app.infra.gemini import pool
 from app.infra.gemini.telemetry import emit_safe_provider_telemetry, provider_response_telemetry
 from app.infra.gemini.transport import call_provider_with_timeout
-from app.infra.gemini.usage import combine_usage, estimate_tokens, normalize_usage, usage_from_google_response
-from app.lesson_author_blueprint import describe_lesson_author_blueprint_response
-from app.schemas.common import AiUsage
+from app.infra.gemini.usage import AiUsage, combine_usage, estimate_tokens, normalize_usage, usage_from_google_response
 
 logger = logging.getLogger(SERVICE_LOGGER_NAME)
 

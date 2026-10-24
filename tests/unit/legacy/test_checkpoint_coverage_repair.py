@@ -13,7 +13,7 @@ from google import genai
 from google.genai import models, types
 
 from app.lesson_author_checkpoint import ChapterCheckpointUnit
-from app.schemas.common import AiUsage
+from app.infra.gemini.usage import AiUsage
 from app.services.lesson_author.errors import LessonAuthorProposalValidationError
 from app.services.staged_unit import provider_schemas as staged_schemas
 from app.services.staged_unit import validation as staged_validation

@@ -25,8 +25,7 @@ from app.idm.module_design import run_idm_module_design
 from app.idm.preserve_design import is_preserve_context, run_preserve_module_design
 from app.idm.runtime import IdmError, IdmStageError
 from app.infra.gemini.errors import http_error_detail
-from app.infra.gemini.usage import combine_usage
-from app.schemas.common import AiUsage
+from app.infra.gemini.usage import AiUsage, combine_usage
 from app.schemas.orchestration_v2 import RagLessonAuthorChapterShardV2Request
 from app.services import runtime as service_runtime
 from app.services.deadlines import record_fallback

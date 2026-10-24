@@ -36,9 +36,9 @@ from pydantic import SecretStr
 
 from app.core.config import settings
 from app.infra.gemini import pool as gemini_pool
+from app.infra.gemini.usage import AiUsage
 from app.infra.schema_check import SchemaCheckResult
 from app.main import app
-from app.schemas.common import AiUsage
 
 SNAPSHOT_DIR = Path(__file__).resolve().parents[1] / "snapshots" / "routes"
 UPDATE_ENV = "LANDA_UPDATE_ROUTE_SNAPSHOTS"

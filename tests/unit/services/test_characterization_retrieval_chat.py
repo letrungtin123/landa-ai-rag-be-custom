@@ -22,8 +22,8 @@ from pydantic import SecretStr
 
 from app import main
 from app.content.source_structure import PARSER_VERSION
+from app.infra.gemini.usage import AiUsage
 from app.schemas.chat import RagChatMessage, RagChatRequest, RagSourceDocument
-from app.schemas.common import AiUsage
 from app.schemas.lesson_author import RagLessonAuthorBlueprintRequest, RagLessonAuthorRequest
 from app.services import provider as provider_service
 from app.services.chat import service as chat_service

@@ -13,7 +13,7 @@ from pydantic import SecretStr
 from app import main
 from app.api import deps as api_deps
 from app.lesson_author_checkpoint import ChapterCheckpointUnit
-from app.schemas.common import AiUsage
+from app.infra.gemini.usage import AiUsage
 from app.schemas.lesson_author import RagLessonAuthorCheckpointRequest
 from app.services.staged_unit import provider_schemas as staged_schemas
 from app.services.staged_unit import validation as staged_validation

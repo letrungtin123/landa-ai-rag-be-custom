@@ -25,7 +25,7 @@ from app.lesson_author_provider_schema import staged_provider_response_model
 from app.lesson_content_observation import observe_lesson_content
 from app.lesson_prompt_policy import instructional_contract_review_signals, lesson_output_language_policy
 from app.prompt_safety import untrusted_block
-from app.schemas.common import AiUsage
+from app.infra.gemini.usage import AiUsage
 from app.schemas.lesson_author import RagLessonAuthorProposalBase
 from app.services import provider
 from app.services.lesson_author.errors import LessonAuthorProposalValidationError

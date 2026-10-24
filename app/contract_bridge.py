@@ -23,8 +23,8 @@ from typing import Any
 from pydantic import BaseModel, TypeAdapter
 from pydantic.json_schema import JsonSchemaMode
 
+from app.infra.gemini.usage import AiUsage
 from app.schemas.chat import ChatResponse, RagChatRequest
-from app.schemas.common import AiUsage
 from app.schemas.kb import (
     DeleteResponse,
     IndexDocumentResponse,

@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock, patch
 
 from app.content.source_structure import analyze_source_structure, compact_structure
 from app.lesson_author_blueprint import LessonAuthorBlueprintValidationError
-from app.schemas.common import AiUsage
+from app.infra.gemini.usage import AiUsage
 from app.services.ingestion.extract import ExtractedSection
 from app.services.lesson_author.blueprint import generate_validated_lesson_author_blueprint
 from app.services.lesson_author.blueprint_workflow import lesson_author_blueprint

@@ -14,7 +14,7 @@ from app.content.ordered_learning_content import (
 )
 from app.lesson_author_checkpoint import ChapterCheckpointUnit
 from app.lesson_author_provider_schema import staged_provider_response_model
-from app.schemas.common import AiUsage
+from app.infra.gemini.usage import AiUsage
 from app.services.lesson_author import proposal_validation
 from app.services.lesson_author.errors import LessonAuthorProposalValidationError
 from app.services.staged_unit import provider_schemas as staged_schemas

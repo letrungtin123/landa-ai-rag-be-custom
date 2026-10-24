@@ -57,7 +57,7 @@ from app.idm.qa import (
 from app.idm.storyboard import run_idm_unit
 from app.idm.terms import course_terms, defined_terms, defines, mentions
 from app.idm.text import evidence_index
-from app.schemas.common import AiUsage
+from app.infra.gemini.usage import AiUsage
 from app.schemas.orchestration_v2 import RagLessonAuthorUnitV2Request
 from app.services.orchestration_v2 import unit as unit_service
 from tests import idm_golden as g

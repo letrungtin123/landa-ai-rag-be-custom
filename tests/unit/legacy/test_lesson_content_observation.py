@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock, patch
 
 from app.lesson_content_observation import MAX_CANDIDATES, MAX_FACTS, MAX_FINDINGS, observe_lesson_content
 from app.lesson_prompt_policy import component_instructional_brief, lesson_instructional_quality_policy
-from app.schemas.common import AiUsage
+from app.infra.gemini.usage import AiUsage
 from app.services.lesson_author.staged import writer as staged_writer
 
 
