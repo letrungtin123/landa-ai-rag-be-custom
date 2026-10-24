@@ -26,14 +26,16 @@ production and `AI_RAG_ENV=test` read the process environment only. `/docs` is s
 1. ruff, every rule, on the strict code: all of `app` except the legacy pipeline (`app/services/lesson_author`,
    `app/workflows`, the legacy modules directly in `app`), plus every test directory except `tests/unit/legacy`
    and `tools/` (`app/content` and `app/services/staged_unit` keep their inline thresholds: `PLR2004` is off there);
-2. ruff pyflakes rules on all of `app/services`, `app/content` and `app/contracts`;
-3. mypy `--strict` on the strict code; legacy modules keep a "no new errors" baseline (`pyproject.toml`);
+2. ruff pyflakes and bugbear rules (`F`, `B`) on all of `app`, so the legacy pipeline too;
+3. mypy `--strict` through `scripts/mypy_baseline.py`: no error in the strict code, and in each legacy module exactly
+   the error count recorded in `scripts/mypy_baseline.json`, a record that only shrinks (`--update` lowers it);
 4. pytest with branch coverage, failing under 85%, then the coverage of each `app` package
    (`scripts/coverage_by_package.py`: a report, except `app/idm`, which fails under 90%);
 5. pip-audit of `requirements.lock`.
 
 Tests never reach the network or a database: providers are fakes at the `google.genai.Client` or
-`app.services.provider.generate_content` boundary, the database is a recording fake. Recorded expectations are
+`app.services.provider.generate_content` boundary, the database is a recording fake. `tests/conftest.py` runs every
+session with `AI_RAG_ENV=test` (no `.env` is read) and lets sockets reach loopback only. Recorded expectations are
 updated deliberately, never by hand:
 
 - route snapshots (`tests/snapshots/routes`): `LANDA_UPDATE_ROUTE_SNAPSHOTS=1`;
