@@ -114,7 +114,7 @@ class ReservedSlotTests(unittest.TestCase):
                                              acquire_timeout_seconds=1, extraction_executor="thread",
                                              provider_reserved_slots=reserved)
                 self.assertEqual(runtime.provider.reserved, expected)
-        self.assertEqual(runtime_service.concurrency.provider.reserved, 2)  # the default of 8 slots, 2 kept for chat
+        self.assertEqual(runtime_service.concurrency.provider.reserved, 0)  # default: no slot kept for chat (review A1)
 
 
 class ProviderPriorityTests(unittest.TestCase):
