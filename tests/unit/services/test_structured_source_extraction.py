@@ -5,6 +5,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
+from app.content.source_structure import analyze_source_structure
 from app.services.ingestion.chunking import build_chunks, split_text
 from app.services.ingestion.extract import (
     STRUCTURED_EXTRACTION_VERSION,
@@ -15,7 +16,6 @@ from app.services.ingestion.extract import (
     extract_pptx,
     extract_xlsx,
 )
-from app.source_structure import analyze_source_structure
 
 
 class StructuredSourceExtractionTests(unittest.TestCase):

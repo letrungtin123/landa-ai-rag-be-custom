@@ -14,8 +14,8 @@ REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 if str(REPOSITORY_ROOT) not in sys.path:
     sys.path.insert(0, str(REPOSITORY_ROOT))
 
+from app.content.source_readiness import analyze_pdf_readiness  # noqa: E402
 from app.services.ingestion.extract import extract_pdf  # noqa: E402 - after the sys.path setup of a script
-from app.source_readiness import analyze_pdf_readiness  # noqa: E402
 from app.source_visual_observation import (  # noqa: E402
     build_shadow_visual_observation_plan,
     record_human_visual_observation,

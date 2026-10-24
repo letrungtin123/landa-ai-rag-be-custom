@@ -7,24 +7,24 @@ from unittest.mock import AsyncMock, patch
 
 from pydantic import ValidationError
 
-from app.lesson_author_checkpoint import ChapterCheckpointUnit
-from app.lesson_author_provider_schema import staged_provider_response_model
-from app.ordered_learning_content import (
+from app.content.ordered_learning_content import (
     ProviderSemanticVersionError,
     bind_provider_semantic_versions,
     semantic_shape_diagnostics,
 )
+from app.lesson_author_checkpoint import ChapterCheckpointUnit
+from app.lesson_author_provider_schema import staged_provider_response_model
 from app.schemas.common import AiUsage
 from app.services.lesson_author import proposal_validation
 from app.services.lesson_author.errors import LessonAuthorProposalValidationError
-from app.services.lesson_author.staged import provider_schemas as staged_schemas
-from app.services.lesson_author.staged import validation as staged_validation
-from app.services.lesson_author.staged.provider_schemas import StagedOrderedSemanticOutput, StagedSemanticContent
+from app.services.staged_unit import provider_schemas as staged_schemas
+from app.services.staged_unit import validation as staged_validation
+from app.services.staged_unit.provider_schemas import StagedOrderedSemanticOutput, StagedSemanticContent
 from app.workflows.contracts import WorkflowFailure
-from tools.staged_schema_probe import capture_sdk_body, visit_schema
 from tests.test_chapter_checkpoint import checkpoint_result
 from tests.unit.legacy.test_checkpoint_component_quality_repair import instance_wire
 from tests.unit.legacy.test_staged_instance_output import checkpoint_instance_fixture
+from tools.staged_schema_probe import capture_sdk_body, visit_schema
 
 
 def uat_fixture():

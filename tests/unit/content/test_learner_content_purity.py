@@ -1,6 +1,6 @@
 import unittest
 
-from app.learner_content_purity import (
+from app.content.learner_content_purity import (
     build_learner_content_purity_context,
     component_learner_text,
     is_provenance_only_source_line,

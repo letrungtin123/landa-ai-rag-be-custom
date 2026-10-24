@@ -39,11 +39,6 @@ from app.services.lesson_author.proposal_validation import (
     validate_lesson_author_proposal_shape,
 )
 from app.services.lesson_author.staged.plan import build_staged_component_plan, consolidate_staged_thin_units
-from app.services.lesson_author.staged.provider_schemas import (
-    build_lesson_author_proposal_response_schema,
-    build_lesson_author_skeleton_response_schema,
-    build_lesson_author_unit_response_schema,
-)
 from app.services.lesson_author.staged.skeleton import (
     extract_lesson_author_unit_batches,
     should_stage_lesson_author_proposal,
@@ -55,10 +50,15 @@ from app.services.lesson_author.staged.source_locked import (
     prepare_source_locked_expected,
     staged_unit_source_material,
 )
-from app.services.lesson_author.staged.validation import validate_staged_unit_content
 from app.services.lesson_author.staged.writer import generate_staged_lesson_author_proposal
 from app.services.provider import generate_content
 from app.services.retrieval.source_coverage import restrict_blueprint_draft_source_manifest
+from app.services.staged_unit.provider_schemas import (
+    build_lesson_author_proposal_response_schema,
+    build_lesson_author_skeleton_response_schema,
+    build_lesson_author_unit_response_schema,
+)
+from app.services.staged_unit.validation import validate_staged_unit_content
 from app.workflows.contracts import WorkflowValidationResult
 
 
@@ -1782,10 +1782,11 @@ class LessonAuthorBlueprintRetryTests(unittest.IsolatedAsyncioTestCase):
     async def test_provider_unavailable_is_returned_as_retryable_service_error(self) -> None:
         provider_error = RuntimeError("503 UNAVAILABLE")
         provider_error.status_code = 503
+        # The transient retries still run; only their backoff is not waited out.
         with patch(
             "app.infra.gemini.transport.run_in_provider_thread",
             side_effect=provider_error,
-        ):
+        ) as provider_call, patch("app.infra.gemini.retry.provider_retry_delay_seconds", return_value=0.0) as delay:
             with self.assertRaises(HTTPException) as raised:
                 await generate_content(
                     "test-key",
@@ -1797,6 +1798,8 @@ class LessonAuthorBlueprintRetryTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(raised.exception.status_code, 503)
         self.assertEqual(raised.exception.detail["code"], "AI_PROVIDER_UNAVAILABLE")
+        self.assertGreater(delay.call_count, 0)
+        self.assertEqual(provider_call.call_count, delay.call_count + 1)
 
     async def test_provider_quota_exhaustion_is_returned_as_non_retryable_service_error(self) -> None:
         with patch(

@@ -1,17 +1,17 @@
 import unittest
 
-from app.lesson_author_orchestration_v2 import canonical_hash
-from app.lesson_author_orchestration_v2_provider import (
+from app.contracts.orchestration_v2.blueprint import canonical_hash
+from app.contracts.orchestration_v2.provider import (
     UnitGenerationContractV2,
     unit_contract_v5_architecture_v2,
-)
-from app.services.lesson_author.staged.validation import (
-    merge_checkpoint_component_fallback,
-    validate_staged_unit_content,
 )
 from app.services.orchestration_v2.source_locked import (
     build_orchestration_v2_source_locked_components,
     build_orchestration_v2_source_locked_unit,
+)
+from app.services.staged_unit.validation import (
+    merge_checkpoint_component_fallback,
+    validate_staged_unit_content,
 )
 
 

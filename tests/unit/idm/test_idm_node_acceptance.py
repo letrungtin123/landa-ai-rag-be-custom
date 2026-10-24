@@ -14,6 +14,7 @@ import unittest
 from typing import Any
 from unittest.mock import AsyncMock
 
+from app.contracts.orchestration_v2.provider import UnitGenerationContractV2
 from app.idm.node_acceptance import (
     AcceptanceContext,
     html_contract_code,
@@ -32,7 +33,6 @@ from app.idm.node_acceptance import (
 from app.idm.runtime import IdmStageError
 from app.idm.source_locked import faq_answers_repeat, idm_source_faq
 from app.idm.storyboard import acceptance_context, parse_brief, run_idm_unit
-from app.lesson_author_orchestration_v2_provider import UnitGenerationContractV2
 from app.schemas.orchestration_v2 import RagLessonAuthorUnitV2Request
 from app.services.orchestration_v2 import source_locked as v2_source_locked
 from app.services.orchestration_v2 import unit as unit_service

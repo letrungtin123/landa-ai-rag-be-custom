@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import unittest
 
+from app.content.source_structure import analyze_source_structure, chunk_structure_metadata, structure_outline
 from app.schemas.lesson_author import RagLessonAuthorRequest
 from app.services.ingestion.chunking import build_index_diagnostics
 from app.services.ingestion.extract import ExtractedSection
@@ -19,7 +20,6 @@ from app.services.retrieval.source_coverage import (
     source_coverage_metrics,
     validate_lesson_author_source_coverage,
 )
-from app.source_structure import analyze_source_structure, chunk_structure_metadata, structure_outline
 
 
 class SourceStructureTests(unittest.TestCase):

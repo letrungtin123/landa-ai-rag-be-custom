@@ -41,9 +41,9 @@ from app.services.lesson_author.proposal_validation import (
     MIN_STAGED_LESSON_AUTHOR_HTML_TEXT_CHARS,
     SEMANTIC_LEARNING_HTML_LIMITS,
 )
-from app.services.lesson_author.staged import provider_schemas as staged_schemas
-from app.services.lesson_author.staged import validation as staged_validation
 from app.services.orchestration_v2 import unit as unit_service
+from app.services.staged_unit import provider_schemas as staged_schemas
+from app.services.staged_unit import validation as staged_validation
 from app.workflows.contracts import WorkflowFailure
 from tests.support.idm_test_support import make_runtime
 from tests.support.log_support import event_lines

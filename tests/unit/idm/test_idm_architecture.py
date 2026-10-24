@@ -10,6 +10,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, replace
 from typing import Any
 
+from app.contracts.orchestration_v2.blueprint import CourseSkeletonV2
 from app.idm.architecture import (
     AssemblyInput,
     assemble_idm_course_design,
@@ -41,7 +42,6 @@ from app.idm.notes import (
 )
 from app.idm.runtime import IdmProviderError, IdmRuntime, IdmStageError
 from app.idm.validation import errors
-from app.lesson_author_orchestration_v2 import CourseSkeletonV2
 from tests.idm_golden import SNAPSHOT_HASH, W4_COURSE, FakeIdmProvider, key, mutate, source_facts
 from tests.unit.idm.test_idm_blueprint import GoldenState, applied_golden, edited, golden_state
 

@@ -6,7 +6,7 @@ import re
 import unittest
 from pathlib import Path
 
-from app.instructional_quality import source_relationship_pairs
+from app.content.instructional_quality import source_relationship_pairs
 from app.services.ingestion.chunking import build_chunks
 from app.services.ingestion.extract import extract_pdf
 

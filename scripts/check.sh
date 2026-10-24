@@ -14,7 +14,7 @@ strict_paths="app/__init__.py app/core app/infra app/idm app/prompt_safety.py ap
 # keeps the mypy "no new errors" baseline (pyproject overrides) and the pyflakes (F) step until PRD-3 deletes it.
 # Test code held to the same lint profile: every test directory except the legacy pipeline's
 # (tests/unit/legacy) and the cross-language files of tests/ that belong to it.
-strict_tests="tests/idm_golden.py tests/idm_contract_bridge.py tests/support tests/golden tests/contract tests/unit/api tests/unit/content tests/unit/contracts tests/unit/core tests/unit/idm tests/unit/infra tests/unit/repositories tests/unit/services tools"
+strict_tests="tests/conftest.py tests/idm_golden.py tests/idm_contract_bridge.py tests/support tests/golden tests/contract tests/unit/api tests/unit/content tests/unit/contracts tests/unit/core tests/unit/idm tests/unit/infra tests/unit/repositories tests/unit/services tools"
 
 cd "$repo_root"
 # shellcheck disable=SC2086 # word splitting of the path lists is intended

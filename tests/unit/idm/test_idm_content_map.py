@@ -7,6 +7,7 @@ import unittest
 from collections.abc import Callable
 from typing import Any
 
+from app.contracts.orchestration_v2.provider import SourceSnapshotFactV2
 from app.idm.content_map import (
     FactIndex,
     SectionMapResult,
@@ -37,7 +38,6 @@ from app.idm.runtime import IdmProviderError, IdmRuntime
 from app.idm.signals import IdmSection, compute_fact_signals, plan_idm_sections
 from app.idm.text import objective_title
 from app.idm.validation import IdmIssue, code_counts, errors, warnings
-from app.lesson_author_orchestration_v2_provider import SourceSnapshotFactV2
 from tests.idm_golden import (
     DOCUMENT_ID,
     W1_REDUCE,

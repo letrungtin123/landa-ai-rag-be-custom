@@ -6,12 +6,12 @@ from unittest.mock import AsyncMock, patch
 
 from fastapi import HTTPException
 
-from app.core.errors import ServiceError
-from app.lesson_author_orchestration_v2 import canonical_hash
-from app.lesson_author_orchestration_v2_provider import (
+from app.contracts.orchestration_v2.blueprint import canonical_hash
+from app.contracts.orchestration_v2.provider import (
     ChapterShardProviderWireV2,
     CourseSkeletonProviderWireV2,
 )
+from app.core.errors import ServiceError
 from app.schemas.common import AiUsage
 from app.schemas.orchestration_v2 import (
     RagLessonAuthorChapterShardV2Request,
@@ -19,8 +19,6 @@ from app.schemas.orchestration_v2 import (
     RagLessonAuthorSourceSnapshotV2Request,
     RagLessonAuthorUnitV2Request,
 )
-from app.services.lesson_author.staged.provider_schemas import STAGED_COMPONENT_PAYLOAD_FIELDS
-from app.services.lesson_author.staged.validation import validate_staged_unit_content
 from app.services.orchestration_v2.chapter_shard import lesson_author_orchestration_v2_chapter_shard
 from app.services.orchestration_v2.course_skeleton import lesson_author_orchestration_v2_course_skeleton
 from app.services.orchestration_v2.source_snapshot import lesson_author_orchestration_v2_source_snapshot
@@ -28,6 +26,8 @@ from app.services.orchestration_v2.unit import (
     ORCHESTRATION_V2_UNIT_FALLBACK_RESPONSE_HEADROOM_MS,
     lesson_author_orchestration_v2_unit,
 )
+from app.services.staged_unit.provider_schemas import STAGED_COMPONENT_PAYLOAD_FIELDS
+from app.services.staged_unit.validation import validate_staged_unit_content
 from tests.support.log_support import log_text
 
 SOURCE_HASH = "a" * 64

@@ -30,6 +30,7 @@ from pptx.util import Inches
 from pydantic import ValidationError
 
 from app import main
+from app.content.source_structure import PARSER_VERSION
 from app.core.errors import AppError, DocumentLimitError, ServiceError
 from app.repositories import indexing as index_repository
 from app.schemas.common import AiUsage
@@ -43,7 +44,6 @@ from app.services.ingestion.chunking import SOURCE_EVIDENCE_PROPAGATION_VERSION
 from app.services.ingestion.extract import STRUCTURED_EXTRACTION_VERSION, ExtractedSection
 from app.services.ingestion.fingerprint import index_fingerprint
 from app.services.retrieval import source_coverage
-from app.source_structure import PARSER_VERSION
 
 TENANT_ID = "11111111-1111-4111-8111-111111111111"
 KB_ID = "22222222-2222-4222-8222-222222222222"

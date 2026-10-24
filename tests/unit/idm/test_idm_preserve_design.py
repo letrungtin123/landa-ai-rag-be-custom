@@ -13,6 +13,8 @@ import unittest
 from typing import Any
 from unittest.mock import patch
 
+from app.contracts.orchestration_v2.blueprint import CourseSkeletonV2, canonical_hash
+from app.contracts.orchestration_v2.provider import SourceSnapshotFactV2, UnitGenerationContractV2
 from app.idm.contracts import IdmCourseDesignV1, IdmCourseSkeletonRequestV1, IdmShardDesignV1, brief_hash_of
 from app.idm.course_design import run_idm_course_design
 from app.idm.preserve_design import (
@@ -24,8 +26,6 @@ from app.idm.preserve_design import (
 from app.idm.preserve_lines import expected_tokens, html_tokens
 from app.idm.preserve_unit import TEXT_MISMATCH_CODE, UNIT_INVALID_CODE, run_preserve_unit
 from app.idm.runtime import IdmProviderError, IdmStageError
-from app.lesson_author_orchestration_v2 import CourseSkeletonV2, canonical_hash
-from app.lesson_author_orchestration_v2_provider import SourceSnapshotFactV2, UnitGenerationContractV2
 from app.schemas.orchestration_v2 import RagLessonAuthorChapterShardV2Request, RagLessonAuthorUnitV2Request
 from app.services.orchestration_v2.chapter_shard import lesson_author_orchestration_v2_chapter_shard
 from app.services.orchestration_v2.unit import lesson_author_orchestration_v2_unit

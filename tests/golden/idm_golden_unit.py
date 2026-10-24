@@ -10,9 +10,9 @@ from __future__ import annotations
 import hashlib
 from typing import Any
 
+from app.contracts.orchestration_v2.blueprint import canonical_hash
+from app.contracts.orchestration_v2.provider import SourceSnapshotFactV2
 from app.idm.contracts import IdmCourseDesignV1, IdmShardDesignV1, brief_hash_of
-from app.lesson_author_orchestration_v2 import canonical_hash
-from app.lesson_author_orchestration_v2_provider import SourceSnapshotFactV2
 
 PURPOSE_BY_TYPE = {"html": "explain", "problem": "assess", "la_sortable": "sequence", "la_diagram": "relationship",
                    "la_crossword": "terminology", "la_faq": "clarify"}

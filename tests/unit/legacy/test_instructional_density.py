@@ -4,6 +4,7 @@ import json
 import unittest
 from pathlib import Path
 
+from app.contracts.orchestration_v2.provider import MAX_UNIT_SOURCE_FACTS
 from app.instructional_density import (
     DEFAULT_INSTRUCTIONAL_DENSITY_BUDGET,
     INSTRUCTIONAL_DENSITY_POLICY_VERSION,
@@ -14,7 +15,6 @@ from app.instructional_density import (
     partition_chunk_facts_for_density,
     profile_instructional_texts,
 )
-from app.lesson_author_orchestration_v2_provider import MAX_UNIT_SOURCE_FACTS
 
 FIXTURE_PATH = Path(__file__).parents[2] / "fixtures" / "hse_instructional_density_fixture.json"
 

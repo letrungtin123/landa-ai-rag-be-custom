@@ -18,13 +18,13 @@ from collections.abc import Awaitable, Callable
 from typing import Any
 from unittest import mock
 
+from app.contracts.orchestration_v2.blueprint import CourseSkeletonV2, canonical_hash
+from app.contracts.orchestration_v2.provider import SourceSnapshotFactV2
 from app.idm import faq_plan
 from app.idm.contracts import IdmCourseDesignV1, IdmCourseSkeletonRequestV1, IdmShardDesignV1
 from app.idm.course_design import run_idm_course_design
 from app.idm.module_design import run_idm_module_design
 from app.idm.runtime import IdmRuntime, IdmTokenAllowance
-from app.lesson_author_orchestration_v2 import CourseSkeletonV2, canonical_hash
-from app.lesson_author_orchestration_v2_provider import SourceSnapshotFactV2
 from tests import idm_golden as g
 from tests.golden import idm_golden_module as gm
 

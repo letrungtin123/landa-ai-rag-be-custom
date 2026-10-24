@@ -4,7 +4,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from app.source_readiness import (
+from app.content.source_readiness import (
     MANUAL_REGION_REQUEST_VERSION,
     SOURCE_READINESS_VERSION,
     VISUAL_OBSERVATION_VERSION,

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import ast
 import hashlib
+import importlib
 import re
 import unittest
 from pathlib import Path
@@ -9,8 +10,10 @@ from typing import NamedTuple
 
 from fastapi.routing import APIRoute
 
-from app import hashing, lesson_author_orchestration_v2, source_evidence_bundle
+from app import hashing
 from app.api.deps import require_internal_token
+from app.content import source_evidence_bundle
+from app.contracts.orchestration_v2 import blueprint as orchestration_v2_blueprint
 from app.main import app
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -18,9 +21,9 @@ APP_ROOT = REPO_ROOT / "app"
 # Framework-free domain modules (§19.2 "module thuần").
 PURE_MODULE_PATTERNS = (
     "source_*.py", "instructional_*.py", "lesson_quality.py", "semantic_review.py", "workflows/*.py",
-    "assessment_*.py", "learner_content_purity.py", "ordered_learning_content.py", "media_brief.py",
-    "component_capabilities.py", "lesson_author_*.py", "lesson_content_observation.py", "lesson_prompt_policy.py",
-    # The shared core moved verbatim out of the modules above in refactor wave 2 (their old paths are aliases).
+    "assessment_*.py", "media_brief.py", "component_capabilities.py", "lesson_author_*.py",
+    "lesson_content_observation.py", "lesson_prompt_policy.py",
+    # The shared core moved verbatim out of the modules above in refactor wave 2.
     "content/*.py", "contracts/**/*.py",
 )
 MAX_ROUTE_HANDLER_LINES = 30
@@ -228,6 +231,21 @@ class ArchitectureLayerTests(unittest.TestCase):
                         offenders.append(f"{layer}:{path.relative_to(APP_ROOT).as_posix()}:{name}")
         self.assertEqual(offenders, [])
 
+    def test_code_imports_moved_modules_by_their_new_path(self) -> None:
+        # Refactor wave 3b removed the self-replacing alias modules of wave 2 (step 2.1). The one left serves the
+        # backend's IDM fixture only; nothing in this repository imports it.
+        self.assertIs(importlib.import_module("app.lesson_author_orchestration_v2"), orchestration_v2_blueprint)
+        offenders = [
+            f"{path.relative_to(REPO_ROOT).as_posix()}:{name}"
+            for root in ("app", "tests", "tools", "scripts")
+            for path in sorted((REPO_ROOT / root).rglob("*.py"))
+            if "lesson_author_orchestration_v2" in path.read_text(encoding="utf-8")
+            for name, imported in imported_modules(path)
+            if name == "app.lesson_author_orchestration_v2"
+            or (name == "app" and "lesson_author_orchestration_v2" in imported)
+        ]
+        self.assertEqual(offenders, [])
+
     def test_no_application_module_imports_app_main(self) -> None:
         # app/__main__.py names "app.main:app" as a string for uvicorn; nothing imports the factory module.
         offenders = [
@@ -345,7 +363,7 @@ class ArchitectureLayerTests(unittest.TestCase):
             if isinstance(node, ast.FunctionDef) and node.name in {"canonical_hash", "_canonical_hash"}
         ]
         self.assertEqual(offenders, [])
-        self.assertIs(lesson_author_orchestration_v2.canonical_hash, hashing.canonical_hash)
+        self.assertIs(orchestration_v2_blueprint.canonical_hash, hashing.canonical_hash)
         self.assertIs(source_evidence_bundle.canonical_hash, hashing.canonical_hash)
         # The encoding the Node mirror reproduces: sorted keys, compact separators, raw UTF-8.
         self.assertEqual(hashing.canonical_hash({"b": [1, "đ"], "a": None}),

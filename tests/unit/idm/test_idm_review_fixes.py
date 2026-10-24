@@ -10,7 +10,9 @@ from unittest.mock import patch
 
 from pydantic import ValidationError
 
+from app.contracts.orchestration_v2.provider import SourceSnapshotFactV2
 from app.core.errors import ServiceError
+from app.idm import runtime as idm_runtime
 from app.idm.architecture import _lesson_chunks, validate_w4
 from app.idm.blueprint import release_holds, validate_w2
 from app.idm.content_map import FactIndex, map_sections, page_furniture_keys
@@ -27,7 +29,6 @@ from app.idm.policy import IDM_SHARD_MAX_SOURCE_CHARS
 from app.idm.runtime import IdmProviderError, IdmStageError, idm_call
 from app.idm.signals import compute_fact_signals, plan_idm_sections
 from app.idm.text import sanitize_author_text
-from app.lesson_author_orchestration_v2_provider import SourceSnapshotFactV2
 from app.prompt_safety import untrusted_block
 from tests import idm_golden as g
 from tests.idm_golden import W2_BLUEPRINT, W4_COURSE, mutate, source_facts
@@ -110,13 +111,18 @@ class RuntimeBudgetTests(unittest.IsolatedAsyncioTestCase):
             await asyncio.sleep(30)
             raise AssertionError("not reached")
 
-        runtime = make_runtime(slow, seconds=9.0)
+        # The policy (8 s minimum to start a call, cut 5 s before the deadline, a 9 s task) at a fifth of its
+        # seconds: the call is cut 0.8 s after it starts instead of 4 s, and must end at least 0.6 s before the
+        # task deadline (3 s before it at full scale).
+        runtime = make_runtime(slow, seconds=9.0 / 5)
         started = time.monotonic()
-        with self.assertRaises(IdmProviderError) as caught:
+        with (patch.object(idm_runtime, "IDM_MIN_CALL_REMAINING_SECONDS", 8.0 / 5),
+              patch.object(idm_runtime, "IDM_CALL_HEADROOM_SECONDS", 5.0 / 5),
+              self.assertRaises(IdmProviderError) as caught):
             await idm_call(runtime, stage="idm_w4", prompt="p", response_model=IdmW4CourseResponseV1,
                            max_output_tokens=8_000, thinking_level="high")
         self.assertEqual((caught.exception.code, caught.exception.terminal), ("AI_PROVIDER_TIMEOUT", False))
-        self.assertLess(time.monotonic() - started, 6.0)
+        self.assertLess(time.monotonic() - started, 6.0 / 5)
         self.assertEqual(runtime.provider_failure_code, "AI_PROVIDER_TIMEOUT")
 
 

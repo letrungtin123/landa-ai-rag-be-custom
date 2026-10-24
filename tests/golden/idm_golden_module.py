@@ -9,9 +9,9 @@ from __future__ import annotations
 
 from typing import Any
 
+from app.contracts.orchestration_v2.blueprint import CourseSkeletonV2
+from app.contracts.orchestration_v2.provider import ChapterShardPlanV2, SourceSnapshotFactV2
 from app.idm.contracts import IdmCourseDesignV1, IdmModuleContextV1
-from app.lesson_author_orchestration_v2 import CourseSkeletonV2
-from app.lesson_author_orchestration_v2_provider import ChapterShardPlanV2, SourceSnapshotFactV2
 from tests.idm_golden import key, keys
 
 ALLOWED_TYPES = ["html", "problem", "la_faq", "la_sortable", "la_crossword", "la_diagram"]

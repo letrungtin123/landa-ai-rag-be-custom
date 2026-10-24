@@ -5,6 +5,7 @@ from __future__ import annotations
 import unittest
 from typing import Any
 
+from app.contracts.orchestration_v2.provider import SourceSnapshotFactV2
 from app.idm.policy import IDM_PRESERVE_TABLE_MAX_COLUMNS, IDM_PRESERVE_TABLE_MAX_ROWS
 from app.idm.preserve_lines import (
     all_caps,
@@ -29,7 +30,6 @@ from app.idm.preserve_render import (
     purity_report,
     render_preserved_html,
 )
-from app.lesson_author_orchestration_v2_provider import SourceSnapshotFactV2
 from tests.golden import idm_preserve_golden as pg
 
 NBSP = chr(0xA0)

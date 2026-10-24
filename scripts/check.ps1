@@ -21,8 +21,8 @@ $StrictPaths = @(
 # Test code held to the same lint profile: every test directory except the legacy pipeline's
 # (tests/unit/legacy) and the cross-language files of tests/ that belong to it.
 $StrictTests = @(
-    "tests/idm_golden.py", "tests/idm_contract_bridge.py", "tests/support", "tests/golden", "tests/contract",
-    "tests/unit/api", "tests/unit/content", "tests/unit/contracts", "tests/unit/core", "tests/unit/idm",
+    "tests/conftest.py", "tests/idm_golden.py", "tests/idm_contract_bridge.py", "tests/support", "tests/golden",
+    "tests/contract", "tests/unit/api", "tests/unit/content", "tests/unit/contracts", "tests/unit/core", "tests/unit/idm",
     "tests/unit/infra", "tests/unit/repositories", "tests/unit/services", "tools"
 )
 

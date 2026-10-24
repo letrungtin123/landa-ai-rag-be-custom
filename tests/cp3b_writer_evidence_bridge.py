@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import sys
 
-from app.lesson_author_orchestration_v2_provider import (
+from app.contracts.orchestration_v2.provider import (
     UnitGenerationContractV2,
     unit_contract_manifest_v2,
     unit_contract_v5_architecture_v2,

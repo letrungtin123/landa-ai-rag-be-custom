@@ -11,6 +11,8 @@ import unittest
 from collections.abc import Callable
 from typing import Any
 
+from app.content.instructional_quality import build_source_grounded_single_choice
+from app.contracts.orchestration_v2.blueprint import ChapterBlueprintShardV2
 from app.idm.coerce import TRIMMED_LONG_STRING_CODE
 from app.idm.contracts import (
     IdmLessonDesignV1,
@@ -31,8 +33,6 @@ from app.idm.module_layout import (
 from app.idm.policy import AI_DRAFTED_MARKER_EN, AI_DRAFTED_MARKER_VI
 from app.idm.runtime import IdmProviderError, IdmStageError
 from app.idm.validation import IdmIssue
-from app.instructional_quality import build_source_grounded_single_choice
-from app.lesson_author_orchestration_v2 import ChapterBlueprintShardV2
 from tests import idm_golden as g
 from tests.golden import idm_golden_module as gm
 from tests.idm_golden import FakeIdmProvider, key, keys
