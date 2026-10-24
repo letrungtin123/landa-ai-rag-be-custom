@@ -21,7 +21,7 @@ from app.core import metrics
 from app.core.config import AuthMode
 from app.core.errors import AppError, app_error_handler
 from app.core.logging import SECRET_PATTERNS, redact_secret_like_values
-from app.core.request_context import AsgiMessage, Receive, Send, route_template
+from app.core.request_context import API_PATH_PREFIX, UNROUTED_SCOPE_KEY, AsgiMessage, Receive, Send, route_template
 
 logger = logging.getLogger(__name__)
 
@@ -326,8 +326,11 @@ class AuthHeaderPrecheckMiddleware:
     24 MiB), so any caller could make the service read that much without a valid key (security audit 2026-10-24,
     L4). Placed inside RequestContextMiddleware (request id, access log, metrics) and outside the body buffering,
     this answers the dependency's own refusal (same reason, log line, counter and 401 bytes) for a request to a
-    route that depends on ``dependency``. Everything else passes through; the dependency still authenticates what
-    passes here (clock skew, signature, replay).
+    route that depends on ``dependency``, and for any request under ``protected_prefixes`` that no route matches
+    fully (an unknown path, a trailing slash, another method): the router would answer those with 404, 307 or 405,
+    but the body was buffered first (review of wave 2, F3). Such a request that passes is marked
+    ``UNROUTED_SCOPE_KEY`` so that nothing buffers its body. Everything else passes through; the dependency still
+    authenticates what passes here (clock skew, signature, replay).
     """
 
     def __init__(
@@ -337,39 +340,47 @@ class AuthHeaderPrecheckMiddleware:
         routes: Sequence[BaseRoute],
         dependency: Callable[..., Any],
         precheck: Callable[[Request], AuthRejection | None],
+        protected_prefixes: tuple[str, ...] = (API_PATH_PREFIX,),
     ) -> None:
         self.app = app
         # The application's own route list (filled as routes register), searched like the router does.
         self.routes = routes
         self.dependency = dependency
         self.precheck = precheck
+        self.protected_prefixes = protected_prefixes
 
-    def _protected_route(self, scope: AsgiMessage) -> APIRoute | None:
+    def _overridden(self, route: APIRoute) -> bool:
+        # An override of the dependency (app.dependency_overrides) replaces its check, as it does in FastAPI.
+        return self.dependency in getattr(route.dependency_overrides_provider, "dependency_overrides", {})
+
+    def _match(self, scope: AsgiMessage) -> tuple[BaseRoute | None, bool]:
+        """The route that serves the request (``None``: no route matches fully) and whether to check its headers."""
         for route in self.routes:
             match, _child_scope = route.matches(scope)
             if match is not Match.FULL:
                 continue
-            if not isinstance(route, APIRoute):
-                return None
-            # An override of the dependency (app.dependency_overrides) replaces its check, as it does in FastAPI.
-            overrides = getattr(route.dependency_overrides_provider, "dependency_overrides", {})
-            if self.dependency in overrides or not any(
-                    dependant.call is self.dependency for dependant in route.dependant.dependencies):
-                return None
-            return route
-        return None
+            protected = (isinstance(route, APIRoute) and not self._overridden(route) and any(
+                dependant.call is self.dependency for dependant in route.dependant.dependencies))
+            return route, protected
+        path = str(scope.get("path") or "")
+        overridden = any(self._overridden(route) for route in self.routes if isinstance(route, APIRoute))
+        return None, path.startswith(self.protected_prefixes) and not overridden
 
     async def __call__(self, scope: AsgiMessage, receive: Receive, send: Send) -> None:
-        route = self._protected_route(scope) if scope.get("type") == "http" else None
-        if route is not None:
-            request = Request(scope)
-            reason = self.precheck(request)
-            if reason is not None:
-                # As if the router had matched it: the access log and the metrics name the route template.
-                scope["route"] = route
-                response = await app_error_handler(request, auth_rejected(request, reason))
-                await response(scope, receive, send)
-                return
+        if scope.get("type") == "http":
+            route, protected = self._match(scope)
+            if protected:
+                request = Request(scope)
+                reason = self.precheck(request)
+                if reason is not None:
+                    if route is not None:
+                        # As if the router had matched it: the access log and the metrics name the route template.
+                        scope["route"] = route
+                    response = await app_error_handler(request, auth_rejected(request, reason))
+                    await response(scope, receive, send)
+                    return
+            if route is None:
+                scope[UNROUTED_SCOPE_KEY] = True
         await self.app(scope, receive, send)
 
 

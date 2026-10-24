@@ -27,6 +27,12 @@ CORRELATION_ID_HEADER = b"x-correlation-id"
 LANDA_REQUEST_ID_HEADER = b"x-landa-request-id"
 SAFE_ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$")
 OPERATIONAL_PATHS = frozenset({"/healthz", "/readyz", "/metrics"})
+# The API routes, every one behind the internal auth dependency; DisconnectCancellationMiddleware buffers the body
+# of a POST under this prefix.
+API_PATH_PREFIX = "/v1/"
+# Scope key AuthHeaderPrecheckMiddleware sets on a request that no route matches fully: the router answers it
+# (404, a trailing-slash redirect or 405) without reading the body, so nothing buffers it (review of wave 2, F3).
+UNROUTED_SCOPE_KEY = "landa.unrouted"
 # Not counted in flight either: /v1/meta reports the count (a deploy polls it until no request is in flight).
 UNCOUNTED_PATHS = OPERATIONAL_PATHS | {"/v1/meta"}
 # Path prefix -> route class of the in-flight counters (app.core.lifespan.IN_FLIGHT_ROUTE_CLASSES); first match wins.
@@ -175,10 +181,11 @@ class DisconnectCancellationMiddleware:
     body is buffered first, so place this middleware *inside* the body-size
     limit. Work already running in a worker thread cannot be interrupted, but
     no new awaits (provider calls, DB writes) are scheduled after cancellation;
-    open database transactions roll back.
+    open database transactions roll back. A request no route serves
+    (``UNROUTED_SCOPE_KEY``) is passed on unbuffered.
     """
 
-    def __init__(self, app: Any, *, path_prefix: str = "/v1/") -> None:
+    def __init__(self, app: Any, *, path_prefix: str = API_PATH_PREFIX) -> None:
         self.app = app
         self.path_prefix = path_prefix
 
@@ -187,6 +194,7 @@ class DisconnectCancellationMiddleware:
             scope.get("type") != "http"
             or str(scope.get("method") or "") != "POST"
             or not str(scope.get("path") or "").startswith(self.path_prefix)
+            or scope.get(UNROUTED_SCOPE_KEY)
         ):
             await self.app(scope, receive, send)
             return

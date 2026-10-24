@@ -113,6 +113,7 @@ def call(method: str, path: str, headers: dict[str, str], body: bytes = V2_BODY)
 
 
 REQUEST_IDS = {"X-Request-Id": "req-precheck-1", "X-Correlation-Id": "corr-precheck-1"}
+LARGE_BODY = b"x" * (1024 * 1024)
 
 
 class AuthHeaderPrecheckTests(unittest.TestCase):
@@ -170,20 +171,50 @@ class AuthHeaderPrecheckTests(unittest.TestCase):
                 refused = call("POST", V2_PATH, {TOKEN_HEADER: "wrong-token"})
         self.assertEqual((refused.status, refused.body_reads, logs.records[0].reason), (401, 0, "bad_token"))
 
-    def test_public_unknown_and_method_mismatched_requests_pass_through(self) -> None:
+    def test_public_requests_and_paths_outside_the_api_pass_through(self) -> None:
         with auth_settings():
             self.assertEqual(call("GET", "/healthz", {}, body=b"").status, 200)
-            self.assertEqual(call("POST", "/v1/unknown", {}).status, 404)
-            self.assertEqual(call("GET", V2_PATH, {}, body=b"").status, 405)
+            unknown = call("POST", "/unknown", {}, body=LARGE_BODY)
+            self.assertEqual((unknown.status, unknown.body_reads), (404, 0))
+
+    def test_an_unsigned_request_no_api_route_serves_is_refused_before_its_body_is_read(self) -> None:
+        # Review of wave 2, F3: an unknown /v1 path (404), a trailing slash (307) or another method (405) reached the
+        # router only after DisconnectCancellationMiddleware had buffered the whole body (up to 16 MiB).
+        with auth_settings(), self.assertLogs("app.core.security", "WARNING") as logs:
+            refused = {path_and_method: call(path_and_method[0], path_and_method[1], dict(REQUEST_IDS),
+                                             body=LARGE_BODY)
+                       for path_and_method in (("POST", "/v1/unknown"), ("POST", V2_PATH + "/"), ("POST", "/v1/meta"),
+                                               ("GET", V2_PATH), ("POST", "/v1/kb/documents/index/x"))}
+            routed = call("POST", V2_PATH, dict(REQUEST_IDS), body=LARGE_BODY)
+        for (method, path), reply in refused.items():
+            with self.subTest(method=method, path=path):
+                self.assertEqual((reply.status, reply.body_reads), (401, 0))
+                # Byte for byte the refusal of a routed request: status, headers and body.
+                self.assertEqual((reply.status, reply.headers, reply.body),
+                                 (routed.status, routed.headers, routed.body))
+        self.assertEqual([(record.reason, record.route) for record in logs.records],
+                         [("missing_header", "unmatched")] * len(refused) + [("missing_header", V2_PATH)])
+
+    def test_a_request_with_valid_headers_that_no_route_serves_is_answered_unbuffered(self) -> None:
+        # Headers the precheck lets through (the dependency would verify the signature): the router answers without
+        # the body, and nothing buffers it before.
+        with auth_settings():
+            cases = {("POST", "/v1/unknown"): 404, ("POST", V2_PATH + "/"): 307, ("POST", "/v1/meta"): 405}
+            for (method, path), status in cases.items():
+                with self.subTest(method=method, path=path):
+                    reply = call(method, path, v2_headers(), body=LARGE_BODY)
+                    self.assertEqual((reply.status, reply.body_reads), (status, 0))
 
     def test_an_overridden_auth_dependency_is_not_checked_early(self) -> None:
         app.dependency_overrides[api_deps.require_internal_token] = lambda: None
         try:
             with auth_settings():
                 reply = call("GET", "/v1/meta", {}, body=b"")
+                unknown = call("POST", "/v1/unknown", {}, body=LARGE_BODY)
         finally:
             app.dependency_overrides.pop(api_deps.require_internal_token, None)
         self.assertEqual(reply.status, 200)
+        self.assertEqual((unknown.status, unknown.body_reads), (404, 0))
 
 
 class PrecheckParityTests(unittest.IsolatedAsyncioTestCase):
