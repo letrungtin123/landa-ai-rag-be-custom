@@ -18,6 +18,8 @@ import unittest
 from collections import Counter
 from typing import Any
 
+from app.content.instructional_density import INSTRUCTIONAL_DENSITY_POLICY_VERSION
+from app.contracts.workflow import WorkflowFailure
 from app.idm.html_rules import (
     DEFAULT_MIN_VISIBLE_CHARS,
     GROUP_LIMITS,
@@ -33,18 +35,16 @@ from app.idm.html_rules import (
 )
 from app.idm.prompts import unit_writer_prompt
 from app.idm.storyboard import IdmUnitWriter, parse_brief, run_idm_unit, safe_error_details
-from app.instructional_density import INSTRUCTIONAL_DENSITY_POLICY_VERSION
 from app.schemas.orchestration_v2 import RagLessonAuthorUnitV2Request
-from app.services.lesson_author import proposal_validation
-from app.services.lesson_author.errors import LessonAuthorProposalValidationError
-from app.services.lesson_author.proposal_validation import (
+from app.services.orchestration_v2 import unit as unit_service
+from app.services.staged_unit import proposal_shape
+from app.services.staged_unit import provider_schemas as staged_schemas
+from app.services.staged_unit import validation as staged_validation
+from app.services.staged_unit.errors import LessonAuthorProposalValidationError
+from app.services.staged_unit.proposal_shape import (
     MIN_STAGED_LESSON_AUTHOR_HTML_TEXT_CHARS,
     SEMANTIC_LEARNING_HTML_LIMITS,
 )
-from app.services.orchestration_v2 import unit as unit_service
-from app.services.staged_unit import provider_schemas as staged_schemas
-from app.services.staged_unit import validation as staged_validation
-from app.workflows.contracts import WorkflowFailure
 from tests.support.idm_test_support import make_runtime
 from tests.support.log_support import event_lines
 from tests.unit.idm.test_idm_storyboard import (
@@ -86,7 +86,7 @@ def semantic(*sections: Any, **extra: Any) -> dict[str, Any]:
 
 
 def shared_reason(value: Any) -> str | None:
-    return proposal_validation.semantic_learning_visible_text(copy.deepcopy(value))[1]
+    return proposal_shape.semantic_learning_visible_text(copy.deepcopy(value))[1]
 
 
 def payload_code(value: Any) -> str | None:

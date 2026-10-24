@@ -154,6 +154,59 @@ def size_violations(sizes: dict[str, int], limit: int, allowlist: dict[str, Allo
     return found
 
 
+# PRD-3 deletes the legacy lesson-author pipeline: app/services/lesson_author, app/workflows and the app/ modules
+# outside the strict paths. Strict code does not import it, so the deletion never reaches into strict code. These are
+# the imports left after refactor wave 3b moved the shared helpers out (strict file, imported legacy module) -> why
+# it stays. An entry only shrinks: remove it when the import goes; a new strict-to-legacy import never gets one.
+LEGACY_IMPORT_ALLOWLIST: dict[tuple[str, str], str] = {
+    ("app/api/routes/lesson_author_legacy.py", "app.services.lesson_author.blueprint_workflow"):
+        "the legacy V5 routes call the pipeline they serve; deleted with it",
+    ("app/api/routes/lesson_author_legacy.py", "app.services.lesson_author.chapter_checkpoint"):
+        "the legacy V5 routes call the pipeline they serve; deleted with it",
+    ("app/api/routes/lesson_author_legacy.py", "app.services.lesson_author.proposal"):
+        "the legacy V5 routes call the pipeline they serve; deleted with it",
+    ("app/contract_bridge.py", "app.services.lesson_author.architecture_validation"):
+        "the backend's cross-language tests import validate_v5_instructional_coherence through app.main",
+    ("app/contract_bridge.py", "app.services.lesson_author.checkpoint"):
+        "the backend's cross-language tests call build_lesson_author_checkpoint_result through app.main",
+    ("app/services/orchestration_v2/unit.py", "app.semantic_review"):
+        "the v2-legacy unit path runs the V5 semantic review (512 lines, untyped); goes with that path",
+    ("app/services/orchestration_v2/unit.py", "app.services.lesson_author.staged.writer"):
+        "the v2-legacy unit path runs the V5 staged writer (1,088 lines, untyped); goes with that path",
+}
+
+
+def module_file(module: str) -> str | None:
+    """The repository path of an importable module of this repository (``.py`` or package), else ``None``."""
+
+    base = REPO_ROOT.joinpath(*module.split("."))
+    for candidate in (base.with_suffix(".py"), base / "__init__.py"):
+        if candidate.is_file():
+            return candidate.relative_to(REPO_ROOT).as_posix()
+    return None
+
+
+def imported_app_modules(path: Path) -> set[str]:
+    """The ``app`` modules ``path`` imports; ``from package import module`` counts as the module itself."""
+
+    found: set[str] = set()
+    for name, imported in imported_modules(path):
+        if name != "app" and not name.startswith("app."):
+            continue
+        for item in imported or {""}:
+            submodule = f"{name}.{item}"
+            found.add(submodule if item and module_file(submodule) else name)
+    return found
+
+
+def legacy_import_violations(found: set[tuple[str, str]], allowed: dict[tuple[str, str], str]) -> list[str]:
+    problems = [f"{name} imports the legacy module {module}: move what it needs into a strict package"
+                for name, module in sorted(found - set(allowed))]
+    problems += [f"{name} no longer imports {module}: remove its allowlist entry"
+                 for name, module in sorted(set(allowed) - found)]
+    return problems
+
+
 # STD-7 / F-08: accent folding lives in app/core/text.py. A decomposing normalisation (NFD or NFKD, or a form
 # not known statically) anywhere else is a private fold copy. These are the sites left after refactor wave 2
 # (step 2.2) replaced the exact duplicates; each one differs in semantics on purpose or mirrors a Node rule,
@@ -324,6 +377,32 @@ class ArchitectureLayerTests(unittest.TestCase):
                         if outside or web:
                             offenders.append(f"{layer}:{path.relative_to(APP_ROOT).as_posix()}:{module}")
         self.assertEqual(offenders, [])
+
+    def test_strict_code_does_not_import_the_legacy_pipeline(self) -> None:
+        strict = strict_files()
+        found: set[tuple[str, str]] = set()
+        for name, path in strict.items():
+            for module in imported_app_modules(path):
+                target = module_file(module)
+                if target is not None and target.startswith("app/") and target not in strict:
+                    found.add((name, module))
+        self.assertEqual(legacy_import_violations(found, LEGACY_IMPORT_ALLOWLIST), [])
+        self.assertTrue(all(reason for reason in LEGACY_IMPORT_ALLOWLIST.values()))
+
+    def test_legacy_import_rule_resolves_modules_and_catches_new_and_stale_entries(self) -> None:
+        self.assertEqual(module_file("app.services.lesson_author.staged.writer"),
+                         "app/services/lesson_author/staged/writer.py")
+        self.assertEqual(module_file("app.services.lesson_author"), "app/services/lesson_author/__init__.py")
+        self.assertIsNone(module_file("app.services.lesson_author.staged.writer.generate_staged_lesson_author_proposal"))
+        unit = APP_ROOT / "services" / "orchestration_v2" / "unit.py"
+        expected = {"app.semantic_review", "app.services.lesson_author.staged.writer", "app.services.provider"}
+        self.assertLessEqual(expected, imported_app_modules(unit))
+        allowed = {("app/kept.py", "app.legacy"): "reason", ("app/gone.py", "app.legacy"): "reason"}
+        self.assertEqual(legacy_import_violations({("app/kept.py", "app.legacy"), ("app/new.py", "app.legacy")},
+                                                  allowed), [
+            "app/new.py imports the legacy module app.legacy: move what it needs into a strict package",
+            "app/gone.py no longer imports app.legacy: remove its allowlist entry",
+        ])
 
     def test_no_application_module_imports_app_main(self) -> None:
         # app/__main__.py names "app.main:app" as a string for uvicorn; nothing imports the factory module.

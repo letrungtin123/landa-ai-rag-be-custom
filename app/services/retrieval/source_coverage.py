@@ -9,8 +9,8 @@ from typing import Any
 from app.content.instructional_quality import TABLE_ROW_RE, clean_source_facts, is_non_instructional_source_line
 from app.core.config import settings
 from app.schemas.chat import RagRequestBase
-from app.services.lesson_author.errors import LessonAuthorProposalValidationError
 from app.services.retrieval.query import decode_json_object, parse_source_range
+from app.services.staged_unit.errors import LessonAuthorProposalValidationError
 from app.services.text import clean_text
 
 MAX_SOURCE_COVERAGE_FACT_CHARS = 420

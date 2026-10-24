@@ -1,10 +1,13 @@
-"""Lesson-author domain errors."""
+"""Old import path of ``app.services.staged_unit.errors``, moved there in refactor wave 3b.
 
-from __future__ import annotations
+Strict code imports the new path; the legacy lesson-author pipeline and its tests keep importing these
+names from here.
+"""
 
+from app.services.staged_unit.errors import (
+    LessonAuthorProposalValidationError,
+)
 
-class LessonAuthorProposalValidationError(ValueError):
-    """Raised when a detailed lesson proposal cannot be applied safely."""
-    def __init__(self, message: str, *, code: str = "UNIT_SHAPE_INVALID", path: str = "unit", repairable: bool = False):
-        super().__init__(message)
-        self.code, self.path, self.repairable = code, path, repairable
+__all__ = [
+    "LessonAuthorProposalValidationError",
+]

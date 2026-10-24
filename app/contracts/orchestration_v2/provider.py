@@ -7,6 +7,13 @@ from typing import Any, Literal, cast
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 
+from app.content.instructional_density import (
+    DEFAULT_INSTRUCTIONAL_DENSITY_BUDGET,
+    INSTRUCTIONAL_DENSITY_POLICY_VERSION,
+    evaluate_instructional_density,
+    instructional_output_budget,
+    profile_instructional_texts,
+)
 from app.content.instructional_quality import (
     build_source_grounded_single_choice,
     clean_source_facts,
@@ -32,13 +39,6 @@ from app.contracts.orchestration_v2.blueprint import (
 )
 from app.contracts.schema_projection import ORCHESTRATION_V2_WIRE, project_provider_schema, provider_wire_model
 from app.hashing import js_canonical_hash
-from app.instructional_density import (
-    DEFAULT_INSTRUCTIONAL_DENSITY_BUDGET,
-    INSTRUCTIONAL_DENSITY_POLICY_VERSION,
-    evaluate_instructional_density,
-    instructional_output_budget,
-    profile_instructional_texts,
-)
 from app.prompt_safety import UNTRUSTED_JSON_CONTEXT_RULE
 
 MAX_SOURCE_PAGE_FACTS = 500

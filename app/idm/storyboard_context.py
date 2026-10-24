@@ -14,6 +14,7 @@ from typing import Any, Final, Protocol
 
 from pydantic import BaseModel, ValidationError
 
+from app.content.instructional_density import INSTRUCTIONAL_DENSITY_POLICY_VERSION
 from app.contracts.orchestration_v2.provider import UnitGenerationContractV2
 from app.idm.answer_near import ANSWER_ITEM_LENGTH_CODE, ANSWER_NEAR_EXAMPLE_CODE
 from app.idm.contracts import IdmUnitBriefV1, brief_hash_of
@@ -46,7 +47,6 @@ from app.idm.quiz_text import QUIZ_CODES, QUIZ_REVIEW_CODES
 from app.idm.runtime import IdmStageError
 from app.idm.source_names import NAME_NOT_IN_SOURCE_CODE
 from app.idm.worksheet_input import EXAMPLE_REUSE_CODE, WORKSHEET_INPUT_CODE
-from app.instructional_density import INSTRUCTIONAL_DENSITY_POLICY_VERSION
 
 _SLOT_RE: Final = re.compile(r"components\[(\d+)\]")
 _MS: Final = 1000

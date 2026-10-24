@@ -6,8 +6,8 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from app.component_capabilities import ComponentCapabilities
-from app.lesson_author_checkpoint import ChapterCheckpointUnit
+from app.contracts.component_capabilities import ComponentCapabilities
+from app.contracts.lesson_author_checkpoint import ChapterCheckpointUnit
 from app.schemas.chat import RagRequestBase
 
 # A chapter checkpoint runs on V5 course architectures only.

@@ -8,7 +8,7 @@ from typing import Any, cast
 
 from pydantic import ValidationError
 
-from app.component_capabilities import validate_instance_plan
+from app.content.instructional_density import INSTRUCTIONAL_DENSITY_POLICY_VERSION
 from app.content.instructional_quality import (
     MIN_FAQ_ANSWER_CHARS,
     MIN_FAQ_QUESTION_CHARS,
@@ -17,15 +17,15 @@ from app.content.instructional_quality import (
 )
 from app.content.learner_content_purity import component_learner_text, learner_content_purity_finding
 from app.content.ordered_learning_content import semantic_shape_diagnostics
+from app.contracts.component_capabilities import validate_instance_plan
 from app.core.markup import replace_tags
-from app.instructional_density import INSTRUCTIONAL_DENSITY_POLICY_VERSION
-from app.services.lesson_author.errors import LessonAuthorProposalValidationError
-from app.services.lesson_author.proposal_validation import (
+from app.services.staged_unit.component_types import normalize_staged_component_type
+from app.services.staged_unit.errors import LessonAuthorProposalValidationError
+from app.services.staged_unit.proposal_shape import (
     MIN_STAGED_LESSON_AUTHOR_HTML_TEXT_CHARS,
     semantic_learning_visible_text,
     validate_lesson_author_proposal_shape,
 )
-from app.services.lesson_author.staged.plan import normalize_staged_component_type
 from app.services.staged_unit.provider_schemas import (
     STAGED_COMPONENT_PAYLOAD_FIELDS,
     StagedDiagramEdge,

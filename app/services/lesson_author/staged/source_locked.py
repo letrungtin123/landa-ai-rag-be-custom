@@ -26,6 +26,12 @@ from app.services.lesson_author.staged.plan import (
 )
 from app.services.lesson_author.staged.skeleton import _build_blueprint_locked_staged_skeleton, lesson_author_title_key
 from app.services.retrieval.source_coverage import SOURCE_REF_RE, _source_chunk_number, _source_page_number
+# Moved in refactor wave 3b.
+from app.services.staged_unit.source_locked_text import (
+    source_locked_faq_answers as _source_locked_faq_answers,
+    source_locked_faq_question as _source_locked_faq_question,
+    source_locked_html_facts as _source_locked_html_facts,
+)
 from app.services.text import clean_text
 
 
@@ -484,28 +490,6 @@ def prepare_source_locked_expected(
     }, dropped_types
 
 
-def _source_locked_html_facts(fact_texts: list[str]) -> list[str]:
-    """Split raw source facts into displayable source lines without rewriting them."""
-    lines: list[str] = []
-    for fact_text in fact_texts:
-        text = re.sub(r"\s+", " ", fact_text).strip()
-        if not text:
-            continue
-        numbered_starts = list(re.finditer(r"(?<!\w)\d+[.)]\s+", text))
-        if not numbered_starts:
-            lines.append(text)
-            continue
-        prefix = text[:numbered_starts[0].start()].strip()
-        if prefix:
-            lines.append(prefix)
-        for index, match in enumerate(numbered_starts):
-            end = numbered_starts[index + 1].start() if index + 1 < len(numbered_starts) else len(text)
-            item = text[match.start():end].strip()
-            if item:
-                lines.append(item)
-    return lines
-
-
 def _source_locked_html_inline(text: str) -> str:
     """Preserve a definition label as emphasis while keeping source wording intact."""
     match = re.match(r"^([^:]{2,100}):\s+(.+)$", text)
@@ -590,25 +574,6 @@ def _source_locked_html_body(title: str, fact_texts: list[str]) -> str:
         parts.append(f"<p>{_source_locked_html_inline(line)}</p>")
         index += 1
     return "".join(parts)
-
-
-def _source_locked_faq_question(answer: str, title: str, index: int, locale: str) -> str:
-    label = re.split(r"[:.!?]", answer, maxsplit=1)[0].strip()
-    if len(label) >= 6 and len(label) <= 100:
-        return (
-            f"What should learners understand about {label}?"
-            if locale == "en"
-            else f"Người học cần hiểu gì về {label}?"
-        )
-    if locale == "en":
-        return f"What should learners remember about '{title}'?" if index == 0 else f"Which condition needs attention in '{title}'?"
-    return f"Người học cần ghi nhớ gì về '{title}'?" if index == 0 else f"Điều kiện nào cần lưu ý trong '{title}'?"
-
-
-def _source_locked_faq_answers(fact_texts: list[str]) -> list[str]:
-    """Use only explicit source conditions/exceptions for a fallback FAQ."""
-    answers = source_clarification_signals(fact_texts)
-    return [answer[:600] for answer in answers[:2]] if len(answers) >= 2 else []
 
 
 def build_source_locked_unit(

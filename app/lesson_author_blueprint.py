@@ -7,6 +7,10 @@ from typing import Any
 from google.genai import types
 from pydantic import BaseModel, Field
 
+# Moved in refactor wave 3b; re-exported here for the legacy pipeline and its tests.
+from app.content.source_chapter_policy import (
+    MAX_BLUEPRINT_CHAPTERS as MAX_BLUEPRINT_CHAPTERS,
+)
 from app.content.source_structure import strip_source_range_suffix
 # The brace scanner moved to app.core.json_shape (refactor wave 3b) with the response description it serves.
 from app.core.json_shape import find_balanced_json_objects as _find_balanced_json_objects
@@ -15,7 +19,6 @@ from app.core.json_shape import find_balanced_json_objects as _find_balanced_jso
 # trustworthy table of contents can contain many independent procedures in one
 # inferred topic; rejecting the fifth procedure loses a valid Blueprint rather
 # than making it easier to review.
-MAX_BLUEPRINT_CHAPTERS = 12
 MAX_BLUEPRINT_LESSONS_PER_CHAPTER = 6
 MAX_BLUEPRINT_LEARNING_OUTCOMES = 12
 MAX_BLUEPRINT_PREREQUISITES = 10
