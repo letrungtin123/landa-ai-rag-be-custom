@@ -207,7 +207,7 @@
    },
    {
     "method": "fetch",
-    "sql_sha256": "57ddc66260fb273ec8f71854d919d8f7780ea1d5df481e9d7500df13380570e6",
+    "sql_sha256": "22bb7d22ca928f1d73456e08af3bee34168c45c00ed39b4c917bac794517ea41",
     "rule": "'vector' AS method",
     "args": [
      "11111111-1111-4111-8111-111111111111",
@@ -223,7 +223,7 @@
    },
    {
     "method": "fetch",
-    "sql_sha256": "fb19c83dc522c7197a198b8e4f8a0ba4c9f05bc01592286116dc06896d4773fa",
+    "sql_sha256": "23c4d54752be0d632b3cad7338c526fa43be9c554546682fa41e8fa9185b7912",
     "rule": "'keyword' AS method",
     "args": [
      "11111111-1111-4111-8111-111111111111",

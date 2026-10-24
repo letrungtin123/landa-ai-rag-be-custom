@@ -8,6 +8,7 @@ least-privilege role is granted (``app.infra.schema_check.AI_SCHEMA_REQUIREMENTS
 from __future__ import annotations
 
 import ast
+import hashlib
 import re
 import unittest
 from pathlib import Path
@@ -112,13 +113,42 @@ class RepositorySqlTests(unittest.TestCase):
                       "AND rag_document_structure_nodes.kb_id = EXCLUDED.kb_id", upsert)
 
     def test_retrieval_joins_match_the_tenant(self) -> None:
+        # Audit 2026-10-24, L6: in the join, or for the ranked vector and keyword matches on the ranked rows outside
+        # the ranked query (review of wave 2, F1).
         statements = [" ".join(sql.split()) for _line, sql in sql_calls(REPOSITORIES / "retrieval.py")]
-        joins = [join for sql in statements for join in re.findall(r"JOIN (?:rag_document_indexes|kb_documents) \w+ "
-                                                                   r"ON [^J]*?(?= JOIN| WHERE| LEFT)", sql)]
-        self.assertGreaterEqual(len(joins), 14)
+        ranked = [sql for sql in statements if sql.startswith("SELECT m.")]
+        self.assertEqual(len(ranked), 2)
+        for sql in ranked:
+            with self.subTest(sql=sql[-60:]):
+                self.assertIn(" r.tenant_id AS index_tenant_id, d.tenant_id AS document_tenant_id FROM rag_chunks c ",
+                              sql)
+                self.assertRegex(sql, r"\) m WHERE m\.index_tenant_id = \$1::uuid "
+                                      r"AND m\.document_tenant_id = \$1::uuid ORDER BY m\.[^()]*$")
+        join_pattern = r"JOIN (?:rag_document_indexes|kb_documents) \w+ ON [^J]*?(?= JOIN| WHERE| LEFT)"
+        joins = [join for sql in statements if sql not in ranked for join in re.findall(join_pattern, sql)]
+        self.assertGreaterEqual(len(joins), 10)
         for join in joins:
             with self.subTest(join=join):
                 self.assertRegex(join, r"AND (\w)\.tenant_id = (c|n)\.tenant_id$")
+
+    def test_ranked_matches_keep_the_query_of_before_the_tenant_match(self) -> None:
+        # Review of wave 2, F1: a tenant clause in the joins of the vector query lowered the planner's row estimates
+        # and replaced its HNSW index scan by an exact sort of the KB's chunks (other rows, and slower as the KB
+        # grows). The ranked query runs as before inside: the statement of c5352c9 (whitespace-normalized SHA-256,
+        # the hash its route snapshots recorded) plus the columns the outer query reads.
+        before_the_tenant_match = {
+            "'vector' AS method": ("c443d3ab8606b5eb25668269df284e67de9a3abaa73fc34a99ca1aaa39b84b03",
+                                   ", c.embedding <=> $4::vector AS distance"),
+            "'keyword' AS method": ("5c6fab340bdf567d7783d25532bd84b3784a546c55653411fa20e8e020363855", ""),
+        }
+        statements = [" ".join(sql.split()) for _line, sql in sql_calls(REPOSITORIES / "retrieval.py")]
+        for method, (sha256, distance) in before_the_tenant_match.items():
+            with self.subTest(method=method):
+                [sql] = [sql for sql in statements if sql.startswith("SELECT m.") and method in sql]
+                inner = sql[sql.index(" FROM ( ") + len(" FROM ( "):sql.rindex(" ) m WHERE ")]
+                added = f"{distance}, r.tenant_id AS index_tenant_id, d.tenant_id AS document_tenant_id"
+                self.assertEqual(inner.count(added), 1)
+                self.assertEqual(hashlib.sha256(inner.replace(added, "").encode()).hexdigest(), sha256)
 
     def test_privilege_parser_reads_verbs_joins_locks_and_upserts(self) -> None:
         self.assertEqual(

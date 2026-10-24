@@ -1,6 +1,8 @@
 """SQL of retrieval: learned chunks (scoped, blueprint, vector and keyword matches) and stored source structure.
 
-Every join to the index and document rows also matches the tenant of the chunk or node (audit 2026-10-24, L6).
+Every query also matches the tenant of the joined index and document rows to the tenant of the chunk or node
+(audit 2026-10-24, L6): in the join, or for the ranked vector and keyword matches outside the ranked query, whose
+plan the extra join clause changed (review of wave 2, F1).
 """
 
 from __future__ import annotations
@@ -158,32 +160,58 @@ async def _vector_matches(
     embedding_model: Any,
     embedding_dimensions: Any,
 ) -> list[Any]:
+    # The inner query is the nearest-neighbour query as it was before the tenant match (its columns, FROM, WHERE,
+    # ORDER BY and LIMIT; ``distance`` is the ORDER BY expression, which the planner computed anyway), so the
+    # planner costs and chooses its plans as before: the HNSW index scan where it did, the same rows. The tenant
+    # of the joined index and document rows is checked outside, on its at most ``limit`` rows; PostgreSQL neither
+    # flattens a subquery with a LIMIT nor pushes the outer filter into it. The tenant match inside the joins
+    # lowered the row estimates and turned the vector query into an exact sort of the KB's chunks, returning
+    # other rows than before (review of wave 2, F1).
     return await executor.fetch(
         """
-        SELECT c.content,
-               c.source_page,
-               c.source_section,
-               c.metadata,
-               c.chunk_no,
-               d.id::text AS document_id,
-               d.name AS document_name,
-               1 - (c.embedding <=> $4::vector) AS score,
-               1 - (c.embedding <=> $4::vector) AS vector_score,
-               0::float AS keyword_score,
-               'vector' AS method
-        FROM rag_chunks c
-        JOIN rag_document_indexes r ON r.id = c.index_id AND r.tenant_id = c.tenant_id
-        JOIN kb_documents d ON d.id = c.document_id AND d.tenant_id = c.tenant_id
-        WHERE c.tenant_id = $1::uuid
-          AND c.kb_id = $2::uuid
-          AND r.engine = 'self_built_rag'
-          AND r.status = 'learned'
-          AND r.is_active = true
-          AND r.embedding_model = $6
-          AND r.embedding_dimensions = $7::int
-          AND ($3::uuid[] IS NULL OR c.document_id = ANY($3::uuid[]))
-        ORDER BY c.embedding <=> $4::vector
-        LIMIT $5
+        SELECT m.content,
+               m.source_page,
+               m.source_section,
+               m.metadata,
+               m.chunk_no,
+               m.document_id,
+               m.document_name,
+               m.score,
+               m.vector_score,
+               m.keyword_score,
+               m.method
+        FROM (
+          SELECT c.content,
+                 c.source_page,
+                 c.source_section,
+                 c.metadata,
+                 c.chunk_no,
+                 d.id::text AS document_id,
+                 d.name AS document_name,
+                 1 - (c.embedding <=> $4::vector) AS score,
+                 1 - (c.embedding <=> $4::vector) AS vector_score,
+                 0::float AS keyword_score,
+                 'vector' AS method,
+                 c.embedding <=> $4::vector AS distance,
+                 r.tenant_id AS index_tenant_id,
+                 d.tenant_id AS document_tenant_id
+          FROM rag_chunks c
+          JOIN rag_document_indexes r ON r.id = c.index_id
+          JOIN kb_documents d ON d.id = c.document_id
+          WHERE c.tenant_id = $1::uuid
+            AND c.kb_id = $2::uuid
+            AND r.engine = 'self_built_rag'
+            AND r.status = 'learned'
+            AND r.is_active = true
+            AND r.embedding_model = $6
+            AND r.embedding_dimensions = $7::int
+            AND ($3::uuid[] IS NULL OR c.document_id = ANY($3::uuid[]))
+          ORDER BY c.embedding <=> $4::vector
+          LIMIT $5
+        ) m
+        WHERE m.index_tenant_id = $1::uuid
+          AND m.document_tenant_id = $1::uuid
+        ORDER BY m.distance
         """,
         tenant_id,
         kb_id,
@@ -208,65 +236,88 @@ async def fetch_keyword_matches(
     embedding_model: Any,
     embedding_dimensions: Any,
 ) -> list[Any]:
-    """Learned chunks matching the query's phrases/terms, ranked by keyword hits and similarity."""
+    """Learned chunks matching the query's phrases/terms, ranked by keyword hits and similarity.
+
+    The ranked query is the one from before the tenant match, so its plan and its rows (ties included) stay the
+    same; the tenant of the joined index and document rows is checked outside it, as in ``_vector_matches``
+    (review of wave 2, F1).
+    """
     return await pool.fetch(
         """
-        SELECT c.content,
-               c.source_page,
-               c.source_section,
-               c.metadata,
-               c.chunk_no,
-               d.id::text AS document_id,
-               d.name AS document_name,
-               LEAST(1.0, GREATEST(
-                 CASE WHEN phrase_hits.hit_count > 0 THEN 0.99 ELSE 0 END,
-                 CASE WHEN term_hits.hit_count > 0
-                   THEN LEAST(0.94, 0.58 + (term_hits.hit_count::float / GREATEST($6::int, 1)) * 0.36)
-                   ELSE 0
-                 END,
-                 similarity(d.name, $7),
-                 LEAST(0.90, similarity(c.content, $7))
-               )) AS score,
-               0::float AS vector_score,
-               LEAST(1.0, GREATEST(
-                 CASE WHEN phrase_hits.hit_count > 0 THEN 0.99 ELSE 0 END,
-                 CASE WHEN term_hits.hit_count > 0
-                   THEN LEAST(0.94, 0.58 + (term_hits.hit_count::float / GREATEST($6::int, 1)) * 0.36)
-                   ELSE 0
-                 END,
-                 similarity(d.name, $7),
-                 LEAST(0.90, similarity(c.content, $7))
-               )) AS keyword_score,
-               'keyword' AS method
-        FROM rag_chunks c
-        JOIN rag_document_indexes r ON r.id = c.index_id AND r.tenant_id = c.tenant_id
-        JOIN kb_documents d ON d.id = c.document_id AND d.tenant_id = c.tenant_id
-        LEFT JOIN LATERAL (
-          SELECT COUNT(*)::int AS hit_count
-          FROM unnest($4::text[]) AS pattern(value)
-          WHERE c.content ILIKE pattern.value OR d.name ILIKE pattern.value
-        ) phrase_hits ON true
-        LEFT JOIN LATERAL (
-          SELECT COUNT(*)::int AS hit_count
-          FROM unnest($5::text[]) AS pattern(value)
-          WHERE c.content ILIKE pattern.value OR d.name ILIKE pattern.value
-        ) term_hits ON true
-        WHERE c.tenant_id = $1::uuid
-          AND c.kb_id = $2::uuid
-          AND r.engine = 'self_built_rag'
-          AND r.status = 'learned'
-          AND r.is_active = true
-          AND r.embedding_model = $9
-          AND r.embedding_dimensions = $10::int
-          AND ($3::uuid[] IS NULL OR c.document_id = ANY($3::uuid[]))
-          AND (
-            c.content ILIKE ANY($4::text[])
-            OR d.name ILIKE ANY($4::text[])
-            OR c.content ILIKE ANY($5::text[])
-            OR d.name ILIKE ANY($5::text[])
-          )
-        ORDER BY keyword_score DESC, c.chunk_no ASC
-        LIMIT $8
+        SELECT m.content,
+               m.source_page,
+               m.source_section,
+               m.metadata,
+               m.chunk_no,
+               m.document_id,
+               m.document_name,
+               m.score,
+               m.vector_score,
+               m.keyword_score,
+               m.method
+        FROM (
+          SELECT c.content,
+                 c.source_page,
+                 c.source_section,
+                 c.metadata,
+                 c.chunk_no,
+                 d.id::text AS document_id,
+                 d.name AS document_name,
+                 LEAST(1.0, GREATEST(
+                   CASE WHEN phrase_hits.hit_count > 0 THEN 0.99 ELSE 0 END,
+                   CASE WHEN term_hits.hit_count > 0
+                     THEN LEAST(0.94, 0.58 + (term_hits.hit_count::float / GREATEST($6::int, 1)) * 0.36)
+                     ELSE 0
+                   END,
+                   similarity(d.name, $7),
+                   LEAST(0.90, similarity(c.content, $7))
+                 )) AS score,
+                 0::float AS vector_score,
+                 LEAST(1.0, GREATEST(
+                   CASE WHEN phrase_hits.hit_count > 0 THEN 0.99 ELSE 0 END,
+                   CASE WHEN term_hits.hit_count > 0
+                     THEN LEAST(0.94, 0.58 + (term_hits.hit_count::float / GREATEST($6::int, 1)) * 0.36)
+                     ELSE 0
+                   END,
+                   similarity(d.name, $7),
+                   LEAST(0.90, similarity(c.content, $7))
+                 )) AS keyword_score,
+                 'keyword' AS method,
+                 r.tenant_id AS index_tenant_id,
+                 d.tenant_id AS document_tenant_id
+          FROM rag_chunks c
+          JOIN rag_document_indexes r ON r.id = c.index_id
+          JOIN kb_documents d ON d.id = c.document_id
+          LEFT JOIN LATERAL (
+            SELECT COUNT(*)::int AS hit_count
+            FROM unnest($4::text[]) AS pattern(value)
+            WHERE c.content ILIKE pattern.value OR d.name ILIKE pattern.value
+          ) phrase_hits ON true
+          LEFT JOIN LATERAL (
+            SELECT COUNT(*)::int AS hit_count
+            FROM unnest($5::text[]) AS pattern(value)
+            WHERE c.content ILIKE pattern.value OR d.name ILIKE pattern.value
+          ) term_hits ON true
+          WHERE c.tenant_id = $1::uuid
+            AND c.kb_id = $2::uuid
+            AND r.engine = 'self_built_rag'
+            AND r.status = 'learned'
+            AND r.is_active = true
+            AND r.embedding_model = $9
+            AND r.embedding_dimensions = $10::int
+            AND ($3::uuid[] IS NULL OR c.document_id = ANY($3::uuid[]))
+            AND (
+              c.content ILIKE ANY($4::text[])
+              OR d.name ILIKE ANY($4::text[])
+              OR c.content ILIKE ANY($5::text[])
+              OR d.name ILIKE ANY($5::text[])
+            )
+          ORDER BY keyword_score DESC, c.chunk_no ASC
+          LIMIT $8
+        ) m
+        WHERE m.index_tenant_id = $1::uuid
+          AND m.document_tenant_id = $1::uuid
+        ORDER BY m.keyword_score DESC, m.chunk_no ASC
         """,
         tenant_id,
         kb_id,
