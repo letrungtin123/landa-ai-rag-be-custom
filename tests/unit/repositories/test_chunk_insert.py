@@ -80,17 +80,36 @@ def chunk_row(number: int) -> tuple[Any, ...]:
 
 
 class InsertChunksTests(unittest.TestCase):
-    def test_rows_go_in_order_in_batches_of_200(self) -> None:
+    def test_rows_go_in_order_in_batches_of_200_then_64_16_4_and_1(self) -> None:
         connection = RecordingConnection()
-        rows = [chunk_row(number) for number in range(401)]
+        rows = [chunk_row(number) for number in range(459)]
         asyncio.run(indexing.insert_chunks(connection, rows))
-        self.assertEqual([len(args) // 12 for _, args in connection.statements], [200, 200, 1])
+        self.assertEqual([len(args) // 12 for _, args in connection.statements],
+                         [200, 200, 16, 16, 16, 4, 4, 1, 1, 1])
         sent = [args[start:start + 12] for _, args in connection.statements for start in range(0, len(args), 12)]
         self.assertEqual(sent, rows)
         for query, args in connection.statements:
             self.assertEqual(query, indexing.chunk_insert_sql(len(args) // 12))
             self.assertEqual(re.findall(r"\$(\d+)", query), [str(number) for number in range(1, len(args) + 1)])
             self.assertEqual(query.count("::real[]::vector"), len(args) // 12)
+
+    def test_a_few_statement_texts_for_any_chunk_count(self) -> None:
+        # Review of wave 2, F2: one INSERT text per remainder size, each kept by asyncpg as a prepared statement
+        # (statement texts up to 15 KiB, 100 per pooled connection), held ~37 MB of plans per connection.
+        asyncpg_max_cacheable = 15 * 1024
+        texts: set[str] = set()
+        wrong = []
+        for count in range(1, 5_001):
+            sizes = indexing.chunk_insert_batches(count)
+            if sum(sizes) != count or sizes != sorted(sizes, reverse=True) or len(sizes) > count // 200 + 12:
+                wrong.append((count, sizes))
+            texts.update(indexing.chunk_insert_sql(size) for size in sizes)
+        self.assertEqual(wrong, [])
+        self.assertEqual(len(texts), 5)
+        cached = [text for text in texts if len(text) <= asyncpg_max_cacheable]
+        self.assertEqual(len(cached), 4)  # the 200-row text (~28 KiB) is never kept
+        self.assertEqual(indexing.chunk_insert_batches(0), [])
+        self.assertEqual(indexing.chunk_insert_batches(1_059), [200] * 5 + [16] * 3 + [4] * 2 + [1] * 3)
 
     def test_no_rows_no_statement(self) -> None:
         connection = RecordingConnection()

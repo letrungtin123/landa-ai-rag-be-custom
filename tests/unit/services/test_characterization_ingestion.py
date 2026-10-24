@@ -536,13 +536,16 @@ class IndexDocumentCharacterizationTests(unittest.TestCase):
         # quota trigger runs once per batch; same columns, values and order, the embedding as rounded real values.
         # Changed 2026-10-20 (skip an unchanged re-index): the document's active index is looked up once the
         # source is read; there is none here, so the run goes on exactly as before.
+        # Changed 2026-10-24 (review of wave 2, F2): the rows after the full batches of 200 go in batches of 64, 16,
+        # 4 and 1 (a handful of statement texts for asyncpg to keep): three chunks are three one-row INSERTs.
         self.assertEqual(db.labels(), [
             "load_document", "load_active_index", "supersede_running_indexes", "next_index_version",
-            "insert_index_row", "lock_index_row", "insert_chunk", "insert_structure_nodes",
-            "delete_structure_nodes", "deactivate_other_indexes", "activate_index", "delete_indexes",
+            "insert_index_row", "lock_index_row", "insert_chunk", "insert_chunk", "insert_chunk",
+            "insert_structure_nodes", "delete_structure_nodes", "deactivate_other_indexes", "activate_index",
+            "delete_indexes",
         ])
         self.assertEqual(db.args_for("load_active_index"), [(TENANT_ID, KB_ID, DOC_ID, "gemini-embedding-001", 768)])
-        self.assertEqual([method for method, sql, _ in db.calls if "INSERT INTO rag_chunks" in sql], ["execute"])
+        self.assertEqual([method for method, sql, _ in db.calls if "INSERT INTO rag_chunks" in sql], ["execute"] * 3)
         # Savepoint for the optional structure table rolls back; the outer index transaction commits.
         self.assertEqual(db.events, [("begin", 1), ("commit", 1), ("begin", 1), ("begin", 2), ("rollback", 2),
                                      ("commit", 1)])

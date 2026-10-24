@@ -23,6 +23,13 @@ logger = logging.getLogger(SERVICE_LOGGER_NAME)
 # chunk inside the indexing transaction; one multi-row INSERT per batch runs it once per batch. 200 rows x 12 bind
 # parameters stay far below the 32,767 parameters of one statement.
 CHUNK_INSERT_BATCH_ROWS = 200
+# The row counts of the INSERT statements: full batches of 200 rows, the rest in batches of 64, 16, 4 and 1 rows
+# (review of wave 2, F2). asyncpg keeps every statement text of at most 15 KiB as a prepared statement on each
+# pooled connection (up to 100 per connection), with its plans in the server process: one INSERT text per
+# remainder size held ~37 MB per connection (98 texts). These are five texts, four of them kept (the 200-row one,
+# ~28 KiB, is not): ~1.4 MB per connection. An index of n chunks runs n // 200 + at most 12 INSERTs (and the
+# statement-level quota trigger as often): a few more than with one INSERT for the remainder.
+CHUNK_INSERT_BATCH_SIZES = (CHUNK_INSERT_BATCH_ROWS, 64, 16, 4, 1)
 # The value of each rag_chunks column, in insert order: the cast of its placeholder. The embedding is a real[] of
 # the values ``pgvector.vector_values`` rounds exactly as the vector literal did.
 _CHUNK_INSERT_COLUMNS = (
@@ -293,11 +300,22 @@ def chunk_insert_sql(rows: int) -> str:
     return f"INSERT INTO rag_chunks ({columns}) VALUES {values}"  # noqa: S608
 
 
+def chunk_insert_batches(rows: int) -> list[int]:
+    """The row count of each INSERT for ``rows`` chunks, in insert order: largest batches first."""
+    sizes: list[int] = []
+    for size in CHUNK_INSERT_BATCH_SIZES:
+        count, rows = divmod(rows, size)
+        sizes.extend([size] * count)
+    return sizes
+
+
 async def insert_chunks(conn: SqlExecutor, rows: Sequence[Sequence[Any]]) -> None:
-    """Insert every chunk row of one index, in order: one multi-row INSERT per ``CHUNK_INSERT_BATCH_ROWS`` rows."""
-    for start in range(0, len(rows), CHUNK_INSERT_BATCH_ROWS):
-        batch = rows[start:start + CHUNK_INSERT_BATCH_ROWS]
-        await conn.execute(chunk_insert_sql(len(batch)), *[value for row in batch for value in row])
+    """Insert every chunk row of one index, in order: one multi-row INSERT per batch of ``chunk_insert_batches``."""
+    start = 0
+    for size in chunk_insert_batches(len(rows)):
+        batch = rows[start:start + size]
+        await conn.execute(chunk_insert_sql(size), *[value for row in batch for value in row])
+        start += size
 
 
 async def deactivate_other_indexes(
