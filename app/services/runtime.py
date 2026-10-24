@@ -37,6 +37,7 @@ concurrency = ConcurrencyRuntime(
     cpu_workers=settings.cpu_workers,
     acquire_timeout_seconds=settings.limiter_acquire_timeout_ms / 1000,
     extraction_executor=settings.extraction_executor,
+    provider_reserved_slots=settings.provider_chat_reserved_slots,
 )
 # Provider calls take their slots from this runtime's limiter and run on its provider threads, both looked up at
 # every attempt so a replaced ``concurrency`` (tests) is the one in use.

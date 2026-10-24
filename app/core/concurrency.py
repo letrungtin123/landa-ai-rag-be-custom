@@ -16,7 +16,7 @@ import logging
 import os
 import threading
 import weakref
-from collections.abc import AsyncIterator, Callable
+from collections.abc import AsyncIterator, Callable, Iterator
 from concurrent.futures import Executor, ProcessPoolExecutor, ThreadPoolExecutor
 from contextlib import asynccontextmanager
 from typing import Literal, ParamSpec, TypeVar
@@ -42,55 +42,104 @@ def default_cpu_workers() -> int:
     return max(1, min(32, (os.cpu_count() or 2) - 1))
 
 
+ProviderPriority = Literal["interactive", "background"]
+# Who the provider calls of the current context serve (audit 2026-10-24, P9): "interactive" inside
+# interactive_provider_calls() (chat), "background" everywhere else (AI ID / IDM runs, indexing, lesson author).
+_provider_priority: contextvars.ContextVar[ProviderPriority] = contextvars.ContextVar(
+    "ai_rag_provider_priority", default="background")
+
+
+@contextlib.contextmanager
+def interactive_provider_calls() -> Iterator[None]:
+    """Mark the provider calls made in this block (and in the tasks it starts) as interactive: they may use the
+    provider slots kept for chat (``AI_RAG_PROVIDER_CHAT_RESERVED_SLOTS``)."""
+
+    token = _provider_priority.set("interactive")
+    try:
+        yield
+    finally:
+        _provider_priority.reset(token)
+
+
+def current_provider_priority() -> ProviderPriority:
+    return _provider_priority.get()
+
+
 class WorkloadLimiter:
-    """Per-event-loop semaphore with a bounded wait.
+    """Per-event-loop semaphores with a bounded wait.
 
     asyncio primitives bind to the loop that first waits on them. Tests and
     tooling may run several loops in one process, so each loop gets its own
-    semaphore with the same limit.
+    semaphores with the same limits.
+
+    ``reserved`` slots are kept for interactive callers (audit 2026-10-24, P9): a ``background`` caller takes a slot
+    of the ``limit - reserved`` background slots as well as one of the ``limit``, so background work never holds
+    more than ``limit - reserved`` at once; an interactive caller may take any free slot.
     """
 
-    def __init__(self, name: WorkloadName, limit: int, acquire_timeout_seconds: float) -> None:
+    def __init__(self, name: WorkloadName, limit: int, acquire_timeout_seconds: float, *, reserved: int = 0) -> None:
         if limit < 1:
             raise ValueError("Workload limit must be at least one.")
+        if not 0 <= reserved < limit:
+            raise ValueError("Reserved slots must leave at least one slot for background work.")
         self.name = name
         self.limit = limit
+        self.reserved = reserved
         self.acquire_timeout_seconds = max(0.0, acquire_timeout_seconds)
-        self._semaphores: weakref.WeakKeyDictionary[asyncio.AbstractEventLoop, asyncio.Semaphore] = (
-            weakref.WeakKeyDictionary()
-        )
+        self._semaphores: weakref.WeakKeyDictionary[
+            asyncio.AbstractEventLoop, tuple[asyncio.Semaphore, asyncio.Semaphore | None]
+        ] = weakref.WeakKeyDictionary()
         self._lock = threading.Lock()
 
-    def _semaphore(self) -> asyncio.Semaphore:
+    def _gates(self) -> tuple[asyncio.Semaphore, asyncio.Semaphore | None]:
+        """(every slot, the background slots or None without a reservation) of the running loop."""
+
         loop = asyncio.get_running_loop()
         with self._lock:
-            semaphore = self._semaphores.get(loop)
-            if semaphore is None:
-                semaphore = asyncio.Semaphore(self.limit)
-                self._semaphores[loop] = semaphore
-            return semaphore
+            gates = self._semaphores.get(loop)
+            if gates is None:
+                background = asyncio.Semaphore(self.limit - self.reserved) if self.reserved else None
+                gates = (asyncio.Semaphore(self.limit), background)
+                self._semaphores[loop] = gates
+            return gates
 
     @asynccontextmanager
-    async def slot(self, *, max_wait_seconds: float | None = None) -> AsyncIterator[None]:
-        semaphore = self._semaphore()
+    async def slot(self, *, max_wait_seconds: float | None = None, background: bool = False) -> AsyncIterator[None]:
+        every_slot, background_slots = self._gates()
+        gates = [background_slots, every_slot] if background and background_slots is not None else [every_slot]
         wait = self.acquire_timeout_seconds
         if max_wait_seconds is not None:
             wait = max(0.0, min(wait, max_wait_seconds))
+        held: list[asyncio.Semaphore] = []
         try:
-            await asyncio.wait_for(semaphore.acquire(), timeout=wait)
-        except TimeoutError:
+            # One wait for both gates: a background caller that got its background slot but no slot in all gives
+            # the background slot back.
+            await asyncio.wait_for(_acquire_in_order(gates, held), timeout=wait)
+        except BaseException as error:
+            for gate in reversed(held):
+                gate.release()
+            if not isinstance(error, TimeoutError):
+                raise
             metrics.LIMITER_REJECTIONS.labels(workload=self.name).inc()
             logger.warning(
                 "workload_limiter_saturated",
-                extra={"event": "workload_limiter_saturated", "workload": self.name, "limit": self.limit},
+                extra={"event": "workload_limiter_saturated", "workload": self.name, "limit": self.limit,
+                       "background": background and background_slots is not None},
             )
             raise AppError("SERVICE_BUSY", 503, SERVICE_BUSY_MESSAGE) from None
         metrics.LIMITER_IN_USE.labels(workload=self.name).inc()
         try:
             yield
         finally:
-            semaphore.release()
+            for gate in reversed(held):
+                gate.release()
             metrics.LIMITER_IN_USE.labels(workload=self.name).dec()
+
+
+async def _acquire_in_order(gates: list[asyncio.Semaphore], held: list[asyncio.Semaphore]) -> None:
+    for gate in gates:
+        await gate.acquire()
+        held.append(gate)
 
 
 class ConcurrencyRuntime:
@@ -104,8 +153,11 @@ class ConcurrencyRuntime:
         cpu_workers: int,
         acquire_timeout_seconds: float,
         extraction_executor: ExtractionExecutor,
+        provider_reserved_slots: int = 0,
     ) -> None:
-        self.provider = WorkloadLimiter("provider", provider_limit, acquire_timeout_seconds)
+        # Background provider calls keep at least one slot: a reservation of the whole limit is cut to limit - 1.
+        self.provider = WorkloadLimiter("provider", provider_limit, acquire_timeout_seconds,
+                                        reserved=max(0, min(provider_reserved_slots, provider_limit - 1)))
         self.index = WorkloadLimiter("index", index_limit, acquire_timeout_seconds)
         self.cpu = WorkloadLimiter("cpu", cpu_workers, acquire_timeout_seconds)
         self.cpu_workers = cpu_workers

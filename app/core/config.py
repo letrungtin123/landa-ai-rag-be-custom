@@ -125,6 +125,14 @@ class Settings(BaseSettings):
         ge=1,
         le=256,
     )
+    # Provider slots only chat may take (audit 2026-10-24, P9): AI ID runs, indexing and the other background calls
+    # hold at most AI_RAG_MAX_CONCURRENT_PROVIDER_CALLS minus this many at once (and always at least one).
+    provider_chat_reserved_slots: int = Field(
+        default=2,
+        validation_alias="AI_RAG_PROVIDER_CHAT_RESERVED_SLOTS",
+        ge=0,
+        le=255,
+    )
     max_concurrent_index_jobs: int = Field(
         default=2,
         validation_alias="AI_RAG_MAX_CONCURRENT_INDEX_JOBS",
