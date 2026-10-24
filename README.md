@@ -165,7 +165,8 @@ Secrets are `SecretStr` and never logged; `.env.example` holds placeholders.
 | `AI_RAG_MAX_CONCURRENT_INDEX_JOBS` | int | `2` | >= 1, <= 64 |
 | `AI_RAG_CPU_WORKERS` | int | CPU count - 1, between 1 and 4 | >= 1, <= 64 |
 | `AI_RAG_LIMITER_ACQUIRE_TIMEOUT_MS` | int | `30000` | >= 100, <= 600000 |
-| `AI_RAG_EXTRACTION_EXECUTOR` | `thread` \| `process` | `thread` |  |
+| `AI_RAG_EXTRACTION_EXECUTOR` | `thread` \| `process` \| `isolated` | `isolated` |  |
+| `AI_RAG_EXTRACTION_MEMORY_LIMIT_BYTES` | int | `1073741824` | >= 268435456, <= 68719476736 |
 | `AI_RAG_PROVIDER_MAX_ATTEMPTS` | int | `2` | >= 1, <= 5 |
 | `AI_RAG_PROVIDER_RETRY_BASE_MS` | int | `1500` | >= 0, <= 30000 |
 | `AI_RAG_PROVIDER_RETRY_MAX_MS` | int | `8000` | >= 0, <= 60000 |

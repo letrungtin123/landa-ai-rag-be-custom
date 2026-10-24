@@ -145,9 +145,18 @@ class Settings(BaseSettings):
         ge=100,
         le=600_000,
     )
-    extraction_executor: Literal["thread", "process"] = Field(
-        default="thread",
+    # thread: in this process; process: a pool of service processes; isolated: one fresh child process per document,
+    # killed at the deadline and capped at AI_RAG_EXTRACTION_MEMORY_LIMIT_BYTES (audit 2026-10-24, M2).
+    extraction_executor: Literal["thread", "process", "isolated"] = Field(
+        default="isolated",
         validation_alias="AI_RAG_EXTRACTION_EXECUTOR",
+    )
+    # Memory (commit charge on Windows, address space on Linux) one isolated extraction child may use.
+    extraction_memory_limit_bytes: int = Field(
+        default=1024 * 1024 * 1024,
+        validation_alias="AI_RAG_EXTRACTION_MEMORY_LIMIT_BYTES",
+        ge=256 * 1024 * 1024,
+        le=64 * 1024 * 1024 * 1024,
     )
 
     # Provider retry policy (5xx always; 429 only with a short server retry hint).

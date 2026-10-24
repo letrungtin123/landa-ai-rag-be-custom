@@ -9,6 +9,7 @@ exhaust provider quota for every other caller.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import contextvars
 import functools
 import logging
@@ -21,6 +22,7 @@ from contextlib import asynccontextmanager
 from typing import Literal, ParamSpec, TypeVar
 
 from app.core import metrics
+from app.core.child_process import ChildOutcome, ChildProcess
 from app.core.errors import AppError
 
 logger = logging.getLogger(__name__)
@@ -29,7 +31,10 @@ P = ParamSpec("P")
 T = TypeVar("T")
 
 WorkloadName = Literal["provider", "index", "cpu"]
+ExtractionExecutor = Literal["thread", "process", "isolated"]
 SERVICE_BUSY_MESSAGE = "The AI service is busy. Please retry shortly."
+# How long a cancelled caller waits for its killed child process to be gone before giving the CPU slot back.
+CHILD_KILL_WAIT_SECONDS = 10.0
 
 
 def default_cpu_workers() -> int:
@@ -98,7 +103,7 @@ class ConcurrencyRuntime:
         index_limit: int,
         cpu_workers: int,
         acquire_timeout_seconds: float,
-        extraction_executor: Literal["thread", "process"],
+        extraction_executor: ExtractionExecutor,
     ) -> None:
         self.provider = WorkloadLimiter("provider", provider_limit, acquire_timeout_seconds)
         self.index = WorkloadLimiter("index", index_limit, acquire_timeout_seconds)
@@ -109,6 +114,7 @@ class ConcurrencyRuntime:
         self._process_executor: ProcessPoolExecutor | None = None
         self._provider_executor: ThreadPoolExecutor | None = None
         self._executor_lock = threading.Lock()
+        self._child_runs: set[_ChildRun] = set()
 
     def _threads(self) -> ThreadPoolExecutor:
         with self._executor_lock:
@@ -161,11 +167,47 @@ class ConcurrencyRuntime:
         return await loop.run_in_executor(self._provider_threads(), functools.partial(context.run, func))
 
     async def run_extraction(self, func: Callable[P, T], *args: P.args, **kwargs: P.kwargs) -> T:
-        """Run untrusted document extraction; a process pool isolates parser crashes."""
+        """Run untrusted document extraction in this process (``thread``) or a process pool (``process``).
+
+        The ``isolated`` executor runs each document in its own child process instead
+        (``app.services.ingestion.extract_isolated`` through ``run_in_child``); here it means the thread executor.
+        """
         executor: Executor = self._processes() if self.extraction_executor_kind == "process" else self._threads()
         return await self._run(executor, func, *args, **kwargs)
 
+    async def run_in_child(self, module: str, request: bytes, *, memory_limit_bytes: int, max_output_bytes: int,
+                           environment: dict[str, str] | None = None) -> ChildOutcome:
+        """Run ``python -m module`` in a fresh child process under the CPU limit (audit 2026-10-24, M2).
+
+        The child gets ``request`` on stdin; its stdout is the outcome's output. A cancelled await (the caller's
+        deadline, a disconnect, the service stopping) kills the child and everything it started, and the CPU slot is
+        given back once the child is gone, so a parser that never returns cannot keep a slot. ``environment`` is added
+        to the child's minimal environment (``app.core.child_process.child_environment``).
+        """
+        run = _ChildRun(module, request, memory_limit_bytes=memory_limit_bytes, max_output_bytes=max_output_bytes,
+                        environment=environment)
+        async with self.cpu.slot():
+            with self._executor_lock:
+                self._child_runs.add(run)
+            try:
+                # The thread starts the child and blocks on its pipes; the event loop only waits.
+                future = self._threads().submit(contextvars.copy_context().run, run.run)
+                try:
+                    return await asyncio.wrap_future(future)
+                except asyncio.CancelledError:
+                    run.cancel()
+                    with contextlib.suppress(Exception, asyncio.CancelledError):
+                        await asyncio.wait_for(asyncio.shield(asyncio.wrap_future(future)), CHILD_KILL_WAIT_SECONDS)
+                    raise
+            finally:
+                with self._executor_lock:
+                    self._child_runs.discard(run)
+
     def shutdown(self) -> None:
+        with self._executor_lock:
+            child_runs, self._child_runs = list(self._child_runs), set()
+        for run in child_runs:
+            run.cancel()
         with self._executor_lock:
             if self._thread_executor is not None:
                 self._thread_executor.shutdown(wait=False, cancel_futures=True)
@@ -176,6 +218,40 @@ class ConcurrencyRuntime:
             if self._provider_executor is not None:
                 self._provider_executor.shutdown(wait=False, cancel_futures=True)
                 self._provider_executor = None
+
+
+class _ChildRun:
+    """One ``run_in_child`` call: the child is started and read on a worker thread and killed from any thread."""
+
+    def __init__(self, module: str, request: bytes, *, memory_limit_bytes: int, max_output_bytes: int,
+                 environment: dict[str, str] | None) -> None:
+        self._module = module
+        self._request = request
+        self._memory_limit_bytes = memory_limit_bytes
+        self._max_output_bytes = max_output_bytes
+        self._environment = environment
+        self._lock = threading.Lock()
+        self._child: ChildProcess | None = None
+        self._cancelled = False
+
+    def run(self) -> ChildOutcome:
+        child = ChildProcess(self._module, memory_limit_bytes=self._memory_limit_bytes, environment=self._environment)
+        try:
+            with self._lock:
+                self._child = child
+                cancelled = self._cancelled
+            if cancelled:  # cancelled while the child was starting: it never gets the request
+                child.kill()
+            return child.exchange(self._request, max_output_bytes=self._max_output_bytes)
+        finally:
+            child.close()
+
+    def cancel(self) -> None:
+        with self._lock:
+            self._cancelled = True
+            child = self._child
+        if child is not None:
+            child.kill()
 
 
 def deadline_seconds(milliseconds: int) -> float:

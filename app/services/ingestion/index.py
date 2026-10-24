@@ -34,9 +34,10 @@ from app.schemas.common import AiUsage
 from app.schemas.kb import INDEX_SKIP_REASON_UNCHANGED, RagIndexRequest
 from app.services import provider
 from app.services import runtime as service_runtime
-from app.services.ingestion import extract as extraction
+from app.services.ingestion import extract_isolated
 from app.services.ingestion.chunking import build_chunks, build_index_diagnostics
 from app.services.ingestion.extract import ExtractedSection, index_document_temp_path
+from app.services.ingestion.extract_isolated import IsolatedExtractionError
 from app.services.ingestion.fingerprint import (
     EMBEDDING_TASK_TYPE,
     StoredChunk,
@@ -204,9 +205,7 @@ async def _index_document(request: RagIndexRequest, pool: asyncpg.Pool) -> dict[
                     # Nothing to reuse (or forced): take the index row now, superseding a running one.
                     index_id = await index_repository.start_index_row(pool, row, effective_embedding_model)
                 if source_path is not None:
-                    sections = await service_runtime.concurrency.run_extraction(
-                        extraction.extract_sections, source_path, source_path.name
-                    )
+                    sections = await extract_isolated.extract_document(service_runtime.concurrency, source_path)
                 else:
                     sections = [ExtractedSection(text=clean_text(row["content"] or ""))]
             logger.info(
@@ -325,7 +324,7 @@ async def _index_document(request: RagIndexRequest, pool: asyncpg.Pool) -> dict[
             "rag_index_failed",
             extra={"event": "rag_index_failed", "tenant_id": request.tenant_id,
                    "document_id": request.document_id, "error_code": error_code,
-                   "error_type": type(exc).__name__},
+                   "error_type": exc.error_type if isinstance(exc, IsolatedExtractionError) else type(exc).__name__},
         )
         if isinstance(exc, DocumentLimitError):
             raise

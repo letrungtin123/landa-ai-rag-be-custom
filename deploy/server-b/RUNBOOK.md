@@ -225,7 +225,8 @@ is checked out (see `ci.yml`).
   reconnect); `/readyz` also requires the read-only schema/grant check; storage is read through
   backend-signed URLs under `AI_RAG_STORAGE_ALLOWED_ORIGINS` (no `SUPABASE_SERVICE_KEY` on B).
 - `uvloop` is not in `requirements.lock` (compiled on Windows; the `uvicorn[standard]` marker excludes it).
-- `AI_RAG_EXTRACTION_EXECUTOR=process` would use `fork` on Linux (`app/core/concurrency.py`); keep `thread`.
+- `AI_RAG_EXTRACTION_EXECUTOR=process` would use `fork` on Linux (`app/core/concurrency.py`); keep the default
+  `isolated` (a new interpreter per document, `app/core/child_process.py`) or `thread`.
 - HMAC replay cache is in-process: one instance, `AI_RAG_WORKERS=1`. Scaling needs a shared store + ALB
   (idle timeout ≥ 960 s).
 - Pin GitHub Actions and the Postgres CI service by SHA/digest; pin `PYTHON_IMAGE` and `NGINX_IMAGE`.
