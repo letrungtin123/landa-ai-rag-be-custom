@@ -20,7 +20,7 @@ from app import lesson_quality
 from app.core.markup import count_tags, element_spans, remove_elements, sub_tags
 from app.idm import node_acceptance_html as html_rules
 from app.idm.node_acceptance_text import _JS_WS, js_trim
-from app.services.staged_unit.validation import preserved_list_items
+from app.services.staged_unit.markup_scans import preserved_list_items
 
 FUZZ_CASES = 50_000
 MAX_SECONDS = 0.05

@@ -32,7 +32,7 @@ from app.idm import (
 )
 from app.idm.text import visible_end, visible_start
 from app.services.retrieval import source_coverage
-from app.services.staged_unit import validation
+from app.services.staged_unit import markup_scans
 
 FUZZ_CASES = 50_000
 MAX_SECONDS = 0.05
@@ -144,7 +144,7 @@ CASES: tuple[Case, ...] = (
     ("quoted (text)", lambda text: quiz_text.sub_quoted("", text), lambda text: OLD_QUOTED.sub("", text),
      ('"', LEFT_QUOTE, RIGHT_QUOTE, LEFT_GUILLEMET, RIGHT_GUILLEMET, "a", "?"), LEFT_GUILLEMET),
     ("word_before", word_before, old_word_before, ("ab", "1", "_", "Ý", " ", TAB, "\n", "-", "x y"), "1"),
-    ("contact copy", validation.contains_contact_copy, lambda text: bool(OLD_CONTACT.search(text)),
+    ("contact copy", markup_scans.contains_contact_copy, lambda text: bool(OLD_CONTACT.search(text)),
      ("http://", "HTTPS://", "www.", "WWW.", "@", "a", "b.", ".", "+", "-", "co", "vn", "x1", LONG_S, KELVIN,
       "htt", " "), "ha"),
     ("object_span", provider_json.object_span,

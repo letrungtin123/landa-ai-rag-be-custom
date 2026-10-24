@@ -27,7 +27,7 @@ from app.core.child_process import ChildOutcome, child_environment
 from app.core.concurrency import ConcurrencyRuntime
 from app.core.config import settings
 from app.core.errors import AppError, DocumentLimitError
-from app.schemas.common import AiUsage
+from app.infra.gemini.usage import AiUsage
 from app.services import runtime as runtime_service
 from app.services.ingestion import extract as extraction
 from app.services.ingestion import extract_isolated, extract_worker

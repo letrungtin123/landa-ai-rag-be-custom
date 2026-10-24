@@ -13,7 +13,7 @@ from unittest.mock import MagicMock, patch
 from app.core.config import settings
 from app.core.errors import ProviderError
 from app.infra.gemini import calls
-from app.schemas.common import AiUsage
+from app.infra.gemini.usage import AiUsage
 from app.services import provider as provider_service
 
 TEXTS = [f"text {number}" for number in range(14)]
