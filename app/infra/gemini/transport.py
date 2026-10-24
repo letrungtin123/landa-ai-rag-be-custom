@@ -1,6 +1,6 @@
 """One bounded provider call: deadline, concurrency slot, transient retries, 429 waits and call metrics.
 
-The SDK is synchronous: each attempt runs on the process runtime's provider threads (one per provider slot,
+The SDK is synchronous: each attempt runs on the process runtime's provider threads (two per provider slot,
 not the default executor) under the request's own deadline (``pool.request_http_options``) and a provider slot
 of its ``WorkloadLimiter``; ``app.services.runtime`` installs both with ``use_provider_slots`` (infra never
 imports services).

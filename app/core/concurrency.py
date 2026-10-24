@@ -30,6 +30,11 @@ T = TypeVar("T")
 
 WorkloadName = Literal["provider", "index", "cpu"]
 SERVICE_BUSY_MESSAGE = "The AI service is busy. Please retry shortly."
+# Provider threads per provider slot (review of wave 2, F4). A call whose await timed out gives its slot back at
+# once but keeps its thread until the SDK's own request timeout (the same deadline) ends it; with one thread per
+# slot, a call admitted meanwhile waited for that thread and could time out without reaching the provider. Twice
+# the slots: every slot's call can time out and be replaced while the timed-out threads finish.
+PROVIDER_THREADS_PER_SLOT = 2
 
 
 def default_cpu_workers() -> int:
@@ -123,7 +128,7 @@ class ConcurrencyRuntime:
         with self._executor_lock:
             if self._provider_executor is None:
                 self._provider_executor = ThreadPoolExecutor(
-                    max_workers=self.provider.limit,
+                    max_workers=PROVIDER_THREADS_PER_SLOT * self.provider.limit,
                     thread_name_prefix="ai-rag-provider",
                 )
             return self._provider_executor
@@ -150,10 +155,11 @@ class ConcurrencyRuntime:
     async def run_provider_call(self, func: Callable[[], T]) -> T:
         """Run one synchronous provider SDK call on the provider threads (audit 2026-10-24, P5).
 
-        One thread per provider slot, apart from the default executor that ``asyncio.to_thread`` shares with every
-        other blocking call: a chat call never waits for a thread behind an AI ID run's calls or a storage download.
-        The caller holds the provider slot (``WorkloadLimiter``) and bounds the await; a call whose await timed out
-        keeps its thread until the SDK's own request timeout (the same deadline) ends it.
+        Threads of their own (``PROVIDER_THREADS_PER_SLOT`` per provider slot), apart from the default executor that
+        ``asyncio.to_thread`` shares with every other blocking call: a chat call never waits for a thread behind an AI
+        ID run's calls or a storage download. The caller holds the provider slot (``WorkloadLimiter``) and bounds the
+        await; a call whose await timed out keeps its thread until the SDK's own request timeout (the same deadline)
+        ends it, and the spare threads serve the calls admitted meanwhile.
         """
         loop = asyncio.get_running_loop()
         # Copy context so request/correlation IDs and the provider stage reach logs emitted in the thread.

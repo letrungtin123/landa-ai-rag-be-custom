@@ -134,7 +134,7 @@ class ConcurrencyRuntimeTests(unittest.TestCase):
         runtime.shutdown()
         runtime.shutdown()
 
-    def test_provider_calls_run_on_their_own_threads_one_per_provider_slot(self) -> None:
+    def test_provider_calls_run_on_their_own_threads_under_the_provider_slots(self) -> None:
         # Audit 2026-10-24, P5: the SDK calls used the default executor that every asyncio.to_thread shares.
         runtime = self.runtime()  # provider limit 2
         lock = threading.Lock()
@@ -151,22 +151,66 @@ class ConcurrencyRuntimeTests(unittest.TestCase):
                 running["now"] -= 1
             return request_id_var.get()
 
+        async def admitted() -> str | None:
+            # As the transport runs a call: inside a provider slot.
+            async with runtime.provider.slot():
+                return await runtime.run_provider_call(call)
+
         async def scenario() -> list[str | None]:
             token = request_id_var.set("req-provider")
             try:
-                return await asyncio.gather(*(runtime.run_provider_call(call) for _ in range(6)))
+                return await asyncio.gather(*(admitted() for _ in range(6)))
             finally:
                 request_id_var.reset(token)
 
         try:
             results = asyncio.run(scenario())
             self.assertIsNotNone(runtime._provider_executor)
+            self.assertEqual(runtime._provider_threads()._max_workers, 4)  # two per slot (review of wave 2, F4)
         finally:
             runtime.shutdown()
         self.assertEqual(results, ["req-provider"] * 6)
         self.assertEqual(running["peak"], 2)
         self.assertTrue(names and all(name.startswith("ai-rag-provider") for name in names))
         self.assertIsNone(runtime._provider_executor)  # shut down with the service (services.runtime.shutdown)
+
+    def test_a_call_admitted_after_timed_out_calls_still_gets_a_thread_at_once(self) -> None:
+        # Review of wave 2, F4: a provider that hangs past the deadline. Both slots' calls time out and give their
+        # slots back while their threads still wait for the SDK; the next two admitted calls must not wait for
+        # those threads (with one thread per slot they timed out without reaching the provider).
+        runtime = self.runtime()  # provider limit 2
+        release = threading.Event()
+        reached: list[str] = []
+
+        def hanging_provider() -> str:
+            release.wait(5)
+            return "too late"
+
+        def provider() -> str:
+            reached.append(threading.current_thread().name)
+            return "answer"
+
+        async def admitted(call: Any) -> str:
+            async with runtime.provider.slot(max_wait_seconds=0.5):
+                return await asyncio.wait_for(runtime.run_provider_call(call), timeout=0.3)
+
+        async def scenario() -> tuple[list[Any], list[str], float]:
+            timed_out = await asyncio.gather(admitted(hanging_provider), admitted(hanging_provider),
+                                             return_exceptions=True)
+            started = time.perf_counter()
+            answers = await asyncio.gather(admitted(provider), admitted(provider))
+            return timed_out, answers, time.perf_counter() - started
+
+        try:
+            timed_out, answers, elapsed = asyncio.run(scenario())
+        finally:
+            release.set()
+            runtime.shutdown()
+        self.assertTrue(all(isinstance(outcome, TimeoutError) for outcome in timed_out), timed_out)
+        self.assertEqual(answers, ["answer", "answer"])
+        self.assertEqual(len(reached), 2)
+        self.assertTrue(all(name.startswith("ai-rag-provider") for name in reached))
+        self.assertLess(elapsed, 0.25)
 
     def test_provider_calls_do_not_wait_for_the_default_executor(self) -> None:
         runtime = self.runtime()
