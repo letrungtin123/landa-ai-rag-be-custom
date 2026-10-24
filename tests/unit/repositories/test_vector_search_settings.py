@@ -1,8 +1,9 @@
 """Per-query HNSW settings of the vector search (audit 2026-10-24, P3).
 
 The HNSW index covers every tenant and the tenant/KB/active-index filters apply after it: a scan stopping at
-pgvector's 40 candidates returned 14 of 32 rows on the local database. The query raises hnsw.ef_search to its
-limit and, with pgvector 0.8+, scans on in distance order, both for its own transaction only.
+pgvector's 40 candidates returned 14 of 32 rows on the local database. Enabled, the query raises hnsw.ef_search to
+its limit and, with pgvector 0.8+, scans on in distance order, both for its own transaction only. Off by default
+(review of wave 2): the vector results stay those of before wave 2 until the owner turns it on.
 """
 
 from __future__ import annotations
@@ -14,7 +15,7 @@ from contextlib import asynccontextmanager
 from typing import Any
 from unittest.mock import patch
 
-from app.core.config import settings
+from app.core.config import Settings, settings
 from app.repositories import retrieval
 from app.services.retrieval.search import hnsw_ef_search
 
@@ -67,9 +68,15 @@ class VectorSearchSettingsTests(unittest.TestCase):
         search(pool, ef_search=0)
         self.assertEqual([name for name, _ in pool.events], ["fetch"])
 
+    def test_off_by_default_the_database_settings_and_the_results_of_before(self) -> None:
+        defaults = Settings.model_fields
+        self.assertEqual((defaults["vector_ef_search"].default, defaults["vector_iterative_scan"].default), (0, "off"))
+        self.assertEqual([hnsw_ef_search(limit) for limit in (1, 32, 96, 25_000)], [0, 0, 0, 0])
+
     def test_ef_search_is_at_least_the_limit_within_pgvector_bounds(self) -> None:
-        self.assertEqual([hnsw_ef_search(limit) for limit in (1, 32, 40, 96, 1_000, 25_000)],
-                         [40, 40, 40, 96, 1_000, 1_000])
+        with patch.object(settings, "vector_ef_search", 40):
+            self.assertEqual([hnsw_ef_search(limit) for limit in (1, 32, 40, 96, 1_000, 25_000)],
+                             [40, 40, 40, 96, 1_000, 1_000])
         with patch.object(settings, "vector_ef_search", 120):
             self.assertEqual([hnsw_ef_search(limit) for limit in (32, 200)], [120, 200])
         with patch.object(settings, "vector_ef_search", 0):

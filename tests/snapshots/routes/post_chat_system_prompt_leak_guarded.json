@@ -197,15 +197,6 @@
   },
   "db_calls": [
    {
-    "method": "execute",
-    "sql_sha256": "3eab4f3415c64aa6ee450cb73c70f8e49951cc68e7984ee7ee11edc45d5b9a81",
-    "rule": null,
-    "args": [
-     "40",
-     "strict_order"
-    ]
-   },
-   {
     "method": "fetch",
     "sql_sha256": "22bb7d22ca928f1d73456e08af3bee34168c45c00ed39b4c917bac794517ea41",
     "rule": "'vector' AS method",

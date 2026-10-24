@@ -486,14 +486,17 @@ class Settings(BaseSettings):
         ge=1_000,
         le=2_000_000,
     )
-    # Per-query HNSW settings of the vector search (audit 2026-10-24, P3). The index covers every tenant and the
-    # tenant/KB/active-index filters apply after it, so a scan that stops at ef_search candidates (pgvector default
-    # 40) can return fewer rows than asked: measured on the local database, 14 of 32. hnsw.ef_search is raised to
-    # the query's row limit (at least this value, at most pgvector's 1,000) and, with pgvector 0.8 or later, the
-    # scan goes on in exact distance order (strict_order) until the limit is met. 0 sends no per-query setting.
-    vector_ef_search: int = Field(default=40, validation_alias="AI_RAG_VECTOR_EF_SEARCH", ge=0, le=1_000)
+    # Per-query HNSW settings of the vector search (audit 2026-10-24, P3), off by default (review of wave 2): 0 and
+    # off keep the database's settings and the vector results of before wave 2. The index covers every tenant and
+    # the tenant/KB/active-index filters apply after it, so a scan that stops at ef_search candidates (pgvector
+    # default 40) can return fewer rows than asked: on the local database's 2,545-chunk KB, 9 of 25 sampled chat
+    # queries got fewer than their 32 rows (as few as 14), 1 of 25 on the 3,465-chunk KB. Above 0, hnsw.ef_search is
+    # raised to the query's row limit (at least this value, at most pgvector's 1,000), per query; strict_order
+    # (pgvector 0.8 or later) then scans on in exact distance order until the limit is met. Turning it on changes
+    # the chunks chat and the legacy lesson-author retrieve (the owner's decision); e.g. 40 and strict_order.
+    vector_ef_search: int = Field(default=0, validation_alias="AI_RAG_VECTOR_EF_SEARCH", ge=0, le=1_000)
     vector_iterative_scan: Literal["off", "strict_order"] = Field(
-        default="strict_order",
+        default="off",
         validation_alias="AI_RAG_VECTOR_ITERATIVE_SCAN",
     )
     retrieval_candidate_multiplier: int = Field(

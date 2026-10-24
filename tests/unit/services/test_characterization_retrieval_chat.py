@@ -553,8 +553,7 @@ class RetrieveChunksTests(PinnedTestCase):
             ],
         )
         rows, usage, context = run(retrieval_search.retrieve_chunks(pool, make_request()))
-        # Changed 2026-10-24 (audit P3): each vector query runs after its transaction-local HNSW settings.
-        self.assertEqual(pool.kinds(), ["vector_settings", "vector", "keyword"])  # non-authoring: no structure SQL
+        self.assertEqual(pool.kinds(), ["vector", "keyword"])  # non-authoring target: no structure SQL
         self.assertEqual(usage, EMBED_USAGE)
         # A#2 and B#5 tie at 0.30; the keyword_score tie-break puts the keyword row first.
         self.assertEqual([(row["document_id"], row["chunk_no"]) for row in rows], [(DOC_A, 1), (DOC_B, 5), (DOC_A, 2)])
@@ -592,8 +591,8 @@ class RetrieveChunksTests(PinnedTestCase):
         self.assertEqual(
             vector_args, (TENANT_ID, KB_ID, [DOC_A, DOC_B], EMBEDDING_LITERAL, 32, "gemini-embedding-001", 768)
         )
-        # 32 candidate rows: hnsw.ef_search keeps pgvector's 40, and the scan goes on in distance order if needed.
-        self.assertEqual([args for _sql, args in pool.calls_of("vector_settings")], [("40", "strict_order")])
+        # Per-query HNSW settings are off by default (audit 2026-10-24 P3, review of wave 2): the database's own.
+        self.assertEqual(pool.calls_of("vector_settings"), [])
         ((_keyword_sql, keyword_args),) = pool.calls_of("keyword")
         phrases, term_patterns, terms = retrieval_query.build_keyword_patterns(message)
         self.assertEqual(
@@ -615,7 +614,7 @@ class RetrieveChunksTests(PinnedTestCase):
     def test_no_source_documents_passes_null_filter_and_tiny_query_skips_keyword_sql(self) -> None:
         pool = FakePool()
         run(retrieval_search.retrieve_chunks(pool, make_request(user_message="ab")))
-        self.assertEqual(pool.kinds(), ["vector_settings", "vector"])
+        self.assertEqual(pool.kinds(), ["vector"])
         self.assertIsNone(pool.calls_of("vector")[0][1][2])
 
     def test_stopword_only_query_uses_term_placeholder(self) -> None:
@@ -662,12 +661,28 @@ class RetrieveChunksTests(PinnedTestCase):
         pool = FakePool()
         rows, _usage, context = run(retrieval_search.retrieve_chunks(pool, request))
         self.assertEqual(self.embed.calls[0]["contents"], ["ab", "Course outline text"])
-        self.assertEqual(pool.kinds(), ["structure_nodes", "structure_fallback", "vector_settings", "vector",
-                                        "vector_settings", "vector"])
-        # 96 candidate rows (24 x 4): hnsw.ef_search is raised to the limit.
-        self.assertEqual({args for _sql, args in pool.calls_of("vector_settings")}, {("96", "strict_order")})
+        self.assertEqual(pool.kinds(), ["structure_nodes", "structure_fallback", "vector", "vector"])
         self.assertEqual(rows, [])
         self.assertIsInstance(context["source_coverage_manifest"], dict)
+
+    def test_enabled_hnsw_settings_run_in_each_vector_query_transaction(self) -> None:
+        # Audit 2026-10-24, P3, when the owner turns it on (off by default): hnsw.ef_search is raised to the
+        # candidate limit (at least the setting) and the scan goes on in distance order, per vector query.
+        chat = make_request(user_message="ab")
+        author = make_request(RagLessonAuthorRequest, target="lesson_author", output_schema_hint="{}",
+                              user_message="ab", outline_context="Course outline text")
+        with (patch.object(main.settings, "vector_ef_search", 40),
+              patch.object(main.settings, "vector_iterative_scan", "strict_order")):
+            chat_pool, author_pool = FakePool(), FakePool()
+            run(retrieval_search.retrieve_chunks(chat_pool, chat))
+            run(retrieval_search.retrieve_chunks(author_pool, author))
+        self.assertEqual(chat_pool.kinds(), ["vector_settings", "vector"])
+        # 32 candidate rows: hnsw.ef_search keeps pgvector's 40.
+        self.assertEqual([args for _sql, args in chat_pool.calls_of("vector_settings")], [("40", "strict_order")])
+        self.assertEqual(author_pool.kinds(), ["structure_nodes", "structure_fallback", "vector_settings", "vector",
+                                               "vector_settings", "vector"])
+        # 96 candidate rows (24 x 4): hnsw.ef_search is raised to the limit.
+        self.assertEqual({args for _sql, args in author_pool.calls_of("vector_settings")}, {("96", "strict_order")})
 
 
 class StructureContextTests(PinnedTestCase):
@@ -684,7 +699,7 @@ class StructureContextTests(PinnedTestCase):
         _rows, _usage, context = run(
             retrieval_search.retrieve_chunks(pool, self.author_request(source_documents=[source_doc(DOC_A)]))
         )
-        self.assertEqual(pool.kinds(), ["structure_nodes", "structure_fallback", "vector_settings", "vector"])
+        self.assertEqual(pool.kinds(), ["structure_nodes", "structure_fallback", "vector"])  # no repair query
         self.assertEqual(pool.calls_of("structure_nodes")[0][1], (TENANT_ID, KB_ID, [DOC_A]))
         self.assertEqual(context["outline"], TOC_OUTLINE_VI)
         self.assertEqual(
@@ -711,7 +726,7 @@ class StructureContextTests(PinnedTestCase):
             ],
         )
         _rows, _usage, context = run(retrieval_search.retrieve_chunks(pool, self.author_request(locale="en")))
-        self.assertEqual(pool.kinds(), ["structure_nodes", "structure_fallback", "vector_settings", "vector"])
+        self.assertEqual(pool.kinds(), ["structure_nodes", "structure_fallback", "vector"])
         self.assertIsNone(pool.calls_of("structure_fallback")[0][1][2])
         # English outline still uses the Vietnamese "(trang N)" page suffix.
         self.assertEqual(
@@ -749,8 +764,7 @@ class StructureContextTests(PinnedTestCase):
             ],
         )
         _rows, _usage, context = run(retrieval_search.retrieve_chunks(pool, self.author_request()))
-        self.assertEqual(pool.kinds(), ["structure_nodes", "structure_fallback", "structure_repair", "vector_settings",
-                                        "vector"])
+        self.assertEqual(pool.kinds(), ["structure_nodes", "structure_fallback", "structure_repair", "vector"])
         self.assertEqual(pool.calls_of("structure_repair")[0][1], (TENANT_ID, KB_ID, [DOC_A]))
         self.assertGreaterEqual(context["structure_node_count"], 1)
         self.assertTrue(context["outline"].startswith("Tài liệu: Safety Manual\n"))

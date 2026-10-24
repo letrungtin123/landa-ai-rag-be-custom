@@ -147,6 +147,13 @@ bounded repair, then deterministic source-locked content marked for review. Prom
 Generated from `app/core/config.py` (`LANDA_UPDATE_README=1 python -m pytest tests/contract/test_readme_settings.py`).
 Secrets are `SecretStr` and never logged; `.env.example` holds placeholders.
 
+The per-query vector search settings are off by default (`AI_RAG_VECTOR_EF_SEARCH=0`,
+`AI_RAG_VECTOR_ITERATIVE_SCAN=off`): the database's HNSW settings, so chat and the legacy lesson-author retrieve the
+same chunks as before wave 2. The shared HNSW index is filtered by tenant and KB after its scan, which stops at
+`hnsw.ef_search` (40) candidates: on the local 2,545-chunk KB, 9 of 25 sampled chat queries got fewer than their 32
+rows (as few as 14). `40` / `strict_order` (pgvector 0.8+) returns every row asked for, but changes which chunks
+those flows retrieve: turning it on is the owner's decision.
+
 <!-- settings-table:start -->
 | Variable | Type | Default | Bounds |
 |---|---|---|---|
@@ -234,8 +241,8 @@ Secrets are `SecretStr` and never logged; `.env.example` holds placeholders.
 | `AI_RAG_LESSON_AUTHOR_SCOPE_MAX_CHUNKS` | int | `48` | >= 1, <= 5000 |
 | `AI_RAG_SOURCE_COVERAGE_CANONICAL_MAX_CHARS` | int | `1000000` | >= 10000, <= 50000000 |
 | `AI_RAG_SOURCE_MAP_ARCHITECT_CONTEXT_MAX_CHARS` | int | `48000` | >= 1000, <= 2000000 |
-| `AI_RAG_VECTOR_EF_SEARCH` | int | `40` | >= 0, <= 1000 |
-| `AI_RAG_VECTOR_ITERATIVE_SCAN` | `off` \| `strict_order` | `strict_order` |  |
+| `AI_RAG_VECTOR_EF_SEARCH` | int | `0` | >= 0, <= 1000 |
+| `AI_RAG_VECTOR_ITERATIVE_SCAN` | `off` \| `strict_order` | `off` |  |
 | `AI_RAG_RETRIEVAL_CANDIDATE_MULTIPLIER` | int | `4` | >= 1, <= 50 |
 | `AI_RAG_RETRIEVAL_MIN_SCORE` | number | `0.25` | >= -1.0, <= 1.0 |
 | `AI_RAG_RETRIEVAL_KEYWORD_MIN_SCORE` | number | `0.5` | >= 0.0, <= 1.0 |
